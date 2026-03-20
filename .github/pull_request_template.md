@@ -14,8 +14,8 @@ Briefly describe the purpose of this PR and the problem it solves.
 
 ## Related issues
 
-<!-- Replace X with the issue number, or remove this line if not applicable -->
-Closes #X
+<!-- Replace X with the issue number (for example, Closes #123), then uncomment the line below if applicable -->
+<!-- Closes #X -->
 
 ## Checklist
 
