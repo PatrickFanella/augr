@@ -1,0 +1,213 @@
+- name: type:epic
+  color: A371F7
+  description: Large cross-cutting initiative spanning multiple issues
+- name: type:feature
+  color: A371F7
+  description: Net-new product or platform capability
+- name: type:infra
+  color: A371F7
+  description: Infrastructure, CI/CD, deployment, or platform work
+- name: type:docs
+  color: A371F7
+  description: Documentation, guides, runbooks, or reference content
+- name: type:testing
+  color: A371F7
+  description: Test coverage, fixtures, validation, or QA automation
+- name: type:security
+  color: A371F7
+  description: Security controls, audits, hardening, or auth work
+- name: type:decision
+  color: A371F7
+  description: Architecture or process decision that needs an ADR
+- name: type:devex
+  color: A371F7
+  description: Developer experience, tooling, templates, or workflow work
+- name: type:observability
+  color: A371F7
+  description: Logging, metrics, tracing, dashboards, or alerts
+- name: priority:p0
+  color: B60205
+  description: Critical path work that blocks other delivery
+  aliases:
+  - priority:p0-critical
+- name: priority:p1
+  color: D93F0B
+  description: High-priority work needed in the current phase
+  aliases:
+  - priority:p1-high
+- name: priority:p2
+  color: FBCA04
+  description: Important work that can follow critical-path items
+  aliases:
+  - priority:p2-normal
+- name: priority:p3
+  color: 0E8A16
+  description: Lower-priority work that can be deferred safely
+  aliases:
+  - priority:p3-low
+- name: phase:0
+  color: 1D76DB
+  description: Project setup and planning foundation
+  aliases:
+  - phase:0-setup
+- name: phase:1
+  color: 1D76DB
+  description: Architecture and repository scaffolding
+  aliases:
+  - phase:1-foundation
+- name: phase:2
+  color: 1D76DB
+  description: Core abstractions and interface definitions
+  aliases:
+  - phase:2-abstractions
+- name: phase:3
+  color: 1D76DB
+  description: Core implementation systems and business logic
+  aliases:
+  - phase:3-core
+- name: phase:4
+  color: 1D76DB
+  description: Backtesting, simulation, and execution rehearsal
+  aliases:
+  - phase:4-simulation
+- name: phase:5
+  color: 1D76DB
+  description: Paper trading and operational safeguards
+  aliases:
+  - phase:5-paper-trading
+- name: phase:6
+  color: 1D76DB
+  description: Observability, QA, and production hardening
+  aliases:
+  - phase:6-hardening
+- name: ws:project-foundation
+  color: 0E8A16
+  description: Project setup process, governance, and planning conventions
+- name: ws:repo-scaffolding
+  color: 0E8A16
+  description: Repository bootstrap, migrations, repositories, and base structure
+- name: ws:architecture
+  color: 0E8A16
+  description: Architecture primitives, domain model, and interface design
+- name: ws:config-env
+  color: 0E8A16
+  description: Configuration loading, environment variables, and runtime settings
+- name: ws:llm-provider
+  color: 0E8A16
+  description: LLM provider adapters, retries, routing, and model strategy
+- name: ws:analysis-agents
+  color: 0E8A16
+  description: Analyst agents for market, fundamentals, news, and social data
+- name: ws:data-ingestion
+  color: 0E8A16
+  description: Market/news data providers, caching, and indicator computation
+- name: ws:agent-orchestration
+  color: 0E8A16
+  description: Pipeline orchestration, state flow, and execution control
+- name: ws:research-debate
+  color: 0E8A16
+  description: Research debate agents and multi-round deliberation logic
+- name: ws:trading-agent
+  color: 0E8A16
+  description: Trading-plan generation from research output
+- name: ws:risk-debate
+  color: 0E8A16
+  description: Risk debate agents and final decision arbitration
+- name: ws:risk-engine
+  color: 0E8A16
+  description: Risk controls, sizing, limits, kill switch, and circuit breakers
+- name: ws:memory-learning
+  color: 0E8A16
+  description: Memory storage, retrieval, reflection, and learning feedback
+- name: ws:market-adapters
+  color: 0E8A16
+  description: Broker and venue adapters for equities, crypto, and prediction markets
+- name: ws:execution-engine
+  color: 0E8A16
+  description: Order lifecycle, fills, positions, and execution workflows
+- name: ws:backtesting
+  color: 0E8A16
+  description: Historical replay, experiment tracking, and simulation engine work
+- name: ws:paper-trading
+  color: 0E8A16
+  description: Paper trading integrations, validation, and simulator behavior
+- name: ws:api-layer
+  color: 0E8A16
+  description: HTTP API surface, routing, middleware, and request handling
+- name: ws:websocket-realtime
+  color: 0E8A16
+  description: WebSocket streaming, event fan-out, and live client updates
+- name: ws:frontend
+  color: 0E8A16
+  description: Frontend application scaffolding and user-facing dashboard screens
+- name: ws:cli-tui
+  color: 0E8A16
+  description: CLI and terminal UI workflows for operators and developers
+- name: ws:observability
+  color: 0E8A16
+  description: Metrics, logging, dashboards, alerting, and operational visibility
+- name: ws:security
+  color: 0E8A16
+  description: Security review, authentication, secret handling, and hardening
+- name: ws:infra-deploy
+  color: 0E8A16
+  description: Build, deploy, Docker, GitHub Actions, and runtime infrastructure
+- name: ws:testing-qa
+  color: 0E8A16
+  description: Unit, integration, smoke, and end-to-end validation coverage
+- name: ws:strategy-engine
+  color: 0E8A16
+  description: Scheduling, strategy orchestration, and run triggering controls
+- name: ws:docs-devex
+  color: 0E8A16
+  description: Contributor docs, setup guides, templates, and workflow docs
+- name: ws:database-persistence
+  color: 0E8A16
+  description: Schema design, migrations, and persistence model changes
+- name: size:xs
+  color: C2E0C6
+  description: Small change with limited scope and low coordination cost
+- name: size:s
+  color: 7FD4C1
+  description: Focused task that should fit in a short implementation
+- name: size:m
+  color: 30B0C7
+  description: Moderate change spanning a few files or components
+- name: size:l
+  color: 1D76DB
+  description: Large change requiring broader implementation or coordination
+- name: size:xl
+  color: 5319E7
+  description: Extra-large effort that should usually be split further
+- name: risk:low
+  color: 0E8A16
+  description: Low delivery risk with limited operational or product impact
+- name: risk:medium
+  color: FBCA04
+  description: Moderate risk that needs extra review or rollout care
+- name: risk:high
+  color: B60205
+  description: High-risk work with significant operational or trading impact
+- name: workflow:agent-ready
+  color: 0E8A16
+  description: Ready for an autonomous agent or contributor to pick up
+  aliases:
+  - agent-ready
+- name: workflow:blocked
+  color: B60205
+  description: Blocked by an unresolved dependency or external decision
+- name: workflow:needs-decision
+  color: FBCA04
+  description: Waiting on a documented decision before implementation
+  aliases:
+  - needs-decision
+- name: workflow:parallelizable
+  color: 0EA5E9
+  description: Can be worked on in parallel without tight coupling
+  aliases:
+  - parallelizable
+- name: workflow:foundation-first
+  color: 1D76DB
+  description: Should land before higher-level dependent work begins
+  aliases:
+  - foundation-first
