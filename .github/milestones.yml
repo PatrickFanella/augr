@@ -1,0 +1,42 @@
+- title: "Phase 0: Project Setup & Planning Foundation"
+  description: >-
+    Establish project governance, repository conventions, planning
+    infrastructure, and team processes to enable coordinated phased delivery.
+  state: open
+
+- title: "Phase 1: Architecture & Repository Scaffolding"
+  description: >-
+    Bootstrap the repository structure, configure CI/CD pipelines, define
+    module boundaries, and lay the architectural foundation for all subsequent
+    phases.
+  state: open
+
+- title: "Phase 2: Core Abstractions & Interfaces"
+  description: >-
+    Define the domain model, core interfaces, contracts, and abstractions that
+    all implementation systems will depend on.
+  state: open
+
+- title: "Phase 3: Core Implementation Systems"
+  description: >-
+    Implement the primary business logic including agent orchestration, LLM
+    providers, data ingestion, risk engine, and execution engine.
+  state: open
+
+- title: "Phase 4: Backtesting & Simulation"
+  description: >-
+    Build historical replay infrastructure, backtesting harness, and simulation
+    tooling to validate strategies before live deployment.
+  state: open
+
+- title: "Phase 5: Paper Trading & Operational Safeguards"
+  description: >-
+    Integrate paper trading venues, validate end-to-end workflows without real
+    capital, and implement operational safeguards and circuit breakers.
+  state: open
+
+- title: "Phase 6: Observability, QA & Production Readiness"
+  description: >-
+    Implement full observability stack, comprehensive QA coverage, security
+    hardening, and production deployment readiness.
+  state: open

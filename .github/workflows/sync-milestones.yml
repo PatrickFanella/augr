@@ -1,0 +1,71 @@
+name: Sync milestones
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/milestones.yml
+      - .github/workflows/sync-milestones.yml
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  sync-milestones:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Sync repository milestones
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          python3 << 'EOF'
+          import yaml, json, subprocess, os, sys
+
+          repo = os.environ["REPO"]
+
+          with open(".github/milestones.yml") as f:
+              desired = yaml.safe_load(f)
+
+          # Fetch all existing milestones (open and closed)
+          result = subprocess.run(
+              ["gh", "api", f"repos/{repo}/milestones",
+               "--method", "GET", "-f", "state=all", "--paginate"],
+              capture_output=True, text=True, check=True,
+          )
+          existing = {m["title"]: m for m in json.loads(result.stdout)}
+
+          for milestone in desired:
+              title       = milestone["title"]
+              description = milestone.get("description", "")
+              state       = milestone.get("state", "open")
+
+              if title in existing:
+                  number = existing[title]["number"]
+                  subprocess.run(
+                      ["gh", "api", f"repos/{repo}/milestones/{number}",
+                       "--method", "PATCH",
+                       "-f", f"title={title}",
+                       "-f", f"description={description}",
+                       "-f", f"state={state}"],
+                      check=True,
+                  )
+                  print(f"Updated milestone: {title}")
+              else:
+                  subprocess.run(
+                      ["gh", "api", f"repos/{repo}/milestones",
+                       "--method", "POST",
+                       "-f", f"title={title}",
+                       "-f", f"description={description}",
+                       "-f", f"state={state}"],
+                      check=True,
+                  )
+                  print(f"Created milestone: {title}")
+
+          print("Milestone sync complete.")
+          EOF
