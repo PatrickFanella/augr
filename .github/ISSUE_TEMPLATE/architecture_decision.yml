@@ -1,0 +1,47 @@
+name: Architecture decision
+description: Propose and document an architectural or process decision.
+title: "decision: "
+labels:
+  - type: decision
+body:
+  - type: input
+    id: issue_title
+    attributes:
+      label: Title
+      description: A short, specific title for this decision.
+      placeholder: "decision: concise summary"
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Describe the decision context and proposal.
+      placeholder: What decision needs to be made and why now?
+    validations:
+      required: true
+  - type: textarea
+    id: options_considered
+    attributes:
+      label: Options considered
+      description: Document alternatives and tradeoffs.
+      placeholder: |
+        - Option A:
+          - Pros:
+          - Cons:
+        - Option B:
+          - Pros:
+          - Cons:
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: Acceptance criteria
+      description: Define what constitutes a complete decision outcome.
+      placeholder: |
+        - [ ] Decision and rationale are documented
+        - [ ] Impacts and follow-up tasks are identified
+        - [ ] Relevant stakeholders have reviewed
+    validations:
+      required: true

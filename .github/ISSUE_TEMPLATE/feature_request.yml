@@ -1,0 +1,42 @@
+name: Feature request
+description: Propose a new capability with clear value and scope.
+title: "feat: "
+labels:
+  - type: feature
+body:
+  - type: input
+    id: issue_title
+    attributes:
+      label: Title
+      description: A short, specific title for this feature.
+      placeholder: "feat: concise summary"
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Describe the feature, user value, and expected outcome.
+      placeholder: What should be added or changed, and why?
+    validations:
+      required: true
+  - type: textarea
+    id: problem_statement
+    attributes:
+      label: Problem statement
+      description: Describe the current limitation this feature addresses.
+      placeholder: What problem exists today?
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: Acceptance criteria
+      description: Define clear, testable completion criteria.
+      placeholder: |
+        - [ ] Capability is implemented
+        - [ ] Documentation is updated as needed
+        - [ ] Validation/tests are added where applicable
+    validations:
+      required: true
+

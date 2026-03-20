@@ -1,0 +1,73 @@
+name: Agent task
+description: Structured task for autonomous agent execution.
+title: "agent: "
+labels:
+  - workflow:agent-ready
+  - type: devex
+body:
+  - type: input
+    id: issue_title
+    attributes:
+      label: Title
+      description: A short, specific title for this agent task.
+      placeholder: "agent: concise summary"
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Summarize the intended outcome and context.
+      placeholder: What should the agent accomplish and why?
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: Define what is in scope and out of scope.
+      placeholder: |
+        In scope:
+        - ...
+
+        Out of scope:
+        - ...
+    validations:
+      required: true
+  - type: textarea
+    id: deliverables
+    attributes:
+      label: Deliverables
+      description: List expected outputs/files/changes.
+      placeholder: |
+        - [ ] Deliverable 1
+        - [ ] Deliverable 2
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: Note prerequisite issues/PRs/decisions.
+      placeholder: Link any dependencies or write "None".
+    validations:
+      required: true
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints
+      description: Define constraints the agent must follow.
+      placeholder: Include technical, security, timeline, or process constraints.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: Acceptance criteria
+      description: Define clear, testable completion criteria.
+      placeholder: |
+        - [ ] Deliverables are complete
+        - [ ] Constraints are satisfied
+        - [ ] Changes are validated and documented
+    validations:
+      required: true
