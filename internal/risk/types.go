@@ -1,27 +1,37 @@
 package risk
 
-import "time"
+import (
+	"time"
 
-// RiskStatus describes the current aggregate status of the risk system.
-type RiskStatus struct {
+	"github.com/PatrickFanella/get-rich-quick/internal/domain"
+)
+
+// EngineStatus describes the current aggregate status of the risk system.
+type EngineStatus struct {
+	RiskStatus     domain.RiskStatus    `json:"risk_status"`
 	CircuitBreaker CircuitBreakerStatus `json:"circuit_breaker"`
 	KillSwitch     KillSwitchStatus     `json:"kill_switch"`
 	PositionLimits PositionLimits       `json:"position_limits"`
 	UpdatedAt      time.Time            `json:"updated_at"`
 }
 
-// CircuitBreakerState defines whether trading is allowed or temporarily halted.
-type CircuitBreakerState string
+// CircuitBreakerPhase defines whether trading is allowed or temporarily halted.
+type CircuitBreakerPhase string
 
 const (
-	CircuitBreakerStateOpen     CircuitBreakerState = "open"
-	CircuitBreakerStateTripped  CircuitBreakerState = "tripped"
-	CircuitBreakerStateCooldown CircuitBreakerState = "cooldown"
+	CircuitBreakerPhaseOpen     CircuitBreakerPhase = "open"
+	CircuitBreakerPhaseTripped  CircuitBreakerPhase = "tripped"
+	CircuitBreakerPhaseCooldown CircuitBreakerPhase = "cooldown"
 )
+
+// String returns the string representation of a CircuitBreakerPhase.
+func (s CircuitBreakerPhase) String() string {
+	return string(s)
+}
 
 // CircuitBreakerStatus captures circuit breaker state and latest transition.
 type CircuitBreakerStatus struct {
-	State       CircuitBreakerState `json:"state"`
+	State       CircuitBreakerPhase `json:"state"`
 	Reason      string              `json:"reason,omitempty"`
 	TrippedAt   *time.Time          `json:"tripped_at,omitempty"`
 	CooldownEnd *time.Time          `json:"cooldown_end,omitempty"`
@@ -36,6 +46,11 @@ const (
 	KillSwitchMechanismEnvVar  KillSwitchMechanism = "env_var"
 	KillSwitchMechanismUnknown KillSwitchMechanism = "unknown"
 )
+
+// String returns the string representation of a KillSwitchMechanism.
+func (m KillSwitchMechanism) String() string {
+	return string(m)
+}
 
 // KillSwitchStatus captures whether the kill switch is active and why.
 type KillSwitchStatus struct {
@@ -55,8 +70,8 @@ type PositionLimits struct {
 
 // Portfolio carries the current exposure context used for risk checks.
 type Portfolio struct {
-	TotalExposurePct         float64            `json:"total_exposure_pct"`
-	ConcurrentPositions      int                `json:"concurrent_positions"`
-	PositionExposureBySymbol map[string]float64 `json:"position_exposure_by_symbol,omitempty"`
-	MarketExposurePct        map[string]float64 `json:"market_exposure_pct,omitempty"`
+	TotalExposurePct         float64                       `json:"total_exposure_pct"`
+	ConcurrentPositions      int                           `json:"concurrent_positions"`
+	PositionExposureBySymbol map[string]float64            `json:"position_exposure_by_symbol,omitempty"`
+	MarketExposurePct        map[domain.MarketType]float64 `json:"market_exposure_pct,omitempty"`
 }

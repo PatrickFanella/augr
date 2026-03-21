@@ -5,20 +5,30 @@ import "testing"
 func TestCircuitBreakerStates(t *testing.T) {
 	t.Parallel()
 
-	if CircuitBreakerStateOpen != "open" {
-		t.Fatalf("expected open state value, got %q", CircuitBreakerStateOpen)
+	if CircuitBreakerPhaseOpen != "open" {
+		t.Fatalf("expected open state value, got %q", CircuitBreakerPhaseOpen)
 	}
-	if CircuitBreakerStateTripped != "tripped" {
-		t.Fatalf("expected tripped state value, got %q", CircuitBreakerStateTripped)
+	if CircuitBreakerPhaseTripped != "tripped" {
+		t.Fatalf("expected tripped state value, got %q", CircuitBreakerPhaseTripped)
 	}
-	if CircuitBreakerStateCooldown != "cooldown" {
-		t.Fatalf("expected cooldown state value, got %q", CircuitBreakerStateCooldown)
+	if CircuitBreakerPhaseCooldown != "cooldown" {
+		t.Fatalf("expected cooldown state value, got %q", CircuitBreakerPhaseCooldown)
 	}
 
-	states := map[CircuitBreakerState]struct{}{
-		CircuitBreakerStateOpen:     {},
-		CircuitBreakerStateTripped:  {},
-		CircuitBreakerStateCooldown: {},
+	if CircuitBreakerPhaseOpen.String() != "open" {
+		t.Fatalf("expected open String() value, got %q", CircuitBreakerPhaseOpen.String())
+	}
+	if CircuitBreakerPhaseTripped.String() != "tripped" {
+		t.Fatalf("expected tripped String() value, got %q", CircuitBreakerPhaseTripped.String())
+	}
+	if CircuitBreakerPhaseCooldown.String() != "cooldown" {
+		t.Fatalf("expected cooldown String() value, got %q", CircuitBreakerPhaseCooldown.String())
+	}
+
+	states := map[CircuitBreakerPhase]struct{}{
+		CircuitBreakerPhaseOpen:     {},
+		CircuitBreakerPhaseTripped:  {},
+		CircuitBreakerPhaseCooldown: {},
 	}
 	if len(states) != 3 {
 		t.Fatalf("expected exactly 3 circuit breaker states, got %d", len(states))
@@ -39,6 +49,18 @@ func TestKillSwitchMechanisms(t *testing.T) {
 	}
 	if KillSwitchMechanismUnknown != "unknown" {
 		t.Fatalf("expected unknown mechanism value, got %q", KillSwitchMechanismUnknown)
+	}
+	if KillSwitchMechanismAPI.String() != "api_toggle" {
+		t.Fatalf("expected api String() value, got %q", KillSwitchMechanismAPI.String())
+	}
+	if KillSwitchMechanismFile.String() != "file_flag" {
+		t.Fatalf("expected file String() value, got %q", KillSwitchMechanismFile.String())
+	}
+	if KillSwitchMechanismEnvVar.String() != "env_var" {
+		t.Fatalf("expected env String() value, got %q", KillSwitchMechanismEnvVar.String())
+	}
+	if KillSwitchMechanismUnknown.String() != "unknown" {
+		t.Fatalf("expected unknown String() value, got %q", KillSwitchMechanismUnknown.String())
 	}
 
 	mechanisms := map[KillSwitchMechanism]struct{}{
