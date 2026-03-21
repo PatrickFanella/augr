@@ -191,9 +191,9 @@ func TestCompleteSupportsRequestOverridesAndJSONMode(t *testing.T) {
 func TestCompleteWrapsSDKErrorsWithoutRetries(t *testing.T) {
 	t.Parallel()
 
-	var requestCount atomic.Int32
+	var requestCounter atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		requestCount.Add(1)
+		requestCounter.Add(1)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte(`{"error":{"message":"backend unavailable","type":"server_error"}}`))
@@ -220,8 +220,8 @@ func TestCompleteWrapsSDKErrorsWithoutRetries(t *testing.T) {
 	if !strings.Contains(err.Error(), "openai: complete request") {
 		t.Fatalf("Complete() error = %q, want wrapped context", err)
 	}
-	if requestCount.Load() != 1 {
-		t.Fatalf("request count = %d, want %d (retries disabled)", requestCount.Load(), 1)
+	if requestCounter.Load() != 1 {
+		t.Fatalf("request count = %d, want %d (retries disabled)", requestCounter.Load(), 1)
 	}
 }
 
