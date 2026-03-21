@@ -44,6 +44,10 @@ func (r *Registry) Register(marketType domain.MarketType, broker Broker) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	if r.brokers == nil {
+		r.brokers = make(map[domain.MarketType]Broker)
+	}
+
 	r.brokers[normalizedMarketType] = broker
 
 	return nil

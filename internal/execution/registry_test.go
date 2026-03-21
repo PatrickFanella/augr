@@ -9,32 +9,34 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/execution"
 )
 
-type stubBroker struct{}
+type stubBroker struct {
+	id string
+}
 
-func (stubBroker) SubmitOrder(context.Context, *domain.Order) (string, error) {
+func (*stubBroker) SubmitOrder(context.Context, *domain.Order) (string, error) {
 	return "", nil
 }
 
-func (stubBroker) CancelOrder(context.Context, string) error {
+func (*stubBroker) CancelOrder(context.Context, string) error {
 	return nil
 }
 
-func (stubBroker) GetOrderStatus(context.Context, string) (domain.OrderStatus, error) {
+func (*stubBroker) GetOrderStatus(context.Context, string) (domain.OrderStatus, error) {
 	return domain.OrderStatusSubmitted, nil
 }
 
-func (stubBroker) GetPositions(context.Context) ([]domain.Position, error) {
+func (*stubBroker) GetPositions(context.Context) ([]domain.Position, error) {
 	return nil, nil
 }
 
-func (stubBroker) GetAccountBalance(context.Context) (execution.Balance, error) {
+func (*stubBroker) GetAccountBalance(context.Context) (execution.Balance, error) {
 	return execution.Balance{}, nil
 }
 
 func TestRegistryRegisterAndResolve(t *testing.T) {
 	registry := execution.NewRegistry()
-	stockBroker := stubBroker{}
-	cryptoBroker := stubBroker{}
+	stockBroker := &stubBroker{id: "stock"}
+	cryptoBroker := &stubBroker{id: "crypto"}
 
 	if err := registry.Register(domain.MarketTypeStock, stockBroker); err != nil {
 		t.Fatalf("Register(stock) error = %v", err)
@@ -47,16 +49,16 @@ func TestRegistryRegisterAndResolve(t *testing.T) {
 	if !ok {
 		t.Fatal("Get(stock) ok = false, want true")
 	}
-	if _, ok := gotStock.(stubBroker); !ok {
-		t.Fatalf("Get(stock) broker type = %T, want stubBroker", gotStock)
+	if gotStock != stockBroker {
+		t.Fatalf("Get(stock) broker = %#v, want %#v", gotStock, stockBroker)
 	}
 
 	gotCrypto, err := registry.Resolve("CRYPTO")
 	if err != nil {
 		t.Fatalf("Resolve(crypto) error = %v", err)
 	}
-	if _, ok := gotCrypto.(stubBroker); !ok {
-		t.Fatalf("Resolve(crypto) broker type = %T, want stubBroker", gotCrypto)
+	if gotCrypto != cryptoBroker {
+		t.Fatalf("Resolve(crypto) broker = %#v, want %#v", gotCrypto, cryptoBroker)
 	}
 }
 
@@ -79,7 +81,7 @@ func TestRegistryRegisterRejectsBlankMarketTypeOrMissingBroker(t *testing.T) {
 		{
 			name:       "blank market type",
 			marketType: " ",
-			broker:     stubBroker{},
+			broker:     &stubBroker{id: "blank"},
 			want:       "execution market type is required",
 		},
 		{
@@ -102,5 +104,22 @@ func TestRegistryRegisterRejectsBlankMarketTypeOrMissingBroker(t *testing.T) {
 				t.Fatalf("Register() error = %q, want %q", err.Error(), tc.want)
 			}
 		})
+	}
+}
+
+func TestRegistryZeroValueIsUsable(t *testing.T) {
+	var registry execution.Registry
+	broker := &stubBroker{id: "stock"}
+
+	if err := registry.Register(domain.MarketTypeStock, broker); err != nil {
+		t.Fatalf("Register() error = %v", err)
+	}
+
+	got, err := registry.Resolve(domain.MarketTypeStock)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if got != broker {
+		t.Fatalf("Resolve() broker = %#v, want %#v", got, broker)
 	}
 }
