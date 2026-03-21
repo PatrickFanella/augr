@@ -333,6 +333,28 @@ func newOrderTradeIntegrationPool(t *testing.T, ctx context.Context) (*pgxpool.P
 	}
 
 	ddl := []string{
+		`CREATE TYPE order_status AS ENUM (
+			'pending',
+			'submitted',
+			'partial',
+			'filled',
+			'cancelled',
+			'rejected'
+		)`,
+		`CREATE TYPE trade_side AS ENUM (
+			'buy',
+			'sell'
+		)`,
+		`CREATE TYPE order_type AS ENUM (
+			'market',
+			'limit',
+			'stop',
+			'stop_limit'
+		)`,
+		`CREATE TYPE position_side AS ENUM (
+			'long',
+			'short'
+		)`,
 		`CREATE TABLE strategies (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid()
 		)`,
@@ -340,7 +362,7 @@ func newOrderTradeIntegrationPool(t *testing.T, ctx context.Context) (*pgxpool.P
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			strategy_id UUID REFERENCES strategies (id),
 			ticker TEXT NOT NULL,
-			side TEXT NOT NULL,
+			side position_side NOT NULL,
 			quantity NUMERIC(20, 8) NOT NULL,
 			avg_entry NUMERIC(20, 8) NOT NULL,
 			realized_pnl NUMERIC(20, 8) NOT NULL DEFAULT 0,
@@ -353,14 +375,14 @@ func newOrderTradeIntegrationPool(t *testing.T, ctx context.Context) (*pgxpool.P
 			pipeline_run_id UUID,
 			external_id TEXT,
 			ticker TEXT NOT NULL,
-			side TEXT NOT NULL,
-			order_type TEXT NOT NULL,
+			side trade_side NOT NULL,
+			order_type order_type NOT NULL,
 			quantity NUMERIC(20, 8) NOT NULL,
 			limit_price NUMERIC(20, 8),
 			stop_price NUMERIC(20, 8),
 			filled_quantity NUMERIC(20, 8) NOT NULL DEFAULT 0,
 			filled_avg_price NUMERIC(20, 8),
-			status TEXT NOT NULL DEFAULT 'pending',
+			status order_status NOT NULL DEFAULT 'pending',
 			broker TEXT,
 			submitted_at TIMESTAMPTZ,
 			filled_at TIMESTAMPTZ,
@@ -371,7 +393,7 @@ func newOrderTradeIntegrationPool(t *testing.T, ctx context.Context) (*pgxpool.P
 			order_id UUID REFERENCES orders (id),
 			position_id UUID REFERENCES positions (id),
 			ticker TEXT NOT NULL,
-			side TEXT NOT NULL,
+			side trade_side NOT NULL,
 			quantity NUMERIC(20, 8) NOT NULL,
 			price NUMERIC(20, 8) NOT NULL,
 			fee NUMERIC(20, 8) NOT NULL DEFAULT 0,
