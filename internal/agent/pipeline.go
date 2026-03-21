@@ -284,6 +284,10 @@ func (p *Pipeline) executeTradingPhase(ctx context.Context, state *PipelineState
 			p.logger.Debug("agent/pipeline: AgentDecisionMade event dropped; phase context cancelled",
 				slog.String("node", traderNode.Name()),
 			)
+		default:
+			p.logger.Debug("agent/pipeline: AgentDecisionMade event dropped; events channel full",
+				slog.String("node", traderNode.Name()),
+			)
 		}
 	}
 
