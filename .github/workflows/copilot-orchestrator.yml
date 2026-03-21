@@ -1,26 +1,35 @@
 name: Copilot Orchestrator
 
-# Handles the full PR lifecycle for Copilot-created PRs:
-# 1. Copilot opens/readies a PR → enable auto-merge, post @copilot review request
-# 2. Review submitted with changes requested → post @copilot to address comments
-# 3. All checks pass + approved → auto-merge kicks in
-# 4. PR merged → update tracker, notify for next assignment
+# Automates the Copilot PR lifecycle:
+#
+# Actual flow observed:
+# 1. Copilot finishes work → opens PR (non-draft) immediately
+# 2. Copilot auto-reviews the PR (state: COMMENTED, with inline suggestions)
+# 3. CI checks run in parallel
+#
+# What this workflow does:
+# - PR opened → enable auto-merge (squash)
+# - CI fails → tell @copilot to fix the failures
+# - Review has comments → tell @copilot to address them
+# - CI passes + no outstanding comments → auto-merge kicks in
+# - PR merged → suggest next issues on tracker #216
 
 on:
   pull_request:
     types: [opened, ready_for_review, closed]
   pull_request_review:
     types: [submitted]
-  check_suite:
+  check_run:
     types: [completed]
 
 permissions:
   contents: write
   pull-requests: write
   issues: write
+  checks: read
 
 jobs:
-  # ─── When Copilot opens or readies a PR ─────────────────────────────────
+  # ─── When Copilot opens or readies a PR → just enable auto-merge ──────
   on-pr-ready:
     name: Setup Copilot PR
     if: >-
@@ -39,71 +48,165 @@ jobs:
             --auto --squash || true
           echo "Auto-merge enabled for PR #${{ github.event.pull_request.number }}"
 
-      - name: Post review request comment
+  # ─── When CI checks complete on a Copilot PR ─────────────────────────
+  on-checks-complete:
+    name: Handle check results
+    if: >-
+      github.event_name == 'check_run' &&
+      github.event.check_run.conclusion != '' &&
+      github.event.check_run.conclusion != 'skipped'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check if this is a Copilot PR and handle failures
         uses: actions/github-script@v7
         with:
           script: |
-            const pr = context.payload.pull_request;
+            const checkRun = context.payload.check_run;
 
-            // Check if we already posted a review request
-            const comments = await github.rest.issues.listComments({
-              ...context.repo,
-              issue_number: pr.number,
-              per_page: 20,
-            });
-            const alreadyRequested = comments.data.some(
-              c => c.body.includes('<!-- copilot-orchestrator-review -->')
-            );
-            if (alreadyRequested) {
-              core.info('Review already requested, skipping');
-              return;
+            // Find PRs associated with this check run
+            const prs = checkRun.pull_requests || [];
+            if (prs.length === 0) return;
+
+            for (const prRef of prs) {
+              const pr = await github.rest.pulls.get({
+                ...context.repo,
+                pull_number: prRef.number,
+              });
+
+              // Only act on Copilot PRs
+              if (pr.data.user.login !== 'Copilot') continue;
+              if (pr.data.draft) continue;
+              if (pr.data.state !== 'open') continue;
+
+              // Only act on failures
+              if (checkRun.conclusion !== 'failure') continue;
+
+              // Skip our own workflow checks
+              const skipNames = [
+                'Setup Copilot PR',
+                'Handle check results',
+                'Address review comments',
+                'Post-merge actions',
+              ];
+              if (skipNames.includes(checkRun.name)) continue;
+
+              // Check if we already posted about this failure
+              const comments = await github.rest.issues.listComments({
+                ...context.repo,
+                issue_number: prRef.number,
+                per_page: 30,
+              });
+
+              const failureTag = `<!-- copilot-fix-${checkRun.name} -->`;
+              const alreadyPosted = comments.data.some(
+                c => c.body.includes(failureTag)
+              );
+              if (alreadyPosted) {
+                core.info(`Already asked Copilot to fix ${checkRun.name}, skipping`);
+                continue;
+              }
+
+              // Get the check run details/logs URL
+              const detailsUrl = checkRun.html_url || checkRun.details_url || '';
+
+              await github.rest.issues.createComment({
+                ...context.repo,
+                issue_number: prRef.number,
+                body: [
+                  failureTag,
+                  `@copilot The **${checkRun.name}** check has failed.`,
+                  ``,
+                  `Details: ${detailsUrl}`,
+                  ``,
+                  `Please investigate and push a fix. Common issues:`,
+                  `- **Lint**: run \`golangci-lint run ./...\` locally and fix warnings`,
+                  `- **Test**: run \`go test -race ./...\` and fix failing tests`,
+                  `- **Build**: run \`go build ./...\` and fix compilation errors`,
+                  `- **Vulnerability Check**: update affected dependencies`,
+                ].join('\n'),
+              });
+
+              core.info(`Asked Copilot to fix ${checkRun.name} failure on PR #${prRef.number}`);
             }
 
-            await github.rest.issues.createComment({
-              ...context.repo,
-              issue_number: pr.number,
-              body: [
-                '<!-- copilot-orchestrator-review -->',
-                `@copilot Please review this PR. Check for:`,
-                '- Correctness against the linked issue requirements',
-                '- Test coverage for new code',
-                '- Error handling edge cases',
-                '- Consistency with existing patterns in the codebase',
-              ].join('\n'),
-            });
-            core.info(`Posted review request on PR #${pr.number}`);
-
-  # ─── When a review requests changes ─────────────────────────────────────
-  on-changes-requested:
+  # ─── When a review is submitted with comments/changes ─────────────────
+  on-review-submitted:
     name: Address review comments
     if: >-
       github.event_name == 'pull_request_review' &&
-      github.event.review.state == 'changes_requested' &&
-      github.event.pull_request.user.login == 'Copilot'
+      github.event.pull_request.user.login == 'Copilot' &&
+      !github.event.pull_request.draft
     runs-on: ubuntu-latest
     steps:
-      - name: Ask Copilot to address comments
+      - name: Ask Copilot to address review comments
         uses: actions/github-script@v7
         with:
           script: |
             const pr = context.payload.pull_request;
             const review = context.payload.review;
 
+            // Act on CHANGES_REQUESTED or COMMENTED (Copilot auto-review uses COMMENTED)
+            if (review.state !== 'changes_requested' && review.state !== 'COMMENTED') {
+              core.info(`Review state is ${review.state}, no action needed`);
+              return;
+            }
+
+            // Check if review actually has inline comments (not just a summary)
+            const reviewComments = await github.rest.pulls.listReviewComments({
+              ...context.repo,
+              pull_number: pr.number,
+              per_page: 50,
+            });
+
+            // Filter to comments from this review
+            const relevantComments = reviewComments.data.filter(
+              c => c.pull_request_review_id === review.id
+            );
+
+            if (relevantComments.length === 0) {
+              core.info('Review has no inline comments, skipping');
+              return;
+            }
+
+            // Check if we already asked about this review
+            const issueComments = await github.rest.issues.listComments({
+              ...context.repo,
+              issue_number: pr.number,
+              per_page: 30,
+            });
+
+            const reviewTag = `<!-- copilot-address-review-${review.id} -->`;
+            const alreadyPosted = issueComments.data.some(
+              c => c.body.includes(reviewTag)
+            );
+            if (alreadyPosted) {
+              core.info('Already asked Copilot to address this review, skipping');
+              return;
+            }
+
+            // Summarize the comments
+            const commentSummary = relevantComments
+              .map(c => `- **${c.path}:${c.line || '?'}**: ${c.body.slice(0, 150)}`)
+              .join('\n');
+
             await github.rest.issues.createComment({
               ...context.repo,
               issue_number: pr.number,
               body: [
-                `<!-- copilot-orchestrator-fix -->`,
-                `@copilot Please address the review comments from the latest review.`,
+                reviewTag,
+                `@copilot The code review found ${relevantComments.length} suggestions. Please address them:`,
+                ``,
+                commentSummary,
                 ``,
                 `Review: ${review.html_url}`,
                 ``,
-                `Apply the requested changes and push a new commit.`,
+                `Please apply the suggested changes and push a new commit.`,
               ].join('\n'),
             });
-            core.info(`Asked Copilot to address review on PR #${pr.number}`);
 
-  # ─── When a PR is merged → notify for next assignment ───────────────────
+            core.info(`Asked Copilot to address ${relevantComments.length} review comments on PR #${pr.number}`);
+
+  # ─── When a Copilot PR is merged → suggest next issues ────────────────
   on-merge:
     name: Post-merge actions
     if: >-
@@ -122,7 +225,7 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            // Get open Phase 3 issues with agent-ready label, sorted by number
+            // Get open Phase 3 issues with agent-ready label
             const issues = await github.rest.issues.listForRepo({
               ...context.repo,
               state: 'open',
@@ -132,20 +235,29 @@ jobs:
               direction: 'asc',
             });
 
-            // Filter to unassigned issues (no Copilot assignee)
+            // Filter to unassigned issues
             const unassigned = issues.data.filter(
               i => !i.assignees.some(a => a.login === 'Copilot')
             );
 
-            // Check dependencies: skip issues that reference open blockers
+            // Check dependencies: skip issues with open blockers
             const ready = [];
             for (const issue of unassigned) {
               const body = issue.body || '';
-              const depMatches = body.match(/(?:blocked by|depends on)\s+#(\d+)/gi) || [];
 
+              // Extract issue numbers from the Dependencies section
+              const depSection = body.match(/## Dependencies[\s\S]*?(?=\n## |$)/i);
+              if (!depSection) {
+                ready.push(issue);
+                if (ready.length >= 4) break;
+                continue;
+              }
+
+              const depNums = [...depSection[0].matchAll(/#(\d+)/g)].map(m => parseInt(m[1]));
               let blocked = false;
-              for (const match of depMatches) {
-                const depNum = parseInt(match.match(/#(\d+)/)[1]);
+
+              for (const depNum of depNums) {
+                if (depNum === issue.number) continue;
                 try {
                   const dep = await github.rest.issues.get({
                     ...context.repo,
@@ -156,14 +268,14 @@ jobs:
                     break;
                   }
                 } catch (e) {
-                  // If we can't find the dep, assume it's ok
+                  // Dep not found, assume resolved
                 }
               }
 
               if (!blocked) {
                 ready.push(issue);
               }
-              if (ready.length >= 4) break; // Suggest up to 4 candidates
+              if (ready.length >= 4) break;
             }
 
             if (ready.length === 0) {
@@ -174,8 +286,7 @@ jobs:
 
             core.setOutput('found', 'true');
 
-            // Format the suggestion
-            const suggestions = ready.slice(0, 4).map(i => {
+            const suggestions = ready.map(i => {
               const labels = i.labels.map(l => l.name);
               const size = labels.find(l => l.startsWith('size:')) || 'size:?';
               const ws = labels.find(l => l.startsWith('ws:')) || '';
@@ -204,24 +315,8 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            // Post on the tracker issue #216
             await github.rest.issues.createComment({
               ...context.repo,
               issue_number: 216,
               body: ${{ toJSON(steps.next.outputs.body) }},
             });
-
-      - name: Update project board status
-        if: steps.next.outputs.found == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.PROJECT_PAT }}
-        run: |
-          # Get the merged PR's linked issue number from branch name
-          BRANCH="${{ github.event.pull_request.head.ref }}"
-          ISSUE_NUM=$(echo "$BRANCH" | grep -oP '(?:copilot|agent)/\K\d+' || echo "")
-
-          if [ -n "$ISSUE_NUM" ]; then
-            echo "Merged PR for issue #$ISSUE_NUM"
-            # The issue-lifecycle workflow handles closing the issue
-            # and checking it off in the tracker
-          fi
