@@ -11,6 +11,7 @@ on:
       - '.github/workflows/go-ci.yml'
       - 'migrations/**'
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - '**.go'
       - 'go.mod'
