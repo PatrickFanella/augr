@@ -246,3 +246,50 @@ func (p *Pipeline) executeAnalysisPhase(ctx context.Context, state *PipelineStat
 
 	return g.Wait()
 }
+
+// executeTradingPhase runs the single registered Trader node. If no Trader
+// node is registered an error is returned immediately. On success an
+// AgentDecisionMade event is emitted (non-blocking). If config.PhaseTimeout
+// is positive it is applied as a deadline for the phase.
+func (p *Pipeline) executeTradingPhase(ctx context.Context, state *PipelineState) error {
+	phaseCtx := ctx
+	if p.config.PhaseTimeout > 0 {
+		var cancel context.CancelFunc
+		phaseCtx, cancel = context.WithTimeout(ctx, p.config.PhaseTimeout)
+		defer cancel()
+	}
+
+	traderNode := p.nodeByRole(PhaseTrading, AgentRoleTrader)
+	if traderNode == nil {
+		return fmt.Errorf("agent/pipeline: trading phase requires a %s node", AgentRoleTrader)
+	}
+
+	if err := traderNode.Execute(phaseCtx, state); err != nil {
+		return err
+	}
+
+	if p.events != nil {
+		event := PipelineEvent{
+			Type:          AgentDecisionMade,
+			PipelineRunID: state.PipelineRunID,
+			StrategyID:    state.StrategyID,
+			Ticker:        state.Ticker,
+			AgentRole:     traderNode.Role(),
+			Phase:         PhaseTrading,
+			OccurredAt:    time.Now().UTC(),
+		}
+		select {
+		case p.events <- event:
+		case <-phaseCtx.Done():
+			p.logger.Debug("agent/pipeline: AgentDecisionMade event dropped; phase context cancelled",
+				slog.String("node", traderNode.Name()),
+			)
+		default:
+			p.logger.Debug("agent/pipeline: AgentDecisionMade event dropped; events channel full",
+				slog.String("node", traderNode.Name()),
+			)
+		}
+	}
+
+	return nil
+}

@@ -123,7 +123,7 @@ func TestTradeRepoIntegration_CreateGetByOrderAndPosition(t *testing.T) {
 		t.Fatalf("expected tradeB from position filter, got %s", byPosition[0].ID)
 	}
 
-	page, err := tradeRepo.GetByOrder(ctx, orderID, repository.TradeFilter{}, 2, 1)
+	page, err := tradeRepo.GetByOrder(ctx, orderID, repository.TradeFilter{}, 2, 2)
 	if err != nil {
 		t.Fatalf("GetByOrder() pagination error = %v", err)
 	}

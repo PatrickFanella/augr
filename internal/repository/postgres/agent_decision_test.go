@@ -262,7 +262,7 @@ func TestAgentDecisionRepoIntegration_CreateAndGetByRun(t *testing.T) {
 	if got.OutputText != d1.OutputText {
 		t.Errorf("OutputText: want %q, got %q", d1.OutputText, got.OutputText)
 	}
-	if string(got.OutputStructured) != string(d1.OutputStructured) {
+	if !jsonBytesEqual(got.OutputStructured, d1.OutputStructured) {
 		t.Errorf("OutputStructured: want %s, got %s", d1.OutputStructured, got.OutputStructured)
 	}
 	if got.LLMProvider != d1.LLMProvider {

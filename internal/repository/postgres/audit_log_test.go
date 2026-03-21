@@ -269,7 +269,7 @@ func TestAuditLogRepoIntegration_CreateAndQuery(t *testing.T) {
 	for _, e := range all {
 		if e.ID == entry1.ID {
 			found = true
-			if string(e.Details) != `{"ticker":"AAPL","qty":10}` {
+			if !jsonBytesEqual(e.Details, json.RawMessage(`{"ticker":"AAPL","qty":10}`)) {
 				t.Errorf("expected details %q, got %q", `{"ticker":"AAPL","qty":10}`, string(e.Details))
 			}
 			if e.EntityType != "order" {

@@ -399,3 +399,4 @@ TradingAgents/
 # Go build output
 /bin/
 /tradingagent
+.golangci.yml.bak

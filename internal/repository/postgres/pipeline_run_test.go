@@ -198,7 +198,7 @@ func TestPipelineRunRepoIntegration_CRUDAndFilters(t *testing.T) {
 		t.Fatalf("Get() error = %v", err)
 	}
 
-	if got.StrategyID != run1.StrategyID || got.Signal != run1.Signal || string(got.ConfigSnapshot) != string(run1.ConfigSnapshot) {
+	if got.StrategyID != run1.StrategyID || got.Signal != run1.Signal || !jsonBytesEqual(got.ConfigSnapshot, run1.ConfigSnapshot) {
 		t.Fatalf("Get() returned unexpected run: %+v", got)
 	}
 

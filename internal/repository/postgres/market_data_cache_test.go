@@ -140,7 +140,7 @@ func TestMarketDataCacheRepoIntegration_SetAndGet(t *testing.T) {
 	if got.Timeframe != md.Timeframe {
 		t.Errorf("Timeframe: want %q, got %q", md.Timeframe, got.Timeframe)
 	}
-	if string(got.Data) != string(md.Data) {
+	if !jsonBytesEqual(got.Data, md.Data) {
 		t.Errorf("Data: want %s, got %s", md.Data, got.Data)
 	}
 }
@@ -196,7 +196,7 @@ func TestMarketDataCacheRepoIntegration_SetReplacesPreviousEntry(t *testing.T) {
 	if got.ID != second.ID {
 		t.Errorf("expected second entry (ID=%s), got ID=%s", second.ID, got.ID)
 	}
-	if string(got.Data) != string(second.Data) {
+	if !jsonBytesEqual(got.Data, second.Data) {
 		t.Errorf("Data: want %s, got %s", second.Data, got.Data)
 	}
 }

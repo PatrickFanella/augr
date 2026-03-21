@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -467,5 +468,221 @@ func TestExecuteResearchDebatePhase_CancellationStopsCleanly(t *testing.T) {
 	}
 	if emitted < 1 || emitted > 2 {
 		t.Errorf("got %d events, want 1 or 2", emitted)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// executeTradingPhase tests
+// ---------------------------------------------------------------------------
+
+// mockTradingNode is a test double for a PhaseTrading Node.
+type mockTradingNode struct {
+	name    string
+	role    AgentRole
+	execute func(ctx context.Context, state *PipelineState) error
+}
+
+func (m *mockTradingNode) Name() string    { return m.name }
+func (m *mockTradingNode) Role() AgentRole { return m.role }
+func (m *mockTradingNode) Phase() Phase    { return PhaseTrading }
+func (m *mockTradingNode) Execute(ctx context.Context, state *PipelineState) error {
+	return m.execute(ctx, state)
+}
+
+// TestExecuteTradingPhase_Success verifies that executeTradingPhase executes
+// the Trader node, updates PipelineState, and emits an AgentDecisionMade event.
+func TestExecuteTradingPhase_Success(t *testing.T) {
+	runID := uuid.New()
+	stratID := uuid.New()
+
+	traderNode := &mockTradingNode{
+		name: "trader",
+		role: AgentRoleTrader,
+		execute: func(_ context.Context, state *PipelineState) error {
+			state.TradingPlan = TradingPlan{
+				Action:     PipelineSignalBuy,
+				Ticker:     state.Ticker,
+				EntryPrice: 150.0,
+				Confidence: 0.85,
+				Rationale:  "strong momentum",
+			}
+			return nil
+		},
+	}
+
+	events := make(chan PipelineEvent, 10)
+	pipeline := NewPipeline(
+		PipelineConfig{},
+		nil, nil, events, slog.Default(),
+	)
+	pipeline.RegisterNode(traderNode)
+
+	state := &PipelineState{
+		PipelineRunID: runID,
+		StrategyID:    stratID,
+		Ticker:        "AAPL",
+	}
+
+	err := pipeline.executeTradingPhase(context.Background(), state)
+	if err != nil {
+		t.Fatalf("executeTradingPhase() error = %v, want nil", err)
+	}
+
+	// Verify the trading plan was populated.
+	if state.TradingPlan.Action != PipelineSignalBuy {
+		t.Errorf("TradingPlan.Action = %q, want %q", state.TradingPlan.Action, PipelineSignalBuy)
+	}
+	if state.TradingPlan.Ticker != "AAPL" {
+		t.Errorf("TradingPlan.Ticker = %q, want %q", state.TradingPlan.Ticker, "AAPL")
+	}
+	if state.TradingPlan.EntryPrice != 150.0 {
+		t.Errorf("TradingPlan.EntryPrice = %v, want 150.0", state.TradingPlan.EntryPrice)
+	}
+	if state.TradingPlan.Confidence != 0.85 {
+		t.Errorf("TradingPlan.Confidence = %v, want 0.85", state.TradingPlan.Confidence)
+	}
+
+	// Exactly one AgentDecisionMade event must be emitted.
+	close(events)
+	var emittedEvents []PipelineEvent
+	for e := range events {
+		emittedEvents = append(emittedEvents, e)
+	}
+	if len(emittedEvents) != 1 {
+		t.Fatalf("got %d events, want 1", len(emittedEvents))
+	}
+
+	e := emittedEvents[0]
+	if e.Type != AgentDecisionMade {
+		t.Errorf("event Type = %q, want %q", e.Type, AgentDecisionMade)
+	}
+	if e.PipelineRunID != runID {
+		t.Errorf("event PipelineRunID = %v, want %v", e.PipelineRunID, runID)
+	}
+	if e.StrategyID != stratID {
+		t.Errorf("event StrategyID = %v, want %v", e.StrategyID, stratID)
+	}
+	if e.Ticker != "AAPL" {
+		t.Errorf("event Ticker = %q, want %q", e.Ticker, "AAPL")
+	}
+	if e.AgentRole != AgentRoleTrader {
+		t.Errorf("event AgentRole = %q, want %q", e.AgentRole, AgentRoleTrader)
+	}
+	if e.Phase != PhaseTrading {
+		t.Errorf("event Phase = %q, want %q", e.Phase, PhaseTrading)
+	}
+	if e.OccurredAt.IsZero() {
+		t.Error("event OccurredAt is zero")
+	}
+}
+
+// TestExecuteTradingPhase_NoTraderNode verifies that executeTradingPhase
+// returns an error when no Trader node is registered.
+func TestExecuteTradingPhase_NoTraderNode(t *testing.T) {
+	pipeline := NewPipeline(
+		PipelineConfig{},
+		nil, nil, make(chan PipelineEvent, 10), slog.Default(),
+	)
+
+	state := &PipelineState{
+		PipelineRunID: uuid.New(),
+		StrategyID:    uuid.New(),
+		Ticker:        "AAPL",
+	}
+
+	err := pipeline.executeTradingPhase(context.Background(), state)
+	if err == nil {
+		t.Fatal("executeTradingPhase() error = nil, want non-nil")
+	}
+
+	wantSubstr := "trading phase requires a trader node"
+	if got := err.Error(); !strings.Contains(got, wantSubstr) {
+		t.Errorf("error = %q, want substring %q", got, wantSubstr)
+	}
+}
+
+// TestExecuteTradingPhase_ExecutionError verifies that executeTradingPhase
+// propagates errors from the Trader node and does not emit an event.
+func TestExecuteTradingPhase_ExecutionError(t *testing.T) {
+	traderNode := &mockTradingNode{
+		name: "trader",
+		role: AgentRoleTrader,
+		execute: func(_ context.Context, _ *PipelineState) error {
+			return errors.New("simulated trader failure")
+		},
+	}
+
+	events := make(chan PipelineEvent, 10)
+	pipeline := NewPipeline(
+		PipelineConfig{},
+		nil, nil, events, slog.Default(),
+	)
+	pipeline.RegisterNode(traderNode)
+
+	state := &PipelineState{
+		PipelineRunID: uuid.New(),
+		StrategyID:    uuid.New(),
+		Ticker:        "AAPL",
+	}
+
+	err := pipeline.executeTradingPhase(context.Background(), state)
+	if err == nil {
+		t.Fatal("executeTradingPhase() error = nil, want non-nil")
+	}
+	if got := err.Error(); got != "simulated trader failure" {
+		t.Errorf("error = %q, want %q", got, "simulated trader failure")
+	}
+
+	// No events should be emitted on failure.
+	close(events)
+	var count int
+	for range events {
+		count++
+	}
+	if count != 0 {
+		t.Errorf("got %d events, want 0", count)
+	}
+}
+
+// TestExecuteTradingPhase_ContextCancellation verifies that
+// executeTradingPhase respects context cancellation and returns the context error.
+func TestExecuteTradingPhase_ContextCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel immediately
+
+	traderNode := &mockTradingNode{
+		name: "trader",
+		role: AgentRoleTrader,
+		execute: func(ctx context.Context, _ *PipelineState) error {
+			return ctx.Err()
+		},
+	}
+
+	events := make(chan PipelineEvent, 10)
+	pipeline := NewPipeline(
+		PipelineConfig{},
+		nil, nil, events, slog.Default(),
+	)
+	pipeline.RegisterNode(traderNode)
+
+	state := &PipelineState{
+		PipelineRunID: uuid.New(),
+		StrategyID:    uuid.New(),
+		Ticker:        "AAPL",
+	}
+
+	err := pipeline.executeTradingPhase(ctx, state)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context.Canceled", err)
+	}
+
+	// No events should be emitted on cancellation.
+	close(events)
+	var count int
+	for range events {
+		count++
+	}
+	if count != 0 {
+		t.Errorf("got %d events, want 0", count)
 	}
 }

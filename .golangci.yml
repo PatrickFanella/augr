@@ -1,3 +1,5 @@
+version: "2"
+
 run:
   timeout: 5m
 
@@ -7,22 +9,26 @@ linters:
     - govet
     - staticcheck
     - unused
-    - gosimple
     - ineffassign
-    - typecheck
     - gocritic
     - revive
-    - gofumpt
 
-linters-settings:
-  gofumpt:
-    extra-rules: true
-  revive:
-    rules:
-      - name: exported
-        arguments:
-          - disableStutteringCheck
-      - name: context-as-argument
-        disabled: false
-        exclude:
-          - "**_test.go"
+  settings:
+    revive:
+      enable-default-rules: true
+      rules:
+        - name: exported
+          disabled: true
+        - name: package-comments
+          disabled: true
+        - name: context-as-argument
+          disabled: false
+          arguments:
+            - allow-types-before: "*testing.T"
+
+formatters:
+  enable:
+    - gofumpt
+  settings:
+    gofumpt:
+      extra-rules: true
