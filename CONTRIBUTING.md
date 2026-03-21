@@ -119,6 +119,46 @@ To make blocked work visible at a glance:
 - Confirm changes are scoped to the issue
 - Ensure documentation is updated when behavior or process changes
 
+## Definition of Done
+
+A piece of work is **Done** when **all** of the following criteria are met.
+This applies equally to human contributors and autonomous agents.
+
+### Code review
+
+- At least **1 approving review** from a team member before merging
+- All reviewer comments are resolved or explicitly acknowledged
+- The PR is scoped to the issue it references — no unrelated changes
+
+### Test coverage
+
+- New logic is accompanied by unit or integration tests appropriate to the language/framework in use
+- Existing tests continue to pass (no regressions)
+- Tests cover both the happy path and relevant error/edge cases
+
+### Documentation
+
+- Public APIs, config options, and user-facing behavior are documented in code comments or the relevant `docs/` page
+- `CONTRIBUTING.md` or `docs/` are updated when a process, workflow, or convention changes
+- ADRs are created in `docs/adr/` for significant architectural decisions (see [`docs/adr/README.md`](docs/adr/README.md))
+
+### Lint and format compliance
+
+- All pre-commit hooks pass (`pre-commit run --all-files`)
+- Go code is formatted with `gofumpt` and passes `golangci-lint`
+- TypeScript/JavaScript code passes ESLint and Prettier checks when a frontend `package.json` is present
+
+### CI
+
+- All required CI status checks pass on the PR before it is merged
+- The branch is up to date with `main` (or rebased/merged) before final approval
+
+### Issue closure
+
+- The PR description references the issue with a closing keyword (for example, `Closes #123`)
+- The issue is moved to **Done** on the project board after the PR is merged
+- Any follow-up work identified during the PR is captured as new issues before the original issue is closed
+
 ## Pre-commit hooks
 
 This repository uses [pre-commit](https://pre-commit.com/) to run formatting and lint checks automatically on `git commit`.
