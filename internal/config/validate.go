@@ -25,8 +25,8 @@ func Validate(cfg Config) error {
 		errs = append(errs, "LLM_TIMEOUT must be greater than 0")
 	}
 
-	if !hasLLMAPIKey(cfg.LLM.Providers) {
-		errs = append(errs, "at least one LLM API key must be configured (OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_API_KEY, OPENROUTER_API_KEY, or XAI_API_KEY)")
+	if !hasLLMProvider(cfg.LLM.Providers) {
+		errs = append(errs, "at least one LLM provider must be configured (OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_API_KEY, OPENROUTER_API_KEY, XAI_API_KEY, or OLLAMA_BASE_URL)")
 	}
 
 	if cfg.DataProviders.AlphaVantage.RateLimitPerMinute <= 0 {
@@ -71,12 +71,13 @@ func Validate(cfg Config) error {
 	return nil
 }
 
-func hasLLMAPIKey(providers LLMProviderConfigs) bool {
+func hasLLMProvider(providers LLMProviderConfigs) bool {
 	return strings.TrimSpace(providers.OpenAI.APIKey) != "" ||
 		strings.TrimSpace(providers.Anthropic.APIKey) != "" ||
 		strings.TrimSpace(providers.Google.APIKey) != "" ||
 		strings.TrimSpace(providers.OpenRouter.APIKey) != "" ||
-		strings.TrimSpace(providers.XAI.APIKey) != ""
+		strings.TrimSpace(providers.XAI.APIKey) != "" ||
+		strings.TrimSpace(providers.Ollama.BaseURL) != ""
 }
 
 func validateBrokerCredentials(errs *[]string, keyName, keyValue, secretName, secretValue string) {

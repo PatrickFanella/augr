@@ -130,8 +130,22 @@ func TestValidateRequiresLLMAPIKey(t *testing.T) {
 		t.Fatal("Validate() error = nil, want error")
 	}
 
-	if !strings.Contains(err.Error(), "at least one LLM API key must be configured") {
-		t.Fatalf("Validate() error = %q, want LLM API key message", err)
+	if !strings.Contains(err.Error(), "at least one LLM provider must be configured") {
+		t.Fatalf("Validate() error = %q, want LLM provider message", err)
+	}
+}
+
+func TestValidateAllowsOllamaWithoutAPIKey(t *testing.T) {
+	cfg := validConfig()
+	cfg.LLM.Providers.OpenAI.APIKey = ""
+	cfg.LLM.Providers.Anthropic.APIKey = ""
+	cfg.LLM.Providers.Google.APIKey = ""
+	cfg.LLM.Providers.OpenRouter.APIKey = ""
+	cfg.LLM.Providers.XAI.APIKey = ""
+	cfg.LLM.Providers.Ollama.BaseURL = "http://localhost:11434/v1"
+
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("Validate() error = %v, want nil (Ollama requires no API key)", err)
 	}
 }
 
