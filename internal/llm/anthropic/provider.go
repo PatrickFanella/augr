@@ -128,8 +128,12 @@ func (p *Provider) Complete(ctx context.Context, request llm.CompletionRequest) 
 		return nil, fmt.Errorf("anthropic: complete request: %w", err)
 	}
 
+	if len(message.Content) == 0 {
+		return nil, errors.New("anthropic: completion response did not include any content blocks")
+	}
+
 	content := extractTextContent(message.Content)
-	if content == "" && len(message.Content) > 0 {
+	if content == "" {
 		return nil, errors.New("anthropic: completion response did not include any text content")
 	}
 

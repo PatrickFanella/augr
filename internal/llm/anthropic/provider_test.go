@@ -355,6 +355,50 @@ func TestNewProviderRejectsEmptyAPIKey(t *testing.T) {
 	}
 }
 
+func TestCompleteErrorsOnEmptyContentBlocks(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"id": "msg_empty",
+			"type": "message",
+			"role": "assistant",
+			"content": [],
+			"model": "claude-sonnet-4-6",
+			"stop_reason": "end_turn",
+			"usage": {
+				"input_tokens": 5,
+				"output_tokens": 0,
+				"cache_creation_input_tokens": 0,
+				"cache_read_input_tokens": 0
+			}
+		}`))
+	}))
+	defer server.Close()
+
+	provider, err := anthropicprovider.NewProvider(anthropicprovider.Config{
+		APIKey:  "test-key",
+		BaseURL: server.URL,
+		Model:   anthropicprovider.ModelClaudeSonnet,
+	})
+	if err != nil {
+		t.Fatalf("NewProvider() error = %v", err)
+	}
+
+	_, err = provider.Complete(context.Background(), llm.CompletionRequest{
+		Messages: []llm.Message{
+			{Role: "user", Content: "hello"},
+		},
+	})
+	if err == nil {
+		t.Fatal("Complete() error = nil, want non-nil")
+	}
+	if !strings.Contains(err.Error(), "anthropic: completion response did not include any content blocks") {
+		t.Fatalf("Complete() error = %q, want empty content blocks error", err)
+	}
+}
+
 func TestDefaultModelsByTier(t *testing.T) {
 	t.Parallel()
 
