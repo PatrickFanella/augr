@@ -44,6 +44,7 @@ type AgentDecisionFilter struct {
 // OrderFilter defines supported filters when listing or querying orders.
 type OrderFilter struct {
 	Ticker          string
+	Broker          string
 	Side            domain.OrderSide
 	OrderType       domain.OrderType
 	Status          domain.OrderStatus
