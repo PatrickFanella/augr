@@ -90,23 +90,94 @@ jobs:
               ];
               if (skipNames.includes(checkRun.name)) continue;
 
-              // Check if we already posted about this failure
-              const comments = await github.rest.issues.listComments({
+              // Check if there are outstanding review comments that haven't
+              // been addressed yet. If so, wait — Copilot should fix review
+              // comments first (which may also fix the CI failure).
+              const reviews = await github.rest.pulls.listReviews({
                 ...context.repo,
-                issue_number: prRef.number,
-                per_page: 30,
+                pull_number: prRef.number,
               });
 
-              const failureTag = `<!-- copilot-fix-${checkRun.name} -->`;
-              const alreadyPosted = comments.data.some(
-                c => c.body.includes(failureTag)
+              const reviewComments = await github.rest.pulls.listReviewComments({
+                ...context.repo,
+                pull_number: prRef.number,
+                per_page: 100,
+              });
+
+              // Check if we've already asked Copilot to address review comments
+              const prComments = await github.rest.issues.listComments({
+                ...context.repo,
+                issue_number: prRef.number,
+                per_page: 50,
+              });
+
+              const hasReviewFixRequest = prComments.data.some(
+                c => c.body.includes('<!-- copilot-address-review-')
               );
-              if (alreadyPosted) {
-                core.info(`Already asked Copilot to fix ${checkRun.name}, skipping`);
+
+              // If there are unresolved review comments and we've asked Copilot
+              // to address them, wait for Copilot to push before nagging about CI.
+              // We detect "addressed" by checking if Copilot pushed after the
+              // review fix request (the fix request comment timestamp vs the
+              // check run's head_sha commit timestamp).
+              if (reviewComments.data.length > 0 && hasReviewFixRequest) {
+                // Find the latest review fix request timestamp
+                const fixRequests = prComments.data.filter(
+                  c => c.body.includes('<!-- copilot-address-review-')
+                );
+                const latestFixRequest = fixRequests.sort(
+                  (a, b) => new Date(b.created_at) - new Date(a.created_at)
+                )[0];
+
+                // Get the commit that triggered this check run
+                const headSha = checkRun.head_sha;
+                const commits = await github.rest.pulls.listCommits({
+                  ...context.repo,
+                  pull_number: prRef.number,
+                  per_page: 50,
+                });
+                const triggeringCommit = commits.data.find(c => c.sha === headSha);
+
+                if (triggeringCommit) {
+                  const commitTime = new Date(triggeringCommit.commit.committer.date);
+                  const fixRequestTime = new Date(latestFixRequest.created_at);
+
+                  if (commitTime < fixRequestTime) {
+                    core.info(
+                      `CI failure on PR #${prRef.number} but review comments are still pending. ` +
+                      `Waiting for Copilot to address review first (commit ${headSha.slice(0,7)} ` +
+                      `predates fix request).`
+                    );
+                    continue;
+                  }
+                }
+                // If the commit is AFTER the fix request, Copilot already pushed
+                // a fix for the review comments but CI still fails → fall through
+                // and ask for CI fix.
+              }
+
+              // If there are review comments but we haven't asked Copilot to
+              // address them yet, skip — the on-review-submitted job will handle it,
+              // and the review fix might also fix CI.
+              if (reviewComments.data.length > 0 && !hasReviewFixRequest) {
+                core.info(
+                  `CI failure on PR #${prRef.number} but review comments exist and ` +
+                  `haven't been sent to Copilot yet. Waiting for review handler.`
+                );
                 continue;
               }
 
-              // Get the check run details/logs URL
+              // No outstanding review comments (or already addressed). Ask Copilot
+              // to fix the CI failure.
+              const failureTag = `<!-- copilot-fix-${checkRun.name}-${checkRun.head_sha.slice(0,7)} -->`;
+              const alreadyPosted = prComments.data.some(
+                c => c.body.includes(failureTag)
+              );
+              if (alreadyPosted) {
+                core.info(`Already asked Copilot to fix ${checkRun.name} for this commit, skipping`);
+                continue;
+              }
+
               const detailsUrl = checkRun.html_url || checkRun.details_url || '';
 
               await github.rest.issues.createComment({
