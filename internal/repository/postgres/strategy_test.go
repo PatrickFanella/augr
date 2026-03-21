@@ -134,22 +134,6 @@ func TestMarshalConfig_InvalidJSON(t *testing.T) {
 	}
 }
 
-func TestBoolPtr(t *testing.T) {
-	trueVal := boolPtr(true)
-	falseVal := boolPtr(false)
-
-	if *trueVal != true {
-		t.Error("boolPtr(true) should return pointer to true")
-	}
-
-	if *falseVal != false {
-		t.Error("boolPtr(false) should return pointer to false")
-	}
-}
-
-// boolPtr is a helper that returns a pointer to a bool value.
-func boolPtr(b bool) *bool { return &b }
-
 // assertContains fails if substr is not found in s.
 func assertContains(t *testing.T, s, substr string) {
 	t.Helper()

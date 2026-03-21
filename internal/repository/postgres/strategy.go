@@ -92,7 +92,7 @@ func (r *StrategyRepo) List(ctx context.Context, filter repository.StrategyFilte
 
 	var strategies []domain.Strategy
 	for rows.Next() {
-		s, err := scanStrategyFromRows(rows)
+		s, err := scanStrategy(rows)
 		if err != nil {
 			return nil, fmt.Errorf("postgres: list strategies scan: %w", err)
 		}
@@ -114,12 +114,13 @@ func (r *StrategyRepo) Update(ctx context.Context, s *domain.Strategy) error {
 		return err
 	}
 
-	tag, err := r.pool.Exec(ctx,
+	row := r.pool.QueryRow(ctx,
 		`UPDATE strategies
 		 SET name = $1, description = $2, ticker = $3, market_type = $4,
 		     schedule_cron = $5, config = $6, is_active = $7, is_paper = $8,
 		     updated_at = NOW()
-		 WHERE id = $9`,
+		 WHERE id = $9
+		 RETURNING updated_at`,
 		s.Name,
 		s.Description,
 		s.Ticker,
@@ -130,22 +131,12 @@ func (r *StrategyRepo) Update(ctx context.Context, s *domain.Strategy) error {
 		s.IsPaper,
 		s.ID,
 	)
-	if err != nil {
-		return fmt.Errorf("postgres: update strategy: %w", err)
-	}
-
-	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("postgres: update strategy %s: %w", s.ID, ErrNotFound)
-	}
-
-	// Refresh the updated_at timestamp from the database so the caller
-	// sees the server-assigned value.
-	row := r.pool.QueryRow(ctx,
-		`SELECT updated_at FROM strategies WHERE id = $1`, s.ID,
-	)
 
 	if err := row.Scan(&s.UpdatedAt); err != nil {
-		return fmt.Errorf("postgres: refresh updated_at: %w", err)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("postgres: update strategy %s: %w", s.ID, ErrNotFound)
+		}
+		return fmt.Errorf("postgres: update strategy: %w", err)
 	}
 
 	return nil
@@ -172,38 +163,18 @@ func (r *StrategyRepo) Delete(ctx context.Context, id uuid.UUID) error {
 // Helpers
 // ---------------------------------------------------------------------------
 
-// scanStrategy scans a single row into a Strategy.
-func scanStrategy(row pgx.Row) (*domain.Strategy, error) {
-	var s domain.Strategy
-	var configBytes []byte
-
-	err := row.Scan(
-		&s.ID,
-		&s.Name,
-		&s.Description,
-		&s.Ticker,
-		&s.MarketType,
-		&s.ScheduleCron,
-		&configBytes,
-		&s.IsActive,
-		&s.IsPaper,
-		&s.CreatedAt,
-		&s.UpdatedAt,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	s.Config = json.RawMessage(configBytes)
-	return &s, nil
+// scanner is satisfied by both pgx.Row and pgx.Rows, allowing a single scan
+// helper for all query paths.
+type scanner interface {
+	Scan(dest ...any) error
 }
 
-// scanStrategyFromRows scans the current row from a pgx.Rows into a Strategy.
-func scanStrategyFromRows(rows pgx.Rows) (*domain.Strategy, error) {
+// scanStrategy scans a single row (pgx.Row or pgx.Rows) into a Strategy.
+func scanStrategy(sc scanner) (*domain.Strategy, error) {
 	var s domain.Strategy
 	var configBytes []byte
 
-	err := rows.Scan(
+	err := sc.Scan(
 		&s.ID,
 		&s.Name,
 		&s.Description,
