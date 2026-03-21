@@ -167,7 +167,7 @@ func buildSearchQuery(query string, filter repository.MemorySearchFilter, limit,
 		return fmt.Sprintf("$%d", argIdx)
 	}
 
-	hasFTS := strings.TrimSpace(query) != ""
+	hasFTS := query != ""
 
 	// Full-text search condition.
 	var rankExpr string

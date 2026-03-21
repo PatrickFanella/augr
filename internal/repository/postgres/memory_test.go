@@ -140,9 +140,11 @@ func TestBuildSearchQuery_FTS_AllFilters(t *testing.T) {
 }
 
 func TestBuildSearchQuery_WhitespaceOnlyQuery(t *testing.T) {
-	query, args := buildSearchQuery("   ", repository.MemorySearchFilter{}, 10, 0)
+	// Search() trims whitespace before calling buildSearchQuery, so
+	// a whitespace-only input arrives here as "".
+	query, args := buildSearchQuery("", repository.MemorySearchFilter{}, 10, 0)
 
-	// Whitespace-only query should behave like an empty query: no FTS.
+	// Should behave identically to the no-FTS path.
 	if len(args) != 2 {
 		t.Fatalf("expected 2 args (limit, offset), got %d", len(args))
 	}
