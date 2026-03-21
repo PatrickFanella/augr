@@ -192,7 +192,7 @@ func buildGetByRunQuery(runID uuid.UUID, filter repository.AgentDecisionFilter, 
 		 FROM agent_decisions`
 
 	base += " WHERE " + strings.Join(conditions, " AND ")
-	base += " ORDER BY phase, round_number NULLS LAST, created_at"
+	base += " ORDER BY phase, round_number NULLS LAST, created_at, id"
 	base += fmt.Sprintf(" LIMIT %s OFFSET %s", nextArg(limit), nextArg(offset))
 
 	return base, args
