@@ -193,7 +193,7 @@ func TestPipelineRunRepoIntegration_CRUDAndFilters(t *testing.T) {
 		}
 	}
 
-	got, err := repo.Get(ctx, run1.ID)
+	got, err := repo.Get(ctx, run1.ID, run1.TradeDate)
 	if err != nil {
 		t.Fatalf("Get() error = %v", err)
 	}
@@ -203,7 +203,7 @@ func TestPipelineRunRepoIntegration_CRUDAndFilters(t *testing.T) {
 	}
 
 	completedAt := startedAt1.Add(30 * time.Minute)
-	if err := repo.UpdateStatus(ctx, run1.ID, repository.PipelineRunStatusUpdate{
+	if err := repo.UpdateStatus(ctx, run1.ID, run1.TradeDate, repository.PipelineRunStatusUpdate{
 		Status:       domain.PipelineStatusCompleted,
 		CompletedAt:  &completedAt,
 		ErrorMessage: "",
@@ -211,7 +211,7 @@ func TestPipelineRunRepoIntegration_CRUDAndFilters(t *testing.T) {
 		t.Fatalf("UpdateStatus() error = %v", err)
 	}
 
-	updated, err := repo.Get(ctx, run1.ID)
+	updated, err := repo.Get(ctx, run1.ID, run1.TradeDate)
 	if err != nil {
 		t.Fatalf("Get() after update error = %v", err)
 	}
@@ -282,16 +282,94 @@ func TestPipelineRunRepoIntegration_NotFound(t *testing.T) {
 	repo := NewPipelineRunRepo(pool)
 	missingID := uuid.New()
 
-	_, err := repo.Get(ctx, missingID)
+	missingTradeDate := time.Date(2026, time.March, 14, 0, 0, 0, 0, time.UTC)
+
+	_, err := repo.Get(ctx, missingID, missingTradeDate)
 	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("expected Get() ErrNotFound, got %v", err)
 	}
 
-	err = repo.UpdateStatus(ctx, missingID, repository.PipelineRunStatusUpdate{
+	err = repo.UpdateStatus(ctx, missingID, missingTradeDate, repository.PipelineRunStatusUpdate{
 		Status: domain.PipelineStatusFailed,
 	})
 	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("expected UpdateStatus() ErrNotFound, got %v", err)
+	}
+}
+
+func TestPipelineRunRepoIntegration_UsesCompositeKey(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	pool, cleanup := newPipelineRunIntegrationPool(t, ctx)
+	defer cleanup()
+
+	repo := NewPipelineRunRepo(pool)
+	sharedID := uuid.New()
+	tradeDate1 := time.Date(2026, time.March, 14, 0, 0, 0, 0, time.UTC)
+	tradeDate2 := time.Date(2027, time.January, 3, 0, 0, 0, 0, time.UTC)
+	startedAt1 := time.Date(2026, time.March, 14, 9, 30, 0, 0, time.UTC)
+	startedAt2 := time.Date(2027, time.January, 3, 11, 0, 0, 0, time.UTC)
+
+	insertSQL := `INSERT INTO pipeline_runs (
+		id, strategy_id, ticker, trade_date, status, signal, started_at, error_message
+	) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
+
+	for _, tc := range []struct {
+		tradeDate time.Time
+		ticker    string
+		status    domain.PipelineStatus
+		startedAt time.Time
+	}{
+		{tradeDate: tradeDate1, ticker: "AAPL", status: domain.PipelineStatusRunning, startedAt: startedAt1},
+		{tradeDate: tradeDate2, ticker: "MSFT", status: domain.PipelineStatusFailed, startedAt: startedAt2},
+	} {
+		if _, err := pool.Exec(ctx, insertSQL,
+			sharedID,
+			uuid.New(),
+			tc.ticker,
+			tc.tradeDate,
+			tc.status,
+			"",
+			tc.startedAt,
+			"",
+		); err != nil {
+			t.Fatalf("failed to seed duplicate id rows: %v", err)
+		}
+	}
+
+	got, err := repo.Get(ctx, sharedID, tradeDate2)
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+
+	if got.Ticker != "MSFT" || got.TradeDate.Format("2006-01-02") != tradeDate2.Format("2006-01-02") {
+		t.Fatalf("expected Get() to return the row for trade date %s, got %+v", tradeDate2.Format("2006-01-02"), got)
+	}
+
+	completedAt := startedAt1.Add(time.Hour)
+	if err := repo.UpdateStatus(ctx, sharedID, tradeDate1, repository.PipelineRunStatusUpdate{
+		Status:       domain.PipelineStatusCompleted,
+		CompletedAt:  &completedAt,
+		ErrorMessage: "",
+	}); err != nil {
+		t.Fatalf("UpdateStatus() error = %v", err)
+	}
+
+	firstRun, err := repo.Get(ctx, sharedID, tradeDate1)
+	if err != nil {
+		t.Fatalf("Get() for first run error = %v", err)
+	}
+	secondRun, err := repo.Get(ctx, sharedID, tradeDate2)
+	if err != nil {
+		t.Fatalf("Get() for second run error = %v", err)
+	}
+
+	if firstRun.Status != domain.PipelineStatusCompleted {
+		t.Fatalf("expected first run status completed, got %q", firstRun.Status)
+	}
+	if secondRun.Status != domain.PipelineStatusFailed {
+		t.Fatalf("expected second run status to remain failed, got %q", secondRun.Status)
 	}
 }
 

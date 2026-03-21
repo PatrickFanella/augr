@@ -116,9 +116,9 @@ type StrategyRepository interface {
 // PipelineRunRepository provides access to pipeline runs.
 type PipelineRunRepository interface {
 	Create(ctx context.Context, run *domain.PipelineRun) error
-	Get(ctx context.Context, id uuid.UUID) (*domain.PipelineRun, error)
+	Get(ctx context.Context, id uuid.UUID, tradeDate time.Time) (*domain.PipelineRun, error)
 	List(ctx context.Context, filter PipelineRunFilter, limit, offset int) ([]domain.PipelineRun, error)
-	UpdateStatus(ctx context.Context, id uuid.UUID, update PipelineRunStatusUpdate) error
+	UpdateStatus(ctx context.Context, id uuid.UUID, tradeDate time.Time, update PipelineRunStatusUpdate) error
 }
 
 // AgentDecisionRepository provides access to agent decisions created during a run.

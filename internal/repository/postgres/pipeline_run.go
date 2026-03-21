@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -61,20 +62,21 @@ func (r *PipelineRunRepo) Create(ctx context.Context, run *domain.PipelineRun) e
 	return nil
 }
 
-// Get retrieves a pipeline run by ID. It returns ErrNotFound when no row
-// matches.
-func (r *PipelineRunRepo) Get(ctx context.Context, id uuid.UUID) (*domain.PipelineRun, error) {
+// Get retrieves a pipeline run by its composite key. It returns ErrNotFound
+// when no row matches.
+func (r *PipelineRunRepo) Get(ctx context.Context, id uuid.UUID, tradeDate time.Time) (*domain.PipelineRun, error) {
 	row := r.pool.QueryRow(ctx,
 		`SELECT id, strategy_id, ticker, trade_date, status, signal, started_at, completed_at, error_message, config_snapshot
 		 FROM pipeline_runs
-		 WHERE id = $1`,
+		 WHERE id = $1 AND trade_date = $2::date`,
 		id,
+		tradeDate,
 	)
 
 	run, err := scanPipelineRun(row)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, fmt.Errorf("postgres: get pipeline run %s: %w", id, ErrNotFound)
+			return nil, fmt.Errorf("postgres: get pipeline run %s on %s: %w", id, tradeDate.Format("2006-01-02"), ErrNotFound)
 		}
 		return nil, fmt.Errorf("postgres: get pipeline run: %w", err)
 	}
@@ -109,23 +111,24 @@ func (r *PipelineRunRepo) List(ctx context.Context, filter repository.PipelineRu
 }
 
 // UpdateStatus updates the status fields for a pipeline run. It returns
-// ErrNotFound when no row matches the provided ID.
-func (r *PipelineRunRepo) UpdateStatus(ctx context.Context, id uuid.UUID, update repository.PipelineRunStatusUpdate) error {
+// ErrNotFound when no row matches the provided composite key.
+func (r *PipelineRunRepo) UpdateStatus(ctx context.Context, id uuid.UUID, tradeDate time.Time, update repository.PipelineRunStatusUpdate) error {
 	row := r.pool.QueryRow(ctx,
 		`UPDATE pipeline_runs
 		 SET status = $1, completed_at = $2, error_message = $3
-		 WHERE id = $4
+		 WHERE id = $4 AND trade_date = $5::date
 		 RETURNING id`,
 		update.Status,
 		update.CompletedAt,
 		update.ErrorMessage,
 		id,
+		tradeDate,
 	)
 
 	var updatedID uuid.UUID
 	if err := row.Scan(&updatedID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return fmt.Errorf("postgres: update pipeline run %s: %w", id, ErrNotFound)
+			return fmt.Errorf("postgres: update pipeline run %s on %s: %w", id, tradeDate.Format("2006-01-02"), ErrNotFound)
 		}
 		return fmt.Errorf("postgres: update pipeline run: %w", err)
 	}
