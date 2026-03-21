@@ -103,6 +103,11 @@ func (r *RetryProvider) Complete(ctx context.Context, request CompletionRequest)
 	)
 
 	for attempt := range r.maxAttempts {
+		// Check for cancellation before each attempt.
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+
 		if attempt > 0 {
 			delay := r.backoffDelay(attempt - 1)
 
