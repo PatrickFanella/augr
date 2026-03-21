@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/llm"
@@ -15,7 +16,7 @@ import (
 func TestCompleteUsesConfiguredModelAndTracksUsage(t *testing.T) {
 	t.Parallel()
 
-	var requestBody map[string]any
+	requestBodyCh := make(chan map[string]any, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			t.Fatalf("request method = %s, want %s", r.Method, http.MethodPost)
@@ -27,9 +28,11 @@ func TestCompleteUsesConfiguredModelAndTracksUsage(t *testing.T) {
 			t.Fatalf("authorization header = %q, want %q", got, "Bearer test-key")
 		}
 
+		var requestBody map[string]any
 		if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
 			t.Fatalf("decode request body: %v", err)
 		}
+		requestBodyCh <- requestBody
 
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{
@@ -87,6 +90,7 @@ func TestCompleteUsesConfiguredModelAndTracksUsage(t *testing.T) {
 		t.Fatalf("response.LatencyMS = %d, want >= 0", response.LatencyMS)
 	}
 
+	requestBody := <-requestBodyCh
 	if got := requestBody["model"]; got != openaiprovider.ModelGPT5Mini {
 		t.Fatalf("request model = %v, want %q", got, openaiprovider.ModelGPT5Mini)
 	}
@@ -117,11 +121,13 @@ func TestCompleteUsesConfiguredModelAndTracksUsage(t *testing.T) {
 func TestCompleteSupportsRequestOverridesAndJSONMode(t *testing.T) {
 	t.Parallel()
 
-	var requestBody map[string]any
+	requestBodyCh := make(chan map[string]any, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var requestBody map[string]any
 		if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
 			t.Fatalf("decode request body: %v", err)
 		}
+		requestBodyCh <- requestBody
 
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{
@@ -167,6 +173,8 @@ func TestCompleteSupportsRequestOverridesAndJSONMode(t *testing.T) {
 	if response.Content != `{"answer":"ok"}` {
 		t.Fatalf("response.Content = %q, want JSON payload", response.Content)
 	}
+
+	requestBody := <-requestBodyCh
 	if got := requestBody["model"]; got != "gpt-5.4" {
 		t.Fatalf("request model = %v, want %q", got, "gpt-5.4")
 	}
@@ -183,9 +191,9 @@ func TestCompleteSupportsRequestOverridesAndJSONMode(t *testing.T) {
 func TestCompleteWrapsSDKErrorsWithoutRetries(t *testing.T) {
 	t.Parallel()
 
-	requestCount := 0
+	var requestCount atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		requestCount++
+		requestCount.Add(1)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte(`{"error":{"message":"backend unavailable","type":"server_error"}}`))
@@ -212,8 +220,8 @@ func TestCompleteWrapsSDKErrorsWithoutRetries(t *testing.T) {
 	if !strings.Contains(err.Error(), "openai: complete request") {
 		t.Fatalf("Complete() error = %q, want wrapped context", err)
 	}
-	if requestCount != 1 {
-		t.Fatalf("request count = %d, want %d (retries disabled)", requestCount, 1)
+	if requestCount.Load() != 1 {
+		t.Fatalf("request count = %d, want %d (retries disabled)", requestCount.Load(), 1)
 	}
 }
 
