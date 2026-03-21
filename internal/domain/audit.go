@@ -9,7 +9,7 @@ import (
 
 // AuditLogEntry represents a single auditable system event.
 type AuditLogEntry struct {
-	ID         int64           `json:"id"`
+	ID         uuid.UUID       `json:"id"`
 	EventType  string          `json:"event_type"`
 	EntityType string          `json:"entity_type,omitempty"`
 	EntityID   *uuid.UUID      `json:"entity_id,omitempty"`
