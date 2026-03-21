@@ -37,7 +37,7 @@ func NewLogger(env, level string, w io.Writer) *slog.Logger {
 }
 
 // ParseLevel converts a level string to a slog.Level.
-// Supported values (case-insensitive): "debug", "info", "warn", "error".
+// Supported values (case-insensitive): "debug", "info", "warn", "warning", "error".
 // Defaults to slog.LevelInfo for unrecognised values.
 func ParseLevel(s string) slog.Level {
 	switch strings.ToLower(strings.TrimSpace(s)) {
@@ -101,4 +101,24 @@ func (sw *statusWriter) WriteHeader(code int) {
 		sw.wroteHeader = true
 		sw.ResponseWriter.WriteHeader(code)
 	}
+}
+
+func (sw *statusWriter) Write(b []byte) (int, error) {
+	if !sw.wroteHeader {
+		sw.WriteHeader(http.StatusOK)
+	}
+	return sw.ResponseWriter.Write(b)
+}
+
+// Flush delegates to the underlying ResponseWriter if it implements http.Flusher.
+func (sw *statusWriter) Flush() {
+	if f, ok := sw.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+// Unwrap returns the underlying ResponseWriter, allowing callers to recover
+// optional interfaces (http.Hijacker, http.Pusher, etc.) via type assertion.
+func (sw *statusWriter) Unwrap() http.ResponseWriter {
+	return sw.ResponseWriter
 }

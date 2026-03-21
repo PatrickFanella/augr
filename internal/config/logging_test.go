@@ -124,6 +124,28 @@ func TestHTTPRequestLogger(t *testing.T) {
 	}
 }
 
+func TestHTTPRequestLoggerImplicitStatus(t *testing.T) {
+	var buf bytes.Buffer
+	logger := config.NewLogger("production", "info", &buf)
+
+	handler := config.HTTPRequestLogger(logger)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		// Write body without calling WriteHeader; status should be 200.
+		_, _ = w.Write([]byte("ok"))
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/ping", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	var entry map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &entry); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+	if int(entry["status"].(float64)) != http.StatusOK {
+		t.Errorf("expected status=200 for implicit write, got %v", entry["status"])
+	}
+}
+
 func TestFieldConstants(t *testing.T) {
 	expected := map[string]string{
 		"KeyRunID":      "run_id",

@@ -1,18 +1,18 @@
 package main
 
 import (
-	"log/slog"
-	"os"
 	"fmt"
 	"log"
+	"log/slog"
+	"os"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/config"
 )
 
 func main() {
-	env := os.Getenv("APP_ENV")
-	if env == "" {
-		env = "development"
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("load config: %v", err)
 	}
 
 	level := os.Getenv("LOG_LEVEL")
@@ -20,15 +20,11 @@ func main() {
 		level = "info"
 	}
 
-	logger := config.SetDefaultLogger(env, level)
+	logger := config.SetDefaultLogger(cfg.Environment, level)
 	logger.Info("starting trading agent",
-		slog.String("env", env),
+		slog.String("env", cfg.Environment),
 		slog.String("log_level", level),
 	)
-	cfg, err := config.Load()
-	if err != nil {
-		log.Fatalf("load config: %v", err)
-	}
 
 	fmt.Printf("Trading Agent configured for %s on %s:%d\n", cfg.Environment, cfg.Server.Host, cfg.Server.Port)
 }
