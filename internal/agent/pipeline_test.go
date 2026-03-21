@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"sync/atomic"
 	"testing"
@@ -22,6 +23,20 @@ func (m *mockAnalystNode) Name() string    { return m.name }
 func (m *mockAnalystNode) Role() AgentRole { return m.role }
 func (m *mockAnalystNode) Phase() Phase    { return PhaseAnalysis }
 func (m *mockAnalystNode) Execute(ctx context.Context, state *PipelineState) error {
+	return m.execute(ctx, state)
+}
+
+// mockDebateNode is a test double for a PhaseResearchDebate Node.
+type mockDebateNode struct {
+	name    string
+	role    AgentRole
+	execute func(ctx context.Context, state *PipelineState) error
+}
+
+func (m *mockDebateNode) Name() string    { return m.name }
+func (m *mockDebateNode) Role() AgentRole { return m.role }
+func (m *mockDebateNode) Phase() Phase    { return PhaseResearchDebate }
+func (m *mockDebateNode) Execute(ctx context.Context, state *PipelineState) error {
 	return m.execute(ctx, state)
 }
 
@@ -158,5 +173,299 @@ func TestExecuteAnalysisPhase(t *testing.T) {
 		if e.OccurredAt.IsZero() {
 			t.Error("event OccurredAt is zero")
 		}
+	}
+}
+
+// TestExecuteResearchDebatePhase_RoundsExecuteInOrder verifies that
+// executeResearchDebatePhase runs 3 rounds sequentially (bull, bear per round)
+// followed by the InvestJudge, and emits a DebateRoundCompleted event per round.
+func TestExecuteResearchDebatePhase_RoundsExecuteInOrder(t *testing.T) {
+	runID := uuid.New()
+	stratID := uuid.New()
+
+	var order []string
+
+	bullNode := &mockDebateNode{
+		name: "bull_researcher",
+		role: AgentRoleBullResearcher,
+		execute: func(_ context.Context, state *PipelineState) error {
+			order = append(order, "bull")
+			idx := len(state.ResearchDebate.Rounds) - 1
+			state.ResearchDebate.Rounds[idx].Contributions[AgentRoleBullResearcher] = "bull argument"
+			return nil
+		},
+	}
+
+	bearNode := &mockDebateNode{
+		name: "bear_researcher",
+		role: AgentRoleBearResearcher,
+		execute: func(_ context.Context, state *PipelineState) error {
+			order = append(order, "bear")
+			idx := len(state.ResearchDebate.Rounds) - 1
+			state.ResearchDebate.Rounds[idx].Contributions[AgentRoleBearResearcher] = "bear argument"
+			return nil
+		},
+	}
+
+	judgeNode := &mockDebateNode{
+		name: "invest_judge",
+		role: AgentRoleInvestJudge,
+		execute: func(_ context.Context, state *PipelineState) error {
+			order = append(order, "judge")
+			state.ResearchDebate.InvestmentPlan = "accumulate"
+			return nil
+		},
+	}
+
+	events := make(chan PipelineEvent, 10)
+	pipeline := NewPipeline(
+		PipelineConfig{ResearchDebateRounds: 3},
+		nil, nil, events, slog.Default(),
+	)
+	pipeline.RegisterNode(bullNode)
+	pipeline.RegisterNode(bearNode)
+	pipeline.RegisterNode(judgeNode)
+
+	state := &PipelineState{
+		PipelineRunID: runID,
+		StrategyID:    stratID,
+		Ticker:        "AAPL",
+	}
+
+	err := pipeline.executeResearchDebatePhase(context.Background(), state)
+	if err != nil {
+		t.Fatalf("executeResearchDebatePhase() error = %v, want nil", err)
+	}
+
+	// Verify execution order: bull, bear, bull, bear, bull, bear, judge.
+	wantOrder := []string{"bull", "bear", "bull", "bear", "bull", "bear", "judge"}
+	if len(order) != len(wantOrder) {
+		t.Fatalf("got %d executions, want %d: %v", len(order), len(wantOrder), order)
+	}
+	for i := range wantOrder {
+		if order[i] != wantOrder[i] {
+			t.Errorf("execution[%d] = %q, want %q", i, order[i], wantOrder[i])
+		}
+	}
+
+	// Verify 3 DebateRoundCompleted events with correct metadata.
+	close(events)
+	var emitted []PipelineEvent
+	for e := range events {
+		emitted = append(emitted, e)
+	}
+	if len(emitted) != 3 {
+		t.Fatalf("got %d events, want 3", len(emitted))
+	}
+	for i, e := range emitted {
+		if e.Type != DebateRoundCompleted {
+			t.Errorf("event[%d].Type = %q, want %q", i, e.Type, DebateRoundCompleted)
+		}
+		if e.Round != i+1 {
+			t.Errorf("event[%d].Round = %d, want %d", i, e.Round, i+1)
+		}
+		if e.Phase != PhaseResearchDebate {
+			t.Errorf("event[%d].Phase = %q, want %q", i, e.Phase, PhaseResearchDebate)
+		}
+		if e.PipelineRunID != runID {
+			t.Errorf("event[%d].PipelineRunID = %v, want %v", i, e.PipelineRunID, runID)
+		}
+		if e.StrategyID != stratID {
+			t.Errorf("event[%d].StrategyID = %v, want %v", i, e.StrategyID, stratID)
+		}
+		if e.OccurredAt.IsZero() {
+			t.Errorf("event[%d].OccurredAt is zero", i)
+		}
+	}
+
+	// The investment plan must be set by the judge.
+	if state.ResearchDebate.InvestmentPlan != "accumulate" {
+		t.Errorf("InvestmentPlan = %q, want %q", state.ResearchDebate.InvestmentPlan, "accumulate")
+	}
+}
+
+// TestExecuteResearchDebatePhase_RoundContextAccumulates verifies that each
+// round's nodes can read state accumulated from previous rounds, and that the
+// judge can read all rounds when producing the investment plan.
+func TestExecuteResearchDebatePhase_RoundContextAccumulates(t *testing.T) {
+	bullNode := &mockDebateNode{
+		name: "bull_researcher",
+		role: AgentRoleBullResearcher,
+		execute: func(_ context.Context, state *PipelineState) error {
+			idx := len(state.ResearchDebate.Rounds) - 1
+			round := &state.ResearchDebate.Rounds[idx]
+			round.Contributions[AgentRoleBullResearcher] = fmt.Sprintf("bull_r%d", round.Number)
+			return nil
+		},
+	}
+
+	bearNode := &mockDebateNode{
+		name: "bear_researcher",
+		role: AgentRoleBearResearcher,
+		execute: func(_ context.Context, state *PipelineState) error {
+			idx := len(state.ResearchDebate.Rounds) - 1
+			round := &state.ResearchDebate.Rounds[idx]
+			// Bear reads the current round's bull contribution to prove ordering.
+			bullContrib := round.Contributions[AgentRoleBullResearcher]
+			// Bear also reads the number of prior completed rounds.
+			priorRounds := len(state.ResearchDebate.Rounds) - 1
+			round.Contributions[AgentRoleBearResearcher] = fmt.Sprintf(
+				"bear_r%d(rebutting:%s,prior:%d)", round.Number, bullContrib, priorRounds,
+			)
+			return nil
+		},
+	}
+
+	judgeNode := &mockDebateNode{
+		name: "invest_judge",
+		role: AgentRoleInvestJudge,
+		execute: func(_ context.Context, state *PipelineState) error {
+			state.ResearchDebate.InvestmentPlan = fmt.Sprintf(
+				"plan based on %d rounds", len(state.ResearchDebate.Rounds),
+			)
+			return nil
+		},
+	}
+
+	pipeline := NewPipeline(
+		PipelineConfig{ResearchDebateRounds: 3},
+		nil, nil, make(chan PipelineEvent, 10), slog.Default(),
+	)
+	pipeline.RegisterNode(bullNode)
+	pipeline.RegisterNode(bearNode)
+	pipeline.RegisterNode(judgeNode)
+
+	state := &PipelineState{
+		PipelineRunID: uuid.New(),
+		StrategyID:    uuid.New(),
+		Ticker:        "AAPL",
+	}
+
+	if err := pipeline.executeResearchDebatePhase(context.Background(), state); err != nil {
+		t.Fatalf("executeResearchDebatePhase() error = %v, want nil", err)
+	}
+
+	// Verify 3 rounds accumulated in state.
+	if got := len(state.ResearchDebate.Rounds); got != 3 {
+		t.Fatalf("got %d rounds, want 3", got)
+	}
+
+	// Each round must have the expected contributions.
+	for i, round := range state.ResearchDebate.Rounds {
+		roundNum := i + 1
+		if round.Number != roundNum {
+			t.Errorf("round[%d].Number = %d, want %d", i, round.Number, roundNum)
+		}
+
+		wantBull := fmt.Sprintf("bull_r%d", roundNum)
+		if got := round.Contributions[AgentRoleBullResearcher]; got != wantBull {
+			t.Errorf("round[%d] bull = %q, want %q", i, got, wantBull)
+		}
+
+		wantBear := fmt.Sprintf("bear_r%d(rebutting:%s,prior:%d)", roundNum, wantBull, i)
+		if got := round.Contributions[AgentRoleBearResearcher]; got != wantBear {
+			t.Errorf("round[%d] bear = %q, want %q", i, got, wantBear)
+		}
+	}
+
+	// Judge must have produced a plan referencing all 3 rounds.
+	wantPlan := "plan based on 3 rounds"
+	if state.ResearchDebate.InvestmentPlan != wantPlan {
+		t.Errorf("InvestmentPlan = %q, want %q", state.ResearchDebate.InvestmentPlan, wantPlan)
+	}
+}
+
+// TestExecuteResearchDebatePhase_CancellationStopsCleanly verifies that
+// cancelling the parent context mid-debate stops execution and returns the
+// context error without running subsequent rounds or the judge.
+func TestExecuteResearchDebatePhase_CancellationStopsCleanly(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var executionLog []string
+
+	bullNode := &mockDebateNode{
+		name: "bull_researcher",
+		role: AgentRoleBullResearcher,
+		execute: func(_ context.Context, state *PipelineState) error {
+			idx := len(state.ResearchDebate.Rounds) - 1
+			executionLog = append(executionLog, fmt.Sprintf("bull_%d", state.ResearchDebate.Rounds[idx].Number))
+			state.ResearchDebate.Rounds[idx].Contributions[AgentRoleBullResearcher] = "bull"
+			return nil
+		},
+	}
+
+	bearNode := &mockDebateNode{
+		name: "bear_researcher",
+		role: AgentRoleBearResearcher,
+		execute: func(_ context.Context, state *PipelineState) error {
+			idx := len(state.ResearchDebate.Rounds) - 1
+			executionLog = append(executionLog, fmt.Sprintf("bear_%d", state.ResearchDebate.Rounds[idx].Number))
+			state.ResearchDebate.Rounds[idx].Contributions[AgentRoleBearResearcher] = "bear"
+			// Cancel after round 2 completes.
+			if state.ResearchDebate.Rounds[idx].Number == 2 {
+				cancel()
+			}
+			return nil
+		},
+	}
+
+	judgeNode := &mockDebateNode{
+		name: "invest_judge",
+		role: AgentRoleInvestJudge,
+		execute: func(_ context.Context, _ *PipelineState) error {
+			executionLog = append(executionLog, "judge")
+			return nil
+		},
+	}
+
+	events := make(chan PipelineEvent, 10)
+	pipeline := NewPipeline(
+		PipelineConfig{ResearchDebateRounds: 5}, // more rounds than will execute
+		nil, nil, events, slog.Default(),
+	)
+	pipeline.RegisterNode(bullNode)
+	pipeline.RegisterNode(bearNode)
+	pipeline.RegisterNode(judgeNode)
+
+	state := &PipelineState{
+		PipelineRunID: uuid.New(),
+		StrategyID:    uuid.New(),
+		Ticker:        "AAPL",
+	}
+
+	err := pipeline.executeResearchDebatePhase(ctx, state)
+
+	// Must return context.Canceled.
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context.Canceled", err)
+	}
+
+	// Only rounds 1 and 2 should have executed; the judge must not run.
+	wantLog := []string{"bull_1", "bear_1", "bull_2", "bear_2"}
+	if len(executionLog) != len(wantLog) {
+		t.Fatalf("execution log = %v, want %v", executionLog, wantLog)
+	}
+	for i := range wantLog {
+		if executionLog[i] != wantLog[i] {
+			t.Errorf("executionLog[%d] = %q, want %q", i, executionLog[i], wantLog[i])
+		}
+	}
+
+	// Only 2 complete rounds should be in state.
+	if got := len(state.ResearchDebate.Rounds); got != 2 {
+		t.Errorf("got %d rounds in state, want 2", got)
+	}
+
+	// Events: round 1's event is always emitted (context still active).
+	// Round 2's event is non-deterministic because the context cancellation
+	// in bear races with the channel send in the select statement.
+	close(events)
+	var emitted int
+	for range events {
+		emitted++
+	}
+	if emitted < 1 || emitted > 2 {
+		t.Errorf("got %d events, want 1 or 2", emitted)
 	}
 }

@@ -80,6 +80,91 @@ func (p *Pipeline) Nodes() map[Phase][]Node {
 	return out
 }
 
+// nodeByRole returns the first registered Node in the given phase that matches
+// the specified role, or nil if none is found.
+func (p *Pipeline) nodeByRole(phase Phase, role AgentRole) Node {
+	for _, n := range p.nodes[phase] {
+		if n.Role() == role {
+			return n
+		}
+	}
+	return nil
+}
+
+// executeResearchDebatePhase runs the multi-round research debate. For each
+// round (up to config.ResearchDebateRounds), the BullResearcher and
+// BearResearcher nodes execute sequentially. A DebateRoundCompleted event is
+// emitted after each completed round. After all rounds the InvestJudge node
+// runs to produce the investment plan.
+func (p *Pipeline) executeResearchDebatePhase(ctx context.Context, state *PipelineState) error {
+	phaseCtx := ctx
+	if p.config.PhaseTimeout > 0 {
+		var cancel context.CancelFunc
+		phaseCtx, cancel = context.WithTimeout(ctx, p.config.PhaseTimeout)
+		defer cancel()
+	}
+
+	bullNode := p.nodeByRole(PhaseResearchDebate, AgentRoleBullResearcher)
+	bearNode := p.nodeByRole(PhaseResearchDebate, AgentRoleBearResearcher)
+	judgeNode := p.nodeByRole(PhaseResearchDebate, AgentRoleInvestJudge)
+
+	for i := 1; i <= p.config.ResearchDebateRounds; i++ {
+		// Check for context cancellation before starting the round.
+		if err := phaseCtx.Err(); err != nil {
+			return err
+		}
+
+		// Prepare the round structure so nodes can write contributions.
+		state.ResearchDebate.Rounds = append(state.ResearchDebate.Rounds, DebateRound{
+			Number:        i,
+			Contributions: make(map[AgentRole]string),
+		})
+
+		// Execute bull researcher.
+		if bullNode != nil {
+			if err := bullNode.Execute(phaseCtx, state); err != nil {
+				return err
+			}
+		}
+
+		// Execute bear researcher.
+		if bearNode != nil {
+			if err := bearNode.Execute(phaseCtx, state); err != nil {
+				return err
+			}
+		}
+
+		// Emit DebateRoundCompleted event.
+		if p.events != nil {
+			event := PipelineEvent{
+				Type:          DebateRoundCompleted,
+				PipelineRunID: state.PipelineRunID,
+				StrategyID:    state.StrategyID,
+				Ticker:        state.Ticker,
+				Phase:         PhaseResearchDebate,
+				Round:         i,
+				OccurredAt:    time.Now().UTC(),
+			}
+			select {
+			case p.events <- event:
+			case <-phaseCtx.Done():
+				p.logger.Debug("agent/pipeline: DebateRoundCompleted event dropped; phase context cancelled",
+					slog.Int("round", i),
+				)
+			}
+		}
+	}
+
+	// Execute the InvestJudge (Research Manager).
+	if judgeNode != nil {
+		if err := judgeNode.Execute(phaseCtx, state); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // executeAnalysisPhase runs all registered PhaseAnalysis nodes concurrently using
 // errgroup. If any node fails, a warning is logged and the remaining nodes continue
 // unaffected (partial failures do not abort the phase). If config.PhaseTimeout is
