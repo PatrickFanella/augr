@@ -62,8 +62,9 @@ type LLMProviderConfigs struct {
 
 // LLMProviderConfig contains settings for API-backed LLM providers.
 type LLMProviderConfig struct {
-	APIKey string
-	Model  string
+	APIKey  string
+	BaseURL string
+	Model   string
 }
 
 // OllamaConfig contains local model settings.
@@ -253,8 +254,9 @@ func loadFromEnvironment() (Config, error) {
 			Timeout:         llmTimeout,
 			Providers: LLMProviderConfigs{
 				OpenAI: LLMProviderConfig{
-					APIKey: os.Getenv("OPENAI_API_KEY"),
-					Model:  getEnvString("OPENAI_MODEL", "gpt-5-mini"),
+					APIKey:  os.Getenv("OPENAI_API_KEY"),
+					BaseURL: os.Getenv("OPENAI_BASE_URL"),
+					Model:   getEnvString("OPENAI_MODEL", "gpt-5-mini"),
 				},
 				Anthropic: LLMProviderConfig{
 					APIKey: os.Getenv("ANTHROPIC_API_KEY"),
@@ -265,12 +267,14 @@ func loadFromEnvironment() (Config, error) {
 					Model:  getEnvString("GOOGLE_MODEL", "gemini-2.5-flash"),
 				},
 				OpenRouter: LLMProviderConfig{
-					APIKey: os.Getenv("OPENROUTER_API_KEY"),
-					Model:  getEnvString("OPENROUTER_MODEL", "openai/gpt-4.1-mini"),
+					APIKey:  os.Getenv("OPENROUTER_API_KEY"),
+					BaseURL: os.Getenv("OPENROUTER_BASE_URL"),
+					Model:   getEnvString("OPENROUTER_MODEL", "openai/gpt-4.1-mini"),
 				},
 				XAI: LLMProviderConfig{
-					APIKey: os.Getenv("XAI_API_KEY"),
-					Model:  getEnvString("XAI_MODEL", "grok-3-mini"),
+					APIKey:  os.Getenv("XAI_API_KEY"),
+					BaseURL: os.Getenv("XAI_BASE_URL"),
+					Model:   getEnvString("XAI_MODEL", "grok-3-mini"),
 				},
 				Ollama: OllamaConfig{
 					BaseURL: getEnvString("OLLAMA_BASE_URL", "http://localhost:11434"),

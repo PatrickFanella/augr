@@ -12,6 +12,9 @@ func TestLoadParsesEnvironmentValues(t *testing.T) {
 	t.Setenv("APP_ENV", "test")
 	t.Setenv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/tradingagent?sslmode=disable")
 	t.Setenv("OPENAI_API_KEY", "test-key")
+	t.Setenv("OPENAI_BASE_URL", "https://openai.example.com/v1")
+	t.Setenv("OPENROUTER_BASE_URL", "https://openrouter.example.com/api/v1")
+	t.Setenv("XAI_BASE_URL", "https://xai.example.com/v1")
 	t.Setenv("APP_HOST", "127.0.0.1")
 	t.Setenv("APP_PORT", "9090")
 	t.Setenv("DATABASE_POOL_SIZE", "25")
@@ -47,6 +50,18 @@ func TestLoadParsesEnvironmentValues(t *testing.T) {
 
 	if cfg.LLM.Timeout != 45*time.Second {
 		t.Fatalf("cfg.LLM.Timeout = %s, want %s", cfg.LLM.Timeout, 45*time.Second)
+	}
+
+	if cfg.LLM.Providers.OpenAI.BaseURL != "https://openai.example.com/v1" {
+		t.Fatalf("cfg.LLM.Providers.OpenAI.BaseURL = %q, want %q", cfg.LLM.Providers.OpenAI.BaseURL, "https://openai.example.com/v1")
+	}
+
+	if cfg.LLM.Providers.OpenRouter.BaseURL != "https://openrouter.example.com/api/v1" {
+		t.Fatalf("cfg.LLM.Providers.OpenRouter.BaseURL = %q, want %q", cfg.LLM.Providers.OpenRouter.BaseURL, "https://openrouter.example.com/api/v1")
+	}
+
+	if cfg.LLM.Providers.XAI.BaseURL != "https://xai.example.com/v1" {
+		t.Fatalf("cfg.LLM.Providers.XAI.BaseURL = %q, want %q", cfg.LLM.Providers.XAI.BaseURL, "https://xai.example.com/v1")
 	}
 
 	if cfg.DataProviders.AlphaVantage.RateLimitPerMinute != 7 {
@@ -171,14 +186,17 @@ func clearConfigEnv(t *testing.T) {
 		"LLM_QUICK_THINK_MODEL",
 		"LLM_TIMEOUT",
 		"OPENAI_API_KEY",
+		"OPENAI_BASE_URL",
 		"OPENAI_MODEL",
 		"ANTHROPIC_API_KEY",
 		"ANTHROPIC_MODEL",
 		"GOOGLE_API_KEY",
 		"GOOGLE_MODEL",
 		"OPENROUTER_API_KEY",
+		"OPENROUTER_BASE_URL",
 		"OPENROUTER_MODEL",
 		"XAI_API_KEY",
+		"XAI_BASE_URL",
 		"XAI_MODEL",
 		"OLLAMA_BASE_URL",
 		"OLLAMA_MODEL",
