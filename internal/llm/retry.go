@@ -29,7 +29,7 @@ type RetryProvider struct {
 	baseDelay   time.Duration
 	jitterPct   float64
 	logger      *slog.Logger
-	sleepFn     func(time.Duration) // overridable for testing
+	timerFn     func(time.Duration) (<-chan time.Time, func() bool) // overridable for testing
 }
 
 // RetryOption configures a RetryProvider.
@@ -53,6 +53,13 @@ func WithBaseDelay(d time.Duration) RetryOption {
 	}
 }
 
+// defaultTimerFn wraps time.NewTimer into the timerFn signature, returning
+// the timer's channel and its Stop method.
+func defaultTimerFn(d time.Duration) (<-chan time.Time, func() bool) {
+	t := time.NewTimer(d)
+	return t.C, t.Stop
+}
+
 // NewRetryProvider wraps provider with retry logic using exponential backoff.
 // If logger is nil, slog.Default() is used.
 func NewRetryProvider(provider Provider, logger *slog.Logger, opts ...RetryOption) *RetryProvider {
@@ -66,7 +73,7 @@ func NewRetryProvider(provider Provider, logger *slog.Logger, opts ...RetryOptio
 		baseDelay:   defaultBaseDelay,
 		jitterPct:   defaultJitterPct,
 		logger:      logger,
-		sleepFn:     time.Sleep,
+		timerFn:     defaultTimerFn,
 	}
 
 	for _, opt := range opts {
@@ -76,15 +83,20 @@ func NewRetryProvider(provider Provider, logger *slog.Logger, opts ...RetryOptio
 	return r
 }
 
-// SetSleepFn overrides the function used to sleep between retries. This is
-// intended for testing only.
-func (r *RetryProvider) SetSleepFn(fn func(time.Duration)) {
-	r.sleepFn = fn
+// SetTimerFn overrides the function used to create backoff timers between retries.
+// This is intended for testing only. The function should return a channel that
+// fires after the duration and a stop function to release resources.
+func (r *RetryProvider) SetTimerFn(fn func(time.Duration) (<-chan time.Time, func() bool)) {
+	r.timerFn = fn
 }
 
 // Complete executes the completion request with retry logic. Token usage is
 // aggregated across all attempts (including failed ones that return partial usage).
 func (r *RetryProvider) Complete(ctx context.Context, request CompletionRequest) (*CompletionResponse, error) {
+	if r == nil || r.provider == nil {
+		return nil, errors.New("llm: retry provider is nil")
+	}
+
 	var (
 		lastErr    error
 		totalUsage CompletionUsage
@@ -101,10 +113,12 @@ func (r *RetryProvider) Complete(ctx context.Context, request CompletionRequest)
 				slog.Any("error", lastErr),
 			)
 
+			ch, stop := r.timerFn(delay)
 			select {
 			case <-ctx.Done():
+				stop()
 				return nil, ctx.Err()
-			case <-r.sleepCh(delay):
+			case <-ch:
 			}
 		}
 
@@ -117,6 +131,9 @@ func (r *RetryProvider) Complete(ctx context.Context, request CompletionRequest)
 		}
 
 		if err == nil {
+			if resp == nil {
+				return nil, errors.New("llm: provider returned nil response without error")
+			}
 			resp.Usage = totalUsage
 			return resp, nil
 		}
@@ -143,17 +160,6 @@ func (r *RetryProvider) backoffDelay(retryIndex int) time.Duration {
 	return d
 }
 
-// sleepCh returns a channel that is closed after the given duration, using the
-// overridable sleepFn for testability.
-func (r *RetryProvider) sleepCh(d time.Duration) <-chan struct{} {
-	ch := make(chan struct{})
-	go func() {
-		r.sleepFn(d)
-		close(ch)
-	}()
-	return ch
-}
-
 // isRetryable classifies an error as retryable. Retryable errors include:
 //   - Rate limit (HTTP 429)
 //   - Server errors (HTTP 5xx)
@@ -164,6 +170,7 @@ func (r *RetryProvider) sleepCh(d time.Duration) <-chan struct{} {
 //   - Bad request (HTTP 400)
 //   - Authentication errors (HTTP 401, 403)
 //   - Other 4xx client errors
+//   - Unknown error types (non-transient by default)
 func isRetryable(err error) bool {
 	if err == nil {
 		return false
@@ -193,7 +200,7 @@ func isRetryable(err error) bool {
 		}
 	}
 
-	// Unknown error type: assume transient and allow retry. Max attempts
-	// bound prevents infinite retries.
-	return true
+	// Unknown error type: treat as non-retryable by default. This keeps the
+	// retry policy limited to clearly transient cases (timeouts, 429, 5xx).
+	return false
 }

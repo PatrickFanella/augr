@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"testing"
@@ -20,7 +21,10 @@ func TestFallbackProviderReturnsPrimaryOnSuccess(t *testing.T) {
 	primary := newMockProvider([]*llm.CompletionResponse{want}, []error{nil})
 	secondary := newMockProvider([]*llm.CompletionResponse{{Content: "secondary"}}, []error{nil})
 
-	fp := llm.NewFallbackProvider(primary, secondary, discardLogger())
+	fp, err := llm.NewFallbackProvider(primary, secondary, discardLogger())
+	if err != nil {
+		t.Fatalf("NewFallbackProvider() error = %v", err)
+	}
 
 	got, err := fp.Complete(context.Background(), llm.CompletionRequest{})
 	if err != nil {
@@ -41,7 +45,10 @@ func TestFallbackProviderFallsBackOnPrimaryFailure(t *testing.T) {
 	want := &llm.CompletionResponse{Content: "secondary"}
 	secondary := newMockProvider([]*llm.CompletionResponse{want}, []error{nil})
 
-	fp := llm.NewFallbackProvider(primary, secondary, discardLogger())
+	fp, err := llm.NewFallbackProvider(primary, secondary, discardLogger())
+	if err != nil {
+		t.Fatalf("NewFallbackProvider() error = %v", err)
+	}
 
 	got, err := fp.Complete(context.Background(), llm.CompletionRequest{})
 	if err != nil {
@@ -64,9 +71,12 @@ func TestFallbackProviderReturnsBothErrors(t *testing.T) {
 	primary := newMockProvider(nil, []error{errors.New("primary fail")})
 	secondary := newMockProvider(nil, []error{errors.New("secondary fail")})
 
-	fp := llm.NewFallbackProvider(primary, secondary, discardLogger())
+	fp, err := llm.NewFallbackProvider(primary, secondary, discardLogger())
+	if err != nil {
+		t.Fatalf("NewFallbackProvider() error = %v", err)
+	}
 
-	_, err := fp.Complete(context.Background(), llm.CompletionRequest{})
+	_, err = fp.Complete(context.Background(), llm.CompletionRequest{})
 	if err == nil {
 		t.Fatal("Complete() error = nil, want non-nil")
 	}
@@ -84,9 +94,12 @@ func TestFallbackProviderLogsFallbackEvent(t *testing.T) {
 	primary := newMockProvider(nil, []error{errors.New("primary fail")})
 	secondary := newMockProvider([]*llm.CompletionResponse{{Content: "ok"}}, []error{nil})
 
-	fp := llm.NewFallbackProvider(primary, secondary, logger)
+	fp, err := llm.NewFallbackProvider(primary, secondary, logger)
+	if err != nil {
+		t.Fatalf("NewFallbackProvider() error = %v", err)
+	}
 
-	_, err := fp.Complete(context.Background(), llm.CompletionRequest{})
+	_, err = fp.Complete(context.Background(), llm.CompletionRequest{})
 	if err != nil {
 		t.Fatalf("Complete() error = %v, want nil", err)
 	}
@@ -97,6 +110,74 @@ func TestFallbackProviderLogsFallbackEvent(t *testing.T) {
 	}
 	if !strings.Contains(logged, "primary fail") {
 		t.Errorf("log output = %q, want error detail logged", logged)
+	}
+}
+
+func TestFallbackProviderDoesNotFallBackOnContextCanceled(t *testing.T) {
+	t.Parallel()
+
+	primary := newMockProvider(nil, []error{context.Canceled})
+	secondary := newMockProvider([]*llm.CompletionResponse{{Content: "secondary"}}, []error{nil})
+
+	fp, err := llm.NewFallbackProvider(primary, secondary, discardLogger())
+	if err != nil {
+		t.Fatalf("NewFallbackProvider() error = %v", err)
+	}
+
+	_, err = fp.Complete(context.Background(), llm.CompletionRequest{})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Complete() error = %v, want context.Canceled", err)
+	}
+	if secondary.calls.Load() != 0 {
+		t.Errorf("secondary calls = %d, want 0 (no fallback on context cancel)", secondary.calls.Load())
+	}
+}
+
+func TestFallbackProviderDoesNotFallBackOnDeadlineExceeded(t *testing.T) {
+	t.Parallel()
+
+	primary := newMockProvider(nil, []error{fmt.Errorf("timeout: %w", context.DeadlineExceeded)})
+	secondary := newMockProvider([]*llm.CompletionResponse{{Content: "secondary"}}, []error{nil})
+
+	fp, err := llm.NewFallbackProvider(primary, secondary, discardLogger())
+	if err != nil {
+		t.Fatalf("NewFallbackProvider() error = %v", err)
+	}
+
+	_, err = fp.Complete(context.Background(), llm.CompletionRequest{})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Complete() error = %v, want context.DeadlineExceeded", err)
+	}
+	if secondary.calls.Load() != 0 {
+		t.Errorf("secondary calls = %d, want 0 (no fallback on deadline exceeded)", secondary.calls.Load())
+	}
+}
+
+func TestNewFallbackProviderRejectsNilPrimary(t *testing.T) {
+	t.Parallel()
+
+	secondary := newMockProvider([]*llm.CompletionResponse{{Content: "ok"}}, []error{nil})
+
+	_, err := llm.NewFallbackProvider(nil, secondary, discardLogger())
+	if err == nil {
+		t.Fatal("NewFallbackProvider() error = nil, want non-nil")
+	}
+	if !strings.Contains(err.Error(), "primary") {
+		t.Errorf("NewFallbackProvider() error = %q, want primary nil error", err.Error())
+	}
+}
+
+func TestNewFallbackProviderRejectsNilSecondary(t *testing.T) {
+	t.Parallel()
+
+	primary := newMockProvider([]*llm.CompletionResponse{{Content: "ok"}}, []error{nil})
+
+	_, err := llm.NewFallbackProvider(primary, nil, discardLogger())
+	if err == nil {
+		t.Fatal("NewFallbackProvider() error = nil, want non-nil")
+	}
+	if !strings.Contains(err.Error(), "secondary") {
+		t.Errorf("NewFallbackProvider() error = %q, want secondary nil error", err.Error())
 	}
 }
 

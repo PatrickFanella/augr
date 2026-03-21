@@ -19,9 +19,9 @@ type httpError struct {
 	msg  string
 }
 
-func (e *httpError) Error() string      { return e.msg }
-func (e *httpError) StatusCode() int     { return e.code }
-func (e *httpError) Unwrap() error       { return nil }
+func (e *httpError) Error() string  { return e.msg }
+func (e *httpError) StatusCode() int { return e.code }
+func (e *httpError) Unwrap() error  { return nil }
 
 // mockProvider is a configurable Provider for testing retry and fallback logic.
 type mockProvider struct {
@@ -46,7 +46,14 @@ func newMockProvider(responses []*llm.CompletionResponse, errs []error) *mockPro
 	return &mockProvider{responses: responses, errors: errs}
 }
 
-func noopSleep(_ time.Duration) {}
+// immediateTimerFn returns a timer function that fires immediately for testing.
+func immediateTimerFn() func(time.Duration) (<-chan time.Time, func() bool) {
+	return func(_ time.Duration) (<-chan time.Time, func() bool) {
+		ch := make(chan time.Time, 1)
+		ch <- time.Now()
+		return ch, func() bool { return false }
+	}
+}
 
 func discardLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(discard{}, nil))
@@ -68,7 +75,7 @@ func TestRetryProviderSucceedsOnFirstAttempt(t *testing.T) {
 	mock := newMockProvider([]*llm.CompletionResponse{want}, []error{nil})
 
 	rp := llm.NewRetryProvider(mock, discardLogger())
-	rp.SetSleepFn(noopSleep)
+	rp.SetTimerFn(immediateTimerFn())
 
 	got, err := rp.Complete(context.Background(), llm.CompletionRequest{})
 	if err != nil {
@@ -92,7 +99,7 @@ func TestRetryProviderRetriesOnTransientError(t *testing.T) {
 	)
 
 	rp := llm.NewRetryProvider(mock, discardLogger())
-	rp.SetSleepFn(noopSleep)
+	rp.SetTimerFn(immediateTimerFn())
 
 	got, err := rp.Complete(context.Background(), llm.CompletionRequest{})
 	if err != nil {
@@ -116,7 +123,7 @@ func TestRetryProviderRetriesOnRateLimit(t *testing.T) {
 	)
 
 	rp := llm.NewRetryProvider(mock, discardLogger())
-	rp.SetSleepFn(noopSleep)
+	rp.SetTimerFn(immediateTimerFn())
 
 	got, err := rp.Complete(context.Background(), llm.CompletionRequest{})
 	if err != nil {
@@ -137,7 +144,7 @@ func TestRetryProviderRetriesOnTimeout(t *testing.T) {
 	)
 
 	rp := llm.NewRetryProvider(mock, discardLogger())
-	rp.SetSleepFn(noopSleep)
+	rp.SetTimerFn(immediateTimerFn())
 
 	got, err := rp.Complete(context.Background(), llm.CompletionRequest{})
 	if err != nil {
@@ -154,7 +161,7 @@ func TestRetryProviderDoesNotRetryOnBadRequest(t *testing.T) {
 	mock := newMockProvider(nil, []error{&httpError{code: 400, msg: "bad request"}})
 
 	rp := llm.NewRetryProvider(mock, discardLogger())
-	rp.SetSleepFn(noopSleep)
+	rp.SetTimerFn(immediateTimerFn())
 
 	_, err := rp.Complete(context.Background(), llm.CompletionRequest{})
 	if err == nil {
@@ -183,7 +190,7 @@ func TestRetryProviderDoesNotRetryOnAuthError(t *testing.T) {
 			mock := newMockProvider(nil, []error{&httpError{code: tc.code, msg: tc.name}})
 
 			rp := llm.NewRetryProvider(mock, discardLogger())
-			rp.SetSleepFn(noopSleep)
+			rp.SetTimerFn(immediateTimerFn())
 
 			_, err := rp.Complete(context.Background(), llm.CompletionRequest{})
 			if err == nil {
@@ -202,7 +209,7 @@ func TestRetryProviderDoesNotRetryOnContextCanceled(t *testing.T) {
 	mock := newMockProvider(nil, []error{context.Canceled})
 
 	rp := llm.NewRetryProvider(mock, discardLogger())
-	rp.SetSleepFn(noopSleep)
+	rp.SetTimerFn(immediateTimerFn())
 
 	_, err := rp.Complete(context.Background(), llm.CompletionRequest{})
 	if !errors.Is(err, context.Canceled) {
@@ -210,6 +217,23 @@ func TestRetryProviderDoesNotRetryOnContextCanceled(t *testing.T) {
 	}
 	if mock.calls.Load() != 1 {
 		t.Errorf("Complete() calls = %d, want 1", mock.calls.Load())
+	}
+}
+
+func TestRetryProviderDoesNotRetryOnUnknownError(t *testing.T) {
+	t.Parallel()
+
+	mock := newMockProvider(nil, []error{errors.New("unknown error")})
+
+	rp := llm.NewRetryProvider(mock, discardLogger(), llm.WithMaxAttempts(3))
+	rp.SetTimerFn(immediateTimerFn())
+
+	_, err := rp.Complete(context.Background(), llm.CompletionRequest{})
+	if err == nil {
+		t.Fatal("Complete() error = nil, want non-nil")
+	}
+	if mock.calls.Load() != 1 {
+		t.Errorf("Complete() calls = %d, want 1 (no retry on unknown error)", mock.calls.Load())
 	}
 }
 
@@ -223,7 +247,7 @@ func TestRetryProviderReturnsLastErrorAfterMaxAttempts(t *testing.T) {
 	})
 
 	rp := llm.NewRetryProvider(mock, discardLogger(), llm.WithMaxAttempts(3))
-	rp.SetSleepFn(noopSleep)
+	rp.SetTimerFn(immediateTimerFn())
 
 	_, err := rp.Complete(context.Background(), llm.CompletionRequest{})
 	if err == nil {
@@ -255,7 +279,7 @@ func TestRetryProviderAggregatesUsageAcrossRetries(t *testing.T) {
 	}
 
 	rp := llm.NewRetryProvider(mock, discardLogger())
-	rp.SetSleepFn(noopSleep)
+	rp.SetTimerFn(immediateTimerFn())
 
 	got, err := rp.Complete(context.Background(), llm.CompletionRequest{})
 	if err != nil {
@@ -280,8 +304,13 @@ func TestRetryProviderRespectsContextCancellationBetweenRetries(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	rp := llm.NewRetryProvider(mock, discardLogger(), llm.WithMaxAttempts(3))
-	// Cancel context during sleep to simulate cancellation between retries.
-	rp.SetSleepFn(func(_ time.Duration) { cancel() })
+	// Cancel context when timer fires to simulate cancellation between retries.
+	rp.SetTimerFn(func(_ time.Duration) (<-chan time.Time, func() bool) {
+		cancel()
+		ch := make(chan time.Time, 1)
+		ch <- time.Now()
+		return ch, func() bool { return false }
+	})
 
 	_, err := rp.Complete(ctx, llm.CompletionRequest{})
 	if !errors.Is(err, context.Canceled) {
@@ -293,15 +322,15 @@ func TestRetryProviderWithCustomMaxAttempts(t *testing.T) {
 	t.Parallel()
 
 	mock := newMockProvider(nil, []error{
-		errors.New("fail-1"),
-		errors.New("fail-2"),
-		errors.New("fail-3"),
-		errors.New("fail-4"),
-		errors.New("fail-5"),
+		&httpError{code: 502, msg: "fail-1"},
+		&httpError{code: 502, msg: "fail-2"},
+		&httpError{code: 502, msg: "fail-3"},
+		&httpError{code: 502, msg: "fail-4"},
+		&httpError{code: 502, msg: "fail-5"},
 	})
 
 	rp := llm.NewRetryProvider(mock, discardLogger(), llm.WithMaxAttempts(5))
-	rp.SetSleepFn(noopSleep)
+	rp.SetTimerFn(immediateTimerFn())
 
 	_, err := rp.Complete(context.Background(), llm.CompletionRequest{})
 	if err == nil {
@@ -309,6 +338,38 @@ func TestRetryProviderWithCustomMaxAttempts(t *testing.T) {
 	}
 	if mock.calls.Load() != 5 {
 		t.Errorf("Complete() calls = %d, want 5", mock.calls.Load())
+	}
+}
+
+func TestRetryProviderNilProviderReturnsError(t *testing.T) {
+	t.Parallel()
+
+	rp := llm.NewRetryProvider(nil, discardLogger())
+
+	_, err := rp.Complete(context.Background(), llm.CompletionRequest{})
+	if err == nil {
+		t.Fatal("Complete() error = nil, want non-nil")
+	}
+	if !strings.Contains(err.Error(), "nil") {
+		t.Errorf("Complete() error = %q, want nil provider error", err.Error())
+	}
+}
+
+func TestRetryProviderNilResponseWithoutErrorReturnsError(t *testing.T) {
+	t.Parallel()
+
+	// Provider returns (nil, nil).
+	mock := newMockProvider([]*llm.CompletionResponse{nil}, []error{nil})
+
+	rp := llm.NewRetryProvider(mock, discardLogger())
+	rp.SetTimerFn(immediateTimerFn())
+
+	_, err := rp.Complete(context.Background(), llm.CompletionRequest{})
+	if err == nil {
+		t.Fatal("Complete() error = nil, want non-nil for nil response")
+	}
+	if !strings.Contains(err.Error(), "nil response") {
+		t.Errorf("Complete() error = %q, want nil response error", err.Error())
 	}
 }
 
