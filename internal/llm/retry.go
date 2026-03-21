@@ -193,6 +193,7 @@ func isRetryable(err error) bool {
 		}
 	}
 
-	// Unknown error type: assume transient and allow retry.
+	// Unknown error type: assume transient and allow retry. Max attempts
+	// bound prevents infinite retries.
 	return true
 }
