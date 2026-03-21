@@ -68,6 +68,7 @@ func TestRateLimiterWaitBlocksUntilTokenAvailable(t *testing.T) {
 
 func TestRateLimiterWaitHonorsContextCancellation(t *testing.T) {
 	const waitTimeout = 150 * time.Millisecond
+	const cancellationMargin = 250 * time.Millisecond
 
 	limiter := data.NewRateLimiter(1, 500*time.Millisecond)
 	if !limiter.TryAcquire() {
@@ -82,7 +83,7 @@ func TestRateLimiterWaitHonorsContextCancellation(t *testing.T) {
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("Wait() error = %v, want context deadline exceeded", err)
 	}
-	if elapsed := time.Since(start); elapsed > waitTimeout+250*time.Millisecond {
+	if elapsed := time.Since(start); elapsed > waitTimeout+cancellationMargin {
 		t.Fatalf("Wait() returned after %v, want prompt cancellation", elapsed)
 	}
 }
