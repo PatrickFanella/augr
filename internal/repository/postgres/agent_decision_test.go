@@ -636,5 +636,3 @@ func newAgentDecisionIntegrationPool(t *testing.T, ctx context.Context) (*pgxpoo
 
 	return pool, cleanup
 }
-
-

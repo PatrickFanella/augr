@@ -1,0 +1,31 @@
+{
+  "vimMode": false,
+  "showLineNumber": true,
+  "strictLineBreaks": false,
+  "readableLineLength": true,
+  "livePreview": true,
+  "defaultViewMode": "source",
+  "showFrontmatter": true,
+  "foldHeading": true,
+  "foldIndent": true,
+  "showInlineTitle": true,
+  "tabSize": 2,
+  "attachmentFolderPath": "assets",
+  "newFileLocation": "folder",
+  "newFileFolderPath": "",
+  "alwaysUpdateLinks": true,
+  "useMarkdownLinks": false,
+  "newLinkFormat": "shortest",
+  "propertiesInDocument": "visible",
+  "promptDelete": false,
+  "trashOption": "local",
+  "spellcheck": true,
+  "spellcheckLanguages": ["en"],
+  "showUnsupportedFiles": false,
+  "pdfExportSettings": {
+    "pageSize": "Letter",
+    "landscape": false,
+    "margin": "0",
+    "downscalePercent": 100
+  }
+}

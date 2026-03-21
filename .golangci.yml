@@ -17,3 +17,12 @@ linters:
 linters-settings:
   gofumpt:
     extra-rules: true
+  revive:
+    rules:
+      - name: exported
+        arguments:
+          - disableStutteringCheck
+      - name: context-as-argument
+        disabled: false
+        exclude:
+          - "**_test.go"

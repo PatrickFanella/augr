@@ -32,11 +32,11 @@ func (s CircuitBreakerState) String() string {
 
 // RiskLimits defines the thresholds used by the risk management system.
 type RiskLimits struct {
-	MaxPositionSizePct  float64 `json:"max_position_size_pct"`
-	MaxDailyLossPct     float64 `json:"max_daily_loss_pct"`
-	MaxDrawdownPct      float64 `json:"max_drawdown_pct"`
-	MaxOpenPositions    int     `json:"max_open_positions"`
-	MaxOrderValueUSD    float64 `json:"max_order_value_usd"`
+	MaxPositionSizePct  float64             `json:"max_position_size_pct"`
+	MaxDailyLossPct     float64             `json:"max_daily_loss_pct"`
+	MaxDrawdownPct      float64             `json:"max_drawdown_pct"`
+	MaxOpenPositions    int                 `json:"max_open_positions"`
+	MaxOrderValueUSD    float64             `json:"max_order_value_usd"`
 	CircuitBreakerState CircuitBreakerState `json:"circuit_breaker_state"`
 	UpdatedAt           time.Time           `json:"updated_at"`
 }

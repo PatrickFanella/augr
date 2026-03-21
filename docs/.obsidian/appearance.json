@@ -1,0 +1,11 @@
+{
+  "accentColor": "#7c3aed",
+  "baseFontSize": 16,
+  "textFontFamily": "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+  "monospaceFontFamily": "JetBrains Mono, Fira Code, Menlo, Consolas, monospace",
+  "interfaceFontFamily": "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+  "theme": "obsidian",
+  "cssTheme": "Minimal",
+  "nativeMenus": true,
+  "enabledCssSnippets": ["trading-agent"]
+}

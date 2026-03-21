@@ -19,9 +19,9 @@ type httpError struct {
 	msg  string
 }
 
-func (e *httpError) Error() string  { return e.msg }
+func (e *httpError) Error() string   { return e.msg }
 func (e *httpError) StatusCode() int { return e.code }
-func (e *httpError) Unwrap() error  { return nil }
+func (e *httpError) Unwrap() error   { return nil }
 
 // mockProvider is a configurable Provider for testing retry and fallback logic.
 type mockProvider struct {

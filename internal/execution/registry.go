@@ -9,10 +9,8 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 )
 
-var (
-	// ErrBrokerNotFound indicates that no broker has been registered for a market type.
-	ErrBrokerNotFound = errors.New("execution broker not found")
-)
+// ErrBrokerNotFound indicates that no broker has been registered for a market type.
+var ErrBrokerNotFound = errors.New("execution broker not found")
 
 // Registry stores brokers by market type.
 type Registry struct {

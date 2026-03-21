@@ -242,9 +242,9 @@ func TestPositionRepoIntegration_UpdateNotFound(t *testing.T) {
 	repo := NewPositionRepo(pool)
 
 	err := repo.Update(ctx, &domain.Position{
-		ID:      uuid.New(),
-		Ticker:  "AAPL",
-		Side:    domain.PositionSideLong,
+		ID:       uuid.New(),
+		Ticker:   "AAPL",
+		Side:     domain.PositionSideLong,
 		Quantity: 1,
 		AvgEntry: 100.0,
 	})

@@ -1,0 +1,17 @@
+{
+  "prepend-archive-separator": false,
+  "prepend-archive-format": "",
+  "new-card-insertion-method": "prepend-compact",
+  "link-date-to-daily-note": false,
+  "archive-with-date": false,
+  "hide-card-count": false,
+  "hide-date-in-title": false,
+  "show-checkboxes": true,
+  "date-picker-week-start": 1,
+  "show-relative-date": true,
+  "move-dates": false,
+  "move-tags": false,
+  "metadata-keys": [
+    { "metadataKey": "priority", "label": "Priority", "shouldHideLabel": false, "containsMarkdown": false }
+  ]
+}

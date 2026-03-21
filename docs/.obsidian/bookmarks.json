@@ -1,0 +1,12 @@
+{
+  "items": [
+    { "type": "file", "ctime": 1711000000000, "path": "README.md", "title": "Home" },
+    { "type": "file", "ctime": 1711000001000, "path": "design/index.md", "title": "System Design" },
+    { "type": "file", "ctime": 1711000002000, "path": "design/agents/agent-system-overview.md", "title": "Agent System" },
+    { "type": "file", "ctime": 1711000003000, "path": "design/system-architecture.md", "title": "Architecture" },
+    { "type": "file", "ctime": 1711000004000, "path": "adr/README.md", "title": "ADRs" },
+    { "type": "file", "ctime": 1711000005000, "path": "research/index.md", "title": "Research" },
+    { "type": "folder", "ctime": 1711000006000, "path": "design/agents", "title": "Agent Docs" },
+    { "type": "folder", "ctime": 1711000007000, "path": "adr", "title": "Architecture Decisions" }
+  ]
+}

@@ -1,0 +1,27 @@
+name: Stale issue management
+
+on:
+  schedule:
+    - cron: '0 9 * * 1' # Weekly Monday 9am UTC
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@v9
+        with:
+          stale-issue-message: >
+            This issue has been inactive for 30 days. It will be closed in 14 days
+            if there is no further activity. Add a comment or remove the stale label
+            to keep it open.
+          close-issue-message: >
+            Closed due to inactivity. Reopen if still relevant.
+          days-before-stale: 30
+          days-before-close: 14
+          stale-issue-label: stale
+          exempt-issue-labels: type:epic,type:decision,needs-decision,blocked,priority:p0-critical
+          operations-per-run: 50

@@ -1,0 +1,15 @@
+{
+  "version": 3,
+  "defaultNote": "README",
+  "openMode": "replace all",
+  "manualOpenMode": "default",
+  "view": "default",
+  "refreshDataview": true,
+  "autoCreate": false,
+  "autoScroll": true,
+  "pin": false,
+  "hasRibbonIcon": true,
+  "openOnStartup": true,
+  "alwaysApply": false,
+  "revertView": true
+}

@@ -1,0 +1,18 @@
+{
+  "commitMessage": "docs: vault sync {{date}}",
+  "autoCommitMessage": "docs: auto-sync {{date}}",
+  "autoPullOnOpen": true,
+  "autoPullInterval": 10,
+  "autoPushInterval": 0,
+  "autoSaveInterval": 0,
+  "currentBranch": "",
+  "gitPath": "",
+  "basePath": "",
+  "customMessageOnAutoBackup": false,
+  "listChangedFilesInMessageBody": false,
+  "showStatusBar": true,
+  "updateSubmodules": false,
+  "syncMethod": "merge",
+  "showBranchStatusBar": true,
+  "changedFilesInStatusBar": true
+}

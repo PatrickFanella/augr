@@ -1,0 +1,50 @@
+/* Trading Agent vault custom styles */
+
+/* Colored tags */
+.tag[href="#adr"] { background-color: var(--color-purple) !important; color: white !important; }
+.tag[href="#design"] { background-color: var(--color-blue) !important; color: white !important; }
+.tag[href="#agent"] { background-color: var(--color-green) !important; color: white !important; }
+.tag[href="#research"] { background-color: var(--color-orange) !important; color: white !important; }
+.tag[href="#moc"] { background-color: var(--color-red) !important; color: white !important; }
+
+/* Pipeline phase callouts */
+.callout[data-callout="phase-1"] { --callout-color: 59, 130, 246; }
+.callout[data-callout="phase-2"] { --callout-color: 168, 85, 247; }
+.callout[data-callout="phase-3"] { --callout-color: 234, 179, 8; }
+.callout[data-callout="phase-4"] { --callout-color: 239, 68, 68; }
+.callout[data-callout="phase-5"] { --callout-color: 34, 197, 94; }
+
+/* Frontmatter property styling */
+.metadata-property[data-property-key="status"] .metadata-property-value {
+  font-weight: bold;
+}
+
+/* Mermaid diagram sizing */
+.mermaid svg {
+  max-width: 100%;
+}
+
+/* Code block styling for Go */
+.cm-s-obsidian .HyperMD-codeblock {
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* Table improvements */
+table {
+  width: 100%;
+}
+th {
+  text-align: left;
+  font-weight: 600;
+  border-bottom: 2px solid var(--background-modifier-border);
+}
+
+/* Heading indicators for navigation */
+h2::before { content: "## "; opacity: 0.3; }
+h3::before { content: "### "; opacity: 0.2; }
+
+/* Kanban board improvements */
+.kanban-plugin__board {
+  gap: 12px;
+}

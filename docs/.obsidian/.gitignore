@@ -1,0 +1,15 @@
+# Obsidian runtime files (regenerated on open)
+workspace-*.json
+workspace.json
+
+# Plugin binaries (downloaded by Obsidian on first open)
+plugins/*/main.js
+plugins/*/manifest.json
+plugins/*/styles.css
+
+# Theme files (downloaded by Obsidian)
+themes/*/manifest.json
+themes/*/theme.css
+
+# Cache
+cache/

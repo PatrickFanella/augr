@@ -53,21 +53,21 @@ func (s OrderStatus) String() string {
 
 // Order represents a trading order sent to a broker.
 type Order struct {
-	ID              uuid.UUID   `json:"id"`
-	StrategyID      *uuid.UUID  `json:"strategy_id,omitempty"`
-	PipelineRunID   *uuid.UUID  `json:"pipeline_run_id,omitempty"`
-	ExternalID      string      `json:"external_id,omitempty"`
-	Ticker          string      `json:"ticker"`
-	Side            OrderSide   `json:"side"`
-	OrderType       OrderType   `json:"order_type"`
-	Quantity        float64     `json:"quantity"`
-	LimitPrice      *float64    `json:"limit_price,omitempty"`
-	StopPrice       *float64    `json:"stop_price,omitempty"`
-	FilledQuantity  float64     `json:"filled_quantity"`
-	FilledAvgPrice  *float64    `json:"filled_avg_price,omitempty"`
-	Status          OrderStatus `json:"status"`
-	Broker          string      `json:"broker"`
-	SubmittedAt     *time.Time  `json:"submitted_at,omitempty"`
-	FilledAt        *time.Time  `json:"filled_at,omitempty"`
-	CreatedAt       time.Time   `json:"created_at"`
+	ID             uuid.UUID   `json:"id"`
+	StrategyID     *uuid.UUID  `json:"strategy_id,omitempty"`
+	PipelineRunID  *uuid.UUID  `json:"pipeline_run_id,omitempty"`
+	ExternalID     string      `json:"external_id,omitempty"`
+	Ticker         string      `json:"ticker"`
+	Side           OrderSide   `json:"side"`
+	OrderType      OrderType   `json:"order_type"`
+	Quantity       float64     `json:"quantity"`
+	LimitPrice     *float64    `json:"limit_price,omitempty"`
+	StopPrice      *float64    `json:"stop_price,omitempty"`
+	FilledQuantity float64     `json:"filled_quantity"`
+	FilledAvgPrice *float64    `json:"filled_avg_price,omitempty"`
+	Status         OrderStatus `json:"status"`
+	Broker         string      `json:"broker"`
+	SubmittedAt    *time.Time  `json:"submitted_at,omitempty"`
+	FilledAt       *time.Time  `json:"filled_at,omitempty"`
+	CreatedAt      time.Time   `json:"created_at"`
 }

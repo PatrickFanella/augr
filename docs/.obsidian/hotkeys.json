@@ -1,0 +1,11 @@
+{
+  "app:go-back": [{ "modifiers": ["Alt"], "key": "ArrowLeft" }],
+  "app:go-forward": [{ "modifiers": ["Alt"], "key": "ArrowRight" }],
+  "editor:toggle-fold": [{ "modifiers": ["Mod", "Shift"], "key": "." }],
+  "graph:open": [{ "modifiers": ["Mod", "Shift"], "key": "g" }],
+  "switcher:open": [{ "modifiers": ["Mod"], "key": "p" }],
+  "command-palette:open": [{ "modifiers": ["Mod", "Shift"], "key": "p" }],
+  "global-search:open": [{ "modifiers": ["Mod", "Shift"], "key": "f" }],
+  "outline:open": [{ "modifiers": ["Mod", "Shift"], "key": "o" }],
+  "backlink:open": [{ "modifiers": ["Mod", "Shift"], "key": "b" }]
+}

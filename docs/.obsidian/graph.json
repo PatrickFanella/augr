@@ -1,0 +1,55 @@
+{
+  "collapse-filter": false,
+  "search": "",
+  "showTags": true,
+  "showAttachments": false,
+  "hideUnresolved": false,
+  "showOrphans": true,
+  "collapse-color-groups": false,
+  "colorGroups": [
+    {
+      "query": "path:design/agents",
+      "color": { "a": 1, "rgb": 5046016 }
+    },
+    {
+      "query": "path:design/backend",
+      "color": { "a": 1, "rgb": 65280 }
+    },
+    {
+      "query": "path:design/frontend",
+      "color": { "a": 1, "rgb": 255 }
+    },
+    {
+      "query": "path:design/data",
+      "color": { "a": 1, "rgb": 16776960 }
+    },
+    {
+      "query": "path:adr",
+      "color": { "a": 1, "rgb": 16711935 }
+    },
+    {
+      "query": "path:research/strategies",
+      "color": { "a": 1, "rgb": 16744448 }
+    },
+    {
+      "query": "path:research/llm-trading",
+      "color": { "a": 1, "rgb": 65535 }
+    },
+    {
+      "query": "path:reference",
+      "color": { "a": 1, "rgb": 8421504 }
+    }
+  ],
+  "collapse-display": false,
+  "showArrow": true,
+  "textFadeMultiplier": 0,
+  "nodeSizeMultiplier": 1.2,
+  "lineSizeMultiplier": 1,
+  "collapse-forces": true,
+  "centerStrength": 0.5,
+  "repelStrength": 10,
+  "linkStrength": 1,
+  "linkDistance": 250,
+  "scale": 1,
+  "close": false
+}

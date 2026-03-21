@@ -20,7 +20,7 @@ func (stubNode) Phase() agent.Phase { return agent.PhaseAnalysis }
 
 func (stubNode) Execute(context.Context, *agent.PipelineState) error { return nil }
 
-func TestNodeInterface(t *testing.T) {
+func TestNodeInterface(_ *testing.T) {
 	var _ agent.Node = stubNode{}
 }
 
