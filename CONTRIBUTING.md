@@ -70,6 +70,48 @@ Define the following branch protection settings for `main`:
 5. **Prevent force pushes**
 6. **Prevent branch deletion**
 
+## Dependency tracking
+
+Cross-issue dependencies must be made explicit so contributors and agents can determine safe execution order.
+
+### Marking dependencies in issue bodies
+
+Use plain text references in the issue body to declare relationships:
+
+- `Blocked by #X` — this issue cannot start until issue #X is resolved.
+- `Blocks #X` — this issue must land before issue #X can begin.
+
+Place these references near the top of the issue body, before the main description, so they are immediately visible. Multiple dependencies are listed one per line:
+
+```
+Blocked by #12
+Blocked by #15
+```
+
+Both sides of a dependency should be cross-referenced. When you mark an issue as `Blocked by #X`, also add a `Blocks #Y` reference to issue #X so the relationship is discoverable from either issue.
+
+### Applying the `workflow:blocked` label
+
+Apply the `workflow:blocked` label to any issue that **cannot be started** because a dependency is unresolved. Remove the label once all blockers are merged or closed.
+
+Do **not** apply `workflow:blocked` to an issue that is merely waiting for review — reserve it for hard dependencies where starting work would be premature.
+
+### Representing dependencies in GitHub Project
+
+In the GitHub Project board:
+
+- Issues carrying `workflow:blocked` should remain in **Ready** (not **In Progress**) until their blockers are resolved.
+- Use the issue body references (`Blocked by #X`) as the authoritative source of truth for the dependency relationship.
+- Optionally group or filter the project board by the `workflow:blocked` label to produce a blockers view.
+
+### Surfacing blockers in project views
+
+To make blocked work visible at a glance:
+
+1. Add a **Group by: Label** view and pin the `workflow:blocked` group at the top.
+2. Add a filtered view named **Blockers** using the filter `label:workflow:blocked` so the queue of blocked issues is always one click away.
+3. When triaging, review the **Blockers** view first: close or merge blocking issues before assigning downstream work to agents.
+
 ## Pull request expectations
 
 - Link the issue being addressed
