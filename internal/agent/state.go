@@ -11,12 +11,15 @@ import (
 type AgentRole = domain.AgentRole
 
 const (
-	AgentRoleMarketAnalyst  = domain.AgentRoleMarketAnalyst
-	AgentRoleBullResearcher = domain.AgentRoleBullResearcher
-	AgentRoleBearResearcher = domain.AgentRoleBearResearcher
-	AgentRoleTrader         = domain.AgentRoleTrader
-	AgentRoleInvestJudge    = domain.AgentRoleInvestJudge
-	AgentRoleRiskManager    = domain.AgentRoleRiskManager
+	AgentRoleMarketAnalyst       = domain.AgentRoleMarketAnalyst
+	AgentRoleBullResearcher      = domain.AgentRoleBullResearcher
+	AgentRoleBearResearcher      = domain.AgentRoleBearResearcher
+	AgentRoleTrader              = domain.AgentRoleTrader
+	AgentRoleInvestJudge         = domain.AgentRoleInvestJudge
+	AgentRoleRiskManager         = domain.AgentRoleRiskManager
+	AgentRoleAggressiveAnalyst   = domain.AgentRoleAggressiveAnalyst
+	AgentRoleConservativeAnalyst = domain.AgentRoleConservativeAnalyst
+	AgentRoleNeutralAnalyst      = domain.AgentRoleNeutralAnalyst
 )
 
 type Phase = domain.Phase

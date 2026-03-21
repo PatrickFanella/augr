@@ -293,3 +293,103 @@ func (p *Pipeline) executeTradingPhase(ctx context.Context, state *PipelineState
 
 	return nil
 }
+
+// executeRiskDebatePhase runs the multi-round risk debate. For each round (up
+// to config.RiskDebateRounds), the Aggressive, Conservative, and Neutral
+// analyst nodes execute sequentially. A DebateRoundCompleted event is emitted
+// after each completed round. After all rounds the RiskManager node runs to
+// produce the final risk signal.
+func (p *Pipeline) executeRiskDebatePhase(ctx context.Context, state *PipelineState) error {
+	phaseCtx := ctx
+	if p.config.PhaseTimeout > 0 {
+		var cancel context.CancelFunc
+		phaseCtx, cancel = context.WithTimeout(ctx, p.config.PhaseTimeout)
+		defer cancel()
+	}
+
+	aggressiveNode := p.nodeByRole(PhaseRiskDebate, AgentRoleAggressiveAnalyst)
+	conservativeNode := p.nodeByRole(PhaseRiskDebate, AgentRoleConservativeAnalyst)
+	neutralNode := p.nodeByRole(PhaseRiskDebate, AgentRoleNeutralAnalyst)
+	riskManagerNode := p.nodeByRole(PhaseRiskDebate, AgentRoleRiskManager)
+
+	// Fail fast when required debate nodes are missing.
+	if aggressiveNode == nil {
+		return fmt.Errorf("agent/pipeline: risk debate phase requires a %s node", AgentRoleAggressiveAnalyst)
+	}
+	if conservativeNode == nil {
+		return fmt.Errorf("agent/pipeline: risk debate phase requires a %s node", AgentRoleConservativeAnalyst)
+	}
+	if neutralNode == nil {
+		return fmt.Errorf("agent/pipeline: risk debate phase requires a %s node", AgentRoleNeutralAnalyst)
+	}
+	if riskManagerNode == nil {
+		return fmt.Errorf("agent/pipeline: risk debate phase requires a %s node", AgentRoleRiskManager)
+	}
+
+	rounds := p.config.RiskDebateRounds
+	if rounds < 1 {
+		p.logger.Warn("agent/pipeline: invalid RiskDebateRounds; clamping to 1",
+			slog.Int("configured_rounds", p.config.RiskDebateRounds),
+		)
+		rounds = 1
+	}
+
+	for i := 1; i <= rounds; i++ {
+		// Check for context cancellation before starting the round.
+		if err := phaseCtx.Err(); err != nil {
+			return err
+		}
+
+		// Prepare the round structure so nodes can write contributions.
+		state.RiskDebate.Rounds = append(state.RiskDebate.Rounds, DebateRound{
+			Number:        i,
+			Contributions: make(map[AgentRole]string),
+		})
+
+		// Execute aggressive analyst.
+		if err := aggressiveNode.Execute(phaseCtx, state); err != nil {
+			return err
+		}
+
+		// Execute conservative analyst.
+		if err := conservativeNode.Execute(phaseCtx, state); err != nil {
+			return err
+		}
+
+		// Execute neutral analyst.
+		if err := neutralNode.Execute(phaseCtx, state); err != nil {
+			return err
+		}
+
+		// Emit DebateRoundCompleted event.
+		if p.events != nil {
+			event := PipelineEvent{
+				Type:          DebateRoundCompleted,
+				PipelineRunID: state.PipelineRunID,
+				StrategyID:    state.StrategyID,
+				Ticker:        state.Ticker,
+				Phase:         PhaseRiskDebate,
+				Round:         i,
+				OccurredAt:    time.Now().UTC(),
+			}
+			select {
+			case p.events <- event:
+			case <-phaseCtx.Done():
+				p.logger.Debug("agent/pipeline: DebateRoundCompleted event dropped; phase context cancelled",
+					slog.Int("round", i),
+				)
+			default:
+				p.logger.Debug("agent/pipeline: DebateRoundCompleted event dropped; events channel full",
+					slog.Int("round", i),
+				)
+			}
+		}
+	}
+
+	// Execute the RiskManager to produce the final risk signal.
+	if err := riskManagerNode.Execute(phaseCtx, state); err != nil {
+		return err
+	}
+
+	return nil
+}

@@ -69,6 +69,9 @@ func TestAgentRoleString(t *testing.T) {
 		{domain.AgentRoleTrader, "trader"},
 		{domain.AgentRoleInvestJudge, "invest_judge"},
 		{domain.AgentRoleRiskManager, "risk_manager"},
+		{domain.AgentRoleAggressiveAnalyst, "aggressive_analyst"},
+		{domain.AgentRoleConservativeAnalyst, "conservative_analyst"},
+		{domain.AgentRoleNeutralAnalyst, "neutral_analyst"},
 	}
 
 	for _, tc := range tests {

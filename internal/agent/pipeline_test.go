@@ -686,3 +686,266 @@ func TestExecuteTradingPhase_ContextCancellation(t *testing.T) {
 		t.Errorf("got %d events, want 0", count)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// executeRiskDebatePhase tests
+// ---------------------------------------------------------------------------
+
+// mockRiskDebateNode is a test double for a PhaseRiskDebate Node.
+type mockRiskDebateNode struct {
+	name    string
+	role    AgentRole
+	execute func(ctx context.Context, state *PipelineState) error
+}
+
+func (m *mockRiskDebateNode) Name() string    { return m.name }
+func (m *mockRiskDebateNode) Role() AgentRole { return m.role }
+func (m *mockRiskDebateNode) Phase() Phase    { return PhaseRiskDebate }
+func (m *mockRiskDebateNode) Execute(ctx context.Context, state *PipelineState) error {
+	return m.execute(ctx, state)
+}
+
+// TestExecuteRiskDebatePhase_RoundsExecuteInOrder verifies that
+// executeRiskDebatePhase runs N rounds sequentially (aggressive, conservative,
+// neutral per round) followed by the RiskManager, and emits a
+// DebateRoundCompleted event per round.
+func TestExecuteRiskDebatePhase_RoundsExecuteInOrder(t *testing.T) {
+	runID := uuid.New()
+	stratID := uuid.New()
+
+	var order []string
+
+	aggressiveNode := &mockRiskDebateNode{
+		name: "aggressive_analyst",
+		role: AgentRoleAggressiveAnalyst,
+		execute: func(_ context.Context, state *PipelineState) error {
+			order = append(order, "aggressive")
+			idx := len(state.RiskDebate.Rounds) - 1
+			state.RiskDebate.Rounds[idx].Contributions[AgentRoleAggressiveAnalyst] = "aggressive argument"
+			return nil
+		},
+	}
+
+	conservativeNode := &mockRiskDebateNode{
+		name: "conservative_analyst",
+		role: AgentRoleConservativeAnalyst,
+		execute: func(_ context.Context, state *PipelineState) error {
+			order = append(order, "conservative")
+			idx := len(state.RiskDebate.Rounds) - 1
+			state.RiskDebate.Rounds[idx].Contributions[AgentRoleConservativeAnalyst] = "conservative argument"
+			return nil
+		},
+	}
+
+	neutralNode := &mockRiskDebateNode{
+		name: "neutral_analyst",
+		role: AgentRoleNeutralAnalyst,
+		execute: func(_ context.Context, state *PipelineState) error {
+			order = append(order, "neutral")
+			idx := len(state.RiskDebate.Rounds) - 1
+			state.RiskDebate.Rounds[idx].Contributions[AgentRoleNeutralAnalyst] = "neutral argument"
+			return nil
+		},
+	}
+
+	riskManagerNode := &mockRiskDebateNode{
+		name: "risk_manager",
+		role: AgentRoleRiskManager,
+		execute: func(_ context.Context, state *PipelineState) error {
+			order = append(order, "risk_manager")
+			state.RiskDebate.FinalSignal = "approve with reduced size"
+			return nil
+		},
+	}
+
+	events := make(chan PipelineEvent, 10)
+	pipeline := NewPipeline(
+		PipelineConfig{RiskDebateRounds: 3},
+		nil, nil, events, slog.Default(),
+	)
+	pipeline.RegisterNode(aggressiveNode)
+	pipeline.RegisterNode(conservativeNode)
+	pipeline.RegisterNode(neutralNode)
+	pipeline.RegisterNode(riskManagerNode)
+
+	state := &PipelineState{
+		PipelineRunID: runID,
+		StrategyID:    stratID,
+		Ticker:        "AAPL",
+	}
+
+	err := pipeline.executeRiskDebatePhase(context.Background(), state)
+	if err != nil {
+		t.Fatalf("executeRiskDebatePhase() error = %v, want nil", err)
+	}
+
+	// Verify execution order: aggressive, conservative, neutral x3 rounds, then risk_manager.
+	wantOrder := []string{
+		"aggressive", "conservative", "neutral",
+		"aggressive", "conservative", "neutral",
+		"aggressive", "conservative", "neutral",
+		"risk_manager",
+	}
+	if len(order) != len(wantOrder) {
+		t.Fatalf("got %d executions, want %d: %v", len(order), len(wantOrder), order)
+	}
+	for i := range wantOrder {
+		if order[i] != wantOrder[i] {
+			t.Errorf("execution[%d] = %q, want %q", i, order[i], wantOrder[i])
+		}
+	}
+
+	// Verify 3 rounds accumulated in state.
+	if got := len(state.RiskDebate.Rounds); got != 3 {
+		t.Fatalf("got %d rounds, want 3", got)
+	}
+	for i, round := range state.RiskDebate.Rounds {
+		if round.Number != i+1 {
+			t.Errorf("round[%d].Number = %d, want %d", i, round.Number, i+1)
+		}
+		if got := round.Contributions[AgentRoleAggressiveAnalyst]; got != "aggressive argument" {
+			t.Errorf("round[%d] aggressive = %q, want %q", i, got, "aggressive argument")
+		}
+		if got := round.Contributions[AgentRoleConservativeAnalyst]; got != "conservative argument" {
+			t.Errorf("round[%d] conservative = %q, want %q", i, got, "conservative argument")
+		}
+		if got := round.Contributions[AgentRoleNeutralAnalyst]; got != "neutral argument" {
+			t.Errorf("round[%d] neutral = %q, want %q", i, got, "neutral argument")
+		}
+	}
+
+	// Verify 3 DebateRoundCompleted events with correct metadata.
+	close(events)
+	var emitted []PipelineEvent
+	for e := range events {
+		emitted = append(emitted, e)
+	}
+	if len(emitted) != 3 {
+		t.Fatalf("got %d events, want 3", len(emitted))
+	}
+	for i, e := range emitted {
+		if e.Type != DebateRoundCompleted {
+			t.Errorf("event[%d].Type = %q, want %q", i, e.Type, DebateRoundCompleted)
+		}
+		if e.Round != i+1 {
+			t.Errorf("event[%d].Round = %d, want %d", i, e.Round, i+1)
+		}
+		if e.Phase != PhaseRiskDebate {
+			t.Errorf("event[%d].Phase = %q, want %q", i, e.Phase, PhaseRiskDebate)
+		}
+		if e.PipelineRunID != runID {
+			t.Errorf("event[%d].PipelineRunID = %v, want %v", i, e.PipelineRunID, runID)
+		}
+		if e.StrategyID != stratID {
+			t.Errorf("event[%d].StrategyID = %v, want %v", i, e.StrategyID, stratID)
+		}
+		if e.OccurredAt.IsZero() {
+			t.Errorf("event[%d].OccurredAt is zero", i)
+		}
+	}
+
+	// The final signal must be set by the risk manager.
+	if state.RiskDebate.FinalSignal != "approve with reduced size" {
+		t.Errorf("RiskDebate.FinalSignal = %q, want %q", state.RiskDebate.FinalSignal, "approve with reduced size")
+	}
+}
+
+// TestExecuteRiskDebatePhase_FinalSignalExtractedFromRiskManager verifies that
+// the RiskManager node populates the RiskDebate.FinalSignal field and that
+// state accumulated across rounds is available to the RiskManager.
+func TestExecuteRiskDebatePhase_FinalSignalExtractedFromRiskManager(t *testing.T) {
+	aggressiveNode := &mockRiskDebateNode{
+		name: "aggressive_analyst",
+		role: AgentRoleAggressiveAnalyst,
+		execute: func(_ context.Context, state *PipelineState) error {
+			idx := len(state.RiskDebate.Rounds) - 1
+			round := &state.RiskDebate.Rounds[idx]
+			round.Contributions[AgentRoleAggressiveAnalyst] = fmt.Sprintf("aggressive_r%d", round.Number)
+			return nil
+		},
+	}
+
+	conservativeNode := &mockRiskDebateNode{
+		name: "conservative_analyst",
+		role: AgentRoleConservativeAnalyst,
+		execute: func(_ context.Context, state *PipelineState) error {
+			idx := len(state.RiskDebate.Rounds) - 1
+			round := &state.RiskDebate.Rounds[idx]
+			round.Contributions[AgentRoleConservativeAnalyst] = fmt.Sprintf("conservative_r%d", round.Number)
+			return nil
+		},
+	}
+
+	neutralNode := &mockRiskDebateNode{
+		name: "neutral_analyst",
+		role: AgentRoleNeutralAnalyst,
+		execute: func(_ context.Context, state *PipelineState) error {
+			idx := len(state.RiskDebate.Rounds) - 1
+			round := &state.RiskDebate.Rounds[idx]
+			round.Contributions[AgentRoleNeutralAnalyst] = fmt.Sprintf("neutral_r%d", round.Number)
+			return nil
+		},
+	}
+
+	riskManagerNode := &mockRiskDebateNode{
+		name: "risk_manager",
+		role: AgentRoleRiskManager,
+		execute: func(_ context.Context, state *PipelineState) error {
+			// The risk manager reads all rounds and produces a final signal.
+			state.RiskDebate.FinalSignal = fmt.Sprintf(
+				"final verdict based on %d rounds", len(state.RiskDebate.Rounds),
+			)
+			return nil
+		},
+	}
+
+	pipeline := NewPipeline(
+		PipelineConfig{RiskDebateRounds: 2},
+		nil, nil, make(chan PipelineEvent, 10), slog.Default(),
+	)
+	pipeline.RegisterNode(aggressiveNode)
+	pipeline.RegisterNode(conservativeNode)
+	pipeline.RegisterNode(neutralNode)
+	pipeline.RegisterNode(riskManagerNode)
+
+	state := &PipelineState{
+		PipelineRunID: uuid.New(),
+		StrategyID:    uuid.New(),
+		Ticker:        "TSLA",
+	}
+
+	if err := pipeline.executeRiskDebatePhase(context.Background(), state); err != nil {
+		t.Fatalf("executeRiskDebatePhase() error = %v, want nil", err)
+	}
+
+	// Verify 2 rounds accumulated in state.
+	if got := len(state.RiskDebate.Rounds); got != 2 {
+		t.Fatalf("got %d rounds, want 2", got)
+	}
+
+	// Each round must have contributions from all three analysts.
+	for i, round := range state.RiskDebate.Rounds {
+		roundNum := i + 1
+		if round.Number != roundNum {
+			t.Errorf("round[%d].Number = %d, want %d", i, round.Number, roundNum)
+		}
+		wantAggressive := fmt.Sprintf("aggressive_r%d", roundNum)
+		if got := round.Contributions[AgentRoleAggressiveAnalyst]; got != wantAggressive {
+			t.Errorf("round[%d] aggressive = %q, want %q", i, got, wantAggressive)
+		}
+		wantConservative := fmt.Sprintf("conservative_r%d", roundNum)
+		if got := round.Contributions[AgentRoleConservativeAnalyst]; got != wantConservative {
+			t.Errorf("round[%d] conservative = %q, want %q", i, got, wantConservative)
+		}
+		wantNeutral := fmt.Sprintf("neutral_r%d", roundNum)
+		if got := round.Contributions[AgentRoleNeutralAnalyst]; got != wantNeutral {
+			t.Errorf("round[%d] neutral = %q, want %q", i, got, wantNeutral)
+		}
+	}
+
+	// Risk manager must have produced a final signal referencing all 2 rounds.
+	wantSignal := "final verdict based on 2 rounds"
+	if state.RiskDebate.FinalSignal != wantSignal {
+		t.Errorf("RiskDebate.FinalSignal = %q, want %q", state.RiskDebate.FinalSignal, wantSignal)
+	}
+}
