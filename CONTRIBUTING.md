@@ -76,3 +76,33 @@ Define the following branch protection settings for `main`:
 - Use labels that match the work (`type:*`, `priority:*`, `phase:*`, etc.)
 - Confirm changes are scoped to the issue
 - Ensure documentation is updated when behavior or process changes
+
+## Pre-commit hooks
+
+This repository uses [pre-commit](https://pre-commit.com/) to run formatting and lint checks automatically on `git commit`.
+
+### One-time setup
+
+1. Install `pre-commit`:
+   - `pip install pre-commit`
+2. Install hook tools used by this repository:
+   - `gofumpt` is installed automatically by `pre-commit`
+   - Install `golangci-lint` (see: https://golangci-lint.run/welcome/install/)
+3. Install hooks in your local clone:
+   - `pre-commit install`
+
+### Hook behavior
+
+- **Go files (`*.go`)**
+  - `gofumpt` checks formatting and blocks commits for unformatted files (run `gofumpt -w .` or `gofumpt -w <file>` to fix)
+  - `golangci-lint` runs lint checks and blocks commits on lint errors
+  - If `go.mod` is not present yet, `golangci-lint` is skipped
+- **TypeScript/JavaScript files (`*.ts`, `*.tsx`, `*.js`, `*.jsx`, `*.mjs`, `*.cjs`)**
+  - ESLint runs when a frontend `package.json` is present
+- **Formatting files (`*.ts`, `*.tsx`, `*.js`, `*.jsx`, `*.mjs`, `*.cjs`, `*.json`, `*.yaml`, `*.yml`, `*.md`)**
+  - Prettier `--check` runs when a frontend `package.json` is present
+
+### Useful commands
+
+- Run hooks for staged files (same behavior as commit): `pre-commit run`
+- Run hooks for all files: `pre-commit run --all-files`

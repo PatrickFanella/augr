@@ -1,0 +1,26 @@
+repos:
+  - repo: local
+    hooks:
+      - id: gofumpt
+        name: gofumpt
+        entry: bash -c 'out=$(gofumpt -l "$@"); if [ -n "$out" ]; then echo "$out"; echo "Run gofumpt -w on the listed files."; exit 1; fi' --
+        language: golang
+        additional_dependencies: [mvdan.cc/gofumpt@v0.9.2]
+        types_or: [go]
+
+      - id: eslint
+        name: eslint (typescript/javascript)
+        entry: bash -c 'if [ ! -f package.json ]; then exit 0; fi; npx --no-install eslint "$@"' --
+        language: system
+        files: \.(ts|tsx|js|jsx|mjs|cjs)$
+
+      - id: prettier
+        name: prettier --check (typescript/javascript/json/yaml/markdown)
+        entry: bash -c 'if [ ! -f package.json ]; then exit 0; fi; npx --no-install prettier --check "$@"' --
+        language: system
+        files: \.(ts|tsx|js|jsx|mjs|cjs|json|ya?ml|md)$
+      - id: golangci-lint
+        name: golangci-lint
+        entry: bash -c 'if [ ! -f go.mod ]; then exit 0; fi; golangci-lint run --out-format=colored-line-number "$@"' --
+        language: system
+        files: \.go$
