@@ -20,18 +20,20 @@ func discardLogger() *slog.Logger {
 func TestClientGetSuccess(t *testing.T) {
 	t.Parallel()
 
+	type requestDetails struct {
+		method string
+		path   string
+		apiKey string
+		ticker string
+	}
+
+	requests := make(chan requestDetails, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			t.Fatalf("request method = %s, want %s", r.Method, http.MethodGet)
-		}
-		if r.URL.Path != "/v3/reference/tickers" {
-			t.Fatalf("request path = %s, want %s", r.URL.Path, "/v3/reference/tickers")
-		}
-		if got := r.URL.Query().Get("apiKey"); got != "test-key" {
-			t.Fatalf("apiKey query = %q, want %q", got, "test-key")
-		}
-		if got := r.URL.Query().Get("ticker"); got != "AAPL" {
-			t.Fatalf("ticker query = %q, want %q", got, "AAPL")
+		requests <- requestDetails{
+			method: r.Method,
+			path:   r.URL.Path,
+			apiKey: r.URL.Query().Get("apiKey"),
+			ticker: r.URL.Query().Get("ticker"),
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -52,6 +54,24 @@ func TestClientGetSuccess(t *testing.T) {
 
 	if got := string(body); got != `{"status":"OK","results":[{"ticker":"AAPL"}]}` {
 		t.Fatalf("Get() body = %q, want successful payload", got)
+	}
+
+	select {
+	case request := <-requests:
+		if request.method != http.MethodGet {
+			t.Fatalf("request method = %s, want %s", request.method, http.MethodGet)
+		}
+		if request.path != "/v3/reference/tickers" {
+			t.Fatalf("request path = %s, want %s", request.path, "/v3/reference/tickers")
+		}
+		if request.apiKey != "test-key" {
+			t.Fatalf("apiKey query = %q, want %q", request.apiKey, "test-key")
+		}
+		if request.ticker != "AAPL" {
+			t.Fatalf("ticker query = %q, want %q", request.ticker, "AAPL")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("request details were not captured")
 	}
 }
 
