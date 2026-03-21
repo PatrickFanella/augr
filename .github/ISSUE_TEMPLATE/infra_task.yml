@@ -1,0 +1,41 @@
+name: Infrastructure task
+description: Track infrastructure, CI/CD, deployment, or platform work.
+title: "infra: "
+labels:
+  - type: infra
+body:
+  - type: input
+    id: issue_title
+    attributes:
+      label: Title
+      description: A short, specific title for this infrastructure task.
+      placeholder: "infra: concise summary"
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Describe the infrastructure change and why it is needed.
+      placeholder: What change is needed in infrastructure/platform and why?
+    validations:
+      required: true
+  - type: textarea
+    id: implementation_notes
+    attributes:
+      label: Implementation notes
+      description: Any technical details, rollout notes, or migration steps.
+      placeholder: Include environments, dependencies, and rollout steps.
+    validations:
+      required: false
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: Acceptance criteria
+      description: Define clear, testable completion criteria.
+      placeholder: |
+        - [ ] Infrastructure change is implemented
+        - [ ] Deployment/rollback approach is documented
+        - [ ] Monitoring/alerts updated as needed
+    validations:
+      required: true
