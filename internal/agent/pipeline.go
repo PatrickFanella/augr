@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -108,7 +109,26 @@ func (p *Pipeline) executeResearchDebatePhase(ctx context.Context, state *Pipeli
 	bearNode := p.nodeByRole(PhaseResearchDebate, AgentRoleBearResearcher)
 	judgeNode := p.nodeByRole(PhaseResearchDebate, AgentRoleInvestJudge)
 
-	for i := 1; i <= p.config.ResearchDebateRounds; i++ {
+	// Fail fast when required debate nodes are missing.
+	if bullNode == nil {
+		return fmt.Errorf("agent/pipeline: research debate phase requires a %s node", AgentRoleBullResearcher)
+	}
+	if bearNode == nil {
+		return fmt.Errorf("agent/pipeline: research debate phase requires a %s node", AgentRoleBearResearcher)
+	}
+	if judgeNode == nil {
+		return fmt.Errorf("agent/pipeline: research debate phase requires a %s node", AgentRoleInvestJudge)
+	}
+
+	rounds := p.config.ResearchDebateRounds
+	if rounds < 1 {
+		p.logger.Warn("agent/pipeline: invalid ResearchDebateRounds; clamping to 1",
+			slog.Int("configured_rounds", p.config.ResearchDebateRounds),
+		)
+		rounds = 1
+	}
+
+	for i := 1; i <= rounds; i++ {
 		// Check for context cancellation before starting the round.
 		if err := phaseCtx.Err(); err != nil {
 			return err
@@ -121,17 +141,13 @@ func (p *Pipeline) executeResearchDebatePhase(ctx context.Context, state *Pipeli
 		})
 
 		// Execute bull researcher.
-		if bullNode != nil {
-			if err := bullNode.Execute(phaseCtx, state); err != nil {
-				return err
-			}
+		if err := bullNode.Execute(phaseCtx, state); err != nil {
+			return err
 		}
 
 		// Execute bear researcher.
-		if bearNode != nil {
-			if err := bearNode.Execute(phaseCtx, state); err != nil {
-				return err
-			}
+		if err := bearNode.Execute(phaseCtx, state); err != nil {
+			return err
 		}
 
 		// Emit DebateRoundCompleted event.
@@ -151,15 +167,17 @@ func (p *Pipeline) executeResearchDebatePhase(ctx context.Context, state *Pipeli
 				p.logger.Debug("agent/pipeline: DebateRoundCompleted event dropped; phase context cancelled",
 					slog.Int("round", i),
 				)
+			default:
+				p.logger.Debug("agent/pipeline: DebateRoundCompleted event dropped; events channel full",
+					slog.Int("round", i),
+				)
 			}
 		}
 	}
 
 	// Execute the InvestJudge (Research Manager).
-	if judgeNode != nil {
-		if err := judgeNode.Execute(phaseCtx, state); err != nil {
-			return err
-		}
+	if err := judgeNode.Execute(phaseCtx, state); err != nil {
+		return err
 	}
 
 	return nil
