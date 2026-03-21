@@ -2,6 +2,7 @@ package agent_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -29,9 +30,9 @@ func TestPipelineStateStoresPhaseOutputs(t *testing.T) {
 	expectedErr := errors.New("risk rejected trade")
 
 	state := agent.PipelineState{
-		RunID:      runID,
-		StrategyID: strategyID,
-		Ticker:     "AAPL",
+		PipelineRunID: runID,
+		StrategyID:    strategyID,
+		Ticker:        "AAPL",
 		AnalystReports: map[agent.AgentRole]string{
 			agent.AgentRoleMarketAnalyst:  "Uptrend confirmed",
 			agent.AgentRoleBullResearcher: "Momentum remains strong",
@@ -80,8 +81,8 @@ func TestPipelineStateStoresPhaseOutputs(t *testing.T) {
 		Errors: []error{expectedErr},
 	}
 
-	if state.RunID != runID {
-		t.Fatalf("RunID = %v, want %v", state.RunID, runID)
+	if state.PipelineRunID != runID {
+		t.Fatalf("PipelineRunID = %v, want %v", state.PipelineRunID, runID)
 	}
 	if state.StrategyID != strategyID {
 		t.Fatalf("StrategyID = %v, want %v", state.StrategyID, strategyID)
@@ -108,20 +109,24 @@ func TestPipelineStateStoresPhaseOutputs(t *testing.T) {
 
 func TestPipelineEventTypesCoverUserVisibleTransitions(t *testing.T) {
 	timestamp := time.Now().UTC()
+	finalSignalPayload, err := json.Marshal(agent.FinalSignal{
+		Signal:     agent.PipelineSignalHold,
+		Confidence: 0.64,
+	})
+	if err != nil {
+		t.Fatalf("json.Marshal(FinalSignal) error = %v", err)
+	}
 
 	event := agent.PipelineEvent{
-		Type:       agent.SignalGenerated,
-		RunID:      uuid.New(),
-		StrategyID: uuid.New(),
-		Ticker:     "AAPL",
-		AgentRole:  agent.AgentRoleRiskManager,
-		Phase:      agent.PhaseRiskDebate,
-		Round:      2,
-		Payload: agent.FinalSignal{
-			Signal:     agent.PipelineSignalHold,
-			Confidence: 0.64,
-		},
-		OccurredAt: timestamp,
+		Type:          agent.SignalGenerated,
+		PipelineRunID: uuid.New(),
+		StrategyID:    uuid.New(),
+		Ticker:        "AAPL",
+		AgentRole:     agent.AgentRoleRiskManager,
+		Phase:         agent.PhaseRiskDebate,
+		Round:         2,
+		Payload:       finalSignalPayload,
+		OccurredAt:    timestamp,
 	}
 
 	if got := agent.PipelineStarted.String(); got != "pipeline_started" {
@@ -143,9 +148,36 @@ func TestPipelineEventTypesCoverUserVisibleTransitions(t *testing.T) {
 		t.Fatalf("PipelineError.String() = %q, want %q", got, "pipeline_error")
 	}
 
-	payload, ok := event.Payload.(agent.FinalSignal)
-	if !ok {
-		t.Fatalf("Payload type = %T, want agent.FinalSignal", event.Payload)
+	if string(event.Payload) != string(finalSignalPayload) {
+		t.Fatalf("Payload = %s, want %s", event.Payload, finalSignalPayload)
+	}
+
+	marshaled, err := json.Marshal(event)
+	if err != nil {
+		t.Fatalf("json.Marshal(PipelineEvent) error = %v", err)
+	}
+	if !json.Valid(marshaled) {
+		t.Fatalf("json.Marshal(PipelineEvent) produced invalid JSON: %s", marshaled)
+	}
+
+	var decoded struct {
+		Type          string          `json:"type"`
+		PipelineRunID string          `json:"pipeline_run_id"`
+		Payload       json.RawMessage `json:"payload"`
+	}
+	if err := json.Unmarshal(marshaled, &decoded); err != nil {
+		t.Fatalf("json.Unmarshal(PipelineEvent) error = %v", err)
+	}
+	if decoded.Type != agent.SignalGenerated.String() {
+		t.Fatalf("decoded.Type = %q, want %q", decoded.Type, agent.SignalGenerated.String())
+	}
+	if decoded.PipelineRunID == "" {
+		t.Fatal("decoded.PipelineRunID is empty")
+	}
+
+	var payload agent.FinalSignal
+	if err := json.Unmarshal(decoded.Payload, &payload); err != nil {
+		t.Fatalf("json.Unmarshal(payload) error = %v", err)
 	}
 	if payload.Signal != agent.PipelineSignalHold || payload.Confidence != 0.64 {
 		t.Fatalf("Payload = %+v, want hold @ 0.64", payload)

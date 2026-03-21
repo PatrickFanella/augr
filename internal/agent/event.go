@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -25,14 +26,14 @@ func (t PipelineEventType) String() string {
 
 // PipelineEvent is emitted for user-visible pipeline state changes.
 type PipelineEvent struct {
-	Type       PipelineEventType `json:"type"`
-	RunID      uuid.UUID         `json:"run_id"`
-	StrategyID uuid.UUID         `json:"strategy_id"`
-	Ticker     string            `json:"ticker,omitempty"`
-	AgentRole  AgentRole         `json:"agent_role,omitempty"`
-	Phase      Phase             `json:"phase,omitempty"`
-	Round      int               `json:"round,omitempty"`
-	Payload    any               `json:"payload,omitempty"`
-	Error      string            `json:"error,omitempty"`
-	OccurredAt time.Time         `json:"occurred_at"`
+	Type          PipelineEventType `json:"type"`
+	PipelineRunID uuid.UUID         `json:"pipeline_run_id"`
+	StrategyID    uuid.UUID         `json:"strategy_id"`
+	Ticker        string            `json:"ticker,omitempty"`
+	AgentRole     AgentRole         `json:"agent_role,omitempty"`
+	Phase         Phase             `json:"phase,omitempty"`
+	Round         int               `json:"round,omitempty"`
+	Payload       json.RawMessage   `json:"payload,omitempty"`
+	Error         string            `json:"error,omitempty"`
+	OccurredAt    time.Time         `json:"occurred_at"`
 }

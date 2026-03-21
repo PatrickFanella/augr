@@ -36,7 +36,7 @@ const (
 
 // PipelineState carries the mutable state shared across all pipeline phases.
 type PipelineState struct {
-	RunID          uuid.UUID            `json:"run_id"`
+	PipelineRunID  uuid.UUID            `json:"pipeline_run_id"`
 	StrategyID     uuid.UUID            `json:"strategy_id"`
 	Ticker         string               `json:"ticker"`
 	AnalystReports map[AgentRole]string `json:"analyst_reports,omitempty"`
@@ -44,7 +44,9 @@ type PipelineState struct {
 	TradingPlan    TradingPlan          `json:"trading_plan"`
 	RiskDebate     RiskDebateState      `json:"risk_debate"`
 	FinalSignal    FinalSignal          `json:"final_signal"`
-	Errors         []error              `json:"-"`
+	// Errors holds internal errors encountered during pipeline execution.
+	// It is intentionally excluded from JSON output via `json:"-"`.
+	Errors []error `json:"-"`
 }
 
 // DebateRound stores the contributions made during a single debate round.
