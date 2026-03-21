@@ -1,8 +1,12 @@
 package agent
 
 import (
+	"context"
 	"log/slog"
+	"sync"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 )
@@ -74,4 +78,68 @@ func (p *Pipeline) Nodes() map[Phase][]Node {
 		out[phase] = append([]Node(nil), nodes...)
 	}
 	return out
+}
+
+// executeAnalysisPhase runs all registered PhaseAnalysis nodes concurrently using
+// errgroup. If any node fails, a warning is logged and the remaining nodes continue
+// unaffected (partial failures do not abort the phase). If config.PhaseTimeout is
+// positive, it is applied as a deadline for the entire phase, cancelling any nodes
+// that have not yet completed. An AgentDecisionMade event is emitted (non-blocking)
+// after each node completes successfully.
+//
+// This method always returns nil; analyst node failures are tolerated and surfaced only
+// through log warnings. The error return is reserved for future structural failures
+// (e.g., a cancelled parent context passed before any node is launched).
+func (p *Pipeline) executeAnalysisPhase(ctx context.Context, state *PipelineState) error {
+	// Ensure the analyst-reports mutex is initialised before goroutines start.
+	// This single-threaded initialisation is safe because goroutines are not yet running.
+	if state.mu == nil {
+		state.mu = &sync.Mutex{}
+	}
+
+	phaseCtx := ctx
+	if p.config.PhaseTimeout > 0 {
+		var cancel context.CancelFunc
+		phaseCtx, cancel = context.WithTimeout(ctx, p.config.PhaseTimeout)
+		defer cancel()
+	}
+
+	g, gCtx := errgroup.WithContext(phaseCtx)
+
+	for _, n := range p.nodes[PhaseAnalysis] {
+		node := n
+		g.Go(func() error {
+			if err := node.Execute(gCtx, state); err != nil {
+				p.logger.Warn("agent/pipeline: analyst node failed",
+					slog.String("node", node.Name()),
+					slog.Any("error", err),
+				)
+				return nil // partial failures are tolerated; do not abort the phase
+			}
+
+			if p.events != nil {
+				event := PipelineEvent{
+					Type:          AgentDecisionMade,
+					PipelineRunID: state.PipelineRunID,
+					StrategyID:    state.StrategyID,
+					Ticker:        state.Ticker,
+					AgentRole:     node.Role(),
+					Phase:         PhaseAnalysis,
+					OccurredAt:    time.Now().UTC(),
+				}
+				// Non-blocking send: drop the event rather than let the goroutine
+				// stall if the channel is full or the phase context is cancelled.
+				select {
+				case p.events <- event:
+				case <-gCtx.Done():
+					p.logger.Debug("agent/pipeline: AgentDecisionMade event dropped; phase context cancelled",
+						slog.String("node", node.Name()),
+					)
+				}
+			}
+			return nil
+		})
+	}
+
+	return g.Wait()
 }

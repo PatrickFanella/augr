@@ -14,11 +14,10 @@ import (
 
 type stubNode struct{}
 
-func (stubNode) Name() string { return "stub" }
-
-func (stubNode) Phase() agent.Phase { return agent.PhaseAnalysis }
-
-func (stubNode) Execute(context.Context, *agent.PipelineState) error { return nil }
+func (stubNode) Name() string                                               { return "stub" }
+func (stubNode) Role() agent.AgentRole                                     { return agent.AgentRoleMarketAnalyst }
+func (stubNode) Phase() agent.Phase                                        { return agent.PhaseAnalysis }
+func (stubNode) Execute(context.Context, *agent.PipelineState) error       { return nil }
 
 func TestNodeInterface(_ *testing.T) {
 	var _ agent.Node = stubNode{}

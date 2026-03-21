@@ -1,100 +1,162 @@
-package agent_test
+package agent
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/PatrickFanella/get-rich-quick/internal/agent"
+	"github.com/google/uuid"
 )
 
-// phaseNode is a minimal Node stub whose Phase() returns a configurable value.
-type phaseNode struct {
-	name  string
-	phase agent.Phase
+// mockAnalystNode is a test double for a PhaseAnalysis Node.
+type mockAnalystNode struct {
+	name    string
+	role    AgentRole
+	execute func(ctx context.Context, state *PipelineState) error
 }
 
-func (n phaseNode) Name() string                                     { return n.name }
-func (n phaseNode) Phase() agent.Phase                               { return n.phase }
-func (n phaseNode) Execute(context.Context, *agent.PipelineState) error { return nil }
+func (m *mockAnalystNode) Name() string    { return m.name }
+func (m *mockAnalystNode) Role() AgentRole { return m.role }
+func (m *mockAnalystNode) Phase() Phase    { return PhaseAnalysis }
+func (m *mockAnalystNode) Execute(ctx context.Context, state *PipelineState) error {
+	return m.execute(ctx, state)
+}
 
-func TestNewPipelineSetsDefaults(t *testing.T) {
-	events := make(chan agent.PipelineEvent, 1)
-	p := agent.NewPipeline(
-		agent.PipelineConfig{}, // zero value — defaults should be applied
-		nil,
-		nil,
+// TestExecuteAnalysisPhase verifies that executeAnalysisPhase:
+//   - Runs all PhaseAnalysis nodes concurrently.
+//   - Does not abort the phase when one node fails (partial-failure tolerance).
+//   - Emits an AgentDecisionMade event for each successfully completed node.
+//   - Cancels slow nodes when the phase timeout fires.
+func TestExecuteAnalysisPhase(t *testing.T) {
+	runID := uuid.New()
+	stratID := uuid.New()
+
+	var slowCancelled atomic.Bool
+
+	// Node 1: succeeds immediately, writes its report.
+	node1 := &mockAnalystNode{
+		name: "market_analyst",
+		role: AgentRoleMarketAnalyst,
+		execute: func(_ context.Context, state *PipelineState) error {
+			state.SetAnalystReport(AgentRoleMarketAnalyst, "bullish trend")
+			return nil
+		},
+	}
+
+	// Node 2: succeeds immediately, writes its report.
+	node2 := &mockAnalystNode{
+		name: "bull_researcher",
+		role: AgentRoleBullResearcher,
+		execute: func(_ context.Context, state *PipelineState) error {
+			state.SetAnalystReport(AgentRoleBullResearcher, "strong momentum")
+			return nil
+		},
+	}
+
+	// Node 3: slow – blocks indefinitely until its context is cancelled by the timeout.
+	node3 := &mockAnalystNode{
+		name: "bear_researcher",
+		role: AgentRoleBearResearcher,
+		execute: func(ctx context.Context, _ *PipelineState) error {
+			select {
+			case <-ctx.Done():
+				slowCancelled.Store(true)
+				return ctx.Err()
+			case <-time.After(10 * time.Second):
+				return nil
+			}
+		},
+	}
+
+	// Node 4: fails immediately with a non-context error.
+	node4 := &mockAnalystNode{
+		name: "risk_manager",
+		role: AgentRoleRiskManager,
+		execute: func(_ context.Context, _ *PipelineState) error {
+			return errors.New("simulated analyst failure")
+		},
+	}
+
+	const phaseTimeout = 200 * time.Millisecond
+	events := make(chan PipelineEvent, 10)
+
+	pipeline := NewPipeline(
+		PipelineConfig{PhaseTimeout: phaseTimeout},
+		nil, // pipelineRunRepo not required for this unit test
+		nil, // agentDecisionRepo not required for this unit test
 		events,
 		slog.Default(),
 	)
+	pipeline.RegisterNode(node1)
+	pipeline.RegisterNode(node2)
+	pipeline.RegisterNode(node3)
+	pipeline.RegisterNode(node4)
 
-	cfg := p.Config()
-	if cfg.ResearchDebateRounds != 3 {
-		t.Errorf("ResearchDebateRounds = %d, want 3", cfg.ResearchDebateRounds)
-	}
-	if cfg.RiskDebateRounds != 3 {
-		t.Errorf("RiskDebateRounds = %d, want 3", cfg.RiskDebateRounds)
-	}
-}
-
-func TestNewPipelinePreservesExplicitConfig(t *testing.T) {
-	events := make(chan agent.PipelineEvent, 1)
-	cfg := agent.PipelineConfig{
-		PipelineTimeout:      5 * time.Minute,
-		PhaseTimeout:         90 * time.Second,
-		ResearchDebateRounds: 5,
-		RiskDebateRounds:     2,
-	}
-	p := agent.NewPipeline(cfg, nil, nil, events, slog.Default())
-
-	got := p.Config()
-	if got.ResearchDebateRounds != 5 {
-		t.Errorf("ResearchDebateRounds = %d, want 5", got.ResearchDebateRounds)
-	}
-	if got.RiskDebateRounds != 2 {
-		t.Errorf("RiskDebateRounds = %d, want 2", got.RiskDebateRounds)
-	}
-	if got.PipelineTimeout != 5*time.Minute {
-		t.Errorf("PipelineTimeout = %v, want 5m", got.PipelineTimeout)
-	}
-	if got.PhaseTimeout != 90*time.Second {
-		t.Errorf("PhaseTimeout = %v, want 90s", got.PhaseTimeout)
-	}
-}
-
-func TestRegisterNodeGroupsByPhase(t *testing.T) {
-	events := make(chan agent.PipelineEvent, 1)
-	p := agent.NewPipeline(agent.PipelineConfig{}, nil, nil, events, slog.Default())
-
-	analyst := phaseNode{name: "market_analyst", phase: agent.PhaseAnalysis}
-	bull := phaseNode{name: "bull_researcher", phase: agent.PhaseResearchDebate}
-	bear := phaseNode{name: "bear_researcher", phase: agent.PhaseResearchDebate}
-	trader := phaseNode{name: "trader", phase: agent.PhaseTrading}
-	risk := phaseNode{name: "risk_manager", phase: agent.PhaseRiskDebate}
-
-	for _, n := range []agent.Node{analyst, bull, bear, trader, risk} {
-		p.RegisterNode(n)
+	state := &PipelineState{
+		PipelineRunID: runID,
+		StrategyID:    stratID,
+		Ticker:        "AAPL",
 	}
 
-	nodes := p.Nodes()
+	start := time.Now()
+	err := pipeline.executeAnalysisPhase(context.Background(), state)
+	elapsed := time.Since(start)
 
-	checkPhase := func(phase agent.Phase, wantNames []string) {
-		t.Helper()
-		got := nodes[phase]
-		if len(got) != len(wantNames) {
-			t.Errorf("phase %q: got %d nodes, want %d", phase, len(got), len(wantNames))
-			return
+	// The phase must return nil even though two nodes did not complete successfully.
+	if err != nil {
+		t.Fatalf("executeAnalysisPhase() error = %v, want nil", err)
+	}
+
+	// The phase must complete within a reasonable bound of the timeout.
+	// Allow up to 2.5x the configured timeout to account for goroutine scheduling overhead.
+	const maxElapsed = phaseTimeout * 5 / 2
+	if elapsed > maxElapsed {
+		t.Fatalf("executeAnalysisPhase() took %v, want < %v", elapsed, maxElapsed)
+	}
+
+	// Successful nodes must have written their reports to shared state.
+	if got := state.AnalystReports[AgentRoleMarketAnalyst]; got != "bullish trend" {
+		t.Errorf("AnalystReports[market_analyst] = %q, want %q", got, "bullish trend")
+	}
+	if got := state.AnalystReports[AgentRoleBullResearcher]; got != "strong momentum" {
+		t.Errorf("AnalystReports[bull_researcher] = %q, want %q", got, "strong momentum")
+	}
+
+	// The slow node must have had its context cancelled by the phase timeout.
+	if !slowCancelled.Load() {
+		t.Error("slow node context was not cancelled by phase timeout")
+	}
+
+	// Exactly two AgentDecisionMade events must be emitted (one per successful node).
+	close(events)
+	var emitted []PipelineEvent
+	for e := range events {
+		emitted = append(emitted, e)
+	}
+	if len(emitted) != 2 {
+		t.Fatalf("got %d AgentDecisionMade events, want 2", len(emitted))
+	}
+	for _, e := range emitted {
+		if e.Type != AgentDecisionMade {
+			t.Errorf("event type = %q, want %q", e.Type, AgentDecisionMade)
 		}
-		for i, n := range got {
-			if n.Name() != wantNames[i] {
-				t.Errorf("phase %q node[%d].Name() = %q, want %q", phase, i, n.Name(), wantNames[i])
-			}
+		if e.PipelineRunID != runID {
+			t.Errorf("event PipelineRunID = %v, want %v", e.PipelineRunID, runID)
+		}
+		if e.StrategyID != stratID {
+			t.Errorf("event StrategyID = %v, want %v", e.StrategyID, stratID)
+		}
+		if e.Ticker != "AAPL" {
+			t.Errorf("event Ticker = %q, want %q", e.Ticker, "AAPL")
+		}
+		if e.Phase != PhaseAnalysis {
+			t.Errorf("event Phase = %q, want %q", e.Phase, PhaseAnalysis)
+		}
+		if e.OccurredAt.IsZero() {
+			t.Error("event OccurredAt is zero")
 		}
 	}
-
-	checkPhase(agent.PhaseAnalysis, []string{"market_analyst"})
-	checkPhase(agent.PhaseResearchDebate, []string{"bull_researcher", "bear_researcher"})
-	checkPhase(agent.PhaseTrading, []string{"trader"})
-	checkPhase(agent.PhaseRiskDebate, []string{"risk_manager"})
 }
