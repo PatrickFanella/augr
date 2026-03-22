@@ -22,6 +22,7 @@ const (
 	functionIncomeStatement    = "INCOME_STATEMENT"
 	functionBalanceSheet       = "BALANCE_SHEET"
 	functionNewsSentiment      = "NEWS_SENTIMENT"
+	newsTimestampLayout        = "20060102T150405"
 )
 
 // Provider retrieves market data from Alpha Vantage.
@@ -247,7 +248,7 @@ func (p *Provider) GetNews(ctx context.Context, ticker string, from, to time.Tim
 
 	articles := make([]data.NewsArticle, 0, len(response.Feed))
 	for _, item := range response.Feed {
-		publishedAt, err := time.Parse("20060102T150405", strings.TrimSpace(item.TimePublished))
+		publishedAt, err := time.Parse(newsTimestampLayout, strings.TrimSpace(item.TimePublished))
 		if err != nil {
 			return nil, fmt.Errorf("alphavantage: parse news time_published %q: %w", item.TimePublished, err)
 		}
@@ -537,7 +538,7 @@ func parseOptionalFundamentalFloat(value string) float64 {
 }
 
 func formatNewsTimestamp(t time.Time) string {
-	return t.UTC().Format("20060102T150405")
+	return t.UTC().Format(newsTimestampLayout)
 }
 
 func newsSentimentForTicker(ticker string, item newsFeedItem) float64 {
