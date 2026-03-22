@@ -340,7 +340,7 @@ func TestProviderGetFundamentals(t *testing.T) {
 		t.Fatalf("Ticker = %q, want %q", got.Ticker, "AAPL")
 	}
 	if got.MarketCap != 123456789 {
-		t.Fatalf("MarketCap = %v, want %v", got.MarketCap, 123456789.0)
+		t.Fatalf("MarketCap = %v, want %v", got.MarketCap, 123456789)
 	}
 	if got.PERatio != 28.50 {
 		t.Fatalf("PERatio = %v, want %v", got.PERatio, 28.50)
@@ -352,7 +352,7 @@ func TestProviderGetFundamentals(t *testing.T) {
 		t.Fatalf("DividendYield = %v, want %v", got.DividendYield, 0.0045)
 	}
 	if got.Revenue != 2000 {
-		t.Fatalf("Revenue = %v, want %v", got.Revenue, 2000.0)
+		t.Fatalf("Revenue = %v, want %v", got.Revenue, 2000)
 	}
 	if got.RevenueGrowthYoY != 0.25 {
 		t.Fatalf("RevenueGrowthYoY = %v, want %v", got.RevenueGrowthYoY, 0.25)
@@ -376,7 +376,7 @@ func TestProviderGetFundamentals(t *testing.T) {
 		functionBalanceSheet:    false,
 	}
 
-	for range 3 {
+	for i := 0; i < 3; i++ {
 		select {
 		case request := <-requests:
 			if request.method != http.MethodGet {
@@ -524,6 +524,37 @@ func TestProviderGetFundamentalsErrors(t *testing.T) {
 			t.Fatalf("GetFundamentals() error = %q, want %q", err.Error(), "alphavantage: ticker is required")
 		}
 	})
+}
+
+func TestParseOptionalFundamentalFloat(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		value string
+		want  float64
+	}{
+		{name: "empty", value: "", want: 0},
+		{name: "spaces", value: "   ", want: 0},
+		{name: "na", value: "N/A", want: 0},
+		{name: "plain na", value: "NA", want: 0},
+		{name: "none", value: "NONE", want: 0},
+		{name: "null", value: "NULL", want: 0},
+		{name: "dash", value: "-", want: 0},
+		{name: "invalid", value: "abc", want: 0},
+		{name: "number", value: "123.45", want: 123.45},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := parseOptionalFundamentalFloat(tt.value); got != tt.want {
+				t.Fatalf("parseOptionalFundamentalFloat(%q) = %v, want %v", tt.value, got, tt.want)
+			}
+		})
+	}
 }
 
 func TestProviderUnsupportedMethodsReturnErrNotImplemented(t *testing.T) {

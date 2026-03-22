@@ -160,24 +160,22 @@ func (p *Provider) GetFundamentals(ctx context.Context, ticker string) (data.Fun
 		DividendYield: parseOptionalFundamentalFloat(overview.DividendYield),
 		FetchedAt:     time.Now().UTC(),
 	}
-	if symbol := strings.TrimSpace(overview.Symbol); symbol != "" {
-		fundamentals.Ticker = symbol
-	}
 
-	if latest, ok := latestIncomeReport(incomeStatement); ok {
-		fundamentals.Revenue = parseOptionalFundamentalFloat(latest.TotalRevenue)
+	incomeReports := annualOrQuarterlyIncomeReports(incomeStatement)
+	if len(incomeReports) > 0 {
+		latestIncomeReport := incomeReports[0]
+		fundamentals.Revenue = parseOptionalFundamentalFloat(latestIncomeReport.TotalRevenue)
 
-		grossProfit := parseOptionalFundamentalFloat(latest.GrossProfit)
+		grossProfit := parseOptionalFundamentalFloat(latestIncomeReport.GrossProfit)
 		if fundamentals.Revenue != 0 {
 			fundamentals.GrossMargin = grossProfit / fundamentals.Revenue
 		}
-	}
 
-	if latest, previous, ok := latestTwoIncomeReports(incomeStatement); ok {
-		fundamentals.Revenue = parseOptionalFundamentalFloat(latest.TotalRevenue)
-		previousRevenue := parseOptionalFundamentalFloat(previous.TotalRevenue)
-		if previousRevenue != 0 {
-			fundamentals.RevenueGrowthYoY = (fundamentals.Revenue - previousRevenue) / previousRevenue
+		if len(incomeReports) > 1 {
+			previousRevenue := parseOptionalFundamentalFloat(incomeReports[1].TotalRevenue)
+			if fundamentals.Revenue != 0 && previousRevenue != 0 {
+				fundamentals.RevenueGrowthYoY = (fundamentals.Revenue - previousRevenue) / previousRevenue
+			}
 		}
 	}
 
@@ -425,26 +423,12 @@ func (p *Provider) fetchBalanceSheet(ctx context.Context, ticker string) (balanc
 	return balanceSheet, nil
 }
 
-func latestTwoIncomeReports(response incomeStatementResponse) (incomeStatementReport, incomeStatementReport, bool) {
-	if len(response.AnnualReports) >= 2 {
-		return response.AnnualReports[0], response.AnnualReports[1], true
-	}
-	if len(response.QuarterlyReports) >= 2 {
-		return response.QuarterlyReports[0], response.QuarterlyReports[1], true
-	}
-
-	return incomeStatementReport{}, incomeStatementReport{}, false
-}
-
-func latestIncomeReport(response incomeStatementResponse) (incomeStatementReport, bool) {
+func annualOrQuarterlyIncomeReports(response incomeStatementResponse) []incomeStatementReport {
 	if len(response.AnnualReports) > 0 {
-		return response.AnnualReports[0], true
-	}
-	if len(response.QuarterlyReports) > 0 {
-		return response.QuarterlyReports[0], true
+		return response.AnnualReports
 	}
 
-	return incomeStatementReport{}, false
+	return response.QuarterlyReports
 }
 
 func latestBalanceSheetReport(response balanceSheetResponse) (balanceSheetReport, bool) {
