@@ -103,6 +103,76 @@ func TestMACDAgainstKnownValues(t *testing.T) {
 	assertTailClose(t, histogram, []float64{-0.764665, -0.717463, -0.561538}, 1e-6)
 }
 
+func TestRSIAgainstKnownValues(t *testing.T) {
+	bars := indicatorTestBars(250)
+
+	got := data.RSI(bars, 14)
+	if len(got) != 236 {
+		t.Fatalf("RSI len = %d, want 236", len(got))
+	}
+
+	assertTailClose(t, got, []float64{53.559125, 54.298812, 58.573861}, 1e-6)
+}
+
+func TestMFIAgainstKnownValues(t *testing.T) {
+	bars := indicatorTestBars(250)
+
+	got := data.MFI(bars, 14)
+	if len(got) != 236 {
+		t.Fatalf("MFI len = %d, want 236", len(got))
+	}
+
+	assertTailClose(t, got, []float64{78.755090, 78.741012, 85.849543}, 1e-6)
+}
+
+func TestStochasticAgainstKnownValues(t *testing.T) {
+	bars := indicatorTestBars(250)
+
+	k, d := data.Stochastic(bars, 14, 3, 3)
+	if len(k) != 235 {
+		t.Fatalf("Stochastic %%K len = %d, want 235", len(k))
+	}
+	if len(d) != 233 {
+		t.Fatalf("Stochastic %%D len = %d, want 233", len(d))
+	}
+
+	assertTailClose(t, k, []float64{26.688359, 37.791535, 50.988790}, 1e-6)
+	assertTailClose(t, d, []float64{32.305975, 31.849547, 38.489561}, 1e-6)
+}
+
+func TestWilliamsRAgainstKnownValues(t *testing.T) {
+	bars := indicatorTestBars(250)
+
+	got := data.WilliamsR(bars, 14)
+	if len(got) != 237 {
+		t.Fatalf("WilliamsR len = %d, want 237", len(got))
+	}
+
+	assertTailClose(t, got, []float64{-64.905492, -53.943515, -28.184623}, 1e-6)
+}
+
+func TestCCIAgainstKnownValues(t *testing.T) {
+	bars := indicatorTestBars(250)
+
+	got := data.CCI(bars, 20)
+	if len(got) != 231 {
+		t.Fatalf("CCI len = %d, want 231", len(got))
+	}
+
+	assertTailClose(t, got, []float64{-70.466559, -49.464500, 47.166374}, 1e-6)
+}
+
+func TestROCAgainstKnownValues(t *testing.T) {
+	bars := indicatorTestBars(250)
+
+	got := data.ROC(bars, 12)
+	if len(got) != 238 {
+		t.Fatalf("ROC len = %d, want 238", len(got))
+	}
+
+	assertTailClose(t, got, []float64{-0.270142, -0.297897, -0.253791}, 1e-6)
+}
+
 func TestIndicatorsReturnEmptyWhenInsufficientData(t *testing.T) {
 	bars := indicatorTestBars(10)
 
@@ -116,6 +186,25 @@ func TestIndicatorsReturnEmptyWhenInsufficientData(t *testing.T) {
 	macdLine, signalLine, histogram := data.MACD(bars, 12, 26, 9)
 	if len(macdLine) != 0 || len(signalLine) != 0 || len(histogram) != 0 {
 		t.Fatalf("MACD() lens = (%d, %d, %d), want (0, 0, 0)", len(macdLine), len(signalLine), len(histogram))
+	}
+	if got := data.RSI(bars, 14); len(got) != 0 {
+		t.Fatalf("RSI() len = %d, want 0", len(got))
+	}
+	if got := data.MFI(bars, 14); len(got) != 0 {
+		t.Fatalf("MFI() len = %d, want 0", len(got))
+	}
+	k, d := data.Stochastic(bars, 14, 3, 3)
+	if len(k) != 0 || len(d) != 0 {
+		t.Fatalf("Stochastic() lens = (%d, %d), want (0, 0)", len(k), len(d))
+	}
+	if got := data.WilliamsR(bars, 14); len(got) != 0 {
+		t.Fatalf("WilliamsR() len = %d, want 0", len(got))
+	}
+	if got := data.CCI(bars, 20); len(got) != 0 {
+		t.Fatalf("CCI() len = %d, want 0", len(got))
+	}
+	if got := data.ROC(bars, 12); len(got) != 0 {
+		t.Fatalf("ROC() len = %d, want 0", len(got))
 	}
 }
 
@@ -149,6 +238,29 @@ func TestIndicatorsReturnEmptyForInvalidParameters(t *testing.T) {
 	macdLine, signalLine, histogram = data.MACD(bars, 12, 26, -1)
 	if len(macdLine) != 0 || len(signalLine) != 0 || len(histogram) != 0 {
 		t.Fatalf("MACD() with negative signal lens = (%d, %d, %d), want (0, 0, 0)", len(macdLine), len(signalLine), len(histogram))
+	}
+	if got := data.RSI(bars, 0); len(got) != 0 {
+		t.Fatalf("RSI() with period 0 len = %d, want 0", len(got))
+	}
+	if got := data.MFI(bars, -1); len(got) != 0 {
+		t.Fatalf("MFI() with negative period len = %d, want 0", len(got))
+	}
+	k, d := data.Stochastic(bars, 14, 0, 3)
+	if len(k) != 0 || len(d) != 0 {
+		t.Fatalf("Stochastic() with dPeriod=0 lens = (%d, %d), want (0, 0)", len(k), len(d))
+	}
+	k, d = data.Stochastic(bars, 14, 3, -1)
+	if len(k) != 0 || len(d) != 0 {
+		t.Fatalf("Stochastic() with negative smooth lens = (%d, %d), want (0, 0)", len(k), len(d))
+	}
+	if got := data.WilliamsR(bars, 0); len(got) != 0 {
+		t.Fatalf("WilliamsR() with period 0 len = %d, want 0", len(got))
+	}
+	if got := data.CCI(bars, -5); len(got) != 0 {
+		t.Fatalf("CCI() with negative period len = %d, want 0", len(got))
+	}
+	if got := data.ROC(bars, 0); len(got) != 0 {
+		t.Fatalf("ROC() with period 0 len = %d, want 0", len(got))
 	}
 }
 
