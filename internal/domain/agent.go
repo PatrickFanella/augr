@@ -13,6 +13,8 @@ type AgentRole string
 const (
 	AgentRoleMarketAnalyst       AgentRole = "market_analyst"
 	AgentRoleFundamentalsAnalyst AgentRole = "fundamentals_analyst"
+	AgentRoleNewsAnalyst         AgentRole = "news_analyst"
+	AgentRoleSocialMediaAnalyst  AgentRole = "social_media_analyst"
 	AgentRoleBullResearcher      AgentRole = "bull_researcher"
 	AgentRoleBearResearcher      AgentRole = "bear_researcher"
 	AgentRoleTrader              AgentRole = "trader"
@@ -24,8 +26,6 @@ const (
 	AgentRoleAggressiveRisk      AgentRole = "aggressive_risk"
 	AgentRoleConservativeRisk    AgentRole = "conservative_risk"
 	AgentRoleNeutralRisk         AgentRole = "neutral_risk"
-	AgentRoleSocialMediaAnalyst  AgentRole = "social_media_analyst"
-	AgentRoleNewsAnalyst         AgentRole = "news_analyst"
 )
 
 // String returns the string representation of an AgentRole.

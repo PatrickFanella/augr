@@ -60,8 +60,9 @@ type PipelineState struct {
 	StrategyID     uuid.UUID            `json:"strategy_id"`
 	Ticker         string               `json:"ticker"`
 	Market         *MarketData          `json:"market,omitempty"`
-	News           []data.NewsArticle   `json:"news,omitempty"`
-	Fundamentals   *data.Fundamentals   `json:"fundamentals,omitempty"`
+	News           []data.NewsArticle    `json:"news,omitempty"`
+	Fundamentals   *data.Fundamentals    `json:"fundamentals,omitempty"`
+	Social         *data.SocialSentiment `json:"social,omitempty"`
 	AnalystReports map[AgentRole]string `json:"analyst_reports,omitempty"`
 	ResearchDebate ResearchDebateState  `json:"research_debate"`
 	TradingPlan    TradingPlan          `json:"trading_plan"`
@@ -87,6 +88,14 @@ func (s *PipelineState) SetAnalystReport(role AgentRole, report string) {
 		s.AnalystReports = make(map[AgentRole]string)
 	}
 	s.AnalystReports[role] = report
+}
+
+// GetAnalystReport returns the analyst report for the given role in a thread-safe manner.
+func (s *PipelineState) GetAnalystReport(role AgentRole) string {
+	s.ensureMutex()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.AnalystReports[role]
 }
 
 // DecisionLLMResponse captures the persisted LLM metadata for a node decision.

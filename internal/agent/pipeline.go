@@ -654,7 +654,7 @@ func (p *Pipeline) decisionPayload(state *PipelineState, node Node, roundNumber 
 
 	switch node.Phase() {
 	case PhaseAnalysis:
-		return state.AnalystReports[node.Role()], nil, nil
+		return state.GetAnalystReport(node.Role()), nil, nil
 	case PhaseResearchDebate:
 		if node.Role() == AgentRoleInvestJudge {
 			return state.ResearchDebate.InvestmentPlan, nil, nil
