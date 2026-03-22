@@ -145,7 +145,7 @@ func TestClientGetReturnsRateLimitError(t *testing.T) {
 	}
 }
 
-func TestClientGetHonorsRateLimiterContext(t *testing.T) {
+func TestClientGetRespectsContextCancellationDuringRateLimiting(t *testing.T) {
 	serverHits := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		serverHits++

@@ -216,14 +216,14 @@ func (c *Client) buildURL(params url.Values) (string, error) {
 }
 
 func parseErrorResponse(statusCode int, body []byte) *ErrorResponse {
-	if statusCode >= http.StatusOK && statusCode < http.StatusMultipleChoices && len(body) == 0 {
+	if isSuccessStatusCode(statusCode) && len(body) == 0 {
 		return nil
 	}
 
 	errResp := &ErrorResponse{statusCode: statusCode}
 	if len(body) > 0 {
 		if err := json.Unmarshal(body, errResp); err != nil {
-			if statusCode < http.StatusOK || statusCode >= http.StatusMultipleChoices {
+			if !isSuccessStatusCode(statusCode) {
 				errResp.Message = strings.TrimSpace(string(body))
 			} else {
 				return nil
@@ -231,11 +231,11 @@ func parseErrorResponse(statusCode int, body []byte) *ErrorResponse {
 		}
 	}
 
-	if statusCode >= http.StatusOK && statusCode < http.StatusMultipleChoices && !errResp.hasErrorMessage() {
+	if isSuccessStatusCode(statusCode) && !errResp.hasErrorMessage() {
 		return nil
 	}
 
-	if statusCode >= http.StatusOK && statusCode < http.StatusMultipleChoices {
+	if isSuccessStatusCode(statusCode) {
 		errResp.statusCode = errResp.syntheticStatusCode()
 	}
 
@@ -276,4 +276,8 @@ func (e *ErrorResponse) syntheticStatusCode() int {
 	}
 
 	return http.StatusBadRequest
+}
+
+func isSuccessStatusCode(statusCode int) bool {
+	return statusCode >= http.StatusOK && statusCode < http.StatusMultipleChoices
 }
