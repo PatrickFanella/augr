@@ -177,25 +177,25 @@ func (p *Provider) GetFundamentals(ctx context.Context, ticker string) (data.Fun
 
 	fundamentals := data.Fundamentals{
 		Ticker:        ticker,
-		MarketCap:     parseOptionalFundamentalFloat(overview.MarketCapitalization),
-		PERatio:       parseOptionalFundamentalFloat(overview.PERatio),
-		EPS:           parseOptionalFundamentalFloat(overview.EPS),
-		DividendYield: parseOptionalFundamentalFloat(overview.DividendYield),
+		MarketCap:     parseOptionalFloat64(overview.MarketCapitalization),
+		PERatio:       parseOptionalFloat64(overview.PERatio),
+		EPS:           parseOptionalFloat64(overview.EPS),
+		DividendYield: parseOptionalFloat64(overview.DividendYield),
 		FetchedAt:     time.Now().UTC(),
 	}
 
 	incomeReports := annualOrQuarterlyIncomeReports(incomeStatement)
 	if len(incomeReports) > 0 {
 		latestIncomeReport := incomeReports[0]
-		fundamentals.Revenue = parseOptionalFundamentalFloat(latestIncomeReport.TotalRevenue)
+		fundamentals.Revenue = parseOptionalFloat64(latestIncomeReport.TotalRevenue)
 
-		grossProfit := parseOptionalFundamentalFloat(latestIncomeReport.GrossProfit)
+		grossProfit := parseOptionalFloat64(latestIncomeReport.GrossProfit)
 		if fundamentals.Revenue != 0 {
 			fundamentals.GrossMargin = grossProfit / fundamentals.Revenue
 		}
 
 		if len(incomeReports) > 1 {
-			previousRevenue := parseOptionalFundamentalFloat(incomeReports[1].TotalRevenue)
+			previousRevenue := parseOptionalFloat64(incomeReports[1].TotalRevenue)
 			if fundamentals.Revenue != 0 && previousRevenue != 0 {
 				fundamentals.RevenueGrowthYoY = (fundamentals.Revenue - previousRevenue) / previousRevenue
 			}
@@ -203,8 +203,8 @@ func (p *Provider) GetFundamentals(ctx context.Context, ticker string) (data.Fun
 	}
 
 	if latest, ok := latestBalanceSheetReport(balanceSheet); ok {
-		totalLiabilities := parseOptionalFundamentalFloat(latest.TotalLiabilities)
-		totalEquity := parseOptionalFundamentalFloat(latest.TotalShareholderEquity)
+		totalLiabilities := parseOptionalFloat64(latest.TotalLiabilities)
+		totalEquity := parseOptionalFloat64(latest.TotalShareholderEquity)
 		if totalEquity != 0 {
 			fundamentals.DebtToEquity = totalLiabilities / totalEquity
 		}
@@ -233,8 +233,8 @@ func (p *Provider) GetNews(ctx context.Context, ticker string, from, to time.Tim
 	body, err := p.client.Get(ctx, url.Values{
 		"function":  []string{functionNewsSentiment},
 		"tickers":   []string{ticker},
-		"time_from": []string{formatNewsTimestamp(from.UTC())},
-		"time_to":   []string{formatNewsTimestamp(to.UTC())},
+		"time_from": []string{formatNewsTimestamp(from)},
+		"time_to":   []string{formatNewsTimestamp(to)},
 		"sort":      []string{"EARLIEST"},
 	})
 	if err != nil {
@@ -518,7 +518,7 @@ func latestBalanceSheetReport(response balanceSheetResponse) (balanceSheetReport
 	return balanceSheetReport{}, false
 }
 
-func parseOptionalFundamentalFloat(value string) float64 {
+func parseOptionalFloat64(value string) float64 {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
 		return 0
@@ -554,7 +554,7 @@ func newsSentimentForTicker(ticker string, item newsFeedItem) float64 {
 func (f *optionalFloat64) UnmarshalJSON(data []byte) error {
 	var stringValue string
 	if err := json.Unmarshal(data, &stringValue); err == nil {
-		*f = optionalFloat64(parseOptionalFundamentalFloat(stringValue))
+		*f = optionalFloat64(parseOptionalFloat64(stringValue))
 		return nil
 	}
 

@@ -809,7 +809,7 @@ func TestProviderGetNewsErrors(t *testing.T) {
 	}
 }
 
-func TestParseOptionalFundamentalFloat(t *testing.T) {
+func TestParseOptionalFloat64(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -833,8 +833,8 @@ func TestParseOptionalFundamentalFloat(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			if got := parseOptionalFundamentalFloat(tt.value); got != tt.want {
-				t.Fatalf("parseOptionalFundamentalFloat(%q) = %v, want %v", tt.value, got, tt.want)
+			if got := parseOptionalFloat64(tt.value); got != tt.want {
+				t.Fatalf("parseOptionalFloat64(%q) = %v, want %v", tt.value, got, tt.want)
 			}
 		})
 	}
