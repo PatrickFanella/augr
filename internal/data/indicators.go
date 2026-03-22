@@ -1,6 +1,10 @@
 package data
 
-import "github.com/PatrickFanella/get-rich-quick/internal/domain"
+import (
+	"sort"
+
+	"github.com/PatrickFanella/get-rich-quick/internal/domain"
+)
 
 // SMA returns the simple moving average of closing prices for each completed window.
 func SMA(data []domain.OHLCV, period int) []float64 {
@@ -70,22 +74,30 @@ func MFI(data []domain.OHLCV, period int) []float64 {
 	}
 
 	typicalPrices := typicalPrices(data)
-	series := make([]float64, len(data)-period)
-
-	for end := period; end < len(data); end++ {
-		positiveFlow := 0.0
-		negativeFlow := 0.0
-
-		for i := end - period + 1; i <= end; i++ {
-			flow := typicalPrices[i] * data[i].Volume
-			switch {
-			case typicalPrices[i] > typicalPrices[i-1]:
-				positiveFlow += flow
-			case typicalPrices[i] < typicalPrices[i-1]:
-				negativeFlow += flow
-			}
+	positiveFlows := make([]float64, len(data))
+	negativeFlows := make([]float64, len(data))
+	for i := 1; i < len(data); i++ {
+		flow := typicalPrices[i] * data[i].Volume
+		switch {
+		case typicalPrices[i] > typicalPrices[i-1]:
+			positiveFlows[i] = flow
+		case typicalPrices[i] < typicalPrices[i-1]:
+			negativeFlows[i] = flow
 		}
+	}
 
+	series := make([]float64, len(data)-period)
+	positiveFlow := 0.0
+	negativeFlow := 0.0
+	for i := 1; i <= period; i++ {
+		positiveFlow += positiveFlows[i]
+		negativeFlow += negativeFlows[i]
+	}
+	series[0] = moneyFlowIndex(positiveFlow, negativeFlow)
+
+	for end := period + 1; end < len(data); end++ {
+		positiveFlow += positiveFlows[end] - positiveFlows[end-period]
+		negativeFlow += negativeFlows[end] - negativeFlows[end-period]
 		series[end-period] = moneyFlowIndex(positiveFlow, negativeFlow)
 	}
 
@@ -98,15 +110,17 @@ func Stochastic(data []domain.OHLCV, kPeriod, dPeriod, smooth int) (k, d []float
 		return nil, nil
 	}
 
-	rawK := make([]float64, len(data)-kPeriod+1)
-	for end := kPeriod - 1; end < len(data); end++ {
-		high, low := windowHighLow(data[end-kPeriod+1 : end+1])
+	highs, lows := rollingHighLowSeries(data, kPeriod)
+	rawK := make([]float64, len(highs))
+	for i := range rawK {
+		high := highs[i]
+		low := lows[i]
 		if high == low {
-			rawK[end-kPeriod+1] = 0
+			rawK[i] = 0
 			continue
 		}
 
-		rawK[end-kPeriod+1] = (data[end].Close - low) / (high - low) * 100
+		rawK[i] = (data[i+kPeriod-1].Close - low) / (high - low) * 100
 	}
 
 	k = smaSeries(rawK, smooth)
@@ -124,15 +138,17 @@ func WilliamsR(data []domain.OHLCV, period int) []float64 {
 		return nil
 	}
 
-	series := make([]float64, len(data)-period+1)
-	for end := period - 1; end < len(data); end++ {
-		high, low := windowHighLow(data[end-period+1 : end+1])
+	highs, lows := rollingHighLowSeries(data, period)
+	series := make([]float64, len(highs))
+	for i := range series {
+		high := highs[i]
+		low := lows[i]
 		if high == low {
-			series[end-period+1] = 0
+			series[i] = 0
 			continue
 		}
 
-		series[end-period+1] = (high - data[end].Close) / (high - low) * -100
+		series[i] = (high - data[i+period-1].Close) / (high - low) * -100
 	}
 
 	return series
@@ -150,18 +166,10 @@ func CCI(data []domain.OHLCV, period int) []float64 {
 		return nil
 	}
 
+	meanDeviations := meanAbsoluteDeviationSeries(typicalPrices, period, sma)
 	series := make([]float64, len(sma))
 	for i, average := range sma {
-		meanDeviation := 0.0
-		for _, value := range typicalPrices[i : i+period] {
-			if value > average {
-				meanDeviation += value - average
-				continue
-			}
-			meanDeviation += average - value
-		}
-
-		meanDeviation /= float64(period)
+		meanDeviation := meanDeviations[i]
 		if meanDeviation == 0 {
 			series[i] = 0
 			continue
@@ -250,20 +258,127 @@ func typicalPrices(data []domain.OHLCV) []float64 {
 	return prices
 }
 
-func windowHighLow(data []domain.OHLCV) (high, low float64) {
-	high = data[0].High
-	low = data[0].Low
+// rollingHighLowSeries computes each completed window's highest high and lowest
+// low in O(n) time using monotonic deques of source indices.
+func rollingHighLowSeries(data []domain.OHLCV, period int) (highs, lows []float64) {
+	if period <= 0 || len(data) < period {
+		return nil, nil
+	}
 
-	for _, bar := range data[1:] {
-		if bar.High > high {
-			high = bar.High
+	highs = make([]float64, len(data)-period+1)
+	lows = make([]float64, len(data)-period+1)
+	// Maintain monotonic deques of indices so each window can read its current
+	// highest high and lowest low in O(1) amortized time.
+	highDeque := make([]int, 0, period)
+	lowDeque := make([]int, 0, period)
+
+	for i, bar := range data {
+		for len(highDeque) > 0 && bar.High >= data[highDeque[len(highDeque)-1]].High {
+			highDeque = highDeque[:len(highDeque)-1]
 		}
-		if bar.Low < low {
-			low = bar.Low
+		highDeque = append(highDeque, i)
+
+		for len(lowDeque) > 0 && bar.Low <= data[lowDeque[len(lowDeque)-1]].Low {
+			lowDeque = lowDeque[:len(lowDeque)-1]
+		}
+		lowDeque = append(lowDeque, i)
+
+		windowStart := i - period + 1
+		if windowStart < 0 {
+			continue
+		}
+
+		for len(highDeque) > 0 && highDeque[0] < windowStart {
+			highDeque = highDeque[1:]
+		}
+		for len(lowDeque) > 0 && lowDeque[0] < windowStart {
+			lowDeque = lowDeque[1:]
+		}
+
+		highs[windowStart] = data[highDeque[0]].High
+		lows[windowStart] = data[lowDeque[0]].Low
+	}
+
+	return highs, lows
+}
+
+// meanAbsoluteDeviationSeries computes rolling mean absolute deviations around
+// the provided window means in O(n log n) time. It coordinate-compresses the
+// input values and uses Fenwick trees for window counts and sums so each
+// rolling update avoids rescanning the full window.
+func meanAbsoluteDeviationSeries(values []float64, period int, means []float64) []float64 {
+	if period <= 0 || len(values) < period || len(means) != len(values)-period+1 {
+		return nil
+	}
+
+	sortedValues := uniqueSorted(values)
+	indices := make([]int, len(values))
+	for i, value := range values {
+		// Every value in the input is present in sortedValues because uniqueSorted
+		// is built directly from values. The +1 converts the 0-based search result
+		// to the 1-based indexing used by the Fenwick tree.
+		indices[i] = sort.SearchFloat64s(sortedValues, value) + 1
+	}
+
+	counts := newFenwickTree(len(sortedValues))
+	sums := newFenwickTree(len(sortedValues))
+	for i := 0; i < period; i++ {
+		counts.add(indices[i], 1)
+		sums.add(indices[i], values[i])
+	}
+
+	deviations := make([]float64, len(means))
+	for start, mean := range means {
+		deviations[start] = meanAbsoluteDeviation(counts, sums, sortedValues, mean, float64(period))
+		if start == len(means)-1 {
+			break
+		}
+
+		counts.add(indices[start], -1)
+		sums.add(indices[start], -values[start])
+
+		end := start + period
+		counts.add(indices[end], 1)
+		sums.add(indices[end], values[end])
+	}
+
+	return deviations
+}
+
+// meanAbsoluteDeviation computes the mean absolute deviation around the window mean from the
+// Fenwick-backed counts and sums for the current rolling window.
+func meanAbsoluteDeviation(counts, sums fenwickTree, sortedValues []float64, mean, totalCount float64) float64 {
+	// Find the first value strictly greater than the mean so values [0:leftIndex)
+	// are <= mean and values [leftIndex:] are > mean.
+	leftIndex := sort.Search(len(sortedValues), func(i int) bool {
+		return sortedValues[i] > mean
+	})
+	leftCount := counts.sum(leftIndex)
+	leftSum := sums.sum(leftIndex)
+	totalSum := sums.sum(len(sortedValues))
+	rightCount := totalCount - leftCount
+	rightSum := totalSum - leftSum
+
+	// Sum of absolute deviations split around the mean:
+	//   sum(mean-value) for value <= mean  => mean*leftCount - leftSum
+	//   sum(value-mean) for value > mean   => rightSum - mean*rightCount
+	return (mean*leftCount - leftSum + rightSum - mean*rightCount) / totalCount
+}
+
+// uniqueSorted returns a sorted, deduplicated copy of values for coordinate
+// compression in the Fenwick-tree rolling deviation calculation.
+func uniqueSorted(values []float64) []float64 {
+	cloned := append([]float64(nil), values...)
+	sort.Float64s(cloned)
+
+	unique := make([]float64, 0, len(cloned))
+	for _, value := range cloned {
+		if len(unique) == 0 || value != unique[len(unique)-1] {
+			unique = append(unique, value)
 		}
 	}
 
-	return high, low
+	return unique
 }
 
 func relativeStrengthIndex(avgGain, avgLoss float64) float64 {
@@ -290,6 +405,39 @@ func moneyFlowIndex(positiveFlow, negativeFlow float64) float64 {
 
 	ratio := positiveFlow / negativeFlow
 	return 100 - (100 / (1 + ratio))
+}
+
+type fenwickTree []float64
+
+// newFenwickTree allocates one extra slot because Fenwick trees use 1-based
+// indexing and leave index 0 unused.
+func newFenwickTree(size int) fenwickTree {
+	return make(fenwickTree, size+1)
+}
+
+func (tree fenwickTree) add(index int, value float64) {
+	if index <= 0 || index >= len(tree) {
+		panic("fenwickTree.add: index out of bounds")
+	}
+
+	for index < len(tree) {
+		tree[index] += value
+		index += index & -index
+	}
+}
+
+func (tree fenwickTree) sum(index int) float64 {
+	if index < 0 || index >= len(tree) {
+		panic("fenwickTree.sum: index out of bounds")
+	}
+
+	total := 0.0
+	for index > 0 {
+		total += tree[index]
+		index -= index & -index
+	}
+
+	return total
 }
 
 func smaSeries(values []float64, period int) []float64 {
