@@ -87,3 +87,37 @@ func TestRateLimiterWaitHonorsContextCancellation(t *testing.T) {
 		t.Fatalf("Wait() returned after %v, want prompt cancellation", elapsed)
 	}
 }
+
+func TestRateLimiterReservationCancelReturnsToken(t *testing.T) {
+	limiter := data.NewRateLimiter(1, time.Hour)
+
+	reservation, err := limiter.Reserve(context.Background())
+	if err != nil {
+		t.Fatalf("Reserve() error = %v, want nil", err)
+	}
+
+	if limiter.TryAcquire() {
+		t.Fatal("TryAcquire() = true, want false while reservation holds the only token")
+	}
+
+	reservation.Cancel()
+
+	if !limiter.TryAcquire() {
+		t.Fatal("TryAcquire() = false, want true after reservation cancellation returns token")
+	}
+}
+
+func TestRateLimiterReservationCommitConsumesToken(t *testing.T) {
+	limiter := data.NewRateLimiter(1, time.Hour)
+
+	reservation, err := limiter.Reserve(context.Background())
+	if err != nil {
+		t.Fatalf("Reserve() error = %v, want nil", err)
+	}
+
+	reservation.Commit()
+
+	if limiter.TryAcquire() {
+		t.Fatal("TryAcquire() = true, want false after committed reservation consumes token")
+	}
+}
