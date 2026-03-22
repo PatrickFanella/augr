@@ -145,7 +145,116 @@ func TestClientGetReturnsRateLimitError(t *testing.T) {
 	}
 }
 
+func TestClientGetDoesNotConsumeRateLimitQuotaWhenURLBuildFails(t *testing.T) {
+	t.Parallel()
+
+	limiter := data.NewRateLimiter(1, time.Hour)
+	client := NewClient("test-key", discardLogger(), limiter)
+	client.baseURL = "://bad-url"
+
+	_, err := client.Get(context.Background(), url.Values{
+		"function": []string{"TIME_SERIES_DAILY"},
+	})
+	if err == nil {
+		t.Fatal("Get() error = nil, want non-nil")
+	}
+	if !strings.Contains(err.Error(), "parse base url") {
+		t.Fatalf("Get() error = %q, want parse base url error", err.Error())
+	}
+	if !limiter.TryAcquire() {
+		t.Fatal("TryAcquire() = false, want limiter token preserved after URL build failure")
+	}
+}
+
+func TestClientGetWaitsForAllRateLimiters(t *testing.T) {
+	t.Parallel()
+
+	const (
+		firstInterval  = 60 * time.Millisecond
+		secondInterval = 120 * time.Millisecond
+		minimumWait    = 100 * time.Millisecond
+	)
+
+	serverHits := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		serverHits++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"Global Quote":{"01. symbol":"AAPL"}}`))
+	}))
+	defer server.Close()
+
+	firstLimiter := data.NewRateLimiter(1, firstInterval)
+	secondLimiter := data.NewRateLimiter(1, secondInterval)
+	if !firstLimiter.TryAcquire() {
+		t.Fatal("firstLimiter.TryAcquire() = false, want true for initial token")
+	}
+	if !secondLimiter.TryAcquire() {
+		t.Fatal("secondLimiter.TryAcquire() = false, want true for initial token")
+	}
+
+	client := NewClient("test-key", discardLogger(), firstLimiter, secondLimiter)
+	client.baseURL = server.URL + "/query"
+
+	start := time.Now()
+	if _, err := client.Get(context.Background(), url.Values{
+		"function": []string{"GLOBAL_QUOTE"},
+		"symbol":   []string{"AAPL"},
+	}); err != nil {
+		t.Fatalf("Get() error = %v, want nil", err)
+	}
+
+	if elapsed := time.Since(start); elapsed < minimumWait {
+		t.Fatalf("Get() elapsed = %v, want at least %v to show both limiters gated the request", elapsed, minimumWait)
+	}
+	if serverHits != 1 {
+		t.Fatalf("server hit count = %d, want %d", serverHits, 1)
+	}
+}
+
 func TestClientGetRespectsContextCancellationDuringRateLimiting(t *testing.T) {
+	t.Parallel()
+
+	serverHits := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		serverHits++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"Global Quote":{"01. symbol":"AAPL"}}`))
+	}))
+	defer server.Close()
+
+	firstLimiter := data.NewRateLimiter(1, time.Hour)
+	secondLimiter := data.NewRateLimiter(1, time.Hour)
+	if !secondLimiter.TryAcquire() {
+		t.Fatal("secondLimiter.TryAcquire() = false, want true for initial token")
+	}
+
+	client := NewClient("test-key", discardLogger(), firstLimiter, secondLimiter)
+	client.baseURL = server.URL + "/query"
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+
+	_, err := client.Get(ctx, url.Values{
+		"function": []string{"GLOBAL_QUOTE"},
+		"symbol":   []string{"AAPL"},
+	})
+	if err == nil {
+		t.Fatal("Get() error = nil, want non-nil")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Get() error = %v, want context deadline exceeded", err)
+	}
+	if serverHits != 0 {
+		t.Fatalf("server hit count = %d, want %d", serverHits, 0)
+	}
+	if !firstLimiter.TryAcquire() {
+		t.Fatal("firstLimiter.TryAcquire() = false, want token returned after cancellation while waiting on second limiter")
+	}
+}
+
+func TestClientGetRespectsContextCancellationDuringSingleLimiterRateLimiting(t *testing.T) {
+	t.Parallel()
+
 	serverHits := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		serverHits++

@@ -88,9 +88,6 @@ func (c *Client) Get(ctx context.Context, params url.Values) ([]byte, error) {
 	if c.apiKey == "" {
 		return nil, errors.New("alphavantage: api key is required")
 	}
-	if err := c.waitRateLimiters(ctx); err != nil {
-		return nil, fmt.Errorf("alphavantage: wait for rate limiter: %w", err)
-	}
 
 	requestURL, err := c.buildURL(params)
 	if err != nil {
@@ -101,6 +98,17 @@ func (c *Client) Get(ctx context.Context, params url.Values) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("alphavantage: create request: %w", err)
 	}
+
+	reservations, err := c.reserveRateLimiters(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("alphavantage: wait for rate limiter: %w", err)
+	}
+	committedReservations := false
+	defer func() {
+		if !committedReservations {
+			cancelReservations(reservations)
+		}
+	}()
 
 	startedAt := time.Now()
 	c.logger.Info("alphavantage: sending request",
@@ -118,6 +126,8 @@ func (c *Client) Get(ctx context.Context, params url.Values) ([]byte, error) {
 		)
 		return nil, fmt.Errorf("alphavantage: do request: %w", err)
 	}
+	commitReservations(reservations)
+	committedReservations = true
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
 			c.logger.Warn("alphavantage: failed to close response body", slog.Any("error", closeErr))
@@ -184,17 +194,21 @@ func (e *ErrorResponse) Error() string {
 	return fmt.Sprintf("alphavantage: %s (status=%d)", message, e.statusCode)
 }
 
-func (c *Client) waitRateLimiters(ctx context.Context) error {
+func (c *Client) reserveRateLimiters(ctx context.Context) ([]*data.Reservation, error) {
+	reservations := make([]*data.Reservation, 0, len(c.rateLimiters))
 	for _, limiter := range c.rateLimiters {
 		if limiter == nil {
 			continue
 		}
-		if err := limiter.Wait(ctx); err != nil {
-			return err
+		reservation, err := limiter.Reserve(ctx)
+		if err != nil {
+			cancelReservations(reservations)
+			return nil, err
 		}
+		reservations = append(reservations, reservation)
 	}
 
-	return nil
+	return reservations, nil
 }
 
 func (c *Client) buildURL(params url.Values) (string, error) {
@@ -280,4 +294,22 @@ func (e *ErrorResponse) syntheticStatusCode() int {
 
 func isSuccessStatusCode(statusCode int) bool {
 	return statusCode >= http.StatusOK && statusCode < http.StatusMultipleChoices
+}
+
+func commitReservations(reservations []*data.Reservation) {
+	for _, reservation := range reservations {
+		if reservation == nil {
+			continue
+		}
+		reservation.Commit()
+	}
+}
+
+func cancelReservations(reservations []*data.Reservation) {
+	for i := len(reservations) - 1; i >= 0; i-- {
+		if reservations[i] == nil {
+			continue
+		}
+		reservations[i].Cancel()
+	}
 }
