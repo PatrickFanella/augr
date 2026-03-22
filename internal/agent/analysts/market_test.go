@@ -29,21 +29,21 @@ func (m *mockProvider) Complete(_ context.Context, req llm.CompletionRequest) (*
 }
 
 func TestMarketAnalystName(t *testing.T) {
-	ma := NewMarketAnalyst(&mockProvider{}, "test-model", nil)
+	ma := NewMarketAnalyst(&mockProvider{}, "openai", "test-model", nil)
 	if ma.Name() != "market_analyst" {
 		t.Errorf("Name() = %q, want %q", ma.Name(), "market_analyst")
 	}
 }
 
 func TestMarketAnalystRole(t *testing.T) {
-	ma := NewMarketAnalyst(&mockProvider{}, "test-model", nil)
+	ma := NewMarketAnalyst(&mockProvider{}, "openai", "test-model", nil)
 	if ma.Role() != agent.AgentRoleMarketAnalyst {
 		t.Errorf("Role() = %q, want %q", ma.Role(), agent.AgentRoleMarketAnalyst)
 	}
 }
 
 func TestMarketAnalystPhase(t *testing.T) {
-	ma := NewMarketAnalyst(&mockProvider{}, "test-model", nil)
+	ma := NewMarketAnalyst(&mockProvider{}, "openai", "test-model", nil)
 	if ma.Phase() != agent.PhaseAnalysis {
 		t.Errorf("Phase() = %q, want %q", ma.Phase(), agent.PhaseAnalysis)
 	}
@@ -62,12 +62,12 @@ func TestMarketAnalystExecute(t *testing.T) {
 		},
 	}
 
-	ma := NewMarketAnalyst(mock, "gpt-4", nil)
+	ma := NewMarketAnalyst(mock, "openai", "gpt-4", nil)
 
 	ts := time.Date(2025, 3, 20, 0, 0, 0, 0, time.UTC)
 	state := &agent.PipelineState{
 		Ticker: "AAPL",
-		Market: agent.MarketData{
+		Market: &agent.MarketData{
 			Bars: []domain.OHLCV{
 				{Timestamp: ts, Open: 100.50, High: 105.25, Low: 99.75, Close: 103.00, Volume: 1500000},
 			},
@@ -137,6 +137,9 @@ func TestMarketAnalystExecute(t *testing.T) {
 	if dec.LLMResponse.Response.Usage.PromptTokens != 120 {
 		t.Errorf("prompt tokens = %d, want 120", dec.LLMResponse.Response.Usage.PromptTokens)
 	}
+	if dec.LLMResponse.Provider != "openai" {
+		t.Errorf("decision provider = %q, want %q", dec.LLMResponse.Provider, "openai")
+	}
 }
 
 func TestMarketAnalystExecuteLLMError(t *testing.T) {
@@ -144,7 +147,7 @@ func TestMarketAnalystExecuteLLMError(t *testing.T) {
 		err: errors.New("rate limit exceeded"),
 	}
 
-	ma := NewMarketAnalyst(mock, "gpt-4", nil)
+	ma := NewMarketAnalyst(mock, "openai", "gpt-4", nil)
 	state := &agent.PipelineState{Ticker: "TSLA"}
 
 	err := ma.Execute(context.Background(), state)
@@ -160,7 +163,7 @@ func TestMarketAnalystExecuteLLMError(t *testing.T) {
 }
 
 func TestMarketAnalystExecuteNilProvider(t *testing.T) {
-	ma := NewMarketAnalyst(nil, "gpt-4", nil)
+	ma := NewMarketAnalyst(nil, "openai", "gpt-4", nil)
 	state := &agent.PipelineState{Ticker: "GOOG"}
 
 	err := ma.Execute(context.Background(), state)

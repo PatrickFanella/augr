@@ -52,7 +52,7 @@ type PipelineState struct {
 	PipelineRunID  uuid.UUID            `json:"pipeline_run_id"`
 	StrategyID     uuid.UUID            `json:"strategy_id"`
 	Ticker         string               `json:"ticker"`
-	Market         MarketData           `json:"market,omitempty"`
+	Market         *MarketData          `json:"market,omitempty"`
 	AnalystReports map[AgentRole]string `json:"analyst_reports,omitempty"`
 	ResearchDebate ResearchDebateState  `json:"research_debate"`
 	TradingPlan    TradingPlan          `json:"trading_plan"`

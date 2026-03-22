@@ -6,6 +6,7 @@ import (
 	"log/slog"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/agent"
+	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/llm"
 )
 
@@ -17,10 +18,11 @@ type MarketAnalyst struct {
 }
 
 // NewMarketAnalyst returns a MarketAnalyst wired to the given LLM provider and
-// model. A nil logger is replaced with the default logger.
-func NewMarketAnalyst(provider llm.Provider, model string, logger *slog.Logger) *MarketAnalyst {
+// model. providerName (e.g. "openai") is recorded in decision metadata. A nil
+// logger is replaced with the default logger.
+func NewMarketAnalyst(provider llm.Provider, providerName, model string, logger *slog.Logger) *MarketAnalyst {
 	return &MarketAnalyst{
-		BaseAnalyst: NewBaseAnalyst(provider, model, logger),
+		BaseAnalyst: NewBaseAnalyst(provider, providerName, model, logger),
 	}
 }
 
@@ -40,10 +42,17 @@ func (m *MarketAnalyst) Execute(ctx context.Context, state *agent.PipelineState)
 		return fmt.Errorf("market_analyst: provider is nil")
 	}
 
+	var bars []domain.OHLCV
+	var indicators []domain.Indicator
+	if state.Market != nil {
+		bars = state.Market.Bars
+		indicators = state.Market.Indicators
+	}
+
 	userPrompt := FormatMarketAnalystUserPrompt(
 		state.Ticker,
-		state.Market.Bars,
-		state.Market.Indicators,
+		bars,
+		indicators,
 	)
 
 	resp, err := m.provider.Complete(ctx, llm.CompletionRequest{
@@ -64,7 +73,7 @@ func (m *MarketAnalyst) Execute(ctx context.Context, state *agent.PipelineState)
 
 	state.SetAnalystReport(m.Role(), resp.Content)
 	state.RecordDecision(m.Role(), m.Phase(), nil, resp.Content, &agent.DecisionLLMResponse{
-		Provider: m.model,
+		Provider: m.providerName,
 		Response: resp,
 	})
 
