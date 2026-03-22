@@ -30,6 +30,7 @@ const (
 	AgentRoleAggressiveAnalyst   = domain.AgentRoleAggressiveAnalyst
 	AgentRoleConservativeAnalyst = domain.AgentRoleConservativeAnalyst
 	AgentRoleNeutralAnalyst      = domain.AgentRoleNeutralAnalyst
+	AgentRoleNewsAnalyst         = domain.AgentRoleNewsAnalyst
 )
 
 type Phase = domain.Phase
@@ -55,6 +56,7 @@ type PipelineState struct {
 	StrategyID     uuid.UUID            `json:"strategy_id"`
 	Ticker         string               `json:"ticker"`
 	Market         *MarketData          `json:"market,omitempty"`
+	News           []data.NewsArticle   `json:"news,omitempty"`
 	Fundamentals   *data.Fundamentals   `json:"fundamentals,omitempty"`
 	AnalystReports map[AgentRole]string `json:"analyst_reports,omitempty"`
 	ResearchDebate ResearchDebateState  `json:"research_debate"`

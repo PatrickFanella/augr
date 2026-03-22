@@ -284,11 +284,12 @@ func FormatNewsAnalystUserPrompt(ticker string, articles []data.NewsArticle) str
 		return b.String()
 	}
 
-	b.WriteString("| Date | Title | Summary | Sentiment |\n")
-	b.WriteString("|------|-------|---------|----------|\n")
+	b.WriteString("| Date | Source | Title | Summary | Sentiment |\n")
+	b.WriteString("|------|--------|-------|---------|----------|\n")
 	for _, a := range articles {
-		fmt.Fprintf(&b, "| %s | %s | %s | %.2f |\n",
+		fmt.Fprintf(&b, "| %s | %s | %s | %s | %.2f |\n",
 			a.PublishedAt.Format(time.DateOnly),
+			sanitizeCell(a.Source),
 			sanitizeCell(a.Title),
 			sanitizeCell(a.Summary),
 			a.Sentiment,
