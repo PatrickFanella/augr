@@ -64,6 +64,7 @@ func TestAgentRoleString(t *testing.T) {
 		want string
 	}{
 		{domain.AgentRoleMarketAnalyst, "market_analyst"},
+		{domain.AgentRoleFundamentalsAnalyst, "fundamentals_analyst"},
 		{domain.AgentRoleBullResearcher, "bull_researcher"},
 		{domain.AgentRoleBearResearcher, "bear_researcher"},
 		{domain.AgentRoleTrader, "trader"},
@@ -72,6 +73,11 @@ func TestAgentRoleString(t *testing.T) {
 		{domain.AgentRoleAggressiveAnalyst, "aggressive_analyst"},
 		{domain.AgentRoleConservativeAnalyst, "conservative_analyst"},
 		{domain.AgentRoleNeutralAnalyst, "neutral_analyst"},
+		{domain.AgentRoleAggressiveRisk, "aggressive_risk"},
+		{domain.AgentRoleConservativeRisk, "conservative_risk"},
+		{domain.AgentRoleNeutralRisk, "neutral_risk"},
+		{domain.AgentRoleSocialMediaAnalyst, "social_media_analyst"},
+		{domain.AgentRoleNewsAnalyst, "news_analyst"},
 	}
 
 	for _, tc := range tests {

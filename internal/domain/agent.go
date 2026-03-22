@@ -21,6 +21,9 @@ const (
 	AgentRoleAggressiveAnalyst   AgentRole = "aggressive_analyst"
 	AgentRoleConservativeAnalyst AgentRole = "conservative_analyst"
 	AgentRoleNeutralAnalyst      AgentRole = "neutral_analyst"
+	AgentRoleAggressiveRisk      AgentRole = "aggressive_risk"
+	AgentRoleConservativeRisk    AgentRole = "conservative_risk"
+	AgentRoleNeutralRisk         AgentRole = "neutral_risk"
 	AgentRoleSocialMediaAnalyst  AgentRole = "social_media_analyst"
 	AgentRoleNewsAnalyst         AgentRole = "news_analyst"
 )
