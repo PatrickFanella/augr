@@ -170,6 +170,68 @@ func FormatFundamentalsAnalystUserPrompt(ticker string, f *data.Fundamentals) st
 	return b.String()
 }
 
+// SocialAnalystSystemPrompt is the system prompt that instructs the LLM to
+// evaluate retail and social-media sentiment for a given ticker.
+const SocialAnalystSystemPrompt = `You are a senior social media sentiment analyst. Your job is to evaluate retail and social-media sentiment signals to produce a structured sentiment report.
+
+## Signals to Evaluate
+
+### Sentiment Score
+- Overall sentiment score: interpret the aggregated score as positive (bullish retail mood), negative (bearish retail mood), or neutral.
+- Score magnitude: stronger absolute values indicate more conviction in the prevailing sentiment.
+
+### Bullish / Bearish Positioning
+- Bullish proportion: the fraction of social-media mentions expressing a positive outlook. Values above 0.6 suggest strong retail optimism.
+- Bearish proportion: the fraction of social-media mentions expressing a negative outlook. Values above 0.6 suggest strong retail pessimism.
+- Ratio analysis: compare bullish to bearish proportions to determine the dominant positioning.
+
+### Engagement Volume
+- Post count: total number of social-media posts mentioning the ticker. Higher volumes amplify the reliability of the sentiment signal.
+- Comment count: total number of comments on those posts. High comment counts indicate deeper engagement and discussion.
+- Volume context: a high sentiment score with low engagement is less reliable than one backed by thousands of posts and comments.
+
+## Output Format
+
+Produce a structured report with the following sections:
+
+1. **Retail Sentiment Summary** — Interpret the overall sentiment score and bullish/bearish proportions. State whether retail participants are net bullish, bearish, or neutral and the strength of that conviction.
+2. **Trending Assessment** — Evaluate post and comment volume to determine whether the ticker is trending on social media. Classify engagement as low, moderate, or high and note any implications for price action.
+3. **Contrarian Signals** — Identify any contrarian indicators. Extreme bullish consensus (above 0.75) may signal euphoria and potential reversal risk. Extreme bearish consensus (above 0.75) may signal capitulation and potential recovery. Note when engagement volume is disproportionately high relative to the sentiment signal.
+4. **Overall Assessment** — Synthesize all signals into a coherent view. State a directional bias (bullish, bearish, or neutral) and a confidence level (low, medium, or high). Highlight any conflicting signals between sentiment and engagement.
+
+Be precise with numbers. Reference the actual values from the provided data. If a metric is missing or zero, note its absence rather than guessing.`
+
+// FormatSocialAnalystUserPrompt builds the user message for the social media
+// analyst by formatting social-sentiment data into a readable text block that
+// the LLM can analyze. When s is nil the prompt indicates that social
+// sentiment data is not available.
+func FormatSocialAnalystUserPrompt(ticker string, s *data.SocialSentiment) string {
+	var b strings.Builder
+
+	fmt.Fprintf(&b, "Analyze the following social media sentiment data for %s.\n", sanitizeCell(ticker))
+
+	if s == nil {
+		b.WriteString("\n## Social Sentiment Data\n\n")
+		b.WriteString("No social sentiment data available. This may be due to limited social media coverage or data source restrictions. Note the absence of data rather than guessing sentiment.\n")
+		b.WriteString("\nProvide your sentiment analysis report noting which metrics are unavailable and why.\n")
+		return b.String()
+	}
+
+	b.WriteString("\n## Social Sentiment Data\n\n")
+	b.WriteString("| Metric | Value |\n")
+	b.WriteString("|--------|-------|\n")
+	fmt.Fprintf(&b, "| Sentiment Score | %.4f |\n", s.Score)
+	fmt.Fprintf(&b, "| Bullish | %.4f |\n", s.Bullish)
+	fmt.Fprintf(&b, "| Bearish | %.4f |\n", s.Bearish)
+	fmt.Fprintf(&b, "| Post Count | %d |\n", s.PostCount)
+	fmt.Fprintf(&b, "| Comment Count | %d |\n", s.CommentCount)
+	fmt.Fprintf(&b, "| Measured At | %s |\n", s.MeasuredAt.Format(time.DateOnly))
+
+	b.WriteString("\nProvide your structured social sentiment analysis report.\n")
+
+	return b.String()
+}
+
 // sanitizeCell normalises a string for safe inclusion in a Markdown table
 // cell. It collapses newlines and carriage returns into spaces and replaces
 // pipe characters so the table structure cannot be broken by untrusted input.
