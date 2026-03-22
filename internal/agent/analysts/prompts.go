@@ -189,6 +189,18 @@ const SocialAnalystSystemPrompt = `You are a senior social media sentiment analy
 - Post count: total number of social-media posts mentioning the ticker. Higher volumes amplify the reliability of the sentiment signal.
 - Comment count: total number of comments on those posts. High comment counts indicate deeper engagement and discussion.
 - Volume context: a high sentiment score with low engagement is less reliable than one backed by thousands of posts and comments.
+
+## Output Format
+
+Produce a structured report with the following sections:
+
+1. **Retail Sentiment Summary** — Interpret the overall sentiment score and bullish/bearish proportions. State whether retail participants are net bullish, bearish, or neutral and the strength of that conviction.
+2. **Trending Assessment** — Evaluate post and comment volume to determine whether the ticker is trending on social media. Classify engagement as low, moderate, or high and note any implications for price action.
+3. **Contrarian Signals** — Identify any contrarian indicators. Extreme bullish consensus (above 0.75) may signal euphoria and potential reversal risk. Extreme bearish consensus (above 0.75) may signal capitulation and potential recovery. Note when engagement volume is disproportionately high relative to the sentiment signal.
+4. **Overall Assessment** — Synthesize all signals into a coherent view. State a directional bias (bullish, bearish, or neutral) and a confidence level (low, medium, or high). Highlight any conflicting signals between sentiment and engagement.
+
+Be precise with numbers. Reference the actual values from the provided data. If a metric is missing or zero, note its absence rather than guessing.`
+
 // NewsAnalystSystemPrompt is the system prompt that instructs the LLM to
 // perform news sentiment and catalyst analysis on recent news articles.
 const NewsAnalystSystemPrompt = `You are a senior news analyst specializing in financial markets. Your job is to evaluate recent news articles for a given ticker and produce a structured news sentiment and catalyst analysis report.
@@ -217,12 +229,13 @@ const NewsAnalystSystemPrompt = `You are a senior news analyst specializing in f
 
 Produce a structured report with the following sections:
 
-1. **Retail Sentiment Summary** — Interpret the overall sentiment score and bullish/bearish proportions. State whether retail participants are net bullish, bearish, or neutral and the strength of that conviction.
-2. **Trending Assessment** — Evaluate post and comment volume to determine whether the ticker is trending on social media. Classify engagement as low, moderate, or high and note any implications for price action.
-3. **Contrarian Signals** — Identify any contrarian indicators. Extreme bullish consensus (above 0.75) may signal euphoria and potential reversal risk. Extreme bearish consensus (above 0.75) may signal capitulation and potential recovery. Note when engagement volume is disproportionately high relative to the sentiment signal.
-4. **Overall Assessment** — Synthesize all signals into a coherent view. State a directional bias (bullish, bearish, or neutral) and a confidence level (low, medium, or high). Highlight any conflicting signals between sentiment and engagement.
+1. **Sentiment Summary** — Overall sentiment score, sentiment direction (improving/deteriorating/stable), and a brief narrative explaining the sentiment.
+2. **Key Catalysts** — List each identified catalyst with its type (earnings, product, regulatory, macro, M&A, management), a brief description, and its expected impact (positive, negative, or neutral).
+3. **Macro Impact** — How macroeconomic factors mentioned in the news may affect the ticker's near-term outlook.
+4. **Risk Flags** — Any risks, red flags, or concerns identified from the news (e.g., regulatory threats, earnings warnings, competitive pressures).
+5. **Overall Assessment** — Synthesize all signals into a coherent view. State a directional bias (bullish, bearish, or neutral) and a confidence level (low, medium, or high). Highlight any conflicting signals between sentiment and catalysts.
 
-Be precise with numbers. Reference the actual values from the provided data. If a metric is missing or zero, note its absence rather than guessing.`
+Be precise. Reference specific articles and their sentiments when supporting your analysis. If no articles are provided, explicitly state that no news data is available rather than fabricating information.`
 
 // FormatSocialAnalystUserPrompt builds the user message for the social media
 // analyst by formatting social-sentiment data into a readable text block that
@@ -251,13 +264,9 @@ func FormatSocialAnalystUserPrompt(ticker string, s *data.SocialSentiment) strin
 	fmt.Fprintf(&b, "| Measured At | %s |\n", s.MeasuredAt.Format(time.DateOnly))
 
 	b.WriteString("\nProvide your structured social sentiment analysis report.\n")
-1. **Sentiment Summary** — Overall sentiment score, sentiment direction (improving/deteriorating/stable), and a brief narrative explaining the sentiment.
-2. **Key Catalysts** — List each identified catalyst with its type (earnings, product, regulatory, macro, M&A, management), a brief description, and its expected impact (positive, negative, or neutral).
-3. **Macro Impact** — How macroeconomic factors mentioned in the news may affect the ticker's near-term outlook.
-4. **Risk Flags** — Any risks, red flags, or concerns identified from the news (e.g., regulatory threats, earnings warnings, competitive pressures).
-5. **Overall Assessment** — Synthesize all signals into a coherent view. State a directional bias (bullish, bearish, or neutral) and a confidence level (low, medium, or high). Highlight any conflicting signals between sentiment and catalysts.
 
-Be precise. Reference specific articles and their sentiments when supporting your analysis. If no articles are provided, explicitly state that no news data is available rather than fabricating information.`
+	return b.String()
+}
 
 // FormatNewsAnalystUserPrompt builds the user message for the news analyst by
 // formatting news article data into a readable text block that the LLM can

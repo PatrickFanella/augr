@@ -20,6 +20,7 @@ const (
 	AgentRoleAggressiveAnalyst  AgentRole = "aggressive_analyst"
 	AgentRoleConservativeAnalyst AgentRole = "conservative_analyst"
 	AgentRoleNeutralAnalyst     AgentRole = "neutral_analyst"
+	AgentRoleNewsAnalyst        AgentRole = "news_analyst"
 )
 
 // String returns the string representation of an AgentRole.
