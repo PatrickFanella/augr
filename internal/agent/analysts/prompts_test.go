@@ -315,6 +315,132 @@ func TestFormatFundamentalsAnalystUserPromptSanitizesTicker(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// News analyst prompt tests
+// ---------------------------------------------------------------------------
+
+func TestNewsAnalystSystemPromptIsNonEmpty(t *testing.T) {
+	if NewsAnalystSystemPrompt == "" {
+		t.Fatal("NewsAnalystSystemPrompt must not be empty")
+	}
+}
+
+func TestNewsAnalystSystemPromptContainsRequiredSections(t *testing.T) {
+	required := []string{
+		"Sentiment",
+		"Catalyst",
+		"Macro",
+		"Risk",
+		"Overall Assessment",
+		"bullish",
+		"bearish",
+		"neutral",
+		"earnings",
+		"regulatory",
+		"confidence",
+		"Product",
+		"M&A",
+		"Management",
+	}
+	for _, keyword := range required {
+		if !strings.Contains(NewsAnalystSystemPrompt, keyword) {
+			t.Errorf("system prompt missing required keyword %q", keyword)
+		}
+	}
+}
+
+func TestFormatNewsAnalystUserPromptWithData(t *testing.T) {
+	articles := []data.NewsArticle{
+		{
+			Title:       "AAPL beats earnings expectations",
+			Summary:     "Apple reported Q1 earnings above analyst estimates.",
+			URL:         "https://example.com/1",
+			Source:      "Reuters",
+			PublishedAt: time.Date(2025, 3, 20, 0, 0, 0, 0, time.UTC),
+			Sentiment:   0.85,
+		},
+		{
+			Title:       "AAPL faces regulatory scrutiny",
+			Summary:     "EU announces antitrust investigation into Apple.",
+			URL:         "https://example.com/2",
+			Source:      "Bloomberg",
+			PublishedAt: time.Date(2025, 3, 19, 0, 0, 0, 0, time.UTC),
+			Sentiment:   -0.60,
+		},
+	}
+
+	result := FormatNewsAnalystUserPrompt("AAPL", articles)
+
+	checks := []string{
+		"AAPL",
+		"## News Articles",
+		"AAPL beats earnings expectations",
+		"Apple reported Q1 earnings above analyst estimates.",
+		"0.85",
+		"2025-03-20",
+		"AAPL faces regulatory scrutiny",
+		"EU announces antitrust investigation into Apple.",
+		"-0.60",
+		"2025-03-19",
+		"Provide your structured news analysis report.",
+	}
+	for _, want := range checks {
+		if !strings.Contains(result, want) {
+			t.Errorf("user prompt missing expected content %q", want)
+		}
+	}
+}
+
+func TestFormatNewsAnalystUserPromptEmptyArticles(t *testing.T) {
+	result := FormatNewsAnalystUserPrompt("TSLA", nil)
+
+	if !strings.Contains(result, "TSLA") {
+		t.Error("user prompt should contain ticker")
+	}
+	if !strings.Contains(result, "No news articles available.") {
+		t.Error("user prompt should indicate missing news data")
+	}
+	if strings.Contains(result, "| Date | Title |") {
+		t.Error("user prompt should not contain the data table when articles are nil")
+	}
+}
+
+func TestFormatNewsAnalystUserPromptEmptySlice(t *testing.T) {
+	result := FormatNewsAnalystUserPrompt("GOOG", []data.NewsArticle{})
+
+	if !strings.Contains(result, "No news articles available.") {
+		t.Error("user prompt should indicate missing news data for empty slice")
+	}
+}
+
+func TestFormatNewsAnalystUserPromptSanitizesTicker(t *testing.T) {
+	result := FormatNewsAnalystUserPrompt("BAD|TICK\nER", nil)
+
+	if !strings.Contains(result, `BAD\|TICK ER`) {
+		t.Error("ticker should have pipes escaped and newlines replaced")
+	}
+}
+
+func TestFormatNewsAnalystUserPromptSanitizesTitleAndSummary(t *testing.T) {
+	articles := []data.NewsArticle{
+		{
+			Title:       "evil|title\nbreaker",
+			Summary:     "bad|summary\r\ninjection",
+			PublishedAt: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
+			Sentiment:   0.0,
+		},
+	}
+
+	result := FormatNewsAnalystUserPrompt("TEST", articles)
+
+	if !strings.Contains(result, `evil\|title breaker`) {
+		t.Error("title should have pipes escaped and newlines replaced")
+	}
+	if !strings.Contains(result, `bad\|summary injection`) {
+		t.Error("summary should have pipes escaped and newlines replaced")
+	}
+}
+
 func TestSanitizeCell(t *testing.T) {
 	tests := []struct {
 		name  string
