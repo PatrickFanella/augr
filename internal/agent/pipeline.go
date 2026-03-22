@@ -7,8 +7,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 )
 
@@ -392,4 +394,140 @@ func (p *Pipeline) executeRiskDebatePhase(ctx context.Context, state *PipelineSt
 	}
 
 	return nil
+}
+
+// Execute runs the full pipeline for the given strategy and ticker. It creates
+// a PipelineRun record in the database (status=running), applies the
+// pipeline-level timeout from config, and executes the four phases in order:
+// Analysis → ResearchDebate → Trading → RiskDebate. A PipelineStarted event
+// is emitted at the beginning, and either PipelineCompleted or PipelineError
+// at the end. The PipelineRun status is updated to completed or failed
+// accordingly.
+func (p *Pipeline) Execute(ctx context.Context, strategyID uuid.UUID, ticker string) (*PipelineState, error) {
+	// Apply pipeline-level timeout when configured.
+	if p.config.PipelineTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, p.config.PipelineTimeout)
+		defer cancel()
+	}
+
+	now := time.Now().UTC()
+	run := &domain.PipelineRun{
+		ID:         uuid.New(),
+		StrategyID: strategyID,
+		Ticker:     ticker,
+		TradeDate:  now.Truncate(24 * time.Hour),
+		Status:     domain.PipelineStatusRunning,
+		StartedAt:  now,
+	}
+
+	if err := p.pipelineRunRepo.Create(ctx, run); err != nil {
+		return nil, fmt.Errorf("agent/pipeline: create pipeline run: %w", err)
+	}
+
+	state := &PipelineState{
+		PipelineRunID: run.ID,
+		StrategyID:    strategyID,
+		Ticker:        ticker,
+		mu:            &sync.Mutex{},
+	}
+
+	// Emit PipelineStarted event.
+	p.emitEvent(ctx, PipelineEvent{
+		Type:          PipelineStarted,
+		PipelineRunID: run.ID,
+		StrategyID:    strategyID,
+		Ticker:        ticker,
+		OccurredAt:    time.Now().UTC(),
+	})
+
+	// Execute phases in order.
+	phases := []struct {
+		name string
+		fn   func(context.Context, *PipelineState) error
+	}{
+		{"analysis", p.executeAnalysisPhase},
+		{"research_debate", p.executeResearchDebatePhase},
+		{"trading", p.executeTradingPhase},
+		{"risk_debate", p.executeRiskDebatePhase},
+	}
+
+	for _, phase := range phases {
+		if err := phase.fn(ctx, state); err != nil {
+			p.logger.Error("agent/pipeline: phase failed",
+				slog.String("phase", phase.name),
+				slog.Any("error", err),
+			)
+
+			// Use a background context for the status update so that it
+			// succeeds even when the pipeline context has been cancelled.
+			completedAt := time.Now().UTC()
+			if updateErr := p.pipelineRunRepo.UpdateStatus(
+				context.Background(), run.ID, run.TradeDate,
+				repository.PipelineRunStatusUpdate{
+					Status:       domain.PipelineStatusFailed,
+					CompletedAt:  &completedAt,
+					ErrorMessage: err.Error(),
+				},
+			); updateErr != nil {
+				p.logger.Error("agent/pipeline: failed to update run status",
+					slog.Any("error", updateErr),
+				)
+			}
+
+			p.emitEvent(ctx, PipelineEvent{
+				Type:          PipelineError,
+				PipelineRunID: run.ID,
+				StrategyID:    strategyID,
+				Ticker:        ticker,
+				Error:         err.Error(),
+				OccurredAt:    time.Now().UTC(),
+			})
+
+			return state, err
+		}
+	}
+
+	// All phases succeeded – mark the run as completed.
+	completedAt := time.Now().UTC()
+	if updateErr := p.pipelineRunRepo.UpdateStatus(
+		ctx, run.ID, run.TradeDate,
+		repository.PipelineRunStatusUpdate{
+			Status:      domain.PipelineStatusCompleted,
+			CompletedAt: &completedAt,
+		},
+	); updateErr != nil {
+		p.logger.Error("agent/pipeline: failed to update run status",
+			slog.Any("error", updateErr),
+		)
+	}
+
+	p.emitEvent(ctx, PipelineEvent{
+		Type:          PipelineCompleted,
+		PipelineRunID: run.ID,
+		StrategyID:    strategyID,
+		Ticker:        ticker,
+		OccurredAt:    time.Now().UTC(),
+	})
+
+	return state, nil
+}
+
+// emitEvent sends an event to the events channel in a non-blocking fashion.
+// It is a no-op when the events channel is nil.
+func (p *Pipeline) emitEvent(ctx context.Context, event PipelineEvent) {
+	if p.events == nil {
+		return
+	}
+	select {
+	case p.events <- event:
+	case <-ctx.Done():
+		p.logger.Debug("agent/pipeline: event dropped; context cancelled",
+			slog.String("type", string(event.Type)),
+		)
+	default:
+		p.logger.Debug("agent/pipeline: event dropped; events channel full",
+			slog.String("type", string(event.Type)),
+		)
+	}
 }

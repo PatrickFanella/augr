@@ -11,6 +11,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/PatrickFanella/get-rich-quick/internal/domain"
+	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 )
 
 // mockAnalystNode is a test double for a PhaseAnalysis Node.
@@ -947,5 +950,427 @@ func TestExecuteRiskDebatePhase_FinalSignalExtractedFromRiskManager(t *testing.T
 	wantSignal := "final verdict based on 2 rounds"
 	if state.RiskDebate.FinalSignal != wantSignal {
 		t.Errorf("RiskDebate.FinalSignal = %q, want %q", state.RiskDebate.FinalSignal, wantSignal)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Execute (top-level) tests
+// ---------------------------------------------------------------------------
+
+// mockPipelineRunRepo is a test double for repository.PipelineRunRepository.
+type mockPipelineRunRepo struct {
+	createFn       func(ctx context.Context, run *domain.PipelineRun) error
+	updateStatusFn func(ctx context.Context, id uuid.UUID, tradeDate time.Time, update repository.PipelineRunStatusUpdate) error
+}
+
+func (m *mockPipelineRunRepo) Create(ctx context.Context, run *domain.PipelineRun) error {
+	if m.createFn != nil {
+		return m.createFn(ctx, run)
+	}
+	return nil
+}
+
+func (m *mockPipelineRunRepo) Get(_ context.Context, _ uuid.UUID, _ time.Time) (*domain.PipelineRun, error) {
+	return nil, nil
+}
+
+func (m *mockPipelineRunRepo) List(_ context.Context, _ repository.PipelineRunFilter, _, _ int) ([]domain.PipelineRun, error) {
+	return nil, nil
+}
+
+func (m *mockPipelineRunRepo) UpdateStatus(ctx context.Context, id uuid.UUID, tradeDate time.Time, update repository.PipelineRunStatusUpdate) error {
+	if m.updateStatusFn != nil {
+		return m.updateStatusFn(ctx, id, tradeDate, update)
+	}
+	return nil
+}
+
+// mockPhaseNode is a flexible test double that can represent any phase/role combination.
+type mockPhaseNode struct {
+	name    string
+	role    AgentRole
+	phase   Phase
+	execute func(ctx context.Context, state *PipelineState) error
+}
+
+func (m *mockPhaseNode) Name() string    { return m.name }
+func (m *mockPhaseNode) Role() AgentRole { return m.role }
+func (m *mockPhaseNode) Phase() Phase    { return m.phase }
+func (m *mockPhaseNode) Execute(ctx context.Context, state *PipelineState) error {
+	return m.execute(ctx, state)
+}
+
+// registerAllPhaseNodes registers the minimal set of nodes required by all four
+// phases. The supplied executionLog slice, if non-nil, records the order of
+// phase executions. Callers can override individual node behaviours via the
+// optional overrides map keyed by AgentRole.
+func registerAllPhaseNodes(
+	p *Pipeline,
+	executionLog *[]string,
+	overrides map[AgentRole]func(context.Context, *PipelineState) error,
+) {
+	noop := func(_ context.Context, _ *PipelineState) error { return nil }
+
+	mkExec := func(role AgentRole, phaseName string) func(context.Context, *PipelineState) error {
+		if overrides != nil {
+			if fn, ok := overrides[role]; ok {
+				return func(ctx context.Context, state *PipelineState) error {
+					if executionLog != nil {
+						*executionLog = append(*executionLog, phaseName)
+					}
+					return fn(ctx, state)
+				}
+			}
+		}
+		return func(_ context.Context, _ *PipelineState) error {
+			if executionLog != nil {
+				*executionLog = append(*executionLog, phaseName)
+			}
+			return nil
+		}
+	}
+
+	// Analysis phase — one analyst node.
+	p.RegisterNode(&mockPhaseNode{
+		name: "market_analyst", role: AgentRoleMarketAnalyst, phase: PhaseAnalysis,
+		execute: mkExec(AgentRoleMarketAnalyst, "analysis"),
+	})
+
+	// Research debate phase.
+	p.RegisterNode(&mockPhaseNode{
+		name: "bull_researcher", role: AgentRoleBullResearcher, phase: PhaseResearchDebate,
+		execute: func(ctx context.Context, state *PipelineState) error {
+			fn := mkExec(AgentRoleBullResearcher, "research_debate")
+			idx := len(state.ResearchDebate.Rounds) - 1
+			state.ResearchDebate.Rounds[idx].Contributions[AgentRoleBullResearcher] = "bull"
+			return fn(ctx, state)
+		},
+	})
+	p.RegisterNode(&mockPhaseNode{
+		name: "bear_researcher", role: AgentRoleBearResearcher, phase: PhaseResearchDebate,
+		execute: func(ctx context.Context, state *PipelineState) error {
+			fn := mkExec(AgentRoleBearResearcher, "research_debate")
+			idx := len(state.ResearchDebate.Rounds) - 1
+			state.ResearchDebate.Rounds[idx].Contributions[AgentRoleBearResearcher] = "bear"
+			return fn(ctx, state)
+		},
+	})
+	p.RegisterNode(&mockPhaseNode{
+		name: "invest_judge", role: AgentRoleInvestJudge, phase: PhaseResearchDebate,
+		execute: func(ctx context.Context, state *PipelineState) error {
+			fn := mkExec(AgentRoleInvestJudge, "research_debate")
+			state.ResearchDebate.InvestmentPlan = "accumulate"
+			return fn(ctx, state)
+		},
+	})
+
+	// Trading phase.
+	p.RegisterNode(&mockPhaseNode{
+		name: "trader", role: AgentRoleTrader, phase: PhaseTrading,
+		execute: func(ctx context.Context, state *PipelineState) error {
+			fn := mkExec(AgentRoleTrader, "trading")
+			state.TradingPlan = TradingPlan{Action: PipelineSignalBuy, Ticker: state.Ticker}
+			return fn(ctx, state)
+		},
+	})
+
+	// Risk debate phase.
+	riskNoop := func(role AgentRole) func(context.Context, *PipelineState) error {
+		return func(ctx context.Context, state *PipelineState) error {
+			if overrides != nil {
+				if fn, ok := overrides[role]; ok {
+					return fn(ctx, state)
+				}
+			}
+			idx := len(state.RiskDebate.Rounds) - 1
+			state.RiskDebate.Rounds[idx].Contributions[role] = string(role)
+			return nil
+		}
+	}
+	_ = noop
+	p.RegisterNode(&mockPhaseNode{
+		name: "aggressive_analyst", role: AgentRoleAggressiveAnalyst, phase: PhaseRiskDebate,
+		execute: riskNoop(AgentRoleAggressiveAnalyst),
+	})
+	p.RegisterNode(&mockPhaseNode{
+		name: "conservative_analyst", role: AgentRoleConservativeAnalyst, phase: PhaseRiskDebate,
+		execute: riskNoop(AgentRoleConservativeAnalyst),
+	})
+	p.RegisterNode(&mockPhaseNode{
+		name: "neutral_analyst", role: AgentRoleNeutralAnalyst, phase: PhaseRiskDebate,
+		execute: riskNoop(AgentRoleNeutralAnalyst),
+	})
+	p.RegisterNode(&mockPhaseNode{
+		name: "risk_manager", role: AgentRoleRiskManager, phase: PhaseRiskDebate,
+		execute: func(ctx context.Context, state *PipelineState) error {
+			fn := mkExec(AgentRoleRiskManager, "risk_debate")
+			state.RiskDebate.FinalSignal = "approved"
+			return fn(ctx, state)
+		},
+	})
+}
+
+// TestExecute_HappyPath verifies that Execute runs all four phases in order,
+// creates a PipelineRun with status running, updates it to completed, and emits
+// PipelineStarted and PipelineCompleted events.
+func TestExecute_HappyPath(t *testing.T) {
+	stratID := uuid.New()
+
+	var createdRun *domain.PipelineRun
+	var updatedStatus domain.PipelineStatus
+
+	repo := &mockPipelineRunRepo{
+		createFn: func(_ context.Context, run *domain.PipelineRun) error {
+			createdRun = run
+			return nil
+		},
+		updateStatusFn: func(_ context.Context, _ uuid.UUID, _ time.Time, update repository.PipelineRunStatusUpdate) error {
+			updatedStatus = update.Status
+			return nil
+		},
+	}
+
+	events := make(chan PipelineEvent, 50)
+	var phaseLog []string
+	pipeline := NewPipeline(
+		PipelineConfig{ResearchDebateRounds: 1, RiskDebateRounds: 1},
+		repo, nil, events, slog.Default(),
+	)
+	registerAllPhaseNodes(pipeline, &phaseLog, nil)
+
+	state, err := pipeline.Execute(context.Background(), stratID, "AAPL")
+	if err != nil {
+		t.Fatalf("Execute() error = %v, want nil", err)
+	}
+
+	// Verify PipelineRun was created with running status.
+	if createdRun == nil {
+		t.Fatal("PipelineRun was not created")
+	}
+	if createdRun.Status != domain.PipelineStatusRunning {
+		t.Errorf("PipelineRun.Status = %q, want %q", createdRun.Status, domain.PipelineStatusRunning)
+	}
+	if createdRun.StrategyID != stratID {
+		t.Errorf("PipelineRun.StrategyID = %v, want %v", createdRun.StrategyID, stratID)
+	}
+	if createdRun.Ticker != "AAPL" {
+		t.Errorf("PipelineRun.Ticker = %q, want %q", createdRun.Ticker, "AAPL")
+	}
+
+	// Verify status updated to completed.
+	if updatedStatus != domain.PipelineStatusCompleted {
+		t.Errorf("updated status = %q, want %q", updatedStatus, domain.PipelineStatusCompleted)
+	}
+
+	// Verify all 4 phases executed in order.
+	wantPhases := []string{"analysis", "research_debate", "trading", "risk_debate"}
+	if len(phaseLog) < len(wantPhases) {
+		t.Fatalf("phase log = %v, want at least %v", phaseLog, wantPhases)
+	}
+	// Check the first occurrence of each phase appears in order.
+	seen := map[string]int{}
+	for i, p := range phaseLog {
+		if _, ok := seen[p]; !ok {
+			seen[p] = i
+		}
+	}
+	for i := 1; i < len(wantPhases); i++ {
+		prev := wantPhases[i-1]
+		curr := wantPhases[i]
+		if seen[curr] <= seen[prev] {
+			t.Errorf("phase %q (idx %d) should execute after %q (idx %d)", curr, seen[curr], prev, seen[prev])
+		}
+	}
+
+	// Verify state is populated.
+	if state == nil {
+		t.Fatal("Execute() returned nil state")
+	}
+	if state.StrategyID != stratID {
+		t.Errorf("state.StrategyID = %v, want %v", state.StrategyID, stratID)
+	}
+	if state.Ticker != "AAPL" {
+		t.Errorf("state.Ticker = %q, want %q", state.Ticker, "AAPL")
+	}
+
+	// Verify events: first must be PipelineStarted, last must be PipelineCompleted.
+	close(events)
+	var emitted []PipelineEvent
+	for e := range events {
+		emitted = append(emitted, e)
+	}
+	if len(emitted) < 2 {
+		t.Fatalf("got %d events, want at least 2", len(emitted))
+	}
+	if emitted[0].Type != PipelineStarted {
+		t.Errorf("first event type = %q, want %q", emitted[0].Type, PipelineStarted)
+	}
+	if emitted[len(emitted)-1].Type != PipelineCompleted {
+		t.Errorf("last event type = %q, want %q", emitted[len(emitted)-1].Type, PipelineCompleted)
+	}
+}
+
+// TestExecute_PhaseFailureUpdatesRunStatus verifies that when a phase fails,
+// the PipelineRun status is updated to failed with the error message, and a
+// PipelineError event is emitted.
+func TestExecute_PhaseFailureUpdatesRunStatus(t *testing.T) {
+	stratID := uuid.New()
+
+	var updatedStatus domain.PipelineStatus
+	var updatedErrMsg string
+
+	repo := &mockPipelineRunRepo{
+		updateStatusFn: func(_ context.Context, _ uuid.UUID, _ time.Time, update repository.PipelineRunStatusUpdate) error {
+			updatedStatus = update.Status
+			updatedErrMsg = update.ErrorMessage
+			return nil
+		},
+	}
+
+	events := make(chan PipelineEvent, 50)
+	pipeline := NewPipeline(
+		PipelineConfig{ResearchDebateRounds: 1, RiskDebateRounds: 1},
+		repo, nil, events, slog.Default(),
+	)
+
+	tradeErr := errors.New("simulated trading failure")
+
+	registerAllPhaseNodes(pipeline, nil, map[AgentRole]func(context.Context, *PipelineState) error{
+		AgentRoleTrader: func(_ context.Context, _ *PipelineState) error {
+			return tradeErr
+		},
+	})
+
+	state, err := pipeline.Execute(context.Background(), stratID, "AAPL")
+	if err == nil {
+		t.Fatal("Execute() error = nil, want non-nil")
+	}
+	if !errors.Is(err, tradeErr) {
+		t.Errorf("error = %v, want %v", err, tradeErr)
+	}
+
+	// State must still be returned (partial).
+	if state == nil {
+		t.Fatal("Execute() returned nil state on failure")
+	}
+
+	// Status must be failed with error message.
+	if updatedStatus != domain.PipelineStatusFailed {
+		t.Errorf("updated status = %q, want %q", updatedStatus, domain.PipelineStatusFailed)
+	}
+	if !strings.Contains(updatedErrMsg, "simulated trading failure") {
+		t.Errorf("error message = %q, want substring %q", updatedErrMsg, "simulated trading failure")
+	}
+
+	// PipelineError event must be emitted.
+	close(events)
+	var errorEvents []PipelineEvent
+	for e := range events {
+		if e.Type == PipelineError {
+			errorEvents = append(errorEvents, e)
+		}
+	}
+	if len(errorEvents) != 1 {
+		t.Fatalf("got %d PipelineError events, want 1", len(errorEvents))
+	}
+	if !strings.Contains(errorEvents[0].Error, "simulated trading failure") {
+		t.Errorf("PipelineError.Error = %q, want substring %q", errorEvents[0].Error, "simulated trading failure")
+	}
+}
+
+// TestExecute_ContextCancellationStopsExecution verifies that cancelling the
+// parent context stops pipeline execution and updates the run status to failed.
+func TestExecute_ContextCancellationStopsExecution(t *testing.T) {
+	stratID := uuid.New()
+
+	var updatedStatus domain.PipelineStatus
+
+	repo := &mockPipelineRunRepo{
+		updateStatusFn: func(_ context.Context, _ uuid.UUID, _ time.Time, update repository.PipelineRunStatusUpdate) error {
+			updatedStatus = update.Status
+			return nil
+		},
+	}
+
+	events := make(chan PipelineEvent, 50)
+	pipeline := NewPipeline(
+		PipelineConfig{ResearchDebateRounds: 1, RiskDebateRounds: 1},
+		repo, nil, events, slog.Default(),
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// Cancel the context when the analysis phase runs.
+	registerAllPhaseNodes(pipeline, nil, map[AgentRole]func(context.Context, *PipelineState) error{
+		AgentRoleMarketAnalyst: func(_ context.Context, _ *PipelineState) error {
+			cancel()
+			return context.Canceled
+		},
+	})
+
+	_, err := pipeline.Execute(ctx, stratID, "AAPL")
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context.Canceled", err)
+	}
+
+	// Status must be failed.
+	if updatedStatus != domain.PipelineStatusFailed {
+		t.Errorf("updated status = %q, want %q", updatedStatus, domain.PipelineStatusFailed)
+	}
+}
+
+// TestExecute_PipelineTimeoutTriggersCancellation verifies that the
+// pipeline-level timeout from config cancels execution.
+func TestExecute_PipelineTimeoutTriggersCancellation(t *testing.T) {
+	stratID := uuid.New()
+
+	var updatedStatus domain.PipelineStatus
+
+	repo := &mockPipelineRunRepo{
+		updateStatusFn: func(_ context.Context, _ uuid.UUID, _ time.Time, update repository.PipelineRunStatusUpdate) error {
+			updatedStatus = update.Status
+			return nil
+		},
+	}
+
+	events := make(chan PipelineEvent, 50)
+	pipeline := NewPipeline(
+		PipelineConfig{
+			PipelineTimeout:      100 * time.Millisecond,
+			ResearchDebateRounds: 1,
+			RiskDebateRounds:     1,
+		},
+		repo, nil, events, slog.Default(),
+	)
+
+	// The analysis phase will block until the pipeline timeout fires.
+	registerAllPhaseNodes(pipeline, nil, map[AgentRole]func(context.Context, *PipelineState) error{
+		AgentRoleMarketAnalyst: func(ctx context.Context, _ *PipelineState) error {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(5 * time.Second):
+				return nil
+			}
+		},
+	})
+
+	start := time.Now()
+	_, err := pipeline.Execute(context.Background(), stratID, "AAPL")
+	elapsed := time.Since(start)
+
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("error = %v, want context.DeadlineExceeded", err)
+	}
+
+	// Must complete within a reasonable bound of the timeout.
+	const maxElapsed = 2 * time.Second
+	if elapsed > maxElapsed {
+		t.Errorf("Execute() took %v, want < %v", elapsed, maxElapsed)
+	}
+
+	// Status must be failed.
+	if updatedStatus != domain.PipelineStatusFailed {
+		t.Errorf("updated status = %q, want %q", updatedStatus, domain.PipelineStatusFailed)
 	}
 }
