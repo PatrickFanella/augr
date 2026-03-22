@@ -316,6 +316,33 @@ func TestFormatFundamentalsAnalystUserPromptSanitizesTicker(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Social analyst prompt tests
+// ---------------------------------------------------------------------------
+
+func TestSocialAnalystSystemPromptIsNonEmpty(t *testing.T) {
+	if SocialAnalystSystemPrompt == "" {
+		t.Fatal("SocialAnalystSystemPrompt must not be empty")
+	}
+}
+
+func TestSocialAnalystSystemPromptContainsRequiredSections(t *testing.T) {
+	required := []string{
+		"Sentiment Score",
+		"Bullish",
+		"Bearish",
+		"Post count",
+		"Comment count",
+		"Retail Sentiment Summary",
+		"Trending Assessment",
+		"Contrarian Signals",
+		"Overall Assessment",
+		"bullish",
+		"bearish",
+		"confidence",
+		"engagement",
+	}
+	for _, keyword := range required {
+		if !strings.Contains(SocialAnalystSystemPrompt, keyword) {
 // News analyst prompt tests
 // ---------------------------------------------------------------------------
 
@@ -349,6 +376,29 @@ func TestNewsAnalystSystemPromptContainsRequiredSections(t *testing.T) {
 	}
 }
 
+func TestFormatSocialAnalystUserPromptWithData(t *testing.T) {
+	s := &data.SocialSentiment{
+		Ticker:       "GME",
+		Score:        0.7523,
+		Bullish:      0.82,
+		Bearish:      0.18,
+		PostCount:    15420,
+		CommentCount: 87300,
+		MeasuredAt:   time.Date(2025, 3, 20, 0, 0, 0, 0, time.UTC),
+	}
+
+	result := FormatSocialAnalystUserPrompt("GME", s)
+
+	checks := []string{
+		"GME",
+		"## Social Sentiment Data",
+		"0.7523",
+		"0.8200",
+		"0.1800",
+		"15420",
+		"87300",
+		"2025-03-20",
+		"Provide your structured social sentiment analysis report.",
 func TestFormatNewsAnalystUserPromptWithData(t *testing.T) {
 	articles := []data.NewsArticle{
 		{
@@ -391,6 +441,41 @@ func TestFormatNewsAnalystUserPromptWithData(t *testing.T) {
 	}
 }
 
+func TestFormatSocialAnalystUserPromptNilSentiment(t *testing.T) {
+	result := FormatSocialAnalystUserPrompt("DOGE-USD", nil)
+
+	if !strings.Contains(result, "DOGE-USD") {
+		t.Error("user prompt should contain ticker")
+	}
+	if !strings.Contains(result, "No social sentiment data available") {
+		t.Error("user prompt should indicate missing social sentiment data")
+	}
+	if strings.Contains(result, "| Metric | Value |") {
+		t.Error("user prompt should not contain the data table when sentiment is nil")
+	}
+}
+
+func TestFormatSocialAnalystUserPromptZeroValues(t *testing.T) {
+	s := &data.SocialSentiment{
+		Ticker:     "NEWCO",
+		MeasuredAt: time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC),
+	}
+
+	result := FormatSocialAnalystUserPrompt("NEWCO", s)
+
+	if !strings.Contains(result, "| Sentiment Score | 0.0000 |") {
+		t.Error("user prompt should contain zero sentiment score")
+	}
+	if !strings.Contains(result, "| Post Count | 0 |") {
+		t.Error("user prompt should contain zero post count")
+	}
+	if !strings.Contains(result, "2025-06-01") {
+		t.Error("user prompt should contain measured-at date")
+	}
+}
+
+func TestFormatSocialAnalystUserPromptSanitizesTicker(t *testing.T) {
+	result := FormatSocialAnalystUserPrompt("BAD|TICK\nER", nil)
 func TestFormatNewsAnalystUserPromptEmptyArticles(t *testing.T) {
 	result := FormatNewsAnalystUserPrompt("TSLA", nil)
 
