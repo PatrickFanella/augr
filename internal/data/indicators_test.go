@@ -119,6 +119,39 @@ func TestIndicatorsReturnEmptyWhenInsufficientData(t *testing.T) {
 	}
 }
 
+func TestIndicatorsReturnEmptyForInvalidParameters(t *testing.T) {
+	bars := indicatorTestBars(50)
+
+	if got := data.SMA(bars, 0); len(got) != 0 {
+		t.Fatalf("SMA() with period 0 len = %d, want 0", len(got))
+	}
+	if got := data.SMA(bars, -5); len(got) != 0 {
+		t.Fatalf("SMA() with negative period len = %d, want 0", len(got))
+	}
+
+	if got := data.EMA(bars, 0); len(got) != 0 {
+		t.Fatalf("EMA() with period 0 len = %d, want 0", len(got))
+	}
+	if got := data.EMA(bars, -3); len(got) != 0 {
+		t.Fatalf("EMA() with negative period len = %d, want 0", len(got))
+	}
+
+	macdLine, signalLine, histogram := data.MACD(bars, 26, 26, 9)
+	if len(macdLine) != 0 || len(signalLine) != 0 || len(histogram) != 0 {
+		t.Fatalf("MACD() with fast>=slow lens = (%d, %d, %d), want (0, 0, 0)", len(macdLine), len(signalLine), len(histogram))
+	}
+
+	macdLine, signalLine, histogram = data.MACD(bars, 12, 26, 0)
+	if len(macdLine) != 0 || len(signalLine) != 0 || len(histogram) != 0 {
+		t.Fatalf("MACD() with signal=0 lens = (%d, %d, %d), want (0, 0, 0)", len(macdLine), len(signalLine), len(histogram))
+	}
+
+	macdLine, signalLine, histogram = data.MACD(bars, 12, 26, -1)
+	if len(macdLine) != 0 || len(signalLine) != 0 || len(histogram) != 0 {
+		t.Fatalf("MACD() with negative signal lens = (%d, %d, %d), want (0, 0, 0)", len(macdLine), len(signalLine), len(histogram))
+	}
+}
+
 func indicatorTestBars(count int) []domain.OHLCV {
 	bars := make([]domain.OHLCV, count)
 	start := time.Unix(0, 0).UTC()

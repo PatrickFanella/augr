@@ -22,14 +22,22 @@ func EMA(data []domain.OHLCV, period int) []float64 {
 	return emaSeries(closes, period)
 }
 
-// MACD returns the MACD line, signal line, and histogram for the given closing prices.
+// MACD computes the Moving Average Convergence Divergence indicator for OHLCV bars.
+// It derives closing prices from the provided data and returns three slices:
+//   - macdLine: aligned to each completed slow EMA window.
+//   - signalLine: EMA of macdLine, aligned to each completed signal window.
+//   - histogram: difference between the corresponding aligned MACD and signal values.
+//
+// All slices preserve the input time order. If the parameters are invalid or there is
+// insufficient data, all three return values are nil.
 func MACD(data []domain.OHLCV, fast, slow, signal int) (macdLine, signalLine, histogram []float64) {
 	if fast <= 0 || slow <= 0 || signal <= 0 || fast >= slow || len(data) < slow+signal-1 {
 		return nil, nil, nil
 	}
 
-	fastEMA := emaSeries(closePrices(data), fast)
-	slowEMA := emaSeries(closePrices(data), slow)
+	closes := closePrices(data)
+	fastEMA := emaSeries(closes, fast)
+	slowEMA := emaSeries(closes, slow)
 	if len(fastEMA) == 0 || len(slowEMA) == 0 {
 		return nil, nil, nil
 	}
