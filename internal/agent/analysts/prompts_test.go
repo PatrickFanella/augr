@@ -130,3 +130,98 @@ func TestFormatMarketAnalystUserPromptBarsWithoutIndicators(t *testing.T) {
 		t.Error("user prompt should indicate missing indicator data")
 	}
 }
+
+func TestFormatMarketAnalystUserPromptIntradayTimestamps(t *testing.T) {
+	bars := []domain.OHLCV{
+		{Timestamp: time.Date(2025, 3, 20, 9, 30, 0, 0, time.UTC), Open: 100, High: 101, Low: 99, Close: 100.5, Volume: 5000},
+		{Timestamp: time.Date(2025, 3, 20, 9, 35, 0, 0, time.UTC), Open: 100.5, High: 102, Low: 100, Close: 101.5, Volume: 6000},
+	}
+	indicators := []domain.Indicator{
+		{Name: "RSI_14", Value: 55.0, Timestamp: time.Date(2025, 3, 20, 9, 35, 0, 0, time.UTC)},
+	}
+
+	result := FormatMarketAnalystUserPrompt("SPY", bars, indicators)
+
+	// Intraday bars should include time-of-day.
+	if !strings.Contains(result, "2025-03-20 09:30 UTC") {
+		t.Error("intraday bars should include time-of-day")
+	}
+	if !strings.Contains(result, "2025-03-20 09:35 UTC") {
+		t.Error("intraday bars should include time-of-day for second bar")
+	}
+	// Intraday indicator timestamp.
+	if !strings.Contains(result, "09:35 UTC") {
+		t.Error("intraday indicator should include time-of-day")
+	}
+}
+
+func TestFormatMarketAnalystUserPromptMixedTimestamps(t *testing.T) {
+	// One midnight, one intraday bar — should trigger intraday formatting.
+	bars := []domain.OHLCV{
+		{Timestamp: time.Date(2025, 3, 20, 0, 0, 0, 0, time.UTC), Open: 100, High: 101, Low: 99, Close: 100.5, Volume: 5000},
+		{Timestamp: time.Date(2025, 3, 20, 14, 0, 0, 0, time.UTC), Open: 100.5, High: 102, Low: 100, Close: 101.5, Volume: 6000},
+	}
+
+	result := FormatMarketAnalystUserPrompt("QQQ", bars, nil)
+
+	if !strings.Contains(result, "2025-03-20 00:00 UTC") {
+		t.Error("mixed series should use full timestamp format for midnight bar")
+	}
+	if !strings.Contains(result, "2025-03-20 14:00 UTC") {
+		t.Error("mixed series should use full timestamp format for intraday bar")
+	}
+}
+
+func TestFormatMarketAnalystUserPromptSanitizesTicker(t *testing.T) {
+	result := FormatMarketAnalystUserPrompt("BAD|TICK\nER", nil, nil)
+
+	if strings.Contains(result, "BAD|TICK") {
+		t.Error("pipe characters in ticker should be escaped")
+	}
+	if strings.Contains(result, "\n") && strings.Contains(result, "BAD") && strings.Contains(result, "ER") {
+		// Check that the newline between BAD and ER was replaced.
+		if !strings.Contains(result, `BAD\|TICK ER`) {
+			t.Error("newlines and pipes in ticker should be sanitized")
+		}
+	}
+}
+
+func TestFormatMarketAnalystUserPromptSanitizesIndicatorName(t *testing.T) {
+	ts := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	indicators := []domain.Indicator{
+		{Name: "evil|name\nbreaker", Value: 42.0, Timestamp: ts},
+	}
+
+	result := FormatMarketAnalystUserPrompt("TEST", nil, indicators)
+
+	if strings.Contains(result, "evil|name") {
+		t.Error("pipe in indicator name should be escaped")
+	}
+	if !strings.Contains(result, `evil\|name breaker`) {
+		t.Error("indicator name should have pipes escaped and newlines replaced")
+	}
+}
+
+func TestSanitizeCell(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"plain", "SMA_20", "SMA_20"},
+		{"pipe", "a|b", `a\|b`},
+		{"newline", "a\nb", "a b"},
+		{"carriage return", "a\rb", "a b"},
+		{"crlf", "a\r\nb", "a b"},
+		{"leading space", "  padded  ", "padded"},
+		{"combined", " evil|name\r\nbreaker ", `evil\|name breaker`},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := sanitizeCell(tc.input)
+			if got != tc.want {
+				t.Errorf("sanitizeCell(%q) = %q, want %q", tc.input, got, tc.want)
+			}
+		})
+	}
+}

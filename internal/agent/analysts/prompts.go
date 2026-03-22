@@ -57,7 +57,12 @@ Be precise with numbers. Reference the actual indicator values from the provided
 func FormatMarketAnalystUserPrompt(ticker string, bars []domain.OHLCV, indicators []domain.Indicator) string {
 	var b strings.Builder
 
-	fmt.Fprintf(&b, "Analyze the following market data for %s.\n", ticker)
+	fmt.Fprintf(&b, "Analyze the following market data for %s.\n", sanitizeCell(ticker))
+
+	// Determine whether any bar or indicator has an intraday (non-midnight)
+	// timestamp so we can include time-of-day when it is meaningful.
+	barIntraday := hasIntradayBars(bars)
+	indIntraday := hasIntradayIndicators(indicators)
 
 	// OHLCV section.
 	b.WriteString("\n## OHLCV Data\n\n")
@@ -68,7 +73,7 @@ func FormatMarketAnalystUserPrompt(ticker string, bars []domain.OHLCV, indicator
 		b.WriteString("|------|------|------|-----|-------|--------|\n")
 		for _, bar := range bars {
 			fmt.Fprintf(&b, "| %s | %.2f | %.2f | %.2f | %.2f | %.0f |\n",
-				bar.Timestamp.Format(time.DateOnly),
+				formatTimestamp(bar.Timestamp, barIntraday),
 				bar.Open, bar.High, bar.Low, bar.Close, bar.Volume,
 			)
 		}
@@ -83,8 +88,8 @@ func FormatMarketAnalystUserPrompt(ticker string, bars []domain.OHLCV, indicator
 		b.WriteString("|-----------|------|-------|\n")
 		for _, ind := range indicators {
 			fmt.Fprintf(&b, "| %s | %s | %.4f |\n",
-				ind.Name,
-				ind.Timestamp.Format(time.DateOnly),
+				sanitizeCell(ind.Name),
+				formatTimestamp(ind.Timestamp, indIntraday),
 				ind.Value,
 			)
 		}
@@ -93,4 +98,50 @@ func FormatMarketAnalystUserPrompt(ticker string, bars []domain.OHLCV, indicator
 	b.WriteString("\nProvide your structured technical analysis report.\n")
 
 	return b.String()
+}
+
+// sanitizeCell normalises a string for safe inclusion in a Markdown table
+// cell. It collapses newlines and carriage returns into spaces and replaces
+// pipe characters so the table structure cannot be broken by untrusted input.
+func sanitizeCell(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", " ")
+	s = strings.ReplaceAll(s, "\r", " ")
+	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.ReplaceAll(s, "|", "\\|")
+	return strings.TrimSpace(s)
+}
+
+// formatTimestamp renders a time as date-only (2006-01-02) when all
+// timestamps in the series fall on midnight, or as date+time
+// (2006-01-02 15:04 UTC) when any timestamp has a non-zero time component.
+func formatTimestamp(t time.Time, intraday bool) string {
+	if intraday {
+		return t.UTC().Format("2006-01-02 15:04 UTC")
+	}
+	return t.Format(time.DateOnly)
+}
+
+// isIntraday returns true when the given time has a non-midnight time-of-day
+// component (hour, minute, second, or nanosecond).
+func isIntraday(t time.Time) bool {
+	h, m, s := t.Clock()
+	return h != 0 || m != 0 || s != 0 || t.Nanosecond() != 0
+}
+
+func hasIntradayBars(bars []domain.OHLCV) bool {
+	for _, bar := range bars {
+		if isIntraday(bar.Timestamp) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasIntradayIndicators(indicators []domain.Indicator) bool {
+	for _, ind := range indicators {
+		if isIntraday(ind.Timestamp) {
+			return true
+		}
+	}
+	return false
 }
