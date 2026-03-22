@@ -2,6 +2,7 @@ package polygon
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -245,5 +246,215 @@ func TestProviderGetOHLCVReturnsErrorForNilClient(t *testing.T) {
 	}
 	if err.Error() != "polygon: client is nil" {
 		t.Fatalf("GetOHLCV() error = %q, want %q", err.Error(), "polygon: client is nil")
+	}
+}
+
+func TestProviderGetNews(t *testing.T) {
+	t.Parallel()
+
+	const expectedRequestCount = 2
+
+	type requestDetails struct {
+		path   string
+		query  url.Values
+		method string
+	}
+
+	from := time.Date(2024, time.January, 1, 0, 0, 0, 0, time.UTC)
+	to := time.Date(2024, time.January, 2, 23, 59, 59, 0, time.UTC)
+
+	requests := make(chan requestDetails, expectedRequestCount)
+	var serverURL string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests <- requestDetails{
+			path:   r.URL.Path,
+			query:  r.URL.Query(),
+			method: r.Method,
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Query().Get("cursor") {
+		case "":
+			_, _ = w.Write([]byte(`{
+				"results":[
+					{
+						"title":"Apple jumps on earnings",
+						"description":"Apple reported strong quarterly revenue.",
+						"article_url":"https://example.com/aapl-1",
+						"published_utc":"2024-01-01T14:30:00Z",
+						"publisher":{"name":"Reuters"},
+						"insights":[
+							{"ticker":"AAPL","sentiment":"positive"},
+							{"ticker":"MSFT","sentiment":"neutral"}
+						]
+					}
+				],
+				"next_url":"` + serverURL + `/v2/reference/news?cursor=page-2"
+			}`))
+		case "page-2":
+			_, _ = w.Write([]byte(`{
+				"results":[
+					{
+						"title":"Apple supply chain update",
+						"description":"Suppliers expect steady demand.",
+						"article_url":"https://example.com/aapl-2",
+						"published_utc":"2024-01-02T15:45:00Z",
+						"publisher":{"name":"Bloomberg"},
+						"insights":[
+							{"ticker":"AAPL","sentiment":"negative"}
+						]
+					}
+				]
+			}`))
+		default:
+			t.Fatalf("unexpected cursor = %q", r.URL.Query().Get("cursor"))
+		}
+	}))
+	serverURL = server.URL
+	defer server.Close()
+
+	client := NewClient("test-key", discardLogger())
+	client.baseURL = server.URL
+	provider := NewProvider(client)
+
+	got, err := provider.GetNews(context.Background(), "AAPL", from, to)
+	if err != nil {
+		t.Fatalf("GetNews() error = %v", err)
+	}
+
+	want := []data.NewsArticle{
+		{
+			Title:       "Apple jumps on earnings",
+			Summary:     "Apple reported strong quarterly revenue.",
+			URL:         "https://example.com/aapl-1",
+			Source:      "Reuters",
+			PublishedAt: time.Date(2024, time.January, 1, 14, 30, 0, 0, time.UTC),
+			Sentiment:   1,
+		},
+		{
+			Title:       "Apple supply chain update",
+			Summary:     "Suppliers expect steady demand.",
+			URL:         "https://example.com/aapl-2",
+			Source:      "Bloomberg",
+			PublishedAt: time.Date(2024, time.January, 2, 15, 45, 0, 0, time.UTC),
+			Sentiment:   -1,
+		},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("GetNews() = %#v, want %#v", got, want)
+	}
+
+	var captured []requestDetails
+	for range expectedRequestCount {
+		select {
+		case request := <-requests:
+			captured = append(captured, request)
+		case <-time.After(time.Second):
+			t.Fatal("request details were not captured")
+		}
+	}
+
+	slices.SortFunc(captured, func(a, b requestDetails) int {
+		switch {
+		case a.query.Get("cursor") < b.query.Get("cursor"):
+			return -1
+		case a.query.Get("cursor") > b.query.Get("cursor"):
+			return 1
+		default:
+			return 0
+		}
+	})
+
+	firstRequest := captured[0]
+	if firstRequest.method != http.MethodGet {
+		t.Fatalf("first request method = %s, want %s", firstRequest.method, http.MethodGet)
+	}
+	if firstRequest.path != "/v2/reference/news" {
+		t.Fatalf("first request path = %s, want news endpoint", firstRequest.path)
+	}
+	if firstRequest.query.Get("ticker") != "AAPL" {
+		t.Fatalf("first request ticker = %q, want AAPL", firstRequest.query.Get("ticker"))
+	}
+	if firstRequest.query.Get("published_utc.gte") != from.Format(time.RFC3339Nano) {
+		t.Fatalf("first request published_utc.gte = %q, want %q", firstRequest.query.Get("published_utc.gte"), from.Format(time.RFC3339Nano))
+	}
+	if firstRequest.query.Get("published_utc.lte") != to.Format(time.RFC3339Nano) {
+		t.Fatalf("first request published_utc.lte = %q, want %q", firstRequest.query.Get("published_utc.lte"), to.Format(time.RFC3339Nano))
+	}
+	if firstRequest.query.Get("sort") != "published_utc" {
+		t.Fatalf("first request sort = %q, want published_utc", firstRequest.query.Get("sort"))
+	}
+	if firstRequest.query.Get("order") != "asc" {
+		t.Fatalf("first request order = %q, want asc", firstRequest.query.Get("order"))
+	}
+	if firstRequest.query.Get("limit") != "1000" {
+		t.Fatalf("first request limit = %q, want 1000", firstRequest.query.Get("limit"))
+	}
+	if firstRequest.query.Get("apiKey") != "test-key" {
+		t.Fatalf("first request apiKey = %q, want test-key", firstRequest.query.Get("apiKey"))
+	}
+
+	secondRequest := captured[1]
+	if secondRequest.path != "/v2/reference/news" {
+		t.Fatalf("second request path = %s, want same news endpoint", secondRequest.path)
+	}
+	if secondRequest.query.Get("cursor") != "page-2" {
+		t.Fatalf("second request cursor = %q, want page-2", secondRequest.query.Get("cursor"))
+	}
+	if secondRequest.query.Get("ticker") != "AAPL" {
+		t.Fatalf("second request ticker = %q, want AAPL", secondRequest.query.Get("ticker"))
+	}
+	if secondRequest.query.Get("published_utc.gte") != from.Format(time.RFC3339Nano) {
+		t.Fatalf("second request published_utc.gte = %q, want %q", secondRequest.query.Get("published_utc.gte"), from.Format(time.RFC3339Nano))
+	}
+	if secondRequest.query.Get("published_utc.lte") != to.Format(time.RFC3339Nano) {
+		t.Fatalf("second request published_utc.lte = %q, want %q", secondRequest.query.Get("published_utc.lte"), to.Format(time.RFC3339Nano))
+	}
+	if secondRequest.query.Get("sort") != "published_utc" {
+		t.Fatalf("second request sort = %q, want published_utc", secondRequest.query.Get("sort"))
+	}
+	if secondRequest.query.Get("order") != "asc" {
+		t.Fatalf("second request order = %q, want asc", secondRequest.query.Get("order"))
+	}
+	if secondRequest.query.Get("limit") != "1000" {
+		t.Fatalf("second request limit = %q, want 1000", secondRequest.query.Get("limit"))
+	}
+	if secondRequest.query.Get("apiKey") != "test-key" {
+		t.Fatalf("second request apiKey = %q, want test-key", secondRequest.query.Get("apiKey"))
+	}
+}
+
+func TestProviderGetNewsReturnsErrorForNilClient(t *testing.T) {
+	t.Parallel()
+
+	provider := NewProvider(nil)
+
+	_, err := provider.GetNews(
+		context.Background(),
+		"AAPL",
+		time.Date(2024, time.January, 1, 0, 0, 0, 0, time.UTC),
+		time.Date(2024, time.January, 2, 0, 0, 0, 0, time.UTC),
+	)
+	if err == nil {
+		t.Fatal("GetNews() error = nil, want non-nil")
+	}
+	if err.Error() != "polygon: client is nil" {
+		t.Fatalf("GetNews() error = %q, want %q", err.Error(), "polygon: client is nil")
+	}
+}
+
+func TestProviderUnsupportedMethodsReturnErrNotImplemented(t *testing.T) {
+	t.Parallel()
+
+	provider := NewProvider(&Client{})
+
+	_, fundamentalsErr := provider.GetFundamentals(context.Background(), "AAPL")
+	if !errors.Is(fundamentalsErr, data.ErrNotImplemented) {
+		t.Fatalf("GetFundamentals() error = %v, want ErrNotImplemented", fundamentalsErr)
+	}
+
+	_, socialErr := provider.GetSocialSentiment(context.Background(), "AAPL")
+	if !errors.Is(socialErr, data.ErrNotImplemented) {
+		t.Fatalf("GetSocialSentiment() error = %v, want ErrNotImplemented", socialErr)
 	}
 }

@@ -2,10 +2,14 @@ package data
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 )
+
+// ErrNotImplemented indicates a provider does not support a requested method.
+var ErrNotImplemented = errors.New("data: not implemented")
 
 // DataProvider defines the abstraction for retrieving market data.
 // A provider may support a subset of methods; unsupported methods should
