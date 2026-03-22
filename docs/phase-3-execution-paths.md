@@ -30,7 +30,7 @@ tags: [tracking, phase-3, execution]
 |       | **Total**              | **59** | **25** | **34**  |          |
 
 ---
-
+<!--
 ## Track A: Pipeline Orchestration
 
 > Must complete first — all agents plug into this.
@@ -43,6 +43,7 @@ tags: [tracking, phase-3, execution]
 | 3   | [#160](https://github.com/PatrickFanella/get-rich-quick/issues/160) | Implement Phase 4 executor: risk debate loop                      |  M   | None             | READY   | Claude Opus 4.6 |
 | 4   | [#161](https://github.com/PatrickFanella/get-rich-quick/issues/161) | Implement top-level Pipeline.Execute method with phase sequencing |  M   | #158, #159, #160 | BLOCKED | Claude Opus 4.6 |
 | 5   | [#162](https://github.com/PatrickFanella/get-rich-quick/issues/162) | Add agent decision persistence to pipeline executor               |  S   | #161             | BLOCKED | GPT-5.4  |
+-->
 
 ```mermaid
 graph LR
@@ -57,11 +58,13 @@ graph LR
     style 161 fill:#ef4444
     style 162 fill:#ef4444
 ```
-
+<!--
 **Parallelizable:** #158, #159, #160 can all run simultaneously.
 
 ---
+-->
 
+<!--
 ## Track B: Analysis Agents
 
 > Depends on: Nothing external (self-contained)
@@ -78,7 +81,7 @@ graph LR
 | 7   | [#172](https://github.com/PatrickFanella/get-rich-quick/issues/172) | Implement News Analyst agent struct and Execute method         |  S   | #163, #170 | BLOCKED | Claude Opus 4.6 |
 | 8   | [#174](https://github.com/PatrickFanella/get-rich-quick/issues/174) | Write Social Media Analyst system prompt template              |  XS  | None       | READY   | Claude Opus 4.6 |
 | 9   | [#176](https://github.com/PatrickFanella/get-rich-quick/issues/176) | Implement Social Media Analyst agent struct and Execute method |  S   | #163, #174 | BLOCKED | Claude Opus 4.6 |
-
+-->
 ```mermaid
 graph TD
     163[#163 Base analyst struct] --> 165[#165 Market agent]
@@ -100,10 +103,11 @@ graph TD
     style 172 fill:#ef4444
     style 176 fill:#ef4444
 ```
-
+<!--
 **Strategy:** Assign #163 first. While waiting, assign all 4 prompt issues (#164, #167, #170, #174) in parallel. Once #163 + prompts merge, all 4 agents can be assigned simultaneously.
 
 ---
+-->
 
 ## Track C1: Research Debate
 
@@ -170,6 +174,7 @@ graph TD
 **Fully blocked** until C1's #166 and #169 merge. Then #179, #180, #181 can run in parallel.
 
 ---
+<!--
 
 ## Track D1: Data Providers
 
@@ -190,7 +195,7 @@ graph TD
 | 10  | [#193](https://github.com/PatrickFanella/get-rich-quick/issues/193) | Implement Binance data provider (crypto OHLCV)                  |  S   | #182      | BLOCKED | GPT-5.4 |
 | 11  | [#194](https://github.com/PatrickFanella/get-rich-quick/issues/194) | Implement NewsAPI provider                                      |  S   | #182      | BLOCKED | GPT-5.4 |
 | 12  | [#195](https://github.com/PatrickFanella/get-rich-quick/issues/195) | Wire up data provider chains with cache integration             |  M   | All above | BLOCKED | GPT-5.4 |
-
+-->
 ```mermaid
 graph TD
     182[#182 Rate limiter] --> 184[#184 Polygon client]
@@ -225,10 +230,10 @@ graph TD
     style 191 fill:#ef4444
     style 195 fill:#ef4444
 ```
-
+<!--
 **Strategy:** Assign #182 first. Once it merges, #184 and #188 can run in parallel (Polygon + Alpha Vantage clients). #192 (Yahoo) has no deps and can start anytime.
 
----
+-->
 
 ## Track D2: Technical Indicators
 
