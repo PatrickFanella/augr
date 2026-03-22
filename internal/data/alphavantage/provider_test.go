@@ -274,6 +274,7 @@ func TestProviderGetFundamentals(t *testing.T) {
 	}
 
 	requests := make(chan requestDetails, 3)
+	unexpectedFunctions := make(chan string, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests <- requestDetails{
 			method: r.Method,
@@ -318,7 +319,9 @@ func TestProviderGetFundamentals(t *testing.T) {
 				]
 			}`))
 		default:
-			t.Fatalf("unexpected function %q", r.URL.Query().Get("function"))
+			unexpectedFunctions <- r.URL.Query().Get("function")
+			http.Error(w, "unexpected function", http.StatusBadRequest)
+			return
 		}
 	}))
 	defer server.Close()
@@ -407,11 +410,18 @@ func TestProviderGetFundamentals(t *testing.T) {
 			t.Fatalf("function %q was not requested", function)
 		}
 	}
+
+	select {
+	case function := <-unexpectedFunctions:
+		t.Fatalf("unexpected function %q", function)
+	default:
+	}
 }
 
 func TestProviderGetFundamentalsMissingFieldsGracefully(t *testing.T) {
 	t.Parallel()
 
+	unexpectedFunctions := make(chan string, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 
@@ -450,7 +460,9 @@ func TestProviderGetFundamentalsMissingFieldsGracefully(t *testing.T) {
 				]
 			}`))
 		default:
-			t.Fatalf("unexpected function %q", r.URL.Query().Get("function"))
+			unexpectedFunctions <- r.URL.Query().Get("function")
+			http.Error(w, "unexpected function", http.StatusBadRequest)
+			return
 		}
 	}))
 	defer server.Close()
@@ -475,6 +487,91 @@ func TestProviderGetFundamentalsMissingFieldsGracefully(t *testing.T) {
 	}
 	if got.FetchedAt.IsZero() {
 		t.Fatal("FetchedAt is zero, want non-zero")
+	}
+
+	select {
+	case function := <-unexpectedFunctions:
+		t.Fatalf("unexpected function %q", function)
+	default:
+	}
+}
+
+func TestProviderGetFundamentalsFallsBackToQuarterlyReports(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		switch r.URL.Query().Get("function") {
+		case functionOverview:
+			_, _ = w.Write([]byte(`{
+				"MarketCapitalization": "5000",
+				"PERatio": "10.5",
+				"EPS": "2.5",
+				"DividendYield": "0.01"
+			}`))
+		case functionIncomeStatement:
+			_, _ = w.Write([]byte(`{
+				"annualReports": [],
+				"quarterlyReports": [
+					{
+						"fiscalDateEnding": "2024-09-30",
+						"totalRevenue": "300",
+						"grossProfit": "90"
+					},
+					{
+						"fiscalDateEnding": "2024-06-30",
+						"totalRevenue": "240",
+						"grossProfit": "72"
+					}
+				]
+			}`))
+		case functionBalanceSheet:
+			_, _ = w.Write([]byte(`{
+				"annualReports": [],
+				"quarterlyReports": [
+					{
+						"fiscalDateEnding": "2024-09-30",
+						"totalLiabilities": "150",
+						"totalShareholderEquity": "300"
+					}
+				]
+			}`))
+		default:
+			http.Error(w, "unexpected function", http.StatusBadRequest)
+			return
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient("test-key", discardLogger())
+	client.baseURL = server.URL + "/query"
+	client.httpClient = server.Client()
+
+	provider := NewProvider(client)
+
+	got, err := provider.GetFundamentals(context.Background(), "NVDA")
+	if err != nil {
+		t.Fatalf("GetFundamentals() error = %v", err)
+	}
+
+	if got.Ticker != "NVDA" {
+		t.Fatalf("Ticker = %q, want %q", got.Ticker, "NVDA")
+	}
+	if got.MarketCap != 5000 {
+		t.Fatalf("MarketCap = %v, want %v", got.MarketCap, 5000)
+	}
+	if got.Revenue != 300 {
+		t.Fatalf("Revenue = %v, want %v", got.Revenue, 300)
+	}
+	if got.GrossMargin != 0.3 {
+		t.Fatalf("GrossMargin = %v, want %v", got.GrossMargin, 0.3)
+	}
+	if got.RevenueGrowthYoY != 0.25 {
+		t.Fatalf("RevenueGrowthYoY = %v, want %v", got.RevenueGrowthYoY, 0.25)
+	}
+	if got.DebtToEquity != 0.5 {
+		t.Fatalf("DebtToEquity = %v, want %v", got.DebtToEquity, 0.5)
 	}
 }
 
