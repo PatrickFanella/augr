@@ -175,14 +175,8 @@ func TestFormatMarketAnalystUserPromptMixedTimestamps(t *testing.T) {
 func TestFormatMarketAnalystUserPromptSanitizesTicker(t *testing.T) {
 	result := FormatMarketAnalystUserPrompt("BAD|TICK\nER", nil, nil)
 
-	if strings.Contains(result, "BAD|TICK") {
-		t.Error("pipe characters in ticker should be escaped")
-	}
-	if strings.Contains(result, "\n") && strings.Contains(result, "BAD") && strings.Contains(result, "ER") {
-		// Check that the newline between BAD and ER was replaced.
-		if !strings.Contains(result, `BAD\|TICK ER`) {
-			t.Error("newlines and pipes in ticker should be sanitized")
-		}
+	if !strings.Contains(result, `BAD\|TICK ER`) {
+		t.Error("ticker should have pipes escaped and newlines replaced")
 	}
 }
 
@@ -194,9 +188,6 @@ func TestFormatMarketAnalystUserPromptSanitizesIndicatorName(t *testing.T) {
 
 	result := FormatMarketAnalystUserPrompt("TEST", nil, indicators)
 
-	if strings.Contains(result, "evil|name") {
-		t.Error("pipe in indicator name should be escaped")
-	}
 	if !strings.Contains(result, `evil\|name breaker`) {
 		t.Error("indicator name should have pipes escaped and newlines replaced")
 	}
