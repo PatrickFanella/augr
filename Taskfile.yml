@@ -1,0 +1,231 @@
+version: '3'
+
+env:
+  GOROOT:
+    sh: go env GOROOT
+
+vars:
+  BINARY_NAME: tradingagent
+  BUILD_DIR: ./bin
+  CMD_DIR: ./cmd/tradingagent
+  DOCKER_IMAGE: tradingagent
+  DOCKER_TAG: latest
+  MIGRATE_DIR: ./migrations
+  DB_URL: '{{.DB_URL | default "postgres://tradingagent:tradingagent@localhost:5432/tradingagent?sslmode=disable"}}'
+  COVERAGE_DIR: ./coverage
+  VERSION:
+    sh: git describe --tags --always --dirty 2>/dev/null || echo "dev"
+
+tasks:
+
+  default:
+    desc: List all available tasks
+    cmds:
+      - task --list-all
+
+  # ─── Build ──────────────────────────────────────────────────────────────
+
+  build:
+    desc: Compile the Go binary into ./bin/
+    cmds:
+      - mkdir -p {{.BUILD_DIR}}
+      - go build -ldflags "-s -w -X main.version={{.VERSION}}" -o {{.BUILD_DIR}}/{{.BINARY_NAME}} {{.CMD_DIR}}
+      - echo "Built {{.BUILD_DIR}}/{{.BINARY_NAME}} ({{.VERSION}})"
+    sources:
+      - '**/*.go'
+      - go.mod
+      - go.sum
+    generates:
+      - '{{.BUILD_DIR}}/{{.BINARY_NAME}}'
+
+  run:
+    desc: Build and run the binary
+    deps: [build]
+    cmds:
+      - '{{.BUILD_DIR}}/{{.BINARY_NAME}}'
+
+  # ─── Testing ────────────────────────────────────────────────────────────
+
+  test:
+    desc: Run unit tests (short mode, no integration)
+    cmds:
+      - go test -short -count=1 ./...
+
+  test:race:
+    desc: Run unit tests with race detector
+    cmds:
+      - go test -short -race -count=1 ./...
+
+  test:integration:
+    desc: Run integration tests (requires PostgreSQL)
+    cmds:
+      - go test -count=1 -run Integration ./...
+
+  test:cover:
+    desc: Run tests with coverage report
+    cmds:
+      - mkdir -p {{.COVERAGE_DIR}}
+      - go test -short -race -count=1 -coverprofile={{.COVERAGE_DIR}}/coverage.out ./...
+      - cmd: go tool cover -func={{.COVERAGE_DIR}}/coverage.out
+      - go tool cover -html={{.COVERAGE_DIR}}/coverage.out -o {{.COVERAGE_DIR}}/coverage.html
+      - echo "Coverage report {{.COVERAGE_DIR}}/coverage.html"
+
+  # ─── Code Quality ──────────────────────────────────────────────────────
+
+  lint:
+    desc: Run golangci-lint
+    cmds:
+      - golangci-lint run ./...
+
+  fmt:
+    desc: Format Go source files with gofumpt
+    cmds:
+      - gofumpt -w .
+
+  fmt:check:
+    desc: Check formatting without modifying files
+    cmds:
+      - cmd: gofumpt -d .
+        silent: true
+
+  vet:
+    desc: Run go vet
+    cmds:
+      - go vet ./...
+
+  vulncheck:
+    desc: Scan for known vulnerabilities in dependencies
+    preconditions:
+      - sh: command -v govulncheck
+        msg: "govulncheck not found. Run: task tools"
+    cmds:
+      - govulncheck ./...
+
+  audit:
+    desc: Run all code quality checks (vet + lint + vulncheck + fmt check)
+    cmds:
+      - task: vet
+      - task: lint
+      - task: vulncheck
+      - task: fmt:check
+
+  check:
+    desc: Quick pre-push verification (build + test + lint)
+    cmds:
+      - task: build
+      - task: test:race
+      - task: lint
+      - echo "All checks passed"
+
+  ci:
+    desc: Full CI pipeline locally (build + test + lint + vulncheck)
+    cmds:
+      - task: build
+      - task: test:race
+      - task: lint
+      - task: vulncheck
+      - echo "CI pipeline passed"
+
+  # ─── Database ───────────────────────────────────────────────────────────
+
+  migrate:up:
+    desc: Apply all pending database migrations
+    preconditions:
+      - sh: command -v migrate
+        msg: "migrate not found. Run: task tools"
+    cmds:
+      - migrate -path {{.MIGRATE_DIR}} -database "{{.DB_URL}}" up
+
+  migrate:down:
+    desc: Roll back the last database migration
+    preconditions:
+      - sh: command -v migrate
+        msg: "migrate not found. Run: task tools"
+    cmds:
+      - migrate -path {{.MIGRATE_DIR}} -database "{{.DB_URL}}" down 1
+
+  migrate:create:
+    desc: Create a new migration (usage -- task migrate:create -- add_users_table)
+    preconditions:
+      - sh: command -v migrate
+        msg: "migrate not found. Run: task tools"
+    cmds:
+      - migrate create -ext sql -dir {{.MIGRATE_DIR}} -seq {{.CLI_ARGS}}
+
+  migrate:status:
+    desc: Show current migration version
+    preconditions:
+      - sh: command -v migrate
+        msg: "migrate not found. Run: task tools"
+    cmds:
+      - migrate -path {{.MIGRATE_DIR}} -database "{{.DB_URL}}" version
+
+  # ─── Docker ─────────────────────────────────────────────────────────────
+
+  docker:build:
+    desc: Build the Docker image
+    cmds:
+      - docker build -t {{.DOCKER_IMAGE}}:{{.DOCKER_TAG}} .
+
+  docker:run:
+    desc: Build and run in Docker
+    deps: [docker:build]
+    cmds:
+      - docker run --rm -it --env-file .env {{.DOCKER_IMAGE}}:{{.DOCKER_TAG}}
+
+  dev:
+    desc: Start the full dev environment (app + PostgreSQL + Redis)
+    cmds:
+      - docker compose up --build -d
+      - echo "Services starting... run 'task dev:logs' to follow output"
+
+  dev:down:
+    desc: Stop the dev environment
+    cmds:
+      - docker compose down
+
+  dev:logs:
+    desc: Follow dev environment logs
+    cmds:
+      - docker compose logs -f
+
+  dev:restart:
+    desc: Restart app container only (keeps DB/Redis running)
+    cmds:
+      - docker compose restart app
+
+  dev:psql:
+    desc: Open a psql shell to the dev database
+    interactive: true
+    cmds:
+      - docker compose exec postgres psql -U tradingagent -d tradingagent
+
+  # ─── Dependencies ───────────────────────────────────────────────────────
+
+  deps:
+    desc: Download Go module dependencies
+    cmds:
+      - go mod download
+
+  tidy:
+    desc: Tidy Go modules (add missing, remove unused)
+    cmds:
+      - go mod tidy
+
+  tools:
+    desc: Install all development tools
+    cmds:
+      - go install mvdan.cc/gofumpt@latest
+      - go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+      - go install golang.org/x/vuln/cmd/govulncheck@latest
+      - go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
+      - echo "All tools installed"
+
+  # ─── Cleanup ────────────────────────────────────────────────────────────
+
+  clean:
+    desc: Remove build artifacts and coverage reports
+    cmds:
+      - rm -rf {{.BUILD_DIR}} {{.COVERAGE_DIR}}
+      - go clean -cache -testcache
+      - echo "Cleaned"
