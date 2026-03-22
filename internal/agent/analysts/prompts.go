@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/PatrickFanella/get-rich-quick/internal/data"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 )
 
@@ -96,6 +97,75 @@ func FormatMarketAnalystUserPrompt(ticker string, bars []domain.OHLCV, indicator
 	}
 
 	b.WriteString("\nProvide your structured technical analysis report.\n")
+
+	return b.String()
+}
+
+// FundamentalsAnalystSystemPrompt is the system prompt that instructs the LLM
+// to perform fundamental financial analysis on company financial data.
+const FundamentalsAnalystSystemPrompt = `You are a senior fundamentals analyst. Your job is to evaluate a company's financial health and intrinsic value using key fundamental metrics.
+
+## Metrics to Evaluate
+
+### Valuation
+- P/E Ratio: compare against sector average and historical norms. A low P/E may indicate undervaluation; a high P/E may indicate overvaluation or growth expectations.
+- Market Capitalization: assess the company's size and relative position within its sector (large-cap, mid-cap, small-cap).
+
+### Growth
+- Revenue Growth (Year-over-Year): evaluate the trajectory and consistency of top-line growth.
+- Earnings Per Share (EPS): assess profitability on a per-share basis and the trend direction.
+
+### Financial Health
+- Debt-to-Equity Ratio: evaluate leverage risk. A ratio above 2.0 warrants caution; below 0.5 indicates conservative financing.
+- Free Cash Flow: positive and growing free cash flow signals operational strength and financial flexibility.
+- Gross Margin: higher margins suggest pricing power and operational efficiency.
+
+### Dividends
+- Dividend Yield: assess income potential. Compare against sector average and evaluate sustainability relative to free cash flow and earnings.
+
+## Output Format
+
+Produce a structured report with the following sections:
+
+1. **Valuation Assessment** — P/E ratio interpretation, market cap context, and whether the asset appears overvalued, fairly valued, or undervalued.
+2. **Growth Assessment** — Revenue growth trajectory and EPS trend with interpretation.
+3. **Financial Health Assessment** — Debt-to-equity evaluation, free cash flow analysis, and gross margin interpretation.
+4. **Dividend Assessment** — Dividend yield analysis and sustainability evaluation.
+5. **Overall Fundamental Rating** — Synthesize all metrics into a coherent view. State a fundamental rating (strong buy, buy, hold, sell, or strong sell) and a confidence level (low, medium, or high). Highlight any red flags or particularly strong indicators.
+
+Be precise with numbers. Reference the actual values from the provided data. If a metric is zero or not applicable (e.g., cryptocurrencies have no balance sheet or earnings data), explicitly note that the metric is not applicable and explain why, rather than guessing or fabricating values.`
+
+// FormatFundamentalsAnalystUserPrompt builds the user message for the
+// fundamentals analyst by formatting key financial data into a readable text
+// block that the LLM can analyze. When f is nil the prompt indicates that
+// fundamental data is not applicable (e.g., for crypto assets).
+func FormatFundamentalsAnalystUserPrompt(ticker string, f *data.Fundamentals) string {
+	var b strings.Builder
+
+	fmt.Fprintf(&b, "Analyze the following fundamental data for %s.\n", sanitizeCell(ticker))
+
+	if f == nil {
+		b.WriteString("\n## Fundamental Data\n\n")
+		b.WriteString("No fundamental data available. This asset may be a cryptocurrency or other instrument without traditional financial statements. Treat all balance-sheet and income-statement metrics as not applicable.\n")
+		b.WriteString("\nProvide your fundamental analysis report noting which metrics are not applicable and why.\n")
+		return b.String()
+	}
+
+	b.WriteString("\n## Fundamental Data\n\n")
+	b.WriteString("| Metric | Value |\n")
+	b.WriteString("|--------|-------|\n")
+	fmt.Fprintf(&b, "| Market Cap | %.2f |\n", f.MarketCap)
+	fmt.Fprintf(&b, "| P/E Ratio | %.2f |\n", f.PERatio)
+	fmt.Fprintf(&b, "| EPS | %.2f |\n", f.EPS)
+	fmt.Fprintf(&b, "| Revenue | %.2f |\n", f.Revenue)
+	fmt.Fprintf(&b, "| Revenue Growth YoY | %.2f%% |\n", f.RevenueGrowthYoY*100)
+	fmt.Fprintf(&b, "| Gross Margin | %.2f%% |\n", f.GrossMargin*100)
+	fmt.Fprintf(&b, "| Debt-to-Equity | %.2f |\n", f.DebtToEquity)
+	fmt.Fprintf(&b, "| Free Cash Flow | %.2f |\n", f.FreeCashFlow)
+	fmt.Fprintf(&b, "| Dividend Yield | %.2f%% |\n", f.DividendYield*100)
+	fmt.Fprintf(&b, "| Data Fetched At | %s |\n", f.FetchedAt.Format(time.DateOnly))
+
+	b.WriteString("\nProvide your structured fundamental analysis report.\n")
 
 	return b.String()
 }

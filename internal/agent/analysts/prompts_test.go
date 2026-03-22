@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/PatrickFanella/get-rich-quick/internal/data"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 )
 
@@ -190,6 +191,127 @@ func TestFormatMarketAnalystUserPromptSanitizesIndicatorName(t *testing.T) {
 
 	if !strings.Contains(result, `evil\|name breaker`) {
 		t.Error("indicator name should have pipes escaped and newlines replaced")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Fundamentals analyst prompt tests
+// ---------------------------------------------------------------------------
+
+func TestFundamentalsAnalystSystemPromptIsNonEmpty(t *testing.T) {
+	if FundamentalsAnalystSystemPrompt == "" {
+		t.Fatal("FundamentalsAnalystSystemPrompt must not be empty")
+	}
+}
+
+func TestFundamentalsAnalystSystemPromptContainsRequiredSections(t *testing.T) {
+	required := []string{
+		"Valuation",
+		"Growth",
+		"Financial Health",
+		"Dividend",
+		"P/E Ratio",
+		"Market Capitalization",
+		"Revenue Growth",
+		"EPS",
+		"Debt-to-Equity",
+		"Free Cash Flow",
+		"Gross Margin",
+		"Dividend Yield",
+		"Overall Fundamental Rating",
+		"strong buy",
+		"sell",
+		"confidence",
+		"not applicable",
+	}
+	for _, keyword := range required {
+		if !strings.Contains(FundamentalsAnalystSystemPrompt, keyword) {
+			t.Errorf("system prompt missing required keyword %q", keyword)
+		}
+	}
+}
+
+func TestFormatFundamentalsAnalystUserPromptWithData(t *testing.T) {
+	f := &data.Fundamentals{
+		Ticker:           "AAPL",
+		MarketCap:        2800000000000,
+		PERatio:          28.5,
+		EPS:              6.15,
+		Revenue:          394000000000,
+		RevenueGrowthYoY: 0.08,
+		GrossMargin:      0.438,
+		DebtToEquity:     1.87,
+		FreeCashFlow:     111000000000,
+		DividendYield:    0.005,
+		FetchedAt:        time.Date(2025, 3, 20, 0, 0, 0, 0, time.UTC),
+	}
+
+	result := FormatFundamentalsAnalystUserPrompt("AAPL", f)
+
+	checks := []string{
+		"AAPL",
+		"## Fundamental Data",
+		"2800000000000.00",
+		"28.50",
+		"6.15",
+		"394000000000.00",
+		"8.00%",
+		"43.80%",
+		"1.87",
+		"111000000000.00",
+		"0.50%",
+		"2025-03-20",
+		"Provide your structured fundamental analysis report.",
+	}
+	for _, want := range checks {
+		if !strings.Contains(result, want) {
+			t.Errorf("user prompt missing expected content %q", want)
+		}
+	}
+}
+
+func TestFormatFundamentalsAnalystUserPromptNilFundamentals(t *testing.T) {
+	result := FormatFundamentalsAnalystUserPrompt("BTC-USD", nil)
+
+	if !strings.Contains(result, "BTC-USD") {
+		t.Error("user prompt should contain ticker")
+	}
+	if !strings.Contains(result, "No fundamental data available") {
+		t.Error("user prompt should indicate missing fundamental data")
+	}
+	if !strings.Contains(result, "not applicable") {
+		t.Error("user prompt should mention that metrics are not applicable")
+	}
+	if strings.Contains(result, "| Metric | Value |") {
+		t.Error("user prompt should not contain the data table when fundamentals are nil")
+	}
+}
+
+func TestFormatFundamentalsAnalystUserPromptZeroValues(t *testing.T) {
+	f := &data.Fundamentals{
+		Ticker:    "PENNY",
+		FetchedAt: time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC),
+	}
+
+	result := FormatFundamentalsAnalystUserPrompt("PENNY", f)
+
+	// Zero values should still be formatted in the table.
+	if !strings.Contains(result, "| P/E Ratio | 0.00 |") {
+		t.Error("user prompt should contain zero P/E ratio")
+	}
+	if !strings.Contains(result, "| Dividend Yield | 0.00% |") {
+		t.Error("user prompt should contain zero dividend yield")
+	}
+	if !strings.Contains(result, "2025-06-01") {
+		t.Error("user prompt should contain fetched-at date")
+	}
+}
+
+func TestFormatFundamentalsAnalystUserPromptSanitizesTicker(t *testing.T) {
+	result := FormatFundamentalsAnalystUserPrompt("BAD|TICK\nER", nil)
+
+	if !strings.Contains(result, `BAD\|TICK ER`) {
+		t.Error("ticker should have pipes escaped and newlines replaced")
 	}
 }
 
