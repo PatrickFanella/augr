@@ -975,8 +975,9 @@ func (m *mockAgentDecisionRepo) Create(_ context.Context, decision *domain.Agent
 		return m.createErr
 	}
 
+	roundNumber := cloneRoundNumber(decision.RoundNumber)
 	cloned := *decision
-	cloned.RoundNumber = cloneRoundNumber(decision.RoundNumber)
+	cloned.RoundNumber = roundNumber
 	m.created = append(m.created, &cloned)
 	return nil
 }
