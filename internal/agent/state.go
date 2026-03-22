@@ -9,6 +9,13 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/llm"
 )
 
+// MarketData bundles the OHLCV bars and technical indicators that earlier
+// pipeline stages have collected for the current ticker.
+type MarketData struct {
+	Bars       []domain.OHLCV     `json:"bars,omitempty"`
+	Indicators []domain.Indicator `json:"indicators,omitempty"`
+}
+
 type AgentRole = domain.AgentRole
 
 const (
@@ -45,6 +52,7 @@ type PipelineState struct {
 	PipelineRunID  uuid.UUID            `json:"pipeline_run_id"`
 	StrategyID     uuid.UUID            `json:"strategy_id"`
 	Ticker         string               `json:"ticker"`
+	Market         MarketData           `json:"market,omitempty"`
 	AnalystReports map[AgentRole]string `json:"analyst_reports,omitempty"`
 	ResearchDebate ResearchDebateState  `json:"research_debate"`
 	TradingPlan    TradingPlan          `json:"trading_plan"`
