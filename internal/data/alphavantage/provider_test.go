@@ -264,15 +264,400 @@ func TestProviderGetOHLCVErrors(t *testing.T) {
 	}
 }
 
+func TestProviderGetFundamentals(t *testing.T) {
+	t.Parallel()
+
+	type requestDetails struct {
+		method string
+		path   string
+		query  url.Values
+	}
+
+	requests := make(chan requestDetails, 3)
+	unexpectedFunctions := make(chan string, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests <- requestDetails{
+			method: r.Method,
+			path:   r.URL.Path,
+			query:  r.URL.Query(),
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+
+		switch r.URL.Query().Get("function") {
+		case functionOverview:
+			_, _ = w.Write([]byte(`{
+				"Symbol": "AAPL",
+				"MarketCapitalization": "123456789",
+				"PERatio": "28.50",
+				"EPS": "6.15",
+				"DividendYield": "0.0045"
+			}`))
+		case functionIncomeStatement:
+			_, _ = w.Write([]byte(`{
+				"annualReports": [
+					{
+						"fiscalDateEnding": "2024-09-28",
+						"totalRevenue": "2000",
+						"grossProfit": "800"
+					},
+					{
+						"fiscalDateEnding": "2023-09-30",
+						"totalRevenue": "1600",
+						"grossProfit": "640"
+					}
+				]
+			}`))
+		case functionBalanceSheet:
+			_, _ = w.Write([]byte(`{
+				"annualReports": [
+					{
+						"fiscalDateEnding": "2024-09-28",
+						"totalLiabilities": "500",
+						"totalShareholderEquity": "1000"
+					}
+				]
+			}`))
+		default:
+			unexpectedFunctions <- r.URL.Query().Get("function")
+			http.Error(w, "unexpected function", http.StatusBadRequest)
+			return
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient("test-key", discardLogger())
+	client.baseURL = server.URL + "/query"
+	client.httpClient = server.Client()
+
+	provider := NewProvider(client)
+
+	start := time.Now().UTC()
+	got, err := provider.GetFundamentals(context.Background(), " AAPL ")
+	end := time.Now().UTC()
+	if err != nil {
+		t.Fatalf("GetFundamentals() error = %v", err)
+	}
+
+	if got.Ticker != "AAPL" {
+		t.Fatalf("Ticker = %q, want %q", got.Ticker, "AAPL")
+	}
+	if got.MarketCap != 123456789 {
+		t.Fatalf("MarketCap = %v, want %v", got.MarketCap, 123456789)
+	}
+	if got.PERatio != 28.50 {
+		t.Fatalf("PERatio = %v, want %v", got.PERatio, 28.50)
+	}
+	if got.EPS != 6.15 {
+		t.Fatalf("EPS = %v, want %v", got.EPS, 6.15)
+	}
+	if got.DividendYield != 0.0045 {
+		t.Fatalf("DividendYield = %v, want %v", got.DividendYield, 0.0045)
+	}
+	if got.Revenue != 2000 {
+		t.Fatalf("Revenue = %v, want %v", got.Revenue, 2000)
+	}
+	if got.RevenueGrowthYoY != 0.25 {
+		t.Fatalf("RevenueGrowthYoY = %v, want %v", got.RevenueGrowthYoY, 0.25)
+	}
+	if got.GrossMargin != 0.4 {
+		t.Fatalf("GrossMargin = %v, want %v", got.GrossMargin, 0.4)
+	}
+	if got.DebtToEquity != 0.5 {
+		t.Fatalf("DebtToEquity = %v, want %v", got.DebtToEquity, 0.5)
+	}
+	if got.FreeCashFlow != 0 {
+		t.Fatalf("FreeCashFlow = %v, want 0", got.FreeCashFlow)
+	}
+	if got.FetchedAt.Before(start) || got.FetchedAt.After(end) {
+		t.Fatalf("FetchedAt = %v, want between %v and %v", got.FetchedAt, start, end)
+	}
+
+	wantFunctions := map[string]bool{
+		functionOverview:        false,
+		functionIncomeStatement: false,
+		functionBalanceSheet:    false,
+	}
+
+	for i := 0; i < 3; i++ {
+		select {
+		case request := <-requests:
+			if request.method != http.MethodGet {
+				t.Fatalf("request method = %s, want %s", request.method, http.MethodGet)
+			}
+			if request.path != "/query" {
+				t.Fatalf("request path = %s, want %s", request.path, "/query")
+			}
+			if request.query.Get("apikey") != "test-key" {
+				t.Fatalf("apikey = %q, want %q", request.query.Get("apikey"), "test-key")
+			}
+			if request.query.Get("symbol") != "AAPL" {
+				t.Fatalf("symbol = %q, want %q", request.query.Get("symbol"), "AAPL")
+			}
+
+			function := request.query.Get("function")
+			if _, ok := wantFunctions[function]; !ok {
+				t.Fatalf("function = %q, want one of overview/income/balance", function)
+			}
+			wantFunctions[function] = true
+		case <-time.After(time.Second):
+			t.Fatal("request details were not captured")
+		}
+	}
+
+	for function, seen := range wantFunctions {
+		if !seen {
+			t.Fatalf("function %q was not requested", function)
+		}
+	}
+
+	select {
+	case function := <-unexpectedFunctions:
+		t.Fatalf("unexpected function %q", function)
+	default:
+	}
+}
+
+func TestProviderGetFundamentalsMissingFieldsGracefully(t *testing.T) {
+	t.Parallel()
+
+	unexpectedFunctions := make(chan string, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		switch r.URL.Query().Get("function") {
+		case functionOverview:
+			_, _ = w.Write([]byte(`{
+				"Symbol": "",
+				"MarketCapitalization": "",
+				"PERatio": "N/A",
+				"EPS": "",
+				"DividendYield": "-"
+			}`))
+		case functionIncomeStatement:
+			_, _ = w.Write([]byte(`{
+				"annualReports": [
+					{
+						"fiscalDateEnding": "2024-09-28",
+						"totalRevenue": "",
+						"grossProfit": "N/A"
+					},
+					{
+						"fiscalDateEnding": "2023-09-30",
+						"totalRevenue": "",
+						"grossProfit": ""
+					}
+				]
+			}`))
+		case functionBalanceSheet:
+			_, _ = w.Write([]byte(`{
+				"annualReports": [
+					{
+						"fiscalDateEnding": "2024-09-28",
+						"totalLiabilities": "",
+						"totalShareholderEquity": ""
+					}
+				]
+			}`))
+		default:
+			unexpectedFunctions <- r.URL.Query().Get("function")
+			http.Error(w, "unexpected function", http.StatusBadRequest)
+			return
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient("test-key", discardLogger())
+	client.baseURL = server.URL + "/query"
+	client.httpClient = server.Client()
+
+	provider := NewProvider(client)
+
+	got, err := provider.GetFundamentals(context.Background(), "MSFT")
+	if err != nil {
+		t.Fatalf("GetFundamentals() error = %v", err)
+	}
+
+	want := data.Fundamentals{
+		Ticker:    "MSFT",
+		FetchedAt: got.FetchedAt,
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("GetFundamentals() = %#v, want %#v", got, want)
+	}
+	if got.FetchedAt.IsZero() {
+		t.Fatal("FetchedAt is zero, want non-zero")
+	}
+
+	select {
+	case function := <-unexpectedFunctions:
+		t.Fatalf("unexpected function %q", function)
+	default:
+	}
+}
+
+func TestProviderGetFundamentalsFallsBackToQuarterlyReports(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		switch r.URL.Query().Get("function") {
+		case functionOverview:
+			_, _ = w.Write([]byte(`{
+				"MarketCapitalization": "5000",
+				"PERatio": "10.5",
+				"EPS": "2.5",
+				"DividendYield": "0.01"
+			}`))
+		case functionIncomeStatement:
+			_, _ = w.Write([]byte(`{
+				"annualReports": [],
+				"quarterlyReports": [
+					{
+						"fiscalDateEnding": "2024-09-30",
+						"totalRevenue": "300",
+						"grossProfit": "90"
+					},
+					{
+						"fiscalDateEnding": "2024-06-30",
+						"totalRevenue": "240",
+						"grossProfit": "72"
+					}
+				]
+			}`))
+		case functionBalanceSheet:
+			_, _ = w.Write([]byte(`{
+				"annualReports": [],
+				"quarterlyReports": [
+					{
+						"fiscalDateEnding": "2024-09-30",
+						"totalLiabilities": "150",
+						"totalShareholderEquity": "300"
+					}
+				]
+			}`))
+		default:
+			http.Error(w, "unexpected function", http.StatusBadRequest)
+			return
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient("test-key", discardLogger())
+	client.baseURL = server.URL + "/query"
+	client.httpClient = server.Client()
+
+	provider := NewProvider(client)
+
+	got, err := provider.GetFundamentals(context.Background(), "NVDA")
+	if err != nil {
+		t.Fatalf("GetFundamentals() error = %v", err)
+	}
+
+	if got.Ticker != "NVDA" {
+		t.Fatalf("Ticker = %q, want %q", got.Ticker, "NVDA")
+	}
+	if got.MarketCap != 5000 {
+		t.Fatalf("MarketCap = %v, want %v", got.MarketCap, 5000)
+	}
+	if got.Revenue != 300 {
+		t.Fatalf("Revenue = %v, want %v", got.Revenue, 300)
+	}
+	if got.GrossMargin != 0.3 {
+		t.Fatalf("GrossMargin = %v, want %v", got.GrossMargin, 0.3)
+	}
+	if got.RevenueGrowthYoY != 0.25 {
+		t.Fatalf("RevenueGrowthYoY = %v, want %v", got.RevenueGrowthYoY, 0.25)
+	}
+	if got.DebtToEquity != 0.5 {
+		t.Fatalf("DebtToEquity = %v, want %v", got.DebtToEquity, 0.5)
+	}
+}
+
+func TestProviderGetFundamentalsErrors(t *testing.T) {
+	t.Parallel()
+
+	t.Run("invalid overview json", func(t *testing.T) {
+		t.Parallel()
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			if r.URL.Query().Get("function") == functionOverview {
+				_, _ = w.Write([]byte(`{"Symbol":`))
+				return
+			}
+
+			_, _ = w.Write([]byte(`{"annualReports":[]}`))
+		}))
+		defer server.Close()
+
+		client := NewClient("test-key", discardLogger())
+		client.baseURL = server.URL + "/query"
+		client.httpClient = server.Client()
+
+		provider := NewProvider(client)
+
+		_, err := provider.GetFundamentals(context.Background(), "AAPL")
+		if err == nil {
+			t.Fatal("GetFundamentals() error = nil, want non-nil")
+		}
+		wantErr := "alphavantage: GetFundamentals: decode overview response: unexpected end of JSON input"
+		if err.Error() != wantErr {
+			t.Fatalf("GetFundamentals() error = %q, want %q", err.Error(), wantErr)
+		}
+	})
+
+	t.Run("empty ticker", func(t *testing.T) {
+		t.Parallel()
+
+		provider := NewProvider(&Client{})
+
+		_, err := provider.GetFundamentals(context.Background(), "   ")
+		if err == nil {
+			t.Fatal("GetFundamentals() error = nil, want non-nil")
+		}
+		if err.Error() != "alphavantage: ticker is required" {
+			t.Fatalf("GetFundamentals() error = %q, want %q", err.Error(), "alphavantage: ticker is required")
+		}
+	})
+}
+
+func TestParseOptionalFundamentalFloat(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		value string
+		want  float64
+	}{
+		{name: "empty", value: "", want: 0},
+		{name: "spaces", value: "   ", want: 0},
+		{name: "na", value: "N/A", want: 0},
+		{name: "plain na", value: "NA", want: 0},
+		{name: "none", value: "NONE", want: 0},
+		{name: "null", value: "NULL", want: 0},
+		{name: "dash", value: "-", want: 0},
+		{name: "invalid", value: "abc", want: 0},
+		{name: "number", value: "123.45", want: 123.45},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := parseOptionalFundamentalFloat(tt.value); got != tt.want {
+				t.Fatalf("parseOptionalFundamentalFloat(%q) = %v, want %v", tt.value, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestProviderUnsupportedMethodsReturnErrNotImplemented(t *testing.T) {
 	t.Parallel()
 
 	provider := NewProvider(&Client{})
-
-	_, fundamentalsErr := provider.GetFundamentals(context.Background(), "AAPL")
-	if !errors.Is(fundamentalsErr, data.ErrNotImplemented) {
-		t.Fatalf("GetFundamentals() error = %v, want ErrNotImplemented", fundamentalsErr)
-	}
 
 	_, newsErr := provider.GetNews(context.Background(), "AAPL", time.Now(), time.Now())
 	if !errors.Is(newsErr, data.ErrNotImplemented) {

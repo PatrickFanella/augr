@@ -18,6 +18,9 @@ import (
 const (
 	functionTimeSeriesDaily    = "TIME_SERIES_DAILY"
 	functionTimeSeriesIntraday = "TIME_SERIES_INTRADAY"
+	functionOverview           = "OVERVIEW"
+	functionIncomeStatement    = "INCOME_STATEMENT"
+	functionBalanceSheet       = "BALANCE_SHEET"
 )
 
 // Provider retrieves market data from Alpha Vantage.
@@ -38,6 +41,36 @@ type timeSeriesBar struct {
 	Low    string `json:"3. low"`
 	Close  string `json:"4. close"`
 	Volume string `json:"5. volume"`
+}
+
+type overviewResponse struct {
+	Symbol               string `json:"Symbol"`
+	MarketCapitalization string `json:"MarketCapitalization"`
+	PERatio              string `json:"PERatio"`
+	EPS                  string `json:"EPS"`
+	DividendYield        string `json:"DividendYield"`
+}
+
+type incomeStatementResponse struct {
+	AnnualReports    []incomeStatementReport `json:"annualReports"`
+	QuarterlyReports []incomeStatementReport `json:"quarterlyReports"`
+}
+
+type incomeStatementReport struct {
+	FiscalDateEnding string `json:"fiscalDateEnding"`
+	TotalRevenue     string `json:"totalRevenue"`
+	GrossProfit      string `json:"grossProfit"`
+}
+
+type balanceSheetResponse struct {
+	AnnualReports    []balanceSheetReport `json:"annualReports"`
+	QuarterlyReports []balanceSheetReport `json:"quarterlyReports"`
+}
+
+type balanceSheetReport struct {
+	FiscalDateEnding       string `json:"fiscalDateEnding"`
+	TotalLiabilities       string `json:"totalLiabilities"`
+	TotalShareholderEquity string `json:"totalShareholderEquity"`
 }
 
 // NewProvider constructs an Alpha Vantage market-data provider.
@@ -89,13 +122,72 @@ func (p *Provider) GetOHLCV(ctx context.Context, ticker string, timeframe data.T
 	return bars, nil
 }
 
-// GetFundamentals is not supported by the Alpha Vantage provider yet.
-func (p *Provider) GetFundamentals(_ context.Context, _ string) (data.Fundamentals, error) {
+// GetFundamentals returns fundamentals data from Alpha Vantage OVERVIEW,
+// INCOME_STATEMENT, and BALANCE_SHEET endpoints.
+func (p *Provider) GetFundamentals(ctx context.Context, ticker string) (data.Fundamentals, error) {
 	if p == nil {
 		return data.Fundamentals{}, errors.New("alphavantage: provider is nil")
 	}
+	if p.client == nil {
+		return data.Fundamentals{}, errors.New("alphavantage: client is nil")
+	}
 
-	return data.Fundamentals{}, fmt.Errorf("alphavantage: GetFundamentals: %w", data.ErrNotImplemented)
+	ticker = strings.TrimSpace(ticker)
+	if ticker == "" {
+		return data.Fundamentals{}, errors.New("alphavantage: ticker is required")
+	}
+
+	overview, err := p.fetchOverview(ctx, ticker)
+	if err != nil {
+		return data.Fundamentals{}, fmt.Errorf("alphavantage: GetFundamentals: %w", err)
+	}
+
+	incomeStatement, err := p.fetchIncomeStatement(ctx, ticker)
+	if err != nil {
+		return data.Fundamentals{}, fmt.Errorf("alphavantage: GetFundamentals: %w", err)
+	}
+
+	balanceSheet, err := p.fetchBalanceSheet(ctx, ticker)
+	if err != nil {
+		return data.Fundamentals{}, fmt.Errorf("alphavantage: GetFundamentals: %w", err)
+	}
+
+	fundamentals := data.Fundamentals{
+		Ticker:        ticker,
+		MarketCap:     parseOptionalFundamentalFloat(overview.MarketCapitalization),
+		PERatio:       parseOptionalFundamentalFloat(overview.PERatio),
+		EPS:           parseOptionalFundamentalFloat(overview.EPS),
+		DividendYield: parseOptionalFundamentalFloat(overview.DividendYield),
+		FetchedAt:     time.Now().UTC(),
+	}
+
+	incomeReports := annualOrQuarterlyIncomeReports(incomeStatement)
+	if len(incomeReports) > 0 {
+		latestIncomeReport := incomeReports[0]
+		fundamentals.Revenue = parseOptionalFundamentalFloat(latestIncomeReport.TotalRevenue)
+
+		grossProfit := parseOptionalFundamentalFloat(latestIncomeReport.GrossProfit)
+		if fundamentals.Revenue != 0 {
+			fundamentals.GrossMargin = grossProfit / fundamentals.Revenue
+		}
+
+		if len(incomeReports) > 1 {
+			previousRevenue := parseOptionalFundamentalFloat(incomeReports[1].TotalRevenue)
+			if fundamentals.Revenue != 0 && previousRevenue != 0 {
+				fundamentals.RevenueGrowthYoY = (fundamentals.Revenue - previousRevenue) / previousRevenue
+			}
+		}
+	}
+
+	if latest, ok := latestBalanceSheetReport(balanceSheet); ok {
+		totalLiabilities := parseOptionalFundamentalFloat(latest.TotalLiabilities)
+		totalEquity := parseOptionalFundamentalFloat(latest.TotalShareholderEquity)
+		if totalEquity != 0 {
+			fundamentals.DebtToEquity = totalLiabilities / totalEquity
+		}
+	}
+
+	return fundamentals, nil
 }
 
 // GetNews is not supported by the Alpha Vantage provider yet.
@@ -278,4 +370,93 @@ func parseBarValue(field string, timestamp time.Time, value string) (float64, er
 	}
 
 	return parsed, nil
+}
+
+func (p *Provider) fetchOverview(ctx context.Context, ticker string) (overviewResponse, error) {
+	body, err := p.client.Get(ctx, url.Values{
+		"function": []string{functionOverview},
+		"symbol":   []string{ticker},
+	})
+	if err != nil {
+		return overviewResponse{}, fmt.Errorf("overview request: %w", err)
+	}
+
+	var overview overviewResponse
+	if err := json.Unmarshal(body, &overview); err != nil {
+		return overviewResponse{}, fmt.Errorf("decode overview response: %w", err)
+	}
+
+	return overview, nil
+}
+
+func (p *Provider) fetchIncomeStatement(ctx context.Context, ticker string) (incomeStatementResponse, error) {
+	body, err := p.client.Get(ctx, url.Values{
+		"function": []string{functionIncomeStatement},
+		"symbol":   []string{ticker},
+	})
+	if err != nil {
+		return incomeStatementResponse{}, fmt.Errorf("income statement request: %w", err)
+	}
+
+	var incomeStatement incomeStatementResponse
+	if err := json.Unmarshal(body, &incomeStatement); err != nil {
+		return incomeStatementResponse{}, fmt.Errorf("decode income statement response: %w", err)
+	}
+
+	return incomeStatement, nil
+}
+
+func (p *Provider) fetchBalanceSheet(ctx context.Context, ticker string) (balanceSheetResponse, error) {
+	body, err := p.client.Get(ctx, url.Values{
+		"function": []string{functionBalanceSheet},
+		"symbol":   []string{ticker},
+	})
+	if err != nil {
+		return balanceSheetResponse{}, fmt.Errorf("balance sheet request: %w", err)
+	}
+
+	var balanceSheet balanceSheetResponse
+	if err := json.Unmarshal(body, &balanceSheet); err != nil {
+		return balanceSheetResponse{}, fmt.Errorf("decode balance sheet response: %w", err)
+	}
+
+	return balanceSheet, nil
+}
+
+func annualOrQuarterlyIncomeReports(response incomeStatementResponse) []incomeStatementReport {
+	if len(response.AnnualReports) > 0 {
+		return response.AnnualReports
+	}
+
+	return response.QuarterlyReports
+}
+
+func latestBalanceSheetReport(response balanceSheetResponse) (balanceSheetReport, bool) {
+	if len(response.AnnualReports) > 0 {
+		return response.AnnualReports[0], true
+	}
+	if len(response.QuarterlyReports) > 0 {
+		return response.QuarterlyReports[0], true
+	}
+
+	return balanceSheetReport{}, false
+}
+
+func parseOptionalFundamentalFloat(value string) float64 {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return 0
+	}
+
+	switch strings.ToUpper(trimmed) {
+	case "N/A", "NA", "NONE", "NULL", "-":
+		return 0
+	}
+
+	parsed, err := strconv.ParseFloat(trimmed, 64)
+	if err != nil {
+		return 0
+	}
+
+	return parsed
 }
