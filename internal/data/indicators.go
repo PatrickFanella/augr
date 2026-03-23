@@ -401,12 +401,12 @@ func MACD(data []domain.OHLCV, fast, slow, signal int) (macdLine, signalLine, hi
 
 // ComputeAllIndicators computes all 14 technical indicators using standard
 // default periods and returns them in a single map.
-func ComputeAllIndicators(bars []domain.OHLCV) map[string]interface{} {
+func ComputeAllIndicators(bars []domain.OHLCV) map[string]any {
 	macdLine, signalLine, histogram := MACD(bars, defaultMACDFastPeriod, defaultMACDSlowPeriod, defaultMACDSignalPeriod)
 	stochasticK, stochasticD := Stochastic(bars, defaultStochasticKPeriod, defaultStochasticDPeriod, defaultStochasticSmooth)
 	bollingerUpper, bollingerMiddle, bollingerLower := BollingerBands(bars, defaultBollingerPeriod, defaultBollingerStdDev)
 
-	return map[string]interface{}{
+	return map[string]any{
 		"SMA": SMA(bars, defaultSMAPeriod),
 		"EMA": EMA(bars, defaultEMAPeriod),
 		"MACD": map[string][]float64{

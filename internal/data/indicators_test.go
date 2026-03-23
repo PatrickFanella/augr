@@ -9,6 +9,8 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 )
 
+var computeAllIndicatorsSink map[string]any
+
 func TestSMAAgainstKnownValues(t *testing.T) {
 	bars := indicatorTestBars(250)
 
@@ -452,13 +454,71 @@ func TestComputeAllIndicatorsReturnsFullIndicatorSet(t *testing.T) {
 	assertClose(t, adl, data.ADL(bars), 1e-6)
 }
 
+func TestComputeAllIndicatorsWithInsufficientDataPreservesContract(t *testing.T) {
+	cases := []struct {
+		name string
+		bars []domain.OHLCV
+	}{
+		{name: "empty", bars: nil},
+		{name: "small", bars: indicatorTestBars(10)},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := data.ComputeAllIndicators(tc.bars)
+			if len(got) != 14 {
+				t.Fatalf("ComputeAllIndicators() map len = %d, want 14", len(got))
+			}
+
+			macd, ok := got["MACD"].(map[string][]float64)
+			if !ok {
+				t.Fatalf("ComputeAllIndicators()[MACD] has unexpected type %T", got["MACD"])
+			}
+			if _, ok := macd["line"]; !ok {
+				t.Fatal("ComputeAllIndicators()[MACD] missing line key")
+			}
+			if _, ok := macd["signal"]; !ok {
+				t.Fatal("ComputeAllIndicators()[MACD] missing signal key")
+			}
+			if _, ok := macd["histogram"]; !ok {
+				t.Fatal("ComputeAllIndicators()[MACD] missing histogram key")
+			}
+
+			stochastic, ok := got["Stochastic"].(map[string][]float64)
+			if !ok {
+				t.Fatalf("ComputeAllIndicators()[Stochastic] has unexpected type %T", got["Stochastic"])
+			}
+			if _, ok := stochastic["k"]; !ok {
+				t.Fatal("ComputeAllIndicators()[Stochastic] missing k key")
+			}
+			if _, ok := stochastic["d"]; !ok {
+				t.Fatal("ComputeAllIndicators()[Stochastic] missing d key")
+			}
+
+			bollinger, ok := got["BollingerBands"].(map[string][]float64)
+			if !ok {
+				t.Fatalf("ComputeAllIndicators()[BollingerBands] has unexpected type %T", got["BollingerBands"])
+			}
+			if _, ok := bollinger["upper"]; !ok {
+				t.Fatal("ComputeAllIndicators()[BollingerBands] missing upper key")
+			}
+			if _, ok := bollinger["middle"]; !ok {
+				t.Fatal("ComputeAllIndicators()[BollingerBands] missing middle key")
+			}
+			if _, ok := bollinger["lower"]; !ok {
+				t.Fatal("ComputeAllIndicators()[BollingerBands] missing lower key")
+			}
+		})
+	}
+}
+
 func BenchmarkComputeAllIndicators(b *testing.B) {
 	bars := indicatorTestBars(500)
 	b.ReportAllocs()
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		_ = data.ComputeAllIndicators(bars)
+		computeAllIndicatorsSink = data.ComputeAllIndicators(bars)
 	}
 }
 
