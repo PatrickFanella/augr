@@ -383,9 +383,9 @@ func TestResearchDebateManagerError(t *testing.T) {
 	}
 }
 
-// TestResearchDebateContextCancelled verifies that a cancelled context stops
+// TestResearchDebateContextCanceled verifies that a canceled context stops
 // execution before starting the next round.
-func TestResearchDebateContextCancelled(t *testing.T) {
+func TestResearchDebateContextCanceled(t *testing.T) {
 	callLog := []string{}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -425,7 +425,7 @@ func TestResearchDebateContextCancelled(t *testing.T) {
 
 	err := rd.Execute(ctx, state)
 	if err == nil {
-		t.Fatal("Execute() error = nil, want context.Canceled")
+		t.Fatal("Execute() error = nil, want non-nil")
 	}
 
 	// Round 1 should complete (bull + bear), then context check before round 2 should fail.
