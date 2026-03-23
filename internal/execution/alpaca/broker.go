@@ -296,7 +296,7 @@ func mapOrderStatus(rawStatus string) (domain.OrderStatus, error) {
 		return domain.OrderStatusPartial, nil
 	case status == "filled":
 		return domain.OrderStatusFilled, nil
-	case slices.Contains([]string{"canceled", "cancelled", "expired"}, status):
+	case slices.Contains([]string{"canceled", "expired"}, status):
 		return domain.OrderStatusCancelled, nil
 	case status == "rejected":
 		return domain.OrderStatusRejected, nil
