@@ -108,7 +108,7 @@ graph TD
 
 ---
 -->
-
+<!--
 ## Track C1: Research Debate
 
 > Depends on: Nothing external
@@ -122,7 +122,7 @@ graph TD
 | 4   | [#173](https://github.com/PatrickFanella/get-rich-quick/issues/173) | Write Bear Researcher system prompt and implement agent                                 |  S   | #169             | BLOCKED | Claude Opus 4.6 |
 | 5   | [#175](https://github.com/PatrickFanella/get-rich-quick/issues/175) | Write Research Manager system prompt and implement agent with structured output parsing |  M   | #169             | BLOCKED | Claude Opus 4.6 |
 | 6   | [#177](https://github.com/PatrickFanella/get-rich-quick/issues/177) | Implement research debate orchestration node                                            |  M   | #171, #173, #175 | BLOCKED | Claude Opus 4.6 |
-
+-->
 ```mermaid
 graph TD
     166[#166 Role constants] --> 179
@@ -142,11 +142,11 @@ graph TD
     style 175 fill:#ef4444
     style 177 fill:#ef4444
 ```
-
+<!--
 **Strategy:** Assign #166 and #169 together. Once #169 merges, assign #171 and #173 in parallel (bull/bear). Then #175, then #177.
 
 ---
-
+-->
 ## Track C2: Trader Agent
 
 > Depends on: Nothing (standalone)
