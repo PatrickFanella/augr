@@ -301,6 +301,207 @@ func TestBrokerCancelOrder_HandlesAlpacaErrorResponse(t *testing.T) {
 	}
 }
 
+func TestBrokerGetOrderStatus_MapsAlpacaStatuses(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		orderID    string
+		apiStatus  string
+		wantStatus domain.OrderStatus
+	}{
+		{
+			name:       "pending",
+			orderID:    "order/1",
+			apiStatus:  "pending_new",
+			wantStatus: domain.OrderStatusPending,
+		},
+		{
+			name:       "submitted",
+			orderID:    "order-2",
+			apiStatus:  "accepted",
+			wantStatus: domain.OrderStatusSubmitted,
+		},
+		{
+			name:       "partial",
+			orderID:    "order-3",
+			apiStatus:  "partially_filled",
+			wantStatus: domain.OrderStatusPartial,
+		},
+		{
+			name:       "filled",
+			orderID:    "order-4",
+			apiStatus:  "filled",
+			wantStatus: domain.OrderStatusFilled,
+		},
+		{
+			name:       "cancelled",
+			orderID:    "order-5",
+			apiStatus:  "expired",
+			wantStatus: domain.OrderStatusCancelled,
+		},
+		{
+			name:       "rejected",
+			orderID:    "order-6",
+			apiStatus:  "rejected",
+			wantStatus: domain.OrderStatusRejected,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			requests := make(chan string, 1)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodGet {
+					t.Fatalf("request method = %s, want %s", r.Method, http.MethodGet)
+				}
+				requests <- r.RequestURI
+
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"status":"` + tt.apiStatus + `"}`))
+			}))
+			defer server.Close()
+
+			client := NewClient("test-key", "test-secret", true, discardLogger())
+			client.SetBaseURL(server.URL)
+
+			broker := NewBroker(client)
+			got, err := broker.GetOrderStatus(context.Background(), tt.orderID)
+			if err != nil {
+				t.Fatalf("GetOrderStatus() error = %v", err)
+			}
+			if got != tt.wantStatus {
+				t.Fatalf("GetOrderStatus() = %q, want %q", got, tt.wantStatus)
+			}
+
+			select {
+			case path := <-requests:
+				wantPath := "/v2/orders/" + url.PathEscape(tt.orderID)
+				if path != wantPath {
+					t.Fatalf("request path = %s, want %s", path, wantPath)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("request details were not captured")
+			}
+		})
+	}
+}
+
+func TestBrokerGetPositions_MapsResponse(t *testing.T) {
+	t.Parallel()
+
+	requests := make(chan string, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Fatalf("request method = %s, want %s", r.Method, http.MethodGet)
+		}
+		requests <- r.RequestURI
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[
+			{"symbol":"AAPL","side":"long","qty":"2.5","avg_entry_price":"185.25","current_price":"190.10","unrealized_pl":"12.13"},
+			{"symbol":"TSLA","side":"short","qty":"1","avg_entry_price":"210.5","current_price":"205.25","unrealized_pl":"5.25"}
+		]`))
+	}))
+	defer server.Close()
+
+	client := NewClient("test-key", "test-secret", true, discardLogger())
+	client.SetBaseURL(server.URL)
+
+	broker := NewBroker(client)
+	positions, err := broker.GetPositions(context.Background())
+	if err != nil {
+		t.Fatalf("GetPositions() error = %v", err)
+	}
+	if len(positions) != 2 {
+		t.Fatalf("len(GetPositions()) = %d, want %d", len(positions), 2)
+	}
+
+	if positions[0].Ticker != "AAPL" {
+		t.Fatalf("positions[0].Ticker = %q, want %q", positions[0].Ticker, "AAPL")
+	}
+	if positions[0].Side != domain.PositionSideLong {
+		t.Fatalf("positions[0].Side = %q, want %q", positions[0].Side, domain.PositionSideLong)
+	}
+	if positions[0].Quantity != 2.5 {
+		t.Fatalf("positions[0].Quantity = %v, want %v", positions[0].Quantity, 2.5)
+	}
+	if positions[0].AvgEntry != 185.25 {
+		t.Fatalf("positions[0].AvgEntry = %v, want %v", positions[0].AvgEntry, 185.25)
+	}
+	if positions[0].CurrentPrice == nil || *positions[0].CurrentPrice != 190.10 {
+		t.Fatalf("positions[0].CurrentPrice = %v, want %v", positions[0].CurrentPrice, 190.10)
+	}
+	if positions[0].UnrealizedPnL == nil || *positions[0].UnrealizedPnL != 12.13 {
+		t.Fatalf("positions[0].UnrealizedPnL = %v, want %v", positions[0].UnrealizedPnL, 12.13)
+	}
+
+	if positions[1].Ticker != "TSLA" {
+		t.Fatalf("positions[1].Ticker = %q, want %q", positions[1].Ticker, "TSLA")
+	}
+	if positions[1].Side != domain.PositionSideShort {
+		t.Fatalf("positions[1].Side = %q, want %q", positions[1].Side, domain.PositionSideShort)
+	}
+
+	select {
+	case path := <-requests:
+		if path != "/v2/positions" {
+			t.Fatalf("request path = %s, want %s", path, "/v2/positions")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("request details were not captured")
+	}
+}
+
+func TestBrokerGetAccountBalance_MapsResponse(t *testing.T) {
+	t.Parallel()
+
+	requests := make(chan string, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Fatalf("request method = %s, want %s", r.Method, http.MethodGet)
+		}
+		requests <- r.RequestURI
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"currency":"USD","cash":"1000.50","buying_power":"4002.00","equity":"5005.25"}`))
+	}))
+	defer server.Close()
+
+	client := NewClient("test-key", "test-secret", true, discardLogger())
+	client.SetBaseURL(server.URL)
+
+	broker := NewBroker(client)
+	balance, err := broker.GetAccountBalance(context.Background())
+	if err != nil {
+		t.Fatalf("GetAccountBalance() error = %v", err)
+	}
+	if balance.Currency != "USD" {
+		t.Fatalf("GetAccountBalance() Currency = %q, want %q", balance.Currency, "USD")
+	}
+	if balance.Cash != 1000.50 {
+		t.Fatalf("GetAccountBalance() Cash = %v, want %v", balance.Cash, 1000.50)
+	}
+	if balance.BuyingPower != 4002.00 {
+		t.Fatalf("GetAccountBalance() BuyingPower = %v, want %v", balance.BuyingPower, 4002.00)
+	}
+	if balance.Equity != 5005.25 {
+		t.Fatalf("GetAccountBalance() Equity = %v, want %v", balance.Equity, 5005.25)
+	}
+
+	select {
+	case path := <-requests:
+		if path != "/v2/account" {
+			t.Fatalf("request path = %s, want %s", path, "/v2/account")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("request details were not captured")
+	}
+}
+
 func floatPtr(value float64) *float64 {
 	return &value
 }
