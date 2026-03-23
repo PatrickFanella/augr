@@ -169,7 +169,7 @@ func (t *Trader) Execute(ctx context.Context, state *agent.PipelineState) error 
 			Provider: t.providerName,
 			Response: &llm.CompletionResponse{
 				Content: content,
-				Model:   t.model,
+				Model:   resp.Model,
 				Usage:   usage,
 			},
 		},

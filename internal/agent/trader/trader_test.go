@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"testing"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/agent"
@@ -375,7 +376,7 @@ func TestParseTradingPlanMalformedJSON(t *testing.T) {
 	if err == nil {
 		t.Fatal("ParseTradingPlan() error = nil, want non-nil for malformed JSON")
 	}
-	if got := err.Error(); !contains(got, "failed to parse trading plan JSON") {
+	if got := err.Error(); !strings.Contains(got, "failed to parse trading plan JSON") {
 		t.Fatalf("error = %q, want it to contain %q", got, "failed to parse trading plan JSON")
 	}
 }
@@ -387,7 +388,7 @@ func TestParseTradingPlanInvalidAction(t *testing.T) {
 	if err == nil {
 		t.Fatal("ParseTradingPlan() error = nil, want non-nil for invalid action")
 	}
-	if got := err.Error(); !contains(got, "invalid action") {
+	if got := err.Error(); !strings.Contains(got, "invalid action") {
 		t.Fatalf("error = %q, want it to contain %q", got, "invalid action")
 	}
 }
@@ -399,7 +400,7 @@ func TestParseTradingPlanMissingAction(t *testing.T) {
 	if err == nil {
 		t.Fatal("ParseTradingPlan() error = nil, want non-nil for missing action")
 	}
-	if got := err.Error(); !contains(got, "missing required field: action") {
+	if got := err.Error(); !strings.Contains(got, "missing required field: action") {
 		t.Fatalf("error = %q, want it to contain %q", got, "missing required field: action")
 	}
 }
@@ -411,7 +412,7 @@ func TestParseTradingPlanMissingTicker(t *testing.T) {
 	if err == nil {
 		t.Fatal("ParseTradingPlan() error = nil, want non-nil for missing ticker")
 	}
-	if got := err.Error(); !contains(got, "missing required field: ticker") {
+	if got := err.Error(); !strings.Contains(got, "missing required field: ticker") {
 		t.Fatalf("error = %q, want it to contain %q", got, "missing required field: ticker")
 	}
 }
@@ -423,7 +424,7 @@ func TestParseTradingPlanInvalidEntryType(t *testing.T) {
 	if err == nil {
 		t.Fatal("ParseTradingPlan() error = nil, want non-nil for invalid entry_type")
 	}
-	if got := err.Error(); !contains(got, "invalid entry_type") {
+	if got := err.Error(); !strings.Contains(got, "invalid entry_type") {
 		t.Fatalf("error = %q, want it to contain %q", got, "invalid entry_type")
 	}
 }
@@ -435,7 +436,7 @@ func TestParseTradingPlanInvalidTimeHorizon(t *testing.T) {
 	if err == nil {
 		t.Fatal("ParseTradingPlan() error = nil, want non-nil for invalid time_horizon")
 	}
-	if got := err.Error(); !contains(got, "invalid time_horizon") {
+	if got := err.Error(); !strings.Contains(got, "invalid time_horizon") {
 		t.Fatalf("error = %q, want it to contain %q", got, "invalid time_horizon")
 	}
 }
@@ -461,7 +462,7 @@ func TestParseTradingPlanConfidenceOutOfRange(t *testing.T) {
 			if err == nil {
 				t.Fatal("ParseTradingPlan() error = nil, want non-nil for out-of-range confidence")
 			}
-			if got := err.Error(); !contains(got, "confidence must be 0.0-1.0") {
+			if got := err.Error(); !strings.Contains(got, "confidence must be 0.0-1.0") {
 				t.Fatalf("error = %q, want it to contain %q", got, "confidence must be 0.0-1.0")
 			}
 		})
@@ -475,7 +476,7 @@ func TestParseTradingPlanMissingRationale(t *testing.T) {
 	if err == nil {
 		t.Fatal("ParseTradingPlan() error = nil, want non-nil for missing rationale")
 	}
-	if got := err.Error(); !contains(got, "missing required field: rationale") {
+	if got := err.Error(); !strings.Contains(got, "missing required field: rationale") {
 		t.Fatalf("error = %q, want it to contain %q", got, "missing required field: rationale")
 	}
 }
@@ -487,7 +488,7 @@ func TestParseTradingPlanWhitespaceOnlyRationale(t *testing.T) {
 	if err == nil {
 		t.Fatal("ParseTradingPlan() error = nil, want non-nil for whitespace-only rationale")
 	}
-	if got := err.Error(); !contains(got, "missing required field: rationale") {
+	if got := err.Error(); !strings.Contains(got, "missing required field: rationale") {
 		t.Fatalf("error = %q, want it to contain %q", got, "missing required field: rationale")
 	}
 }
@@ -532,20 +533,6 @@ func TestParseTradingPlanAllActions(t *testing.T) {
 			t.Fatalf("Action = %q, want %q", plan.Action, "hold")
 		}
 	})
-}
-
-// contains is a test helper that checks if s contains substr.
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && containsSubstr(s, substr)
-}
-
-func containsSubstr(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }
 
 // Verify Trader satisfies the agent.Node interface at compile time.
