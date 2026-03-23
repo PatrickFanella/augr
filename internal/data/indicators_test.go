@@ -9,6 +9,8 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 )
 
+var computeAllIndicatorsSink map[string]any
+
 func TestSMAAgainstKnownValues(t *testing.T) {
 	bars := indicatorTestBars(250)
 
@@ -348,6 +350,175 @@ func TestIndicatorsReturnEmptyForInvalidParameters(t *testing.T) {
 	}
 	if got := data.VWMA(bars, -1); len(got) != 0 {
 		t.Fatalf("VWMA() with negative period len = %d, want 0", len(got))
+	}
+}
+
+func TestComputeAllIndicatorsReturnsFullIndicatorSet(t *testing.T) {
+	bars := indicatorTestBars(250)
+
+	got := data.ComputeAllIndicators(bars)
+	if len(got) != 14 {
+		t.Fatalf("ComputeAllIndicators() map len = %d, want 14", len(got))
+	}
+
+	sma, ok := got["SMA"].([]float64)
+	if !ok {
+		t.Fatalf("ComputeAllIndicators()[SMA] has unexpected type %T", got["SMA"])
+	}
+	assertClose(t, sma, data.SMA(bars, 20), 1e-6)
+
+	ema, ok := got["EMA"].([]float64)
+	if !ok {
+		t.Fatalf("ComputeAllIndicators()[EMA] has unexpected type %T", got["EMA"])
+	}
+	assertClose(t, ema, data.EMA(bars, 12), 1e-6)
+
+	macd, ok := got["MACD"].(map[string][]float64)
+	if !ok {
+		t.Fatalf("ComputeAllIndicators()[MACD] has unexpected type %T", got["MACD"])
+	}
+	macdLine, signalLine, histogram := data.MACD(bars, 12, 26, 9)
+	assertClose(t, macd["line"], macdLine, 1e-6)
+	assertClose(t, macd["signal"], signalLine, 1e-6)
+	assertClose(t, macd["histogram"], histogram, 1e-6)
+
+	rsi, ok := got["RSI"].([]float64)
+	if !ok {
+		t.Fatalf("ComputeAllIndicators()[RSI] has unexpected type %T", got["RSI"])
+	}
+	assertClose(t, rsi, data.RSI(bars, 14), 1e-6)
+
+	mfi, ok := got["MFI"].([]float64)
+	if !ok {
+		t.Fatalf("ComputeAllIndicators()[MFI] has unexpected type %T", got["MFI"])
+	}
+	assertClose(t, mfi, data.MFI(bars, 14), 1e-6)
+
+	stochastic, ok := got["Stochastic"].(map[string][]float64)
+	if !ok {
+		t.Fatalf("ComputeAllIndicators()[Stochastic] has unexpected type %T", got["Stochastic"])
+	}
+	k, d := data.Stochastic(bars, 14, 3, 3)
+	assertClose(t, stochastic["k"], k, 1e-6)
+	assertClose(t, stochastic["d"], d, 1e-6)
+
+	williamsR, ok := got["WilliamsR"].([]float64)
+	if !ok {
+		t.Fatalf("ComputeAllIndicators()[WilliamsR] has unexpected type %T", got["WilliamsR"])
+	}
+	assertClose(t, williamsR, data.WilliamsR(bars, 14), 1e-6)
+
+	cci, ok := got["CCI"].([]float64)
+	if !ok {
+		t.Fatalf("ComputeAllIndicators()[CCI] has unexpected type %T", got["CCI"])
+	}
+	assertClose(t, cci, data.CCI(bars, 20), 1e-6)
+
+	roc, ok := got["ROC"].([]float64)
+	if !ok {
+		t.Fatalf("ComputeAllIndicators()[ROC] has unexpected type %T", got["ROC"])
+	}
+	assertClose(t, roc, data.ROC(bars, 12), 1e-6)
+
+	bollinger, ok := got["BollingerBands"].(map[string][]float64)
+	if !ok {
+		t.Fatalf("ComputeAllIndicators()[BollingerBands] has unexpected type %T", got["BollingerBands"])
+	}
+	upper, middle, lower := data.BollingerBands(bars, 20, 2.0)
+	assertClose(t, bollinger["upper"], upper, 1e-6)
+	assertClose(t, bollinger["middle"], middle, 1e-6)
+	assertClose(t, bollinger["lower"], lower, 1e-6)
+
+	atr, ok := got["ATR"].([]float64)
+	if !ok {
+		t.Fatalf("ComputeAllIndicators()[ATR] has unexpected type %T", got["ATR"])
+	}
+	assertClose(t, atr, data.ATR(bars, 14), 1e-6)
+
+	vwma, ok := got["VWMA"].([]float64)
+	if !ok {
+		t.Fatalf("ComputeAllIndicators()[VWMA] has unexpected type %T", got["VWMA"])
+	}
+	assertClose(t, vwma, data.VWMA(bars, 20), 1e-6)
+
+	obv, ok := got["OBV"].([]float64)
+	if !ok {
+		t.Fatalf("ComputeAllIndicators()[OBV] has unexpected type %T", got["OBV"])
+	}
+	assertClose(t, obv, data.OBV(bars), 1e-6)
+
+	adl, ok := got["ADL"].([]float64)
+	if !ok {
+		t.Fatalf("ComputeAllIndicators()[ADL] has unexpected type %T", got["ADL"])
+	}
+	assertClose(t, adl, data.ADL(bars), 1e-6)
+}
+
+func TestComputeAllIndicatorsWithInsufficientDataPreservesContract(t *testing.T) {
+	cases := []struct {
+		name string
+		bars []domain.OHLCV
+	}{
+		{name: "empty", bars: nil},
+		{name: "small", bars: indicatorTestBars(10)},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := data.ComputeAllIndicators(tc.bars)
+			if len(got) != 14 {
+				t.Fatalf("ComputeAllIndicators() map len = %d, want 14", len(got))
+			}
+
+			macd, ok := got["MACD"].(map[string][]float64)
+			if !ok {
+				t.Fatalf("ComputeAllIndicators()[MACD] has unexpected type %T", got["MACD"])
+			}
+			if _, ok := macd["line"]; !ok {
+				t.Fatal("ComputeAllIndicators()[MACD] missing line key")
+			}
+			if _, ok := macd["signal"]; !ok {
+				t.Fatal("ComputeAllIndicators()[MACD] missing signal key")
+			}
+			if _, ok := macd["histogram"]; !ok {
+				t.Fatal("ComputeAllIndicators()[MACD] missing histogram key")
+			}
+
+			stochastic, ok := got["Stochastic"].(map[string][]float64)
+			if !ok {
+				t.Fatalf("ComputeAllIndicators()[Stochastic] has unexpected type %T", got["Stochastic"])
+			}
+			if _, ok := stochastic["k"]; !ok {
+				t.Fatal("ComputeAllIndicators()[Stochastic] missing k key")
+			}
+			if _, ok := stochastic["d"]; !ok {
+				t.Fatal("ComputeAllIndicators()[Stochastic] missing d key")
+			}
+
+			bollinger, ok := got["BollingerBands"].(map[string][]float64)
+			if !ok {
+				t.Fatalf("ComputeAllIndicators()[BollingerBands] has unexpected type %T", got["BollingerBands"])
+			}
+			if _, ok := bollinger["upper"]; !ok {
+				t.Fatal("ComputeAllIndicators()[BollingerBands] missing upper key")
+			}
+			if _, ok := bollinger["middle"]; !ok {
+				t.Fatal("ComputeAllIndicators()[BollingerBands] missing middle key")
+			}
+			if _, ok := bollinger["lower"]; !ok {
+				t.Fatal("ComputeAllIndicators()[BollingerBands] missing lower key")
+			}
+		})
+	}
+}
+
+func BenchmarkComputeAllIndicators(b *testing.B) {
+	bars := indicatorTestBars(500)
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		computeAllIndicatorsSink = data.ComputeAllIndicators(bars)
 	}
 }
 
