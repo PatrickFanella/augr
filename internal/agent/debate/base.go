@@ -42,7 +42,15 @@ func NewBaseDebater(
 	}
 }
 
-func (b BaseDebater) callWithContext(
+// Model returns the LLM model name configured for this debater.
+func (b BaseDebater) Model() string { return b.model }
+
+// CallWithContext sends a completion request to the LLM provider with the
+// given system prompt, previous debate rounds, and analyst reports formatted
+// as the user message. It returns the response content, token usage, and any
+// error encountered. Errors are prefixed with "role (phase):" for easier
+// debugging.
+func (b BaseDebater) CallWithContext(
 	ctx context.Context,
 	systemPrompt string,
 	previousRounds []agent.DebateRound,
