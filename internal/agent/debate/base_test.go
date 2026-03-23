@@ -70,7 +70,7 @@ func TestBaseDebaterCallWithContextSendsCorrectMessages(t *testing.T) {
 		slog.Default(),
 	)
 
-	content, usage, err := debater.callWithContext(
+	content, usage, err := debater.CallWithContext(
 		context.Background(),
 		"You are the bull researcher.",
 		[]agent.DebateRound{
@@ -88,7 +88,7 @@ func TestBaseDebaterCallWithContextSendsCorrectMessages(t *testing.T) {
 		},
 	)
 	if err != nil {
-		t.Fatalf("callWithContext() error = %v, want nil", err)
+		t.Fatalf("CallWithContext() error = %v, want nil", err)
 	}
 
 	if content != "Bull case updated." {
@@ -137,9 +137,9 @@ func TestBaseDebaterCallWithContextIncludesRoleAndPhaseInErrors(t *testing.T) {
 		slog.Default(),
 	)
 
-	_, _, err := debater.callWithContext(context.Background(), "system", nil, nil)
+	_, _, err := debater.CallWithContext(context.Background(), "system", nil, nil)
 	if err == nil {
-		t.Fatal("callWithContext() error = nil, want non-nil")
+		t.Fatal("CallWithContext() error = nil, want non-nil")
 	}
 
 	want := "bear_researcher (research_debate): llm completion failed: boom"

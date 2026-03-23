@@ -62,7 +62,7 @@ func (b *BearResearcher) Phase() agent.Phase { return agent.PhaseResearchDebate 
 func (b *BearResearcher) Execute(ctx context.Context, state *agent.PipelineState) error {
 	rounds := state.ResearchDebate.Rounds
 
-	content, usage, err := b.callWithContext(
+	content, usage, err := b.CallWithContext(
 		ctx,
 		BearResearcherSystemPrompt,
 		rounds,
