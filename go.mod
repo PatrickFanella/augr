@@ -8,9 +8,9 @@ require github.com/joho/godotenv v1.5.1
 
 require (
 	github.com/anthropics/anthropic-sdk-go v1.27.1
-	github.com/jackc/pgx/v5 v5.8.0
+	github.com/jackc/pgx/v5 v5.9.1
 	github.com/openai/openai-go v1.12.0
-	golang.org/x/sync v0.19.0
+	golang.org/x/sync v0.20.0
 	google.golang.org/genai v1.51.0
 )
 
