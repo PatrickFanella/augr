@@ -130,6 +130,7 @@ func TestOrderTypeString(t *testing.T) {
 		{domain.OrderTypeLimit, "limit"},
 		{domain.OrderTypeStop, "stop"},
 		{domain.OrderTypeStopLimit, "stop_limit"},
+		{domain.OrderTypeTrailingStop, "trailing_stop"},
 	}
 
 	for _, tc := range tests {

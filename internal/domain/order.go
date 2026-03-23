@@ -23,10 +23,11 @@ func (s OrderSide) String() string {
 type OrderType string
 
 const (
-	OrderTypeMarket    OrderType = "market"
-	OrderTypeLimit     OrderType = "limit"
-	OrderTypeStop      OrderType = "stop"
-	OrderTypeStopLimit OrderType = "stop_limit"
+	OrderTypeMarket       OrderType = "market"
+	OrderTypeLimit        OrderType = "limit"
+	OrderTypeStop         OrderType = "stop"
+	OrderTypeStopLimit    OrderType = "stop_limit"
+	OrderTypeTrailingStop OrderType = "trailing_stop"
 )
 
 // String returns the string representation of an OrderType.
