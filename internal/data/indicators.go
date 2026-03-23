@@ -7,6 +7,26 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 )
 
+const (
+	defaultSMAPeriod          = 20
+	defaultEMAPeriod          = 12
+	defaultMACDFastPeriod     = 12
+	defaultMACDSlowPeriod     = 26
+	defaultMACDSignalPeriod   = 9
+	defaultRSIPeriod          = 14
+	defaultMFIPeriod          = 14
+	defaultStochasticKPeriod  = 14
+	defaultStochasticDPeriod  = 3
+	defaultStochasticSmooth   = 3
+	defaultWilliamsRPeriod    = 14
+	defaultCCIPeriod          = 20
+	defaultROCPeriod          = 12
+	defaultBollingerPeriod    = 20
+	defaultBollingerStdDev    = 2.0
+	defaultATRPeriod          = 14
+	defaultVWMAPeriod         = 20
+)
+
 // SMA returns the simple moving average of closing prices for each completed window.
 func SMA(data []domain.OHLCV, period int) []float64 {
 	if period <= 0 || len(data) < period {
@@ -377,6 +397,39 @@ func MACD(data []domain.OHLCV, fast, slow, signal int) (macdLine, signalLine, hi
 	}
 
 	return macdLine, signalLine, histogram
+}
+
+// ComputeAllIndicators computes all 14 technical indicators using standard
+// default periods and returns them in a single map.
+func ComputeAllIndicators(bars []domain.OHLCV) map[string]interface{} {
+	macdLine, signalLine, histogram := MACD(bars, defaultMACDFastPeriod, defaultMACDSlowPeriod, defaultMACDSignalPeriod)
+	stochasticK, stochasticD := Stochastic(bars, defaultStochasticKPeriod, defaultStochasticDPeriod, defaultStochasticSmooth)
+	bollingerUpper, bollingerMiddle, bollingerLower := BollingerBands(bars, defaultBollingerPeriod, defaultBollingerStdDev)
+
+	return map[string]interface{}{
+		"SMA": SMA(bars, defaultSMAPeriod),
+		"EMA": EMA(bars, defaultEMAPeriod),
+		"MACD": map[string][]float64{
+			"line":      macdLine,
+			"signal":    signalLine,
+			"histogram": histogram,
+		},
+		"RSI":        RSI(bars, defaultRSIPeriod),
+		"MFI":        MFI(bars, defaultMFIPeriod),
+		"Stochastic": map[string][]float64{"k": stochasticK, "d": stochasticD},
+		"WilliamsR":  WilliamsR(bars, defaultWilliamsRPeriod),
+		"CCI":        CCI(bars, defaultCCIPeriod),
+		"ROC":        ROC(bars, defaultROCPeriod),
+		"BollingerBands": map[string][]float64{
+			"upper":  bollingerUpper,
+			"middle": bollingerMiddle,
+			"lower":  bollingerLower,
+		},
+		"ATR":  ATR(bars, defaultATRPeriod),
+		"VWMA": VWMA(bars, defaultVWMAPeriod),
+		"OBV":  OBV(bars),
+		"ADL":  ADL(bars),
+	}
 }
 
 func closePrices(data []domain.OHLCV) []float64 {
