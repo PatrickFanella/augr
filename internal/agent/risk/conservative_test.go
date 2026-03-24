@@ -11,31 +11,31 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/llm"
 )
 
-func TestNewAggressiveRiskNilLogger(t *testing.T) {
-	a := NewAggressiveRisk(nil, "openai", "model", nil)
-	if a == nil {
-		t.Fatal("NewAggressiveRisk() returned nil")
+func TestNewConservativeRiskNilLogger(t *testing.T) {
+	c := NewConservativeRisk(nil, "openai", "model", nil)
+	if c == nil {
+		t.Fatal("NewConservativeRisk() returned nil")
 	}
 }
 
-func TestAggressiveRiskNodeInterface(t *testing.T) {
-	a := NewAggressiveRisk(nil, "openai", "model", slog.Default())
+func TestConservativeRiskNodeInterface(t *testing.T) {
+	c := NewConservativeRisk(nil, "openai", "model", slog.Default())
 
-	if got := a.Name(); got != "aggressive_analyst" {
-		t.Fatalf("Name() = %q, want %q", got, "aggressive_analyst")
+	if got := c.Name(); got != "conservative_analyst" {
+		t.Fatalf("Name() = %q, want %q", got, "conservative_analyst")
 	}
-	if got := a.Role(); got != agent.AgentRoleAggressiveAnalyst {
-		t.Fatalf("Role() = %q, want %q", got, agent.AgentRoleAggressiveAnalyst)
+	if got := c.Role(); got != agent.AgentRoleConservativeAnalyst {
+		t.Fatalf("Role() = %q, want %q", got, agent.AgentRoleConservativeAnalyst)
 	}
-	if got := a.Phase(); got != agent.PhaseRiskDebate {
+	if got := c.Phase(); got != agent.PhaseRiskDebate {
 		t.Fatalf("Phase() = %q, want %q", got, agent.PhaseRiskDebate)
 	}
 }
 
-func TestAggressiveRiskExecuteStoresContributionAndDecision(t *testing.T) {
+func TestConservativeRiskExecuteStoresContributionAndDecision(t *testing.T) {
 	mock := &mockProvider{
 		response: &llm.CompletionResponse{
-			Content: "Position size should be increased to capture the full upside.",
+			Content: "Position size should be reduced to limit downside exposure.",
 			Usage: llm.CompletionUsage{
 				PromptTokens:     150,
 				CompletionTokens: 60,
@@ -43,7 +43,7 @@ func TestAggressiveRiskExecuteStoresContributionAndDecision(t *testing.T) {
 		},
 	}
 
-	a := NewAggressiveRisk(mock, "test-provider", "test-model", slog.Default())
+	c := NewConservativeRisk(mock, "test-provider", "test-model", slog.Default())
 
 	state := &agent.PipelineState{
 		Ticker: "TSLA",
@@ -68,22 +68,22 @@ func TestAggressiveRiskExecuteStoresContributionAndDecision(t *testing.T) {
 		},
 	}
 
-	if err := a.Execute(context.Background(), state); err != nil {
+	if err := c.Execute(context.Background(), state); err != nil {
 		t.Fatalf("Execute() error = %v, want nil", err)
 	}
 
 	// Verify contribution was stored in the current round.
-	got := state.RiskDebate.Rounds[0].Contributions[agent.AgentRoleAggressiveAnalyst]
-	want := "Position size should be increased to capture the full upside."
+	got := state.RiskDebate.Rounds[0].Contributions[agent.AgentRoleConservativeAnalyst]
+	want := "Position size should be reduced to limit downside exposure."
 	if got != want {
 		t.Fatalf("contribution = %q, want %q", got, want)
 	}
 
 	// Verify that RecordDecision was called (decision is retrievable).
 	roundNumber := 1
-	decision, ok := state.Decision(agent.AgentRoleAggressiveAnalyst, agent.PhaseRiskDebate, &roundNumber)
+	decision, ok := state.Decision(agent.AgentRoleConservativeAnalyst, agent.PhaseRiskDebate, &roundNumber)
 	if !ok {
-		t.Fatal("Decision() not found for aggressive_analyst")
+		t.Fatal("Decision() not found for conservative_analyst")
 	}
 	if decision.OutputText != want {
 		t.Fatalf("decision output = %q, want %q", decision.OutputText, want)
@@ -104,9 +104,9 @@ func TestAggressiveRiskExecuteStoresContributionAndDecision(t *testing.T) {
 		t.Fatalf("model in response = %q, want %q", decision.LLMResponse.Response.Model, "test-model")
 	}
 
-	// Verify the system prompt was the aggressive risk prompt.
-	if mock.lastReq.Messages[0].Content != AggressiveRiskSystemPrompt {
-		t.Fatalf("system prompt mismatch:\ngot:  %q\nwant: %q", mock.lastReq.Messages[0].Content, AggressiveRiskSystemPrompt)
+	// Verify the system prompt was the conservative risk prompt.
+	if mock.lastReq.Messages[0].Content != ConservativeRiskSystemPrompt {
+		t.Fatalf("system prompt mismatch:\ngot:  %q\nwant: %q", mock.lastReq.Messages[0].Content, ConservativeRiskSystemPrompt)
 	}
 
 	// Verify the model was forwarded.
@@ -125,8 +125,8 @@ func TestAggressiveRiskExecuteStoresContributionAndDecision(t *testing.T) {
 	}
 }
 
-func TestAggressiveRiskExecuteNilProvider(t *testing.T) {
-	a := NewAggressiveRisk(nil, "openai", "model", slog.Default())
+func TestConservativeRiskExecuteNilProvider(t *testing.T) {
+	c := NewConservativeRisk(nil, "openai", "model", slog.Default())
 
 	state := &agent.PipelineState{
 		RiskDebate: agent.RiskDebateState{
@@ -136,23 +136,23 @@ func TestAggressiveRiskExecuteNilProvider(t *testing.T) {
 		},
 	}
 
-	err := a.Execute(context.Background(), state)
+	err := c.Execute(context.Background(), state)
 	if err == nil {
 		t.Fatal("Execute() error = nil, want non-nil")
 	}
 
-	want := "aggressive_analyst (risk_debate): nil llm provider"
+	want := "conservative_analyst (risk_debate): nil llm provider"
 	if err.Error() != want {
 		t.Fatalf("error = %q, want %q", err.Error(), want)
 	}
 }
 
-func TestAggressiveRiskExecuteLLMError(t *testing.T) {
+func TestConservativeRiskExecuteLLMError(t *testing.T) {
 	mock := &mockProvider{
 		err: errors.New("service unavailable"),
 	}
 
-	a := NewAggressiveRisk(mock, "openai", "model", slog.Default())
+	c := NewConservativeRisk(mock, "openai", "model", slog.Default())
 
 	state := &agent.PipelineState{
 		RiskDebate: agent.RiskDebateState{
@@ -162,31 +162,31 @@ func TestAggressiveRiskExecuteLLMError(t *testing.T) {
 		},
 	}
 
-	err := a.Execute(context.Background(), state)
+	err := c.Execute(context.Background(), state)
 	if err == nil {
 		t.Fatal("Execute() error = nil, want non-nil")
 	}
 
-	want := "aggressive_analyst (risk_debate): llm completion failed: service unavailable"
+	want := "conservative_analyst (risk_debate): llm completion failed: service unavailable"
 	if err.Error() != want {
 		t.Fatalf("error = %q, want %q", err.Error(), want)
 	}
 
 	// Verify no contribution was stored on error.
-	if got := state.RiskDebate.Rounds[0].Contributions[agent.AgentRoleAggressiveAnalyst]; got != "" {
+	if got := state.RiskDebate.Rounds[0].Contributions[agent.AgentRoleConservativeAnalyst]; got != "" {
 		t.Fatalf("contribution should be empty on error, got %q", got)
 	}
 }
 
-func TestAggressiveRiskExecuteNoRounds(t *testing.T) {
+func TestConservativeRiskExecuteNoRounds(t *testing.T) {
 	mock := &mockProvider{
 		response: &llm.CompletionResponse{
-			Content: "Aggressive case without rounds.",
+			Content: "Conservative case without rounds.",
 			Usage:   llm.CompletionUsage{PromptTokens: 10, CompletionTokens: 5},
 		},
 	}
 
-	a := NewAggressiveRisk(mock, "openai", "model", slog.Default())
+	c := NewConservativeRisk(mock, "openai", "model", slog.Default())
 
 	state := &agent.PipelineState{
 		RiskDebate: agent.RiskDebateState{},
@@ -194,21 +194,21 @@ func TestAggressiveRiskExecuteNoRounds(t *testing.T) {
 
 	// Execute should succeed even with no rounds; it calls the LLM but
 	// does not store a contribution or decision since there is no round.
-	if err := a.Execute(context.Background(), state); err != nil {
+	if err := c.Execute(context.Background(), state); err != nil {
 		t.Fatalf("Execute() error = %v, want nil", err)
 	}
 
 	// No decision should be recorded when there are no rounds.
 	roundNumber := 0
-	if _, ok := state.Decision(agent.AgentRoleAggressiveAnalyst, agent.PhaseRiskDebate, &roundNumber); ok {
+	if _, ok := state.Decision(agent.AgentRoleConservativeAnalyst, agent.PhaseRiskDebate, &roundNumber); ok {
 		t.Fatal("Decision() should not be recorded when no rounds exist (round 0)")
 	}
 
 	// Also ensure no decision is recorded under a nil round key.
-	if _, ok := state.Decision(agent.AgentRoleAggressiveAnalyst, agent.PhaseRiskDebate, nil); ok {
+	if _, ok := state.Decision(agent.AgentRoleConservativeAnalyst, agent.PhaseRiskDebate, nil); ok {
 		t.Fatal("Decision() should not be recorded when no rounds exist (nil round)")
 	}
 }
 
-// Verify AggressiveRisk satisfies the agent.Node interface at compile time.
-var _ agent.Node = (*AggressiveRisk)(nil)
+// Verify ConservativeRisk satisfies the agent.Node interface at compile time.
+var _ agent.Node = (*ConservativeRisk)(nil)
