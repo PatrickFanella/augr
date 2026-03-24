@@ -3,6 +3,7 @@ package binance
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -141,6 +142,25 @@ func TestBrokerSubmitOrder_RejectsUnsupportedOrderType(t *testing.T) {
 	}
 	if err.Error() != `binance: unsupported order type "stop"` {
 		t.Fatalf("SubmitOrder() error = %q, want unsupported type error", err.Error())
+	}
+}
+
+func TestBrokerSubmitOrder_RequiresOrderSide(t *testing.T) {
+	t.Parallel()
+
+	client := NewClient("test-key", "test-secret", true, discardLogger())
+	broker := NewBroker(client)
+
+	_, err := broker.SubmitOrder(context.Background(), &domain.Order{
+		Ticker:    "BTCUSDT",
+		OrderType: domain.OrderTypeMarket,
+		Quantity:  1,
+	})
+	if err == nil {
+		t.Fatal("SubmitOrder() error = nil, want non-nil")
+	}
+	if err.Error() != "binance: order side is required" {
+		t.Fatalf("SubmitOrder() error = %q, want required side error", err.Error())
 	}
 }
 
@@ -312,9 +332,7 @@ func TestBrokerGetPositions_MapsAccountBalances(t *testing.T) {
 	if positions[0].Side != domain.PositionSideLong {
 		t.Fatalf("positions[0].Side = %q, want %q", positions[0].Side, domain.PositionSideLong)
 	}
-	if positions[0].Quantity != 0.6 {
-		t.Fatalf("positions[0].Quantity = %v, want %v", positions[0].Quantity, 0.6)
-	}
+	assertFloatClose(t, positions[0].Quantity, 0.6, 1e-9)
 	if positions[0].AvgEntry != 0 {
 		t.Fatalf("positions[0].AvgEntry = %v, want 0", positions[0].AvgEntry)
 	}
@@ -322,9 +340,7 @@ func TestBrokerGetPositions_MapsAccountBalances(t *testing.T) {
 	if positions[1].Ticker != "ETH" {
 		t.Fatalf("positions[1].Ticker = %q, want %q", positions[1].Ticker, "ETH")
 	}
-	if positions[1].Quantity != 2 {
-		t.Fatalf("positions[1].Quantity = %v, want %v", positions[1].Quantity, 2.0)
-	}
+	assertFloatClose(t, positions[1].Quantity, 2.0, 1e-9)
 
 	select {
 	case query := <-requests:
@@ -411,6 +427,36 @@ func TestBrokerGetAccountBalance_PrefersStablecoinCashBalance(t *testing.T) {
 	}
 }
 
+func TestBrokerGetAccountBalance_SkipsZeroPreferredStablecoin(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"balances": [
+				{"asset":"USDT","free":"0","locked":"0"},
+				{"asset":"BTC","free":"0.50","locked":"0.10"}
+			]
+		}`))
+	}))
+	defer server.Close()
+
+	client := NewClient("test-key", "test-secret", true, discardLogger())
+	client.SetBaseURL(server.URL)
+
+	broker := NewBroker(client)
+	balance, err := broker.GetAccountBalance(context.Background())
+	if err != nil {
+		t.Fatalf("GetAccountBalance() error = %v", err)
+	}
+	if balance.Currency != "BTC" {
+		t.Fatalf("GetAccountBalance() Currency = %q, want %q", balance.Currency, "BTC")
+	}
+	assertFloatClose(t, balance.Cash, 0.5, 1e-9)
+	assertFloatClose(t, balance.BuyingPower, 0.5, 1e-9)
+	assertFloatClose(t, balance.Equity, 0.6, 1e-9)
+}
+
 func TestBrokerGetAccountBalance_RejectsInvalidResponseFields(t *testing.T) {
 	t.Parallel()
 
@@ -488,4 +534,12 @@ func TestBrokerSubmitOrder_DecodeResponse(t *testing.T) {
 
 func floatPtr(value float64) *float64 {
 	return &value
+}
+
+func assertFloatClose(t *testing.T, got, want, delta float64) {
+	t.Helper()
+
+	if math.Abs(got-want) > delta {
+		t.Fatalf("value = %.12f, want %.12f (delta %.12f)", got, want, delta)
+	}
 }

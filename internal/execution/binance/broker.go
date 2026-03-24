@@ -204,7 +204,12 @@ func mapSubmitOrderParams(order *domain.Order) (url.Values, string, error) {
 		return nil, "", errors.New("binance: order ticker is required")
 	}
 
-	side := strings.ToUpper(strings.TrimSpace(order.Side.String()))
+	rawSide := strings.TrimSpace(order.Side.String())
+	if rawSide == "" {
+		return nil, "", errors.New("binance: order side is required")
+	}
+
+	side := strings.ToUpper(rawSide)
 	switch domain.OrderSide(strings.ToLower(side)) {
 	case domain.OrderSideBuy, domain.OrderSideSell:
 	default:
@@ -332,7 +337,13 @@ func selectAccountBalance(balances []accountBalance) (accountBalance, error) {
 	for _, asset := range preferredBalanceAssets {
 		for _, balance := range normalized {
 			if normalizeAsset(balance.Asset) == asset {
-				return balance, nil
+				free, locked, err := parseBalanceAmounts(balance)
+				if err != nil {
+					return accountBalance{}, err
+				}
+				if free+locked > 0 {
+					return balance, nil
+				}
 			}
 		}
 	}
