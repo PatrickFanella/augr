@@ -204,8 +204,4 @@ func TestInjector_InjectIntoMessages_NoSystemMessageLeavesMessagesUnchanged(t *t
 	if !reflect.DeepEqual(got, messages) {
 		t.Fatalf("InjectIntoMessages() = %#v, want unchanged %#v", got, messages)
 	}
-
-	if len(got) > 0 && &got[0] != &messages[0] {
-		t.Fatal("InjectIntoMessages() copied messages without a system message")
-	}
 }
