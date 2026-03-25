@@ -374,7 +374,7 @@ func limitCrossed(side domain.OrderSide, referencePrice float64, limitPrice floa
 func applySlippage(price float64, side domain.OrderSide, slippageBps float64) float64 {
 	slippageFraction := slippageBps / bpsToDecimalDivisor
 	if side == domain.OrderSideBuy {
-		return math.Max(price*(1+slippageFraction), minFillPrice)
+		return price * (1 + slippageFraction)
 	}
 	return math.Max(price*(1-slippageFraction), minFillPrice)
 }

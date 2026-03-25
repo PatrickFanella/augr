@@ -9,6 +9,9 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 )
 
+// extremeSlippageBps represents 200% slippage (20000 bps) for sell-side clamp coverage.
+const extremeSlippageBps = 20000
+
 func TestPaperBrokerSubmitOrder_MarketOrderAppliesSlippage(t *testing.T) {
 	t.Parallel()
 
@@ -186,7 +189,7 @@ func TestPaperBrokerSubmitOrder_NormalizesTickerForPositions(t *testing.T) {
 func TestPaperBrokerSubmitOrder_ClampsExtremeSellSlippage(t *testing.T) {
 	t.Parallel()
 
-	broker := NewPaperBroker(1000, 20000, 0)
+	broker := NewPaperBroker(1000, extremeSlippageBps, 0)
 	order := &domain.Order{
 		Ticker:    "AAPL",
 		Side:      domain.OrderSideSell,
