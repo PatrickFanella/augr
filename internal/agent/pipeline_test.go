@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -48,6 +49,21 @@ type mockAnalystNode struct {
 	name    string
 	role    AgentRole
 	execute func(ctx context.Context, state *PipelineState) error
+}
+
+type countingProvider struct {
+	response *llm.CompletionResponse
+	calls    atomic.Int32
+}
+
+func (p *countingProvider) Complete(_ context.Context, _ llm.CompletionRequest) (*llm.CompletionResponse, error) {
+	p.calls.Add(1)
+	if p.response == nil {
+		return &llm.CompletionResponse{}, nil
+	}
+
+	resp := *p.response
+	return &resp, nil
 }
 
 func (m *mockAnalystNode) Name() string    { return m.name }
@@ -1500,6 +1516,93 @@ func TestExecute_PersistsAgentDecisions(t *testing.T) {
 	}
 	if !slices.Equal(gotRoles, wantRoles) {
 		t.Fatalf("persisted roles order = %v, want %v", gotRoles, wantRoles)
+	}
+}
+
+func TestExecute_ReportsLLMCacheStatsPerRun(t *testing.T) {
+	stratID := uuid.New()
+	baseProvider := &countingProvider{
+		response: &llm.CompletionResponse{
+			Content: "cached",
+			Model:   "test-model",
+		},
+	}
+
+	cacheProvider, err := llm.NewCacheProvider(baseProvider, llm.NewMemoryResponseCache(), "backtest-v1")
+	if err != nil {
+		t.Fatalf("NewCacheProvider() error = %v", err)
+	}
+
+	events := make(chan PipelineEvent, 50)
+	pipeline := NewPipeline(
+		PipelineConfig{ResearchDebateRounds: 1, RiskDebateRounds: 1},
+		NewRepoPersister(&mockPipelineRunRepo{}, nil, nil),
+		events,
+		slog.Default(),
+	)
+	registerAllPhaseNodes(pipeline, nil, map[AgentRole]func(context.Context, *PipelineState) error{
+		AgentRoleMarketAnalyst: func(ctx context.Context, state *PipelineState) error {
+			request := llm.CompletionRequest{
+				Model: "test-model",
+				Messages: []llm.Message{
+					{Role: "system", Content: "system"},
+					{Role: "user", Content: "prompt"},
+				},
+			}
+
+			resp, err := cacheProvider.Complete(ctx, request)
+			if err != nil {
+				return err
+			}
+			if _, err := cacheProvider.Complete(ctx, request); err != nil {
+				return err
+			}
+
+			state.SetAnalystReport(AgentRoleMarketAnalyst, resp.Content)
+			return nil
+		},
+	})
+
+	state, err := pipeline.Execute(context.Background(), stratID, "AAPL")
+	if err != nil {
+		t.Fatalf("Execute() error = %v, want nil", err)
+	}
+
+	if got := baseProvider.calls.Load(); got != 1 {
+		t.Fatalf("underlying provider calls = %d, want 1", got)
+	}
+	if state.LLMCacheStats.Hits != 1 || state.LLMCacheStats.Misses != 1 || state.LLMCacheStats.Requests != 2 {
+		t.Fatalf("state.LLMCacheStats = %+v, want 1 hit, 1 miss, 2 requests", state.LLMCacheStats)
+	}
+	if state.LLMCacheStats.HitRate != 0.5 {
+		t.Fatalf("state.LLMCacheStats.HitRate = %v, want 0.5", state.LLMCacheStats.HitRate)
+	}
+
+	close(events)
+	var (
+		cacheStatsEvent *PipelineEvent
+		lastEvent       PipelineEvent
+	)
+	for event := range events {
+		lastEvent = event
+		if event.Type == LLMCacheStatsReported {
+			cacheStatsEvent = &event
+		}
+	}
+
+	if cacheStatsEvent == nil {
+		t.Fatal("expected an LLMCacheStatsReported event")
+	}
+	if lastEvent.Type != PipelineCompleted {
+		t.Fatalf("last event type = %q, want %q", lastEvent.Type, PipelineCompleted)
+	}
+
+	var payload llm.CacheStats
+	if err := json.Unmarshal(cacheStatsEvent.Payload, &payload); err != nil {
+		t.Fatalf("json.Unmarshal(cache stats payload) error = %v", err)
+	}
+	if payload.Hits != 1 || payload.Misses != 1 || payload.Requests != 2 {
+		t.Fatalf("cache stats payload = %+v, want 1 hit, 1 miss, 2 requests", payload)
 	}
 }
 
