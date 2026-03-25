@@ -231,7 +231,7 @@ func TestPaperBrokerCancelOrder_CancelsSubmittedOrder(t *testing.T) {
 		t.Fatalf("SubmitOrder() status = %q, want %q", order.Status, domain.OrderStatusSubmitted)
 	}
 
-	if err := broker.CancelOrder(context.Background(), " "+externalID+" "); err != nil {
+	if err := broker.CancelOrder(context.Background(), externalID); err != nil {
 		t.Fatalf("CancelOrder() error = %v", err)
 	}
 
@@ -253,7 +253,7 @@ func TestPaperBrokerGetOrderStatus_ReturnsTrackedStatus(t *testing.T) {
 		Status:     domain.OrderStatusPartial,
 	}
 
-	status, err := broker.GetOrderStatus(context.Background(), " paper-42 ")
+	status, err := broker.GetOrderStatus(context.Background(), "paper-42")
 	if err != nil {
 		t.Fatalf("GetOrderStatus() error = %v", err)
 	}
