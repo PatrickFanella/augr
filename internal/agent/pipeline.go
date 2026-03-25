@@ -340,7 +340,6 @@ func (p *Pipeline) Execute(ctx context.Context, strategyID uuid.UUID, ticker str
 		PipelineRunID: run.ID,
 		StrategyID:    strategyID,
 		Ticker:        ticker,
-		LLMCacheStats: cacheStatsCollector.Snapshot(),
 		mu:            &sync.Mutex{},
 	}
 

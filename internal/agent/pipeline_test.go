@@ -1450,7 +1450,6 @@ func TestExecute_ReportsLLMCacheStatsPerRun(t *testing.T) {
 		lastEvent       PipelineEvent
 	)
 	for event := range events {
-		event := event
 		lastEvent = event
 		if event.Type == LLMCacheStatsReported {
 			cacheStatsEvent = &event

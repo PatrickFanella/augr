@@ -1,6 +1,7 @@
 package llm
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -222,7 +223,15 @@ func cacheKey(request CompletionRequest, version string) (string, error) {
 		return "", err
 	}
 
-	sum := sha256.Sum256([]byte(string(prompt) + "\n" + request.Model + "\n" + version))
+	var key bytes.Buffer
+	key.Grow(len(prompt) + len(request.Model) + len(version) + 2)
+	key.Write(prompt)
+	key.WriteByte('\n')
+	key.WriteString(request.Model)
+	key.WriteByte('\n')
+	key.WriteString(version)
+
+	sum := sha256.Sum256(key.Bytes())
 	return hex.EncodeToString(sum[:]), nil
 }
 
