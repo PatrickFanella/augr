@@ -23,7 +23,7 @@ type mockInjectorMemoryRepo struct {
 	searchCalls int
 }
 
-func (m *mockInjectorMemoryRepo) Create(context.Context, *domain.AgentMemory) error { return nil }
+func (m *mockInjectorMemoryRepo) Create(_ context.Context, _ *domain.AgentMemory) error { return nil }
 
 func (m *mockInjectorMemoryRepo) Search(_ context.Context, query string, filter repository.MemorySearchFilter, limit, offset int) ([]domain.AgentMemory, error) {
 	m.searchCalls++
@@ -37,7 +37,7 @@ func (m *mockInjectorMemoryRepo) Search(_ context.Context, query string, filter 
 	return m.results, nil
 }
 
-func (m *mockInjectorMemoryRepo) Delete(context.Context, uuid.UUID) error { return nil }
+func (m *mockInjectorMemoryRepo) Delete(_ context.Context, _ uuid.UUID) error { return nil }
 
 func TestInjector_GetMemoryContextAndInjectIntoMessages(t *testing.T) {
 	t.Parallel()
