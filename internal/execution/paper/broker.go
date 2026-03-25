@@ -19,6 +19,7 @@ import (
 const (
 	defaultReferencePrice = 1.0
 	bpsToDecimalDivisor   = 10000
+	minFillPrice          = 1e-9
 )
 
 // PaperBroker implements an in-memory execution.Broker for paper trading.
@@ -234,7 +235,10 @@ func (b *PaperBroker) nextExternalIDLocked() string {
 func (b *PaperBroker) simulateFillPrice(order *domain.Order) (float64, bool, error) {
 	switch order.OrderType {
 	case domain.OrderTypeMarket:
-		referencePrice := resolveReferencePrice(order, defaultReferencePrice)
+		referencePrice, ok := resolveReferencePrice(order)
+		if !ok {
+			referencePrice = defaultReferencePrice
+		}
 		return applySlippage(referencePrice, order.Side, b.slippageBps), true, nil
 	case domain.OrderTypeLimit:
 		if order.LimitPrice == nil {
@@ -245,7 +249,10 @@ func (b *PaperBroker) simulateFillPrice(order *domain.Order) (float64, bool, err
 		}
 
 		limitPrice := *order.LimitPrice
-		referencePrice := resolveReferencePrice(order, limitPrice)
+		referencePrice, ok := resolveReferencePrice(order)
+		if !ok {
+			return 0, false, nil
+		}
 		if !limitCrossed(order.Side, referencePrice, limitPrice) {
 			return 0, false, nil
 		}
@@ -340,24 +347,21 @@ func validateOrder(order *domain.Order) error {
 }
 
 func normalizeTicker(ticker string) (string, error) {
-	normalized := strings.TrimSpace(ticker)
+	normalized := strings.ToUpper(strings.TrimSpace(ticker))
 	if normalized == "" {
 		return "", errors.New("paper: order ticker is required")
 	}
 	return normalized, nil
 }
 
-func resolveReferencePrice(order *domain.Order, fallback float64) float64 {
+func resolveReferencePrice(order *domain.Order) (float64, bool) {
 	if order.FilledAvgPrice != nil && *order.FilledAvgPrice > 0 {
-		return *order.FilledAvgPrice
+		return *order.FilledAvgPrice, true
 	}
 	if order.StopPrice != nil && *order.StopPrice > 0 {
-		return *order.StopPrice
+		return *order.StopPrice, true
 	}
-	if order.LimitPrice != nil && *order.LimitPrice > 0 {
-		return *order.LimitPrice
-	}
-	return fallback
+	return 0, false
 }
 
 func limitCrossed(side domain.OrderSide, referencePrice float64, limitPrice float64) bool {
@@ -370,9 +374,9 @@ func limitCrossed(side domain.OrderSide, referencePrice float64, limitPrice floa
 func applySlippage(price float64, side domain.OrderSide, slippageBps float64) float64 {
 	slippageFraction := slippageBps / bpsToDecimalDivisor
 	if side == domain.OrderSideBuy {
-		return price * (1 + slippageFraction)
+		return math.Max(price*(1+slippageFraction), minFillPrice)
 	}
-	return price * (1 - slippageFraction)
+	return math.Max(price*(1-slippageFraction), minFillPrice)
 }
 
 func realizedPnL(side domain.PositionSide, avgEntry float64, fillPrice float64, quantity float64) float64 {
