@@ -94,16 +94,15 @@ func (s *Scheduler) Start() error {
 		return fmt.Errorf("scheduler: cron engine is required")
 	}
 
-	runCtx, cancel := context.WithCancel(context.Background())
 	registered := 0
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.cron != nil {
-		cancel()
 		return ErrAlreadyStarted
 	}
 
+	runCtx, cancel := context.WithCancel(context.Background())
 	s.cron = engine
 	s.ctx = runCtx
 	s.cancel = cancel

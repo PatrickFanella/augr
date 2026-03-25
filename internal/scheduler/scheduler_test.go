@@ -369,7 +369,7 @@ func TestSchedulerStopCancelsRunningJobs(t *testing.T) {
 		t.Fatal("expected risk engine context to be recorded")
 	}
 	if _, hasDeadline := ctx.Deadline(); hasDeadline {
-		t.Fatal("expected disabled scheduler job timeout to produce a context without a deadline")
+		t.Fatal("expected scheduler job timeout value 0 to disable deadlines on the derived context")
 	}
 
 	stopDone := make(chan struct{})
