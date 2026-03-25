@@ -116,10 +116,13 @@ func (s *Scheduler) Start() error {
 			s.runStrategy(strategy)
 		})
 		if err != nil {
-			s.cancel()
-			s.cancel = nil
-			s.ctx = nil
+			cancel := s.cancel
 			s.cron = nil
+			s.ctx = nil
+			s.cancel = nil
+			if cancel != nil {
+				cancel()
+			}
 			return fmt.Errorf("scheduler: register strategy %s schedule %q: %w", strategy.ID, spec, err)
 		}
 

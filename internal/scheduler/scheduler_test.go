@@ -19,6 +19,7 @@ import (
 )
 
 const noJobTimeout time.Duration = 0
+const testScheduleSpec = "@every 1m"
 
 type mockStrategyRepo struct {
 	mu         sync.Mutex
@@ -202,7 +203,7 @@ func TestSchedulerStartTriggersPipelineExecution(t *testing.T) {
 				ID:           strategyID,
 				Ticker:       "BTCUSD",
 				MarketType:   domain.MarketTypeCrypto,
-				ScheduleCron: "@every 10s",
+				ScheduleCron: testScheduleSpec,
 				IsActive:     true,
 			},
 		},
@@ -274,7 +275,7 @@ func TestSchedulerStartIsIdempotentWhenAlreadyStarted(t *testing.T) {
 				ID:           uuid.New(),
 				Ticker:       "BTCUSD",
 				MarketType:   domain.MarketTypeCrypto,
-				ScheduleCron: "@every 10s",
+				ScheduleCron: testScheduleSpec,
 				IsActive:     true,
 			},
 		},
@@ -319,7 +320,7 @@ func TestSchedulerStopCancelsRunningJobs(t *testing.T) {
 				ID:           uuid.New(),
 				Ticker:       "BTCUSD",
 				MarketType:   domain.MarketTypeCrypto,
-				ScheduleCron: "@every 10s",
+				ScheduleCron: testScheduleSpec,
 				IsActive:     true,
 			},
 		},
