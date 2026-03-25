@@ -13,12 +13,28 @@ import (
 
 var _ repository.HistoricalOHLCVRepository = (*MarketDataCacheRepo)(nil)
 
+const historicalOHLCVUpsertBatchSize = 500
+
 // UpsertHistoricalOHLCV stores historical bars in a queryable, indexed table.
 func (r *MarketDataCacheRepo) UpsertHistoricalOHLCV(ctx context.Context, bars []domain.HistoricalOHLCV) error {
 	if len(bars) == 0 {
 		return nil
 	}
 
+	for start := 0; start < len(bars); start += historicalOHLCVUpsertBatchSize {
+		end := start + historicalOHLCVUpsertBatchSize
+		if end > len(bars) {
+			end = len(bars)
+		}
+		if err := r.upsertHistoricalOHLCVBatch(ctx, bars[start:end]); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (r *MarketDataCacheRepo) upsertHistoricalOHLCVBatch(ctx context.Context, bars []domain.HistoricalOHLCV) error {
 	var batch pgx.Batch
 	for _, bar := range bars {
 		batch.Queue(

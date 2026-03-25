@@ -216,7 +216,7 @@ func (s *DataService) DownloadHistoricalOHLCV(
 		return nil, fmt.Errorf("data: invalid historical range %s > %s", fromUTC, toUTC)
 	}
 
-	providerName, _, err := s.resolveChain(marketType)
+	providerName, chain, err := s.resolveChain(marketType)
 	if err != nil {
 		return nil, err
 	}
@@ -247,7 +247,7 @@ func (s *DataService) DownloadHistoricalOHLCV(
 		}
 
 		for _, gap := range gaps {
-			bars, err := s.GetOHLCV(ctx, marketType, trimmedTicker, timeframe, gap.From, gap.To)
+			bars, err := chain.GetOHLCV(ctx, trimmedTicker, timeframe, gap.From, gap.To)
 			if err != nil {
 				return nil, fmt.Errorf("data: download historical ohlcv for %s: %w", trimmedTicker, err)
 			}

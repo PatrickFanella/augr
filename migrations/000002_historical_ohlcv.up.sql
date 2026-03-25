@@ -11,8 +11,8 @@ CREATE TABLE historical_ohlcv (
     PRIMARY KEY (ticker, provider, timeframe, bar_time)
 );
 
-CREATE INDEX idx_historical_ohlcv_ticker_timeframe_bar_time
-    ON historical_ohlcv (ticker, timeframe, bar_time);
+CREATE INDEX idx_historical_ohlcv_ticker_provider_timeframe_bar_time
+    ON historical_ohlcv (ticker, provider, timeframe, bar_time);
 
 CREATE TABLE historical_ohlcv_coverage (
     ticker     TEXT        NOT NULL,
@@ -24,5 +24,5 @@ CREATE TABLE historical_ohlcv_coverage (
     PRIMARY KEY (ticker, provider, timeframe, range_from, range_to)
 );
 
-CREATE INDEX idx_historical_ohlcv_coverage_ticker_timeframe_range
-    ON historical_ohlcv_coverage (ticker, timeframe, range_from, range_to);
+CREATE INDEX idx_historical_ohlcv_coverage_ticker_provider_timeframe_range
+    ON historical_ohlcv_coverage (ticker, provider, timeframe, range_from, range_to);

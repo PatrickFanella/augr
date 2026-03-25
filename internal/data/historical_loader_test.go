@@ -13,6 +13,25 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 )
 
+type fakeHistoricalCacheRepo struct {
+	getCalls int
+	setCalls int
+}
+
+func (f *fakeHistoricalCacheRepo) Get(context.Context, repository.MarketDataCacheKey) (*domain.MarketData, error) {
+	f.getCalls++
+	return nil, errors.New("unexpected cache get")
+}
+
+func (f *fakeHistoricalCacheRepo) Set(context.Context, *domain.MarketData) error {
+	f.setCalls++
+	return errors.New("unexpected cache set")
+}
+
+func (f *fakeHistoricalCacheRepo) Expire(context.Context, repository.MarketDataCacheExpireFilter) error {
+	return nil
+}
+
 type historicalProviderCall struct {
 	ticker    string
 	timeframe Timeframe
@@ -246,6 +265,48 @@ func TestDataServiceDownloadHistoricalOHLCVTracksEmptyCoverageForIncrementalUpda
 
 	if len(provider.calls) != 1 {
 		t.Fatalf("provider calls = %d, want 1", len(provider.calls))
+	}
+}
+
+func TestDataServiceDownloadHistoricalOHLCVBypassesCache(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	from := time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC)
+	to := from.Add(24 * time.Hour)
+
+	historyRepo := newFakeHistoricalOHLCVRepo()
+	cacheRepo := &fakeHistoricalCacheRepo{}
+	provider := &historicalStubProvider{
+		getFn: func(_ string, _ Timeframe, gapFrom, gapTo time.Time) ([]domain.OHLCV, error) {
+			if !gapFrom.Equal(from) || !gapTo.Equal(to) {
+				return nil, errors.New("unexpected gap request")
+			}
+			return []domain.OHLCV{
+				{Timestamp: from, Open: 1, High: 2, Low: 0.5, Close: 1.5, Volume: 10},
+				{Timestamp: to, Open: 2, High: 3, Low: 1.5, Close: 2.5, Volume: 20},
+			}, nil
+		},
+	}
+
+	service := &DataService{
+		stockChain:  provider,
+		cacheRepo:   cacheRepo,
+		historyRepo: historyRepo,
+		logger:      logger,
+		now:         func() time.Time { return to.Add(time.Hour) },
+	}
+
+	got, err := service.DownloadHistoricalOHLCV(context.Background(), domain.MarketTypeStock, []string{"AAPL"}, Timeframe1d, from, to, false)
+	if err != nil {
+		t.Fatalf("DownloadHistoricalOHLCV() error = %v", err)
+	}
+	if len(got["AAPL"]) != 2 {
+		t.Fatalf("len(got[\"AAPL\"]) = %d, want 2", len(got["AAPL"]))
+	}
+	if cacheRepo.getCalls != 0 {
+		t.Fatalf("cache get calls = %d, want 0", cacheRepo.getCalls)
+	}
+	if cacheRepo.setCalls != 0 {
+		t.Fatalf("cache set calls = %d, want 0", cacheRepo.setCalls)
 	}
 }
 
