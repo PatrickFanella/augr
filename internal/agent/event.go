@@ -11,12 +11,13 @@ import (
 type PipelineEventType string
 
 const (
-	PipelineStarted      PipelineEventType = "pipeline_started"
-	AgentDecisionMade    PipelineEventType = "agent_decision_made"
-	DebateRoundCompleted PipelineEventType = "debate_round_completed"
-	SignalGenerated      PipelineEventType = "signal_generated"
-	PipelineCompleted    PipelineEventType = "pipeline_completed"
-	PipelineError        PipelineEventType = "pipeline_error"
+	PipelineStarted       PipelineEventType = "pipeline_started"
+	AgentDecisionMade     PipelineEventType = "agent_decision_made"
+	DebateRoundCompleted  PipelineEventType = "debate_round_completed"
+	SignalGenerated       PipelineEventType = "signal_generated"
+	LLMCacheStatsReported PipelineEventType = "llm_cache_stats_reported"
+	PipelineCompleted     PipelineEventType = "pipeline_completed"
+	PipelineError         PipelineEventType = "pipeline_error"
 )
 
 // String returns the string representation of a PipelineEventType.

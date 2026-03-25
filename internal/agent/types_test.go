@@ -140,6 +140,9 @@ func TestPipelineEventTypesCoverUserVisibleTransitions(t *testing.T) {
 	if got := agent.SignalGenerated.String(); got != "signal_generated" {
 		t.Fatalf("SignalGenerated.String() = %q, want %q", got, "signal_generated")
 	}
+	if got := agent.LLMCacheStatsReported.String(); got != "llm_cache_stats_reported" {
+		t.Fatalf("LLMCacheStatsReported.String() = %q, want %q", got, "llm_cache_stats_reported")
+	}
 	if got := agent.PipelineCompleted.String(); got != "pipeline_completed" {
 		t.Fatalf("PipelineCompleted.String() = %q, want %q", got, "pipeline_completed")
 	}

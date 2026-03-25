@@ -12,6 +12,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
+	"github.com/PatrickFanella/get-rich-quick/internal/llm"
 )
 
 // PipelineConfig holds timeout and debate-round configuration for a Pipeline.
@@ -318,6 +319,8 @@ func (p *Pipeline) Execute(ctx context.Context, strategyID uuid.UUID, ticker str
 		ctx, cancel = context.WithTimeout(ctx, p.config.PipelineTimeout)
 		defer cancel()
 	}
+	cacheStatsCollector := llm.NewCacheStatsCollector()
+	ctx = llm.WithCacheStatsCollector(ctx, cacheStatsCollector)
 
 	now := time.Now().UTC()
 	run := &domain.PipelineRun{
@@ -337,6 +340,7 @@ func (p *Pipeline) Execute(ctx context.Context, strategyID uuid.UUID, ticker str
 		PipelineRunID: run.ID,
 		StrategyID:    strategyID,
 		Ticker:        ticker,
+		LLMCacheStats: cacheStatsCollector.Snapshot(),
 		mu:            &sync.Mutex{},
 	}
 
@@ -369,6 +373,7 @@ func (p *Pipeline) Execute(ctx context.Context, strategyID uuid.UUID, ticker str
 
 			completedAt := time.Now().UTC()
 			_ = p.persister.RecordRunComplete(ctx, run.ID, run.TradeDate, domain.PipelineStatusFailed, completedAt, err.Error())
+			p.emitCacheStats(state, cacheStatsCollector, run.ID, strategyID, ticker)
 
 			p.emitEvent(PipelineEvent{
 				Type:          PipelineError,
@@ -386,6 +391,7 @@ func (p *Pipeline) Execute(ctx context.Context, strategyID uuid.UUID, ticker str
 	// All phases succeeded – mark the run as completed.
 	completedAt := time.Now().UTC()
 	_ = p.persister.RecordRunComplete(ctx, run.ID, run.TradeDate, domain.PipelineStatusCompleted, completedAt, "")
+	p.emitCacheStats(state, cacheStatsCollector, run.ID, strategyID, ticker)
 
 	p.emitEvent(PipelineEvent{
 		Type:          PipelineCompleted,
@@ -413,6 +419,30 @@ func (p *Pipeline) emitEvent(event PipelineEvent) {
 			slog.String("type", string(event.Type)),
 		)
 	}
+}
+
+func (p *Pipeline) emitCacheStats(state *PipelineState, collector *llm.CacheStatsCollector, runID, strategyID uuid.UUID, ticker string) {
+	stats := collector.Snapshot()
+	if state != nil {
+		state.LLMCacheStats = stats
+	}
+
+	payload, err := json.Marshal(stats)
+	if err != nil {
+		p.logger.Warn("agent/pipeline: failed to marshal LLM cache stats",
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	p.emitEvent(PipelineEvent{
+		Type:          LLMCacheStatsReported,
+		PipelineRunID: runID,
+		StrategyID:    strategyID,
+		Ticker:        ticker,
+		Payload:       payload,
+		OccurredAt:    time.Now().UTC(),
+	})
 }
 
 func (p *Pipeline) decisionPayload(state *PipelineState, node Node, roundNumber *int) (string, *DecisionLLMResponse, error) {
