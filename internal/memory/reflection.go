@@ -160,7 +160,7 @@ func (r *Reflector) findPipelineRun(ctx context.Context, pos *domain.Position) (
 	}
 	if len(runs) == 0 {
 		return nil, fmt.Errorf("no completed pipeline run found for strategy %s ticker %s",
-			pos.StrategyID, pos.Ticker)
+			*pos.StrategyID, pos.Ticker)
 	}
 
 	return &runs[0], nil

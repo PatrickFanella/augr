@@ -291,11 +291,6 @@ func TestComputeOutcome_Profit(t *testing.T) {
 	if out == "" {
 		t.Fatal("computeOutcome() returned empty string")
 	}
-
-	// Should contain "profit"
-	if got := out; got == "" {
-		t.Error("expected non-empty outcome")
-	}
 }
 
 func TestComputeOutcome_Loss(t *testing.T) {
