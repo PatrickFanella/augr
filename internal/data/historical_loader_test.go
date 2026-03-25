@@ -66,8 +66,8 @@ func (s *historicalStubProvider) GetNews(context.Context, string, time.Time, tim
 	return nil, ErrNotImplemented
 }
 
-func (s *historicalStubProvider) GetSocialSentiment(context.Context, string) (SocialSentiment, error) {
-	return SocialSentiment{}, ErrNotImplemented
+func (s *historicalStubProvider) GetSocialSentiment(context.Context, string, time.Time, time.Time) ([]SocialSentiment, error) {
+	return nil, ErrNotImplemented
 }
 
 type fakeHistoricalOHLCVRepo struct {
@@ -265,6 +265,84 @@ func TestDataServiceDownloadHistoricalOHLCVTracksEmptyCoverageForIncrementalUpda
 
 	if len(provider.calls) != 1 {
 		t.Fatalf("provider calls = %d, want 1", len(provider.calls))
+	}
+}
+
+func TestDataServiceDownloadHistoricalOHLCVIncrementalFetchesOnlyMissingSubRanges(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	providerName := cacheProviderStockChain
+	from := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
+	day2 := from.Add(24 * time.Hour)
+	day3 := day2.Add(24 * time.Hour)
+	day4 := day3.Add(24 * time.Hour)
+	day5 := day4.Add(24 * time.Hour)
+	day6 := day5.Add(24 * time.Hour)
+	day7 := day6.Add(24 * time.Hour)
+
+	repo := newFakeHistoricalOHLCVRepo()
+	_ = repo.UpsertHistoricalOHLCV(context.Background(), []domain.HistoricalOHLCV{
+		{Ticker: "AAPL", Provider: providerName, Timeframe: Timeframe1d.String(), Timestamp: day3, Open: 102, High: 103, Low: 101, Close: 102.5, Volume: 1200},
+		{Ticker: "AAPL", Provider: providerName, Timeframe: Timeframe1d.String(), Timestamp: day4, Open: 103, High: 104, Low: 102, Close: 103.5, Volume: 1300},
+		{Ticker: "AAPL", Provider: providerName, Timeframe: Timeframe1d.String(), Timestamp: day5, Open: 104, High: 105, Low: 103, Close: 104.5, Volume: 1400},
+	})
+	_ = repo.UpsertHistoricalOHLCVCoverage(context.Background(), domain.HistoricalOHLCVCoverage{
+		Ticker: "AAPL", Provider: providerName, Timeframe: Timeframe1d.String(), DateFrom: day3, DateTo: day5, FetchedAt: day5,
+	})
+
+	provider := &historicalStubProvider{
+		getFn: func(ticker string, timeframe Timeframe, gapFrom, gapTo time.Time) ([]domain.OHLCV, error) {
+			if ticker != "AAPL" {
+				return nil, errors.New("unexpected ticker")
+			}
+			if timeframe != Timeframe1d {
+				return nil, errors.New("unexpected timeframe")
+			}
+
+			switch {
+			case gapFrom.Equal(from) && gapTo.Equal(day2):
+				return []domain.OHLCV{
+					{Timestamp: from, Open: 100, High: 101, Low: 99, Close: 100.5, Volume: 1000},
+					{Timestamp: day2, Open: 101, High: 102, Low: 100, Close: 101.5, Volume: 1100},
+				}, nil
+			case gapFrom.Equal(day6) && gapTo.Equal(day7):
+				return []domain.OHLCV{
+					{Timestamp: day6, Open: 105, High: 106, Low: 104, Close: 105.5, Volume: 1500},
+					{Timestamp: day7, Open: 106, High: 107, Low: 105, Close: 106.5, Volume: 1600},
+				}, nil
+			default:
+				return nil, errors.New("unexpected gap request")
+			}
+		},
+	}
+
+	service := &DataService{
+		stockChain:  provider,
+		historyRepo: repo,
+		logger:      logger,
+		now:         func() time.Time { return day7.Add(time.Hour) },
+	}
+
+	got, err := service.DownloadHistoricalOHLCV(context.Background(), domain.MarketTypeStock, []string{"AAPL"}, Timeframe1d, from, day7, true)
+	if err != nil {
+		t.Fatalf("DownloadHistoricalOHLCV() error = %v", err)
+	}
+
+	if len(provider.calls) != 2 {
+		t.Fatalf("provider calls = %d, want 2", len(provider.calls))
+	}
+	if !provider.calls[0].from.Equal(from) || !provider.calls[0].to.Equal(day2) {
+		t.Fatalf("provider call[0] range = %s..%s, want %s..%s", provider.calls[0].from, provider.calls[0].to, from, day2)
+	}
+	if !provider.calls[1].from.Equal(day6) || !provider.calls[1].to.Equal(day7) {
+		t.Fatalf("provider call[1] range = %s..%s, want %s..%s", provider.calls[1].from, provider.calls[1].to, day6, day7)
+	}
+
+	bars := got["AAPL"]
+	if len(bars) != 7 {
+		t.Fatalf("len(got[\"AAPL\"]) = %d, want 7", len(bars))
+	}
+	if !bars[0].Timestamp.Equal(from) || !bars[6].Timestamp.Equal(day7) {
+		t.Fatalf("returned range = %s..%s, want %s..%s", bars[0].Timestamp, bars[6].Timestamp, from, day7)
 	}
 }
 
