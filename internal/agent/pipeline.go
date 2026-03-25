@@ -12,7 +12,6 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
-	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 )
 
 // PipelineConfig holds timeout and debate-round configuration for a Pipeline.
@@ -25,20 +24,18 @@ type PipelineConfig struct {
 
 // Pipeline holds all dependencies and configuration needed by the executor.
 type Pipeline struct {
-	nodes             map[Phase][]Node
-	pipelineRunRepo   repository.PipelineRunRepository
-	agentDecisionRepo repository.AgentDecisionRepository
-	events            chan<- PipelineEvent
-	logger            *slog.Logger
-	config            PipelineConfig
+	nodes     map[Phase][]Node
+	persister DecisionPersister
+	events    chan<- PipelineEvent
+	logger    *slog.Logger
+	config    PipelineConfig
 }
 
 // NewPipeline constructs a Pipeline with the supplied dependencies. Default
 // debate-round counts of 3 are applied when the config fields are zero.
 func NewPipeline(
 	config PipelineConfig,
-	pipelineRunRepo repository.PipelineRunRepository,
-	agentDecisionRepo repository.AgentDecisionRepository,
+	persister DecisionPersister,
 	events chan<- PipelineEvent,
 	logger *slog.Logger,
 ) *Pipeline {
@@ -52,12 +49,11 @@ func NewPipeline(
 		logger = slog.Default()
 	}
 	return &Pipeline{
-		nodes:             make(map[Phase][]Node),
-		pipelineRunRepo:   pipelineRunRepo,
-		agentDecisionRepo: agentDecisionRepo,
-		events:            events,
-		logger:            logger,
-		config:            config,
+		nodes:     make(map[Phase][]Node),
+		persister: persister,
+		events:    events,
+		logger:    logger,
+		config:    config,
 	}
 }
 
@@ -156,18 +152,30 @@ func (p *Pipeline) executeAnalysisPhase(ctx context.Context, state *PipelineStat
 	for _, n := range p.nodes[PhaseAnalysis] {
 		node := n
 		g.Go(func() error {
-			if err := node.Execute(gCtx, state); err != nil {
-				p.logger.Warn("agent/pipeline: analyst node failed",
-					slog.String("node", node.Name()),
-					slog.Any("error", err),
-				)
-				return nil // partial failures are tolerated; do not abort the phase
+			if an, ok := node.(AnalystNode); ok {
+				result, err := an.Analyze(gCtx, analysisInputFromState(state))
+				if err != nil {
+					p.logger.Warn("agent/pipeline: analyst node failed",
+						slog.String("node", node.Name()),
+						slog.Any("error", err),
+					)
+					return nil // partial failures are tolerated; do not abort the phase
+				}
+				applyAnalysisOutput(state, node.Role(), result)
+			} else {
+				if err := node.Execute(gCtx, state); err != nil {
+					p.logger.Warn("agent/pipeline: analyst node failed",
+						slog.String("node", node.Name()),
+						slog.Any("error", err),
+					)
+					return nil // partial failures are tolerated; do not abort the phase
+				}
 			}
 			output, llmResponse, err := p.decisionPayload(state, node, nil)
 			if err != nil {
 				return err
 			}
-			if err := p.persistDecision(gCtx, state.PipelineRunID, node, nil, output, llmResponse); err != nil {
+			if err := p.persister.PersistDecision(gCtx, state.PipelineRunID, node, nil, output, llmResponse); err != nil {
 				return err
 			}
 
@@ -226,7 +234,7 @@ func (p *Pipeline) executeTradingPhase(ctx context.Context, state *PipelineState
 	if err != nil {
 		return err
 	}
-	if err := p.persistDecision(phaseCtx, state.PipelineRunID, traderNode, nil, output, llmResponse); err != nil {
+	if err := p.persister.PersistDecision(phaseCtx, state.PipelineRunID, traderNode, nil, output, llmResponse); err != nil {
 		return err
 	}
 
@@ -300,8 +308,8 @@ func (p *Pipeline) executeRiskDebatePhase(ctx context.Context, state *PipelineSt
 // at the end. The PipelineRun status is updated to completed or failed
 // accordingly.
 func (p *Pipeline) Execute(ctx context.Context, strategyID uuid.UUID, ticker string) (*PipelineState, error) {
-	if p.pipelineRunRepo == nil {
-		return nil, fmt.Errorf("agent/pipeline: pipeline run repository is required")
+	if p.persister == nil {
+		return nil, fmt.Errorf("agent/pipeline: persister is required")
 	}
 
 	// Apply pipeline-level timeout when configured.
@@ -321,8 +329,8 @@ func (p *Pipeline) Execute(ctx context.Context, strategyID uuid.UUID, ticker str
 		StartedAt:  now,
 	}
 
-	if err := p.pipelineRunRepo.Create(ctx, run); err != nil {
-		return nil, fmt.Errorf("agent/pipeline: create pipeline run: %w", err)
+	if err := p.persister.RecordRunStart(ctx, run); err != nil {
+		return nil, err
 	}
 
 	state := &PipelineState{
@@ -359,24 +367,8 @@ func (p *Pipeline) Execute(ctx context.Context, strategyID uuid.UUID, ticker str
 				slog.Any("error", err),
 			)
 
-			// Use a short-lived background context for the status update so
-			// that it succeeds even when the pipeline context has been
-			// cancelled, but cannot hang indefinitely on a stalled DB.
 			completedAt := time.Now().UTC()
-			dbCtx, dbCancel := context.WithTimeout(context.Background(), 10*time.Second)
-			if updateErr := p.pipelineRunRepo.UpdateStatus(
-				dbCtx, run.ID, run.TradeDate,
-				repository.PipelineRunStatusUpdate{
-					Status:       domain.PipelineStatusFailed,
-					CompletedAt:  &completedAt,
-					ErrorMessage: err.Error(),
-				},
-			); updateErr != nil {
-				p.logger.Error("agent/pipeline: failed to update run status",
-					slog.Any("error", updateErr),
-				)
-			}
-			dbCancel()
+			_ = p.persister.RecordRunComplete(ctx, run.ID, run.TradeDate, domain.PipelineStatusFailed, completedAt, err.Error())
 
 			p.emitEvent(PipelineEvent{
 				Type:          PipelineError,
@@ -391,23 +383,9 @@ func (p *Pipeline) Execute(ctx context.Context, strategyID uuid.UUID, ticker str
 		}
 	}
 
-	// All phases succeeded – mark the run as completed. Use a short-lived
-	// background context so the update succeeds even if the pipeline context
-	// is near/past its deadline.
+	// All phases succeeded – mark the run as completed.
 	completedAt := time.Now().UTC()
-	dbCtx, dbCancel := context.WithTimeout(context.Background(), 10*time.Second)
-	if updateErr := p.pipelineRunRepo.UpdateStatus(
-		dbCtx, run.ID, run.TradeDate,
-		repository.PipelineRunStatusUpdate{
-			Status:      domain.PipelineStatusCompleted,
-			CompletedAt: &completedAt,
-		},
-	); updateErr != nil {
-		p.logger.Error("agent/pipeline: failed to update run status",
-			slog.Any("error", updateErr),
-		)
-	}
-	dbCancel()
+	_ = p.persister.RecordRunComplete(ctx, run.ID, run.TradeDate, domain.PipelineStatusCompleted, completedAt, "")
 
 	p.emitEvent(PipelineEvent{
 		Type:          PipelineCompleted,
@@ -435,42 +413,6 @@ func (p *Pipeline) emitEvent(event PipelineEvent) {
 			slog.String("type", string(event.Type)),
 		)
 	}
-}
-
-func (p *Pipeline) persistDecision(
-	ctx context.Context,
-	runID uuid.UUID,
-	node Node,
-	roundNumber *int,
-	output string,
-	llmResponse *DecisionLLMResponse,
-) error {
-	if p.agentDecisionRepo == nil {
-		return nil
-	}
-
-	decision := &domain.AgentDecision{
-		PipelineRunID: runID,
-		AgentRole:     node.Role(),
-		Phase:         node.Phase(),
-		RoundNumber:   cloneRoundNumber(roundNumber),
-		OutputText:    output,
-	}
-	if llmResponse != nil {
-		decision.LLMProvider = llmResponse.Provider
-		if llmResponse.Response != nil {
-			decision.LLMModel = llmResponse.Response.Model
-			decision.PromptTokens = llmResponse.Response.Usage.PromptTokens
-			decision.CompletionTokens = llmResponse.Response.Usage.CompletionTokens
-			decision.LatencyMS = llmResponse.Response.LatencyMS
-		}
-	}
-
-	if err := p.agentDecisionRepo.Create(ctx, decision); err != nil {
-		return fmt.Errorf("agent/pipeline: persist decision for %s: %w", node.Name(), err)
-	}
-
-	return nil
 }
 
 func (p *Pipeline) decisionPayload(state *PipelineState, node Node, roundNumber *int) (string, *DecisionLLMResponse, error) {

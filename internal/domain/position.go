@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -17,6 +18,37 @@ const (
 // String returns the string representation of a PositionSide.
 func (s PositionSide) String() string {
 	return string(s)
+}
+
+// IsValid returns true if the side is a defined PositionSide constant.
+func (s PositionSide) IsValid() bool {
+	switch s {
+	case PositionSideLong, PositionSideShort:
+		return true
+	}
+	return false
+}
+
+// NewPosition creates a Position with basic field validation.
+func NewPosition(ticker string, side PositionSide, quantity, avgEntry float64) (*Position, error) {
+	if err := requireNonEmpty("ticker", ticker); err != nil {
+		return nil, err
+	}
+	if !side.IsValid() {
+		return nil, fmt.Errorf("invalid position side: %q", side)
+	}
+	if err := requirePositive("quantity", quantity); err != nil {
+		return nil, err
+	}
+	if err := requirePositive("avg_entry", avgEntry); err != nil {
+		return nil, err
+	}
+	return &Position{
+		Ticker:   ticker,
+		Side:     side,
+		Quantity: quantity,
+		AvgEntry: avgEntry,
+	}, nil
 }
 
 // Position represents an open or closed trading position.

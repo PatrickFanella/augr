@@ -73,7 +73,7 @@ func (d *DebateExecutor) Execute(ctx context.Context, state *PipelineState) erro
 			if err != nil {
 				return err
 			}
-			if err := d.pipeline.persistDecision(phaseCtx, state.PipelineRunID, debater, &roundNumber, output, llmResponse); err != nil {
+			if err := d.pipeline.persister.PersistDecision(phaseCtx, state.PipelineRunID, debater, &roundNumber, output, llmResponse); err != nil {
 				return err
 			}
 		}
@@ -111,7 +111,7 @@ func (d *DebateExecutor) Execute(ctx context.Context, state *PipelineState) erro
 	if err != nil {
 		return err
 	}
-	if err := d.pipeline.persistDecision(phaseCtx, state.PipelineRunID, d.config.Judge, nil, output, llmResponse); err != nil {
+	if err := d.pipeline.persister.PersistDecision(phaseCtx, state.PipelineRunID, d.config.Judge, nil, output, llmResponse); err != nil {
 		return err
 	}
 

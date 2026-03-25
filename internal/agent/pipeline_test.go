@@ -18,6 +18,9 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 )
 
+// Compile-time check that NoopPersister satisfies DecisionPersister.
+var _ DecisionPersister = NoopPersister{}
+
 // mockAnalystNode is a test double for a PhaseAnalysis Node.
 type mockAnalystNode struct {
 	name    string
@@ -106,8 +109,7 @@ func TestExecuteAnalysisPhase(t *testing.T) {
 
 	pipeline := NewPipeline(
 		PipelineConfig{PhaseTimeout: phaseTimeout},
-		nil, // pipelineRunRepo not required for this unit test
-		nil, // agentDecisionRepo not required for this unit test
+		NoopPersister{},
 		events,
 		slog.Default(),
 	)
@@ -226,7 +228,7 @@ func TestExecuteResearchDebatePhase_RoundsExecuteInOrder(t *testing.T) {
 	events := make(chan PipelineEvent, 10)
 	pipeline := NewPipeline(
 		PipelineConfig{ResearchDebateRounds: 3},
-		nil, nil, events, slog.Default(),
+		NoopPersister{}, events, slog.Default(),
 	)
 	pipeline.RegisterNode(bullNode)
 	pipeline.RegisterNode(bearNode)
@@ -335,7 +337,7 @@ func TestExecuteResearchDebatePhase_RoundContextAccumulates(t *testing.T) {
 
 	pipeline := NewPipeline(
 		PipelineConfig{ResearchDebateRounds: 3},
-		nil, nil, make(chan PipelineEvent, 10), slog.Default(),
+		NoopPersister{}, make(chan PipelineEvent, 10), slog.Default(),
 	)
 	pipeline.RegisterNode(bullNode)
 	pipeline.RegisterNode(bearNode)
@@ -428,7 +430,7 @@ func TestExecuteResearchDebatePhase_CancellationStopsCleanly(t *testing.T) {
 	events := make(chan PipelineEvent, 10)
 	pipeline := NewPipeline(
 		PipelineConfig{ResearchDebateRounds: 5}, // more rounds than will execute
-		nil, nil, events, slog.Default(),
+		NoopPersister{}, events, slog.Default(),
 	)
 	pipeline.RegisterNode(bullNode)
 	pipeline.RegisterNode(bearNode)
@@ -518,7 +520,7 @@ func TestExecuteTradingPhase_Success(t *testing.T) {
 	events := make(chan PipelineEvent, 10)
 	pipeline := NewPipeline(
 		PipelineConfig{},
-		nil, nil, events, slog.Default(),
+		NoopPersister{}, events, slog.Default(),
 	)
 	pipeline.RegisterNode(traderNode)
 
@@ -586,7 +588,7 @@ func TestExecuteTradingPhase_Success(t *testing.T) {
 func TestExecuteTradingPhase_NoTraderNode(t *testing.T) {
 	pipeline := NewPipeline(
 		PipelineConfig{},
-		nil, nil, make(chan PipelineEvent, 10), slog.Default(),
+		NoopPersister{}, make(chan PipelineEvent, 10), slog.Default(),
 	)
 
 	state := &PipelineState{
@@ -620,7 +622,7 @@ func TestExecuteTradingPhase_ExecutionError(t *testing.T) {
 	events := make(chan PipelineEvent, 10)
 	pipeline := NewPipeline(
 		PipelineConfig{},
-		nil, nil, events, slog.Default(),
+		NoopPersister{}, events, slog.Default(),
 	)
 	pipeline.RegisterNode(traderNode)
 
@@ -666,7 +668,7 @@ func TestExecuteTradingPhase_ContextCancellation(t *testing.T) {
 	events := make(chan PipelineEvent, 10)
 	pipeline := NewPipeline(
 		PipelineConfig{},
-		nil, nil, events, slog.Default(),
+		NoopPersister{}, events, slog.Default(),
 	)
 	pipeline.RegisterNode(traderNode)
 
@@ -766,7 +768,7 @@ func TestExecuteRiskDebatePhase_RoundsExecuteInOrder(t *testing.T) {
 	events := make(chan PipelineEvent, 10)
 	pipeline := NewPipeline(
 		PipelineConfig{RiskDebateRounds: 3},
-		nil, nil, events, slog.Default(),
+		NoopPersister{}, events, slog.Default(),
 	)
 	pipeline.RegisterNode(aggressiveNode)
 	pipeline.RegisterNode(conservativeNode)
@@ -906,7 +908,7 @@ func TestExecuteRiskDebatePhase_FinalSignalExtractedFromRiskManager(t *testing.T
 
 	pipeline := NewPipeline(
 		PipelineConfig{RiskDebateRounds: 2},
-		nil, nil, make(chan PipelineEvent, 10), slog.Default(),
+		NoopPersister{}, make(chan PipelineEvent, 10), slog.Default(),
 	)
 	pipeline.RegisterNode(aggressiveNode)
 	pipeline.RegisterNode(conservativeNode)
@@ -1154,7 +1156,7 @@ func TestExecute_HappyPath(t *testing.T) {
 	var phaseLog []string
 	pipeline := NewPipeline(
 		PipelineConfig{ResearchDebateRounds: 1, RiskDebateRounds: 1},
-		repo, nil, events, slog.Default(),
+		NewRepoPersister(repo, nil, nil), events, slog.Default(),
 	)
 	registerAllPhaseNodes(pipeline, &phaseLog, nil)
 
@@ -1236,8 +1238,7 @@ func TestExecute_PersistsAgentDecisions(t *testing.T) {
 
 	pipeline := NewPipeline(
 		PipelineConfig{ResearchDebateRounds: 1, RiskDebateRounds: 1},
-		&mockPipelineRunRepo{},
-		decisionRepo,
+		NewRepoPersister(&mockPipelineRunRepo{}, decisionRepo, nil),
 		nil,
 		slog.Default(),
 	)
@@ -1389,7 +1390,7 @@ func TestExecute_PhaseFailureUpdatesRunStatus(t *testing.T) {
 	events := make(chan PipelineEvent, 50)
 	pipeline := NewPipeline(
 		PipelineConfig{ResearchDebateRounds: 1, RiskDebateRounds: 1},
-		repo, nil, events, slog.Default(),
+		NewRepoPersister(repo, nil, nil), events, slog.Default(),
 	)
 
 	tradeErr := errors.New("simulated trading failure")
@@ -1476,7 +1477,7 @@ func TestExecute_ContextCancellationStopsExecution(t *testing.T) {
 	events := make(chan PipelineEvent, 50)
 	pipeline := NewPipeline(
 		PipelineConfig{ResearchDebateRounds: 1, RiskDebateRounds: 1},
-		repo, nil, events, slog.Default(),
+		NewRepoPersister(repo, nil, nil), events, slog.Default(),
 	)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -1521,7 +1522,7 @@ func TestExecute_PipelineTimeoutTriggersCancellation(t *testing.T) {
 			ResearchDebateRounds: 1,
 			RiskDebateRounds:     1,
 		},
-		repo, nil, events, slog.Default(),
+		NewRepoPersister(repo, nil, nil), events, slog.Default(),
 	)
 
 	// The analysis phase will block until the pipeline timeout fires.
@@ -1570,7 +1571,7 @@ func TestPipelineConfig(t *testing.T) {
 			ResearchDebateRounds: 4,
 			RiskDebateRounds:     2,
 		}
-		p := NewPipeline(cfg, nil, nil, nil, nil)
+		p := NewPipeline(cfg, NoopPersister{}, nil, nil)
 		got := p.Config()
 
 		if got.PipelineTimeout != 5*time.Minute {
@@ -1588,7 +1589,7 @@ func TestPipelineConfig(t *testing.T) {
 	})
 
 	t.Run("defaults applied for zero rounds", func(t *testing.T) {
-		p := NewPipeline(PipelineConfig{}, nil, nil, nil, nil)
+		p := NewPipeline(PipelineConfig{}, NoopPersister{}, nil, nil)
 		got := p.Config()
 
 		if got.ResearchDebateRounds != 3 {
@@ -1603,7 +1604,7 @@ func TestPipelineConfig(t *testing.T) {
 // TestPipelineNodes verifies that Nodes() returns registered nodes grouped by
 // phase, and that the returned map is a copy (mutations do not affect the pipeline).
 func TestPipelineNodes(t *testing.T) {
-	p := NewPipeline(PipelineConfig{}, nil, nil, nil, nil)
+	p := NewPipeline(PipelineConfig{}, NoopPersister{}, nil, nil)
 
 	analystNode := &mockAnalystNode{
 		name: "market_analyst", role: AgentRoleMarketAnalyst,

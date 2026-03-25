@@ -46,6 +46,8 @@ type Scheduler struct {
 	ctx          context.Context
 	cancel       context.CancelFunc
 	jobTimeout   time.Duration
+	dedup        strategyDedup
+	riskMonitor  *riskMonitor
 }
 
 // NewScheduler constructs a Scheduler with the supplied dependencies.
@@ -69,6 +71,11 @@ func NewScheduler(
 			return cron.New()
 		},
 		jobTimeout: defaultJobTimeout,
+		riskMonitor: &riskMonitor{
+			riskEngine:   riskEngine,
+			pollInterval: defaultPollInterval,
+			logger:       logger,
+		},
 	}
 }
 
@@ -183,6 +190,16 @@ func (s *Scheduler) loadActiveStrategies(ctx context.Context) ([]domain.Strategy
 }
 
 func (s *Scheduler) runStrategy(strategy domain.Strategy) {
+	// Dedup: skip if this strategy is already running.
+	if !s.dedup.TryAcquire(strategy.ID) {
+		s.logger.Warn("scheduler: skipping strategy; already in flight",
+			slog.String("strategy_id", strategy.ID.String()),
+			slog.String("ticker", strategy.Ticker),
+		)
+		return
+	}
+	defer s.dedup.Release(strategy.ID)
+
 	now := s.nowFunc()
 	ctx, cancel := s.jobContext()
 	defer cancel()
@@ -220,7 +237,11 @@ func (s *Scheduler) runStrategy(strategy domain.Strategy) {
 		return
 	}
 
-	if _, err := s.pipeline.Execute(ctx, strategy.ID, strategy.Ticker); err != nil {
+	// Wrap context with kill-switch monitor for mid-pipeline abort.
+	monCtx, monCancel := s.riskMonitor.monitorContext(ctx)
+	defer monCancel()
+
+	if _, err := s.pipeline.Execute(monCtx, strategy.ID, strategy.Ticker); err != nil {
 		s.logger.Error("scheduler: pipeline execution failed",
 			slog.String("strategy_id", strategy.ID.String()),
 			slog.String("ticker", strategy.Ticker),

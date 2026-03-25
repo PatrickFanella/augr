@@ -9,6 +9,7 @@ import (
 
 	"github.com/PatrickFanella/get-rich-quick/internal/agent"
 	"github.com/PatrickFanella/get-rich-quick/internal/llm"
+	"github.com/PatrickFanella/get-rich-quick/internal/llm/parse"
 )
 
 // ResearchManagerSystemPrompt instructs the LLM to act as a senior research
@@ -150,7 +151,7 @@ func (r *ResearchManager) Execute(ctx context.Context, state *agent.PipelineStat
 // markdown code fences around the JSON. If parsing fails entirely, it returns
 // a descriptive error.
 func ParseInvestmentPlan(content string) (*InvestmentPlanOutput, error) {
-	cleaned := stripCodeFences(content)
+	cleaned := parse.StripCodeFences(content)
 
 	var plan InvestmentPlanOutput
 	if err := json.Unmarshal([]byte(cleaned), &plan); err != nil {
@@ -162,36 +163,6 @@ func ParseInvestmentPlan(content string) (*InvestmentPlanOutput, error) {
 	}
 
 	return &plan, nil
-}
-
-// stripCodeFences removes optional markdown code fences (```json ... ``` or ``` ... ```)
-// from the LLM response so the JSON can be parsed cleanly. It handles both
-// fences with a newline after the opening tag and inline fences where the JSON
-// starts on the same line (e.g. ```json { ... }```).
-func stripCodeFences(s string) string {
-	trimmed := strings.TrimSpace(s)
-
-	if !strings.HasPrefix(trimmed, "```") {
-		return trimmed
-	}
-
-	// Remove the closing fence if it appears at the end.
-	body := trimmed
-	if idx := strings.LastIndex(body, "```"); idx > 2 {
-		body = body[:idx]
-	}
-
-	// Remove the opening fence. When a newline follows the fence line we
-	// strip everything up to and including that newline. Otherwise we look
-	// for the first '{' or '[' that starts the JSON payload on the same
-	// line (inline fence).
-	if idx := strings.Index(body, "\n"); idx != -1 {
-		body = body[idx+1:]
-	} else if idx := strings.IndexAny(body, "{["); idx != -1 {
-		body = body[idx:]
-	}
-
-	return strings.TrimSpace(body)
 }
 
 // validateInvestmentPlan checks that the parsed plan has valid field values.

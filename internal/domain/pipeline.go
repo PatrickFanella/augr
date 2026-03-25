@@ -36,6 +36,46 @@ func (s PipelineSignal) String() string {
 	return string(s)
 }
 
+// IsValid returns true if the status is a defined PipelineStatus constant.
+func (s PipelineStatus) IsValid() bool {
+	switch s {
+	case PipelineStatusRunning, PipelineStatusCompleted, PipelineStatusFailed, PipelineStatusCancelled:
+		return true
+	}
+	return false
+}
+
+// validPipelineTransitions defines the legal status transitions.
+var validPipelineTransitions = map[PipelineStatus][]PipelineStatus{
+	PipelineStatusRunning:   {PipelineStatusCompleted, PipelineStatusFailed, PipelineStatusCancelled},
+	PipelineStatusCompleted: {},
+	PipelineStatusFailed:    {},
+	PipelineStatusCancelled: {},
+}
+
+// CanTransitionTo returns true if transitioning from s to next is valid.
+func (s PipelineStatus) CanTransitionTo(next PipelineStatus) bool {
+	allowed, ok := validPipelineTransitions[s]
+	if !ok {
+		return false
+	}
+	for _, a := range allowed {
+		if a == next {
+			return true
+		}
+	}
+	return false
+}
+
+// IsValid returns true if the signal is a defined PipelineSignal constant.
+func (s PipelineSignal) IsValid() bool {
+	switch s {
+	case PipelineSignalBuy, PipelineSignalSell, PipelineSignalHold:
+		return true
+	}
+	return false
+}
+
 // PipelineRun represents a single execution of a trading strategy pipeline.
 type PipelineRun struct {
 	ID             uuid.UUID       `json:"id"`

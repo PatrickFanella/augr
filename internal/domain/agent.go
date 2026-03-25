@@ -48,6 +48,43 @@ func (p Phase) String() string {
 	return string(p)
 }
 
+// ValidAgentRoles contains all defined agent roles.
+var ValidAgentRoles = map[AgentRole]bool{
+	AgentRoleMarketAnalyst:       true,
+	AgentRoleFundamentalsAnalyst: true,
+	AgentRoleNewsAnalyst:         true,
+	AgentRoleSocialMediaAnalyst:  true,
+	AgentRoleBullResearcher:      true,
+	AgentRoleBearResearcher:      true,
+	AgentRoleTrader:              true,
+	AgentRoleInvestJudge:         true,
+	AgentRoleRiskManager:         true,
+	AgentRoleAggressiveAnalyst:   true,
+	AgentRoleConservativeAnalyst: true,
+	AgentRoleNeutralAnalyst:      true,
+	AgentRoleAggressiveRisk:      true,
+	AgentRoleConservativeRisk:    true,
+	AgentRoleNeutralRisk:         true,
+}
+
+// IsValid returns true if the role is a defined AgentRole constant.
+func (r AgentRole) IsValid() bool {
+	return ValidAgentRoles[r]
+}
+
+// ValidPhases contains all defined pipeline phases.
+var ValidPhases = map[Phase]bool{
+	PhaseAnalysis:       true,
+	PhaseResearchDebate: true,
+	PhaseTrading:        true,
+	PhaseRiskDebate:     true,
+}
+
+// IsValid returns true if the phase is a defined Phase constant.
+func (p Phase) IsValid() bool {
+	return ValidPhases[p]
+}
+
 // AgentDecision stores the output of an agent during a pipeline run.
 type AgentDecision struct {
 	ID               uuid.UUID       `json:"id"`

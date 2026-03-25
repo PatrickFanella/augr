@@ -2,6 +2,8 @@ package domain
 
 import (
 	"encoding/json"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -19,6 +21,34 @@ const (
 // String returns the string representation of a MarketType.
 func (m MarketType) String() string {
 	return string(m)
+}
+
+// Normalize returns the market type in lowercase with surrounding whitespace removed.
+func (m MarketType) Normalize() MarketType {
+	return MarketType(strings.ToLower(strings.TrimSpace(string(m))))
+}
+
+// IsValid returns true if the market type is a defined MarketType constant.
+func (m MarketType) IsValid() bool {
+	switch m {
+	case MarketTypeStock, MarketTypeCrypto, MarketTypePolymarket:
+		return true
+	}
+	return false
+}
+
+// Validate checks that the strategy has valid required fields.
+func (s *Strategy) Validate() error {
+	if err := requireNonEmpty("name", s.Name); err != nil {
+		return err
+	}
+	if err := requireNonEmpty("ticker", s.Ticker); err != nil {
+		return err
+	}
+	if !s.MarketType.IsValid() {
+		return fmt.Errorf("invalid market type: %q", s.MarketType)
+	}
+	return nil
 }
 
 // StrategyConfig holds strategy-specific parameters stored as flexible JSON.

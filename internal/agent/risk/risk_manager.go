@@ -10,6 +10,7 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/agent"
 	"github.com/PatrickFanella/get-rich-quick/internal/agent/debate"
 	"github.com/PatrickFanella/get-rich-quick/internal/llm"
+	"github.com/PatrickFanella/get-rich-quick/internal/llm/parse"
 )
 
 // RiskManagerSystemPrompt instructs the LLM to act as a senior risk manager
@@ -190,7 +191,7 @@ func (r *RiskManager) Execute(ctx context.Context, state *agent.PipelineState) e
 // markdown code fences around the JSON. If parsing fails entirely, it returns
 // a descriptive error.
 func ParseFinalSignal(content string) (*FinalSignalOutput, error) {
-	cleaned := stripFinalSignalCodeFences(content)
+	cleaned := parse.StripCodeFences(content)
 
 	var signal FinalSignalOutput
 	if err := json.Unmarshal([]byte(cleaned), &signal); err != nil {
@@ -205,32 +206,6 @@ func ParseFinalSignal(content string) (*FinalSignalOutput, error) {
 	signal.Action = strings.ToUpper(signal.Action)
 
 	return &signal, nil
-}
-
-// stripFinalSignalCodeFences removes optional markdown code fences
-// (```json ... ``` or ``` ... ```) from the LLM response so the JSON can be
-// parsed cleanly. It mirrors the logic used in the research manager.
-func stripFinalSignalCodeFences(s string) string {
-	trimmed := strings.TrimSpace(s)
-
-	if !strings.HasPrefix(trimmed, "```") {
-		return trimmed
-	}
-
-	// Remove the closing fence if it appears at the end.
-	body := trimmed
-	if idx := strings.LastIndex(body, "```"); idx > 2 {
-		body = body[:idx]
-	}
-
-	// Remove the opening fence.
-	if idx := strings.Index(body, "\n"); idx != -1 {
-		body = body[idx+1:]
-	} else if idx := strings.IndexAny(body, "{["); idx != -1 {
-		body = body[idx:]
-	}
-
-	return strings.TrimSpace(body)
 }
 
 // validateFinalSignal checks that the parsed signal has valid field values.

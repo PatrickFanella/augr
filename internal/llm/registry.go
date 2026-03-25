@@ -4,7 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
+
+	"github.com/PatrickFanella/get-rich-quick/internal/registry"
 )
 
 var (
@@ -22,14 +23,13 @@ type ProviderRegistration struct {
 
 // Registry stores providers by name and their tier-specific model mappings.
 type Registry struct {
-	mu        sync.RWMutex
-	providers map[string]ProviderRegistration
+	inner *registry.Registry[string, ProviderRegistration]
 }
 
 // NewRegistry constructs an empty provider registry.
 func NewRegistry() *Registry {
 	return &Registry{
-		providers: make(map[string]ProviderRegistration),
+		inner: registry.New[string, ProviderRegistration](normalizeProviderName),
 	}
 }
 
@@ -60,13 +60,10 @@ func (r *Registry) Register(name string, provider Provider, models map[ModelTier
 		return errors.New("llm models are required")
 	}
 
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	r.providers[normalizedName] = ProviderRegistration{
+	r.inner.Register(normalizedName, ProviderRegistration{
 		Provider: provider,
 		Models:   copiedModels,
-	}
+	})
 
 	return nil
 }
@@ -77,10 +74,7 @@ func (r *Registry) Get(name string) (ProviderRegistration, bool) {
 		return ProviderRegistration{}, false
 	}
 
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	entry, ok := r.providers[normalizeProviderName(name)]
+	entry, ok := r.inner.Get(name)
 	if !ok {
 		return ProviderRegistration{}, false
 	}

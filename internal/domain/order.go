@@ -52,6 +52,54 @@ func (s OrderStatus) String() string {
 	return string(s)
 }
 
+// validOrderTransitions defines the legal order status transitions.
+var validOrderTransitions = map[OrderStatus][]OrderStatus{
+	OrderStatusPending:   {OrderStatusSubmitted, OrderStatusCancelled, OrderStatusRejected},
+	OrderStatusSubmitted: {OrderStatusPartial, OrderStatusFilled, OrderStatusCancelled, OrderStatusRejected},
+	OrderStatusPartial:   {OrderStatusFilled, OrderStatusCancelled},
+	OrderStatusFilled:    {},
+	OrderStatusCancelled: {},
+	OrderStatusRejected:  {},
+}
+
+// IsValid returns true if the status is a defined OrderStatus constant.
+func (s OrderStatus) IsValid() bool {
+	_, ok := validOrderTransitions[s]
+	return ok
+}
+
+// CanTransitionTo returns true if transitioning from s to next is valid.
+func (s OrderStatus) CanTransitionTo(next OrderStatus) bool {
+	allowed, ok := validOrderTransitions[s]
+	if !ok {
+		return false
+	}
+	for _, a := range allowed {
+		if a == next {
+			return true
+		}
+	}
+	return false
+}
+
+// IsValid returns true if the side is a defined OrderSide constant.
+func (s OrderSide) IsValid() bool {
+	switch s {
+	case OrderSideBuy, OrderSideSell:
+		return true
+	}
+	return false
+}
+
+// IsValid returns true if the type is a defined OrderType constant.
+func (t OrderType) IsValid() bool {
+	switch t {
+	case OrderTypeMarket, OrderTypeLimit, OrderTypeStop, OrderTypeStopLimit, OrderTypeTrailingStop:
+		return true
+	}
+	return false
+}
+
 // Order represents a trading order sent to a broker.
 type Order struct {
 	ID             uuid.UUID   `json:"id"`

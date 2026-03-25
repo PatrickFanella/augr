@@ -1,0 +1,107 @@
+package agent
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"time"
+
+	"github.com/google/uuid"
+
+	"github.com/PatrickFanella/get-rich-quick/internal/domain"
+	"github.com/PatrickFanella/get-rich-quick/internal/repository"
+)
+
+const statusUpdateTimeout = 10 * time.Second
+
+// RepoPersister implements DecisionPersister using repository interfaces.
+type RepoPersister struct {
+	pipelineRunRepo   repository.PipelineRunRepository
+	agentDecisionRepo repository.AgentDecisionRepository
+	logger            *slog.Logger
+}
+
+// NewRepoPersister creates a RepoPersister with the given repositories.
+func NewRepoPersister(
+	pipelineRunRepo repository.PipelineRunRepository,
+	agentDecisionRepo repository.AgentDecisionRepository,
+	logger *slog.Logger,
+) *RepoPersister {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return &RepoPersister{
+		pipelineRunRepo:   pipelineRunRepo,
+		agentDecisionRepo: agentDecisionRepo,
+		logger:            logger,
+	}
+}
+
+func (p *RepoPersister) RecordRunStart(ctx context.Context, run *domain.PipelineRun) error {
+	if p.pipelineRunRepo == nil {
+		return nil
+	}
+	if err := p.pipelineRunRepo.Create(ctx, run); err != nil {
+		return fmt.Errorf("agent/pipeline: create pipeline run: %w", err)
+	}
+	return nil
+}
+
+func (p *RepoPersister) RecordRunComplete(_ context.Context, runID uuid.UUID, tradeDate time.Time, status domain.PipelineStatus, completedAt time.Time, errMsg string) error {
+	if p.pipelineRunRepo == nil {
+		return nil
+	}
+	dbCtx, dbCancel := context.WithTimeout(context.Background(), statusUpdateTimeout)
+	defer dbCancel()
+
+	update := repository.PipelineRunStatusUpdate{
+		Status:      status,
+		CompletedAt: &completedAt,
+	}
+	if errMsg != "" {
+		update.ErrorMessage = errMsg
+	}
+
+	if err := p.pipelineRunRepo.UpdateStatus(dbCtx, runID, tradeDate, update); err != nil {
+		p.logger.Error("agent/pipeline: failed to update run status",
+			slog.Any("error", err),
+		)
+	}
+	return nil
+}
+
+func (p *RepoPersister) PersistDecision(
+	ctx context.Context,
+	runID uuid.UUID,
+	node Node,
+	roundNumber *int,
+	output string,
+	llmResponse *DecisionLLMResponse,
+) error {
+	if p.agentDecisionRepo == nil {
+		return nil
+	}
+
+	decision := &domain.AgentDecision{
+		PipelineRunID: runID,
+		AgentRole:     node.Role(),
+		Phase:         node.Phase(),
+		RoundNumber:   cloneRoundNumber(roundNumber),
+		OutputText:    output,
+	}
+	if llmResponse != nil {
+		decision.LLMProvider = llmResponse.Provider
+		if llmResponse.Response != nil {
+			decision.LLMModel = llmResponse.Response.Model
+			decision.PromptTokens = llmResponse.Response.Usage.PromptTokens
+			decision.CompletionTokens = llmResponse.Response.Usage.CompletionTokens
+			decision.LatencyMS = llmResponse.Response.LatencyMS
+		}
+	}
+
+	if err := p.agentDecisionRepo.Create(ctx, decision); err != nil {
+		return fmt.Errorf("agent/pipeline: persist decision for %s: %w", node.Name(), err)
+	}
+
+	return nil
+}
