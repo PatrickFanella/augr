@@ -19,7 +19,7 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/risk"
 )
 
-const noJobTimeout time.Duration = 0
+const disabledJobTimeout time.Duration = 0
 const testScheduleSpec = "@every 1m"
 
 type mockStrategyRepo struct {
@@ -112,6 +112,8 @@ type mockRiskEngine struct {
 	blockKillSwitch  bool
 	enteredCh        chan struct{}
 	enteredOnce      sync.Once
+	mu               sync.Mutex
+	ctxs             []context.Context
 }
 
 func (m *mockRiskEngine) CheckPreTrade(context.Context, *domain.Order, risk.Portfolio) (bool, string, error) {
@@ -131,6 +133,9 @@ func (m *mockRiskEngine) TripCircuitBreaker(context.Context, string) error { ret
 func (m *mockRiskEngine) ResetCircuitBreaker(context.Context) error { return nil }
 
 func (m *mockRiskEngine) IsKillSwitchActive(ctx context.Context) (bool, error) {
+	m.mu.Lock()
+	m.ctxs = append(m.ctxs, ctx)
+	m.mu.Unlock()
 	m.enteredOnce.Do(func() {
 		if m.enteredCh != nil {
 			close(m.enteredCh)
@@ -148,6 +153,15 @@ func (m *mockRiskEngine) ActivateKillSwitch(context.Context, string) error { ret
 func (m *mockRiskEngine) DeactivateKillSwitch(context.Context) error { return nil }
 
 func (m *mockRiskEngine) UpdateMetrics(context.Context, float64, float64, int) error { return nil }
+
+func (m *mockRiskEngine) firstContext() (context.Context, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(m.ctxs) == 0 {
+		return nil, false
+	}
+	return m.ctxs[0], true
+}
 
 type fakeCronEngine struct {
 	mu      sync.Mutex
@@ -333,7 +347,7 @@ func TestSchedulerStopCancelsRunningJobs(t *testing.T) {
 	}
 	s := NewScheduler(repo, &mockPipeline{}, riskEngine, testLogger())
 	s.newCron = func() cronEngine { return fakeCron }
-	s.jobTimeout = noJobTimeout
+	s.jobTimeout = disabledJobTimeout
 
 	if err := s.Start(); err != nil {
 		t.Fatalf("Start() error = %v", err)
@@ -349,6 +363,13 @@ func TestSchedulerStopCancelsRunningJobs(t *testing.T) {
 	case <-riskEngine.enteredCh:
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for job to start")
+	}
+	ctx, ok := riskEngine.firstContext()
+	if !ok {
+		t.Fatal("expected risk engine context to be recorded")
+	}
+	if _, hasDeadline := ctx.Deadline(); hasDeadline {
+		t.Fatal("expected disabled scheduler job timeout to produce a context without a deadline")
 	}
 
 	stopDone := make(chan struct{})

@@ -119,10 +119,7 @@ func (s *Scheduler) Start() error {
 			s.runStrategy(strategy)
 		})
 		if err != nil {
-			cancelFunc := s.cancel
-			s.cron = nil
-			s.ctx = nil
-			s.cancel = nil
+			_, cancelFunc := s.clearStateLocked()
 			if cancelFunc != nil {
 				cancelFunc()
 			}
@@ -152,11 +149,7 @@ func (s *Scheduler) Start() error {
 // Stop gracefully stops the cron engine and waits for running jobs to finish.
 func (s *Scheduler) Stop() {
 	s.mu.Lock()
-	engine := s.cron
-	cancel := s.cancel
-	s.cron = nil
-	s.ctx = nil
-	s.cancel = nil
+	engine, cancel := s.clearStateLocked()
 	s.mu.Unlock()
 
 	if cancel != nil {
@@ -241,6 +234,15 @@ func (s *Scheduler) runStrategy(strategy domain.Strategy) {
 		slog.String("strategy_id", strategy.ID.String()),
 		slog.String("ticker", strategy.Ticker),
 	)
+}
+
+func (s *Scheduler) clearStateLocked() (cronEngine, context.CancelFunc) {
+	engine := s.cron
+	cancel := s.cancel
+	s.cron = nil
+	s.ctx = nil
+	s.cancel = nil
+	return engine, cancel
 }
 
 func (s *Scheduler) jobContext() (context.Context, context.CancelFunc) {
