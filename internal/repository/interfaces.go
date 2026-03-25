@@ -95,6 +95,25 @@ type MarketDataCacheExpireFilter struct {
 	ExpiresBefore time.Time
 }
 
+// HistoricalOHLCVFilter defines supported filters when listing stored OHLCV bars.
+type HistoricalOHLCVFilter struct {
+	Ticker    string
+	Provider  string
+	Timeframe string
+	From      time.Time
+	To        time.Time
+}
+
+// HistoricalOHLCVCoverageFilter defines supported filters when listing fetched
+// historical OHLCV coverage ranges.
+type HistoricalOHLCVCoverageFilter struct {
+	Ticker    string
+	Provider  string
+	Timeframe string
+	From      time.Time
+	To        time.Time
+}
+
 // AuditLogFilter defines supported filters when querying audit log entries.
 type AuditLogFilter struct {
 	EventType     string
@@ -171,6 +190,14 @@ type MarketDataCacheRepository interface {
 	// Set stores a cache entry using the expiry already carried on domain.MarketData.ExpiresAt.
 	Set(ctx context.Context, data *domain.MarketData) error
 	Expire(ctx context.Context, filter MarketDataCacheExpireFilter) error
+}
+
+// HistoricalOHLCVRepository provides access to persisted historical OHLCV data.
+type HistoricalOHLCVRepository interface {
+	UpsertHistoricalOHLCV(ctx context.Context, bars []domain.HistoricalOHLCV) error
+	ListHistoricalOHLCV(ctx context.Context, filter HistoricalOHLCVFilter) ([]domain.HistoricalOHLCV, error)
+	UpsertHistoricalOHLCVCoverage(ctx context.Context, coverage domain.HistoricalOHLCVCoverage) error
+	ListHistoricalOHLCVCoverage(ctx context.Context, filter HistoricalOHLCVCoverageFilter) ([]domain.HistoricalOHLCVCoverage, error)
 }
 
 // AuditLogRepository provides append/query access to audit log entries.
