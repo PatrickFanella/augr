@@ -16,7 +16,10 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/execution"
 )
 
-const defaultReferencePrice = 1.0
+const (
+	defaultReferencePrice = 1.0
+	bpsToDecimalDivisor   = 10000
+)
 
 // PaperBroker implements an in-memory execution.Broker for paper trading.
 type PaperBroker struct {
@@ -53,12 +56,15 @@ func NewPaperBroker(initialBalance float64, slippageBps float64, feePct float64)
 }
 
 // SubmitOrder simulates an immediate paper-trading fill when the order is marketable.
-func (b *PaperBroker) SubmitOrder(_ context.Context, order *domain.Order) (string, error) {
+func (b *PaperBroker) SubmitOrder(ctx context.Context, order *domain.Order) (string, error) {
 	if b == nil {
 		return "", errors.New("paper: broker is required")
 	}
 	if order == nil {
 		return "", errors.New("paper: order is required")
+	}
+	if err := ctx.Err(); err != nil {
+		return "", fmt.Errorf("paper: submit order: %w", err)
 	}
 
 	ticker, err := normalizeTicker(order.Ticker)
@@ -125,9 +131,12 @@ func (b *PaperBroker) SubmitOrder(_ context.Context, order *domain.Order) (strin
 }
 
 // CancelOrder cancels an existing resting paper order.
-func (b *PaperBroker) CancelOrder(_ context.Context, externalID string) error {
+func (b *PaperBroker) CancelOrder(ctx context.Context, externalID string) error {
 	if b == nil {
 		return errors.New("paper: broker is required")
+	}
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("paper: cancel order: %w", err)
 	}
 
 	id := strings.TrimSpace(externalID)
@@ -152,9 +161,12 @@ func (b *PaperBroker) CancelOrder(_ context.Context, externalID string) error {
 }
 
 // GetOrderStatus returns the tracked paper order status.
-func (b *PaperBroker) GetOrderStatus(_ context.Context, externalID string) (domain.OrderStatus, error) {
+func (b *PaperBroker) GetOrderStatus(ctx context.Context, externalID string) (domain.OrderStatus, error) {
 	if b == nil {
 		return "", errors.New("paper: broker is required")
+	}
+	if err := ctx.Err(); err != nil {
+		return "", fmt.Errorf("paper: get order status: %w", err)
 	}
 
 	id := strings.TrimSpace(externalID)
@@ -174,9 +186,12 @@ func (b *PaperBroker) GetOrderStatus(_ context.Context, externalID string) (doma
 }
 
 // GetPositions returns a copy of the current open paper positions.
-func (b *PaperBroker) GetPositions(_ context.Context) ([]domain.Position, error) {
+func (b *PaperBroker) GetPositions(ctx context.Context) ([]domain.Position, error) {
 	if b == nil {
 		return nil, errors.New("paper: broker is required")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("paper: get positions: %w", err)
 	}
 
 	b.mu.RLock()
@@ -197,9 +212,12 @@ func (b *PaperBroker) GetPositions(_ context.Context) ([]domain.Position, error)
 }
 
 // GetAccountBalance returns the paper account balance snapshot.
-func (b *PaperBroker) GetAccountBalance(_ context.Context) (execution.Balance, error) {
+func (b *PaperBroker) GetAccountBalance(ctx context.Context) (execution.Balance, error) {
 	if b == nil {
 		return execution.Balance{}, errors.New("paper: broker is required")
+	}
+	if err := ctx.Err(); err != nil {
+		return execution.Balance{}, fmt.Errorf("paper: get account balance: %w", err)
 	}
 
 	b.mu.RLock()
@@ -269,6 +287,7 @@ func (b *PaperBroker) applyFillLocked(ticker string, side domain.OrderSide, quan
 
 	closedQuantity := math.Min(position.Quantity, quantity)
 	position.RealizedPnL += realizedPnL(position.Side, position.AvgEntry, fillPrice, closedQuantity)
+	carryOverPnL := position.RealizedPnL
 
 	if position.Quantity > quantity {
 		position.Quantity -= quantity
@@ -288,7 +307,7 @@ func (b *PaperBroker) applyFillLocked(ticker string, side domain.OrderSide, quan
 		AvgEntry:     fillPrice,
 		CurrentPrice: currentPrice,
 		OpenedAt:     filledAt,
-		RealizedPnL:  0,
+		RealizedPnL:  carryOverPnL,
 	}
 }
 
@@ -329,14 +348,14 @@ func normalizeTicker(ticker string) (string, error) {
 }
 
 func resolveReferencePrice(order *domain.Order, fallback float64) float64 {
+	if order.FilledAvgPrice != nil && *order.FilledAvgPrice > 0 {
+		return *order.FilledAvgPrice
+	}
 	if order.StopPrice != nil && *order.StopPrice > 0 {
 		return *order.StopPrice
 	}
 	if order.LimitPrice != nil && *order.LimitPrice > 0 {
 		return *order.LimitPrice
-	}
-	if order.FilledAvgPrice != nil && *order.FilledAvgPrice > 0 {
-		return *order.FilledAvgPrice
 	}
 	return fallback
 }
@@ -349,11 +368,11 @@ func limitCrossed(side domain.OrderSide, referencePrice float64, limitPrice floa
 }
 
 func applySlippage(price float64, side domain.OrderSide, slippageBps float64) float64 {
-	multiplier := slippageBps / 10000
+	slippageFraction := slippageBps / bpsToDecimalDivisor
 	if side == domain.OrderSideBuy {
-		return price * (1 + multiplier)
+		return price * (1 + slippageFraction)
 	}
-	return price * (1 - multiplier)
+	return price * (1 - slippageFraction)
 }
 
 func realizedPnL(side domain.PositionSide, avgEntry float64, fillPrice float64, quantity float64) float64 {
