@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strings"
 	"time"
 
@@ -23,6 +24,8 @@ const (
 )
 
 var ErrUnsupportedMarketType = errors.New("data: unsupported market type")
+
+var ErrHistoricalOHLCVUnavailable = errors.New("data: historical ohlcv repository unavailable")
 
 type (
 	polygonProviderFactoryType      func(apiKey string, logger *slog.Logger) DataProvider
@@ -62,6 +65,7 @@ type DataService struct {
 	stockChain  DataProvider
 	cryptoChain DataProvider
 	cacheRepo   repository.MarketDataCacheRepository
+	historyRepo repository.HistoricalOHLCVRepository
 	logger      *slog.Logger
 	now         func() time.Time
 }
@@ -93,6 +97,7 @@ func NewDataService(cfg config.Config, cacheRepo repository.MarketDataCacheRepos
 		stockChain:  NewProviderChain(logger, stockProviders...),
 		cryptoChain: NewProviderChain(logger, cryptoProviders...),
 		cacheRepo:   cacheRepo,
+		historyRepo: historicalOHLCVRepo(cacheRepo),
 		logger:      logger,
 		now:         time.Now,
 	}
@@ -189,6 +194,127 @@ func (s *DataService) GetNews(ctx context.Context, marketType domain.MarketType,
 	s.storeCached(ctx, key, articles, 30*time.Minute)
 
 	return articles, nil
+}
+
+// DownloadHistoricalOHLCV bulk downloads and persists OHLCV history for the
+// provided tickers. When incremental is true, only uncovered date ranges are fetched.
+func (s *DataService) DownloadHistoricalOHLCV(
+	ctx context.Context,
+	marketType domain.MarketType,
+	tickers []string,
+	timeframe Timeframe,
+	from, to time.Time,
+	incremental bool,
+) (map[string][]domain.OHLCV, error) {
+	if s == nil || s.historyRepo == nil {
+		return nil, ErrHistoricalOHLCVUnavailable
+	}
+
+	fromUTC := from.UTC()
+	toUTC := to.UTC()
+	if toUTC.Before(fromUTC) {
+		return nil, fmt.Errorf("data: invalid historical range %s > %s", fromUTC, toUTC)
+	}
+
+	providerName, _, err := s.resolveChain(marketType)
+	if err != nil {
+		return nil, err
+	}
+
+	results := make(map[string][]domain.OHLCV, len(tickers))
+	for _, ticker := range tickers {
+		trimmedTicker := strings.TrimSpace(ticker)
+		if trimmedTicker == "" {
+			continue
+		}
+
+		gaps := []historicalOHLCVRange{{From: fromUTC, To: toUTC}}
+		if incremental {
+			coverage, err := s.historyRepo.ListHistoricalOHLCVCoverage(ctx, repository.HistoricalOHLCVCoverageFilter{
+				Ticker:    trimmedTicker,
+				Provider:  providerName,
+				Timeframe: timeframe.String(),
+				From:      fromUTC,
+				To:        toUTC,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("data: list historical coverage for %s: %w", trimmedTicker, err)
+			}
+			gaps, err = detectHistoricalOHLCVGaps(coverage, timeframe, fromUTC, toUTC)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		for _, gap := range gaps {
+			bars, err := s.GetOHLCV(ctx, marketType, trimmedTicker, timeframe, gap.From, gap.To)
+			if err != nil {
+				return nil, fmt.Errorf("data: download historical ohlcv for %s: %w", trimmedTicker, err)
+			}
+
+			if len(bars) > 0 {
+				if err := s.historyRepo.UpsertHistoricalOHLCV(ctx, toHistoricalOHLCV(trimmedTicker, providerName, timeframe, bars)); err != nil {
+					return nil, fmt.Errorf("data: persist historical ohlcv for %s: %w", trimmedTicker, err)
+				}
+			}
+
+			if err := s.historyRepo.UpsertHistoricalOHLCVCoverage(ctx, domain.HistoricalOHLCVCoverage{
+				Ticker:    trimmedTicker,
+				Provider:  providerName,
+				Timeframe: timeframe.String(),
+				DateFrom:  gap.From,
+				DateTo:    gap.To,
+				FetchedAt: s.currentTime().UTC(),
+			}); err != nil {
+				return nil, fmt.Errorf("data: persist historical coverage for %s: %w", trimmedTicker, err)
+			}
+		}
+
+		stored, err := s.ListHistoricalOHLCV(ctx, trimmedTicker, providerName, timeframe, fromUTC, toUTC)
+		if err != nil {
+			return nil, fmt.Errorf("data: list persisted historical ohlcv for %s: %w", trimmedTicker, err)
+		}
+		results[trimmedTicker] = stored
+	}
+
+	return results, nil
+}
+
+// ListHistoricalOHLCV returns persisted OHLCV history for a ticker/date range.
+func (s *DataService) ListHistoricalOHLCV(
+	ctx context.Context,
+	ticker, provider string,
+	timeframe Timeframe,
+	from, to time.Time,
+) ([]domain.OHLCV, error) {
+	if s == nil || s.historyRepo == nil {
+		return nil, ErrHistoricalOHLCVUnavailable
+	}
+
+	bars, err := s.historyRepo.ListHistoricalOHLCV(ctx, repository.HistoricalOHLCVFilter{
+		Ticker:    ticker,
+		Provider:  provider,
+		Timeframe: timeframe.String(),
+		From:      from.UTC(),
+		To:        to.UTC(),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]domain.OHLCV, 0, len(bars))
+	for _, bar := range bars {
+		result = append(result, domain.OHLCV{
+			Timestamp: bar.Timestamp,
+			Open:      bar.Open,
+			High:      bar.High,
+			Low:       bar.Low,
+			Close:     bar.Close,
+			Volume:    bar.Volume,
+		})
+	}
+
+	return result, nil
 }
 
 func (s *DataService) resolveChain(marketType domain.MarketType) (string, DataProvider, error) {
@@ -307,6 +433,118 @@ func ttlForOHLCV(timeframe Timeframe) time.Duration {
 
 func normalizeMarketType(marketType domain.MarketType) domain.MarketType {
 	return domain.MarketType(strings.ToLower(strings.TrimSpace(marketType.String())))
+}
+
+func historicalOHLCVRepo(cacheRepo repository.MarketDataCacheRepository) repository.HistoricalOHLCVRepository {
+	if repo, ok := cacheRepo.(repository.HistoricalOHLCVRepository); ok {
+		return repo
+	}
+
+	return nil
+}
+
+type historicalOHLCVRange struct {
+	From time.Time
+	To   time.Time
+}
+
+func detectHistoricalOHLCVGaps(coverage []domain.HistoricalOHLCVCoverage, timeframe Timeframe, from, to time.Time) ([]historicalOHLCVRange, error) {
+	step, err := timeframeDuration(timeframe)
+	if err != nil {
+		return nil, err
+	}
+
+	if to.Before(from) {
+		return nil, fmt.Errorf("data: invalid historical range %s > %s", from, to)
+	}
+
+	if len(coverage) == 0 {
+		return []historicalOHLCVRange{{From: from, To: to}}, nil
+	}
+
+	sortedCoverage := append([]domain.HistoricalOHLCVCoverage(nil), coverage...)
+	sort.Slice(sortedCoverage, func(i, j int) bool {
+		if sortedCoverage[i].DateFrom.Equal(sortedCoverage[j].DateFrom) {
+			return sortedCoverage[i].DateTo.Before(sortedCoverage[j].DateTo)
+		}
+		return sortedCoverage[i].DateFrom.Before(sortedCoverage[j].DateFrom)
+	})
+
+	cursor := from
+	gaps := make([]historicalOHLCVRange, 0)
+	for _, item := range sortedCoverage {
+		coverageFrom := item.DateFrom.UTC()
+		coverageTo := item.DateTo.UTC()
+		if coverageTo.Before(from) || coverageFrom.After(to) {
+			continue
+		}
+		if coverageFrom.Before(from) {
+			coverageFrom = from
+		}
+		if coverageTo.After(to) {
+			coverageTo = to
+		}
+
+		if coverageFrom.After(cursor) {
+			gapTo := coverageFrom.Add(-step)
+			if gapTo.After(to) {
+				gapTo = to
+			}
+			if !gapTo.Before(cursor) {
+				gaps = append(gaps, historicalOHLCVRange{From: cursor, To: gapTo})
+			}
+		}
+
+		nextCursor := coverageTo.Add(step)
+		if nextCursor.After(cursor) {
+			cursor = nextCursor
+		}
+		if cursor.After(to) {
+			return gaps, nil
+		}
+	}
+
+	if !cursor.After(to) {
+		gaps = append(gaps, historicalOHLCVRange{From: cursor, To: to})
+	}
+
+	return gaps, nil
+}
+
+func timeframeDuration(timeframe Timeframe) (time.Duration, error) {
+	switch timeframe {
+	case Timeframe1m:
+		return time.Minute, nil
+	case Timeframe5m:
+		return 5 * time.Minute, nil
+	case Timeframe15m:
+		return 15 * time.Minute, nil
+	case Timeframe1h:
+		return time.Hour, nil
+	case Timeframe1d:
+		return 24 * time.Hour, nil
+	default:
+		return 0, fmt.Errorf("data: unsupported timeframe %q", timeframe)
+	}
+}
+
+func toHistoricalOHLCV(ticker, provider string, timeframe Timeframe, bars []domain.OHLCV) []domain.HistoricalOHLCV {
+	historicalBars := make([]domain.HistoricalOHLCV, 0, len(bars))
+	for _, bar := range bars {
+		historicalBars = append(historicalBars, domain.HistoricalOHLCV{
+			Ticker:    ticker,
+			Provider:  provider,
+			Timeframe: timeframe.String(),
+			Timestamp: bar.Timestamp.UTC(),
+			Open:      bar.Open,
+			High:      bar.High,
+			Low:       bar.Low,
+			Close:     bar.Close,
+			Volume:    bar.Volume,
+		})
+	}
+
+	return historicalBars
 }
 
 func ohlcvCacheTimeframe(timeframe Timeframe, from, to time.Time) string {
