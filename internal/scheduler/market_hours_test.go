@@ -21,6 +21,7 @@ func TestIsMarketOpenStockHours(t *testing.T) {
 	}{
 		{name: "before open", at: time.Date(2024, time.January, 8, 9, 29, 0, 0, loc), want: false},
 		{name: "opening bell", at: time.Date(2024, time.January, 8, 9, 30, 0, 0, loc), want: true},
+		{name: "opening bell UTC", at: time.Date(2024, time.January, 8, 14, 30, 0, 0, time.UTC), want: true},
 		{name: "mid session", at: time.Date(2024, time.January, 8, 13, 0, 0, 0, loc), want: true},
 		{name: "minute before close", at: time.Date(2024, time.January, 8, 15, 59, 0, 0, loc), want: true},
 		{name: "closing time", at: time.Date(2024, time.January, 8, 16, 0, 0, 0, loc), want: false},
@@ -80,6 +81,7 @@ func TestIsMarketOpenStockHolidayClosed(t *testing.T) {
 	tests := []time.Time{
 		time.Date(2024, time.December, 25, 10, 0, 0, 0, loc),
 		time.Date(2024, time.November, 28, 10, 0, 0, 0, loc),
+		time.Date(2021, time.December, 31, 10, 0, 0, 0, loc),
 	}
 
 	for _, at := range tests {

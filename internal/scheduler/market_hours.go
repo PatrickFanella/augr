@@ -3,20 +3,12 @@ package scheduler
 import (
 	"strings"
 	"time"
+	_ "time/tzdata"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 )
 
-var (
-	newYorkLocation    *time.Location
-	hasNewYorkLocation bool
-)
-
-func init() {
-	var err error
-	newYorkLocation, err = time.LoadLocation("America/New_York")
-	hasNewYorkLocation = err == nil
-}
+var newYorkLocation = mustLoadLocation("America/New_York")
 
 // IsMarketOpen reports whether the given market is open at the provided time.
 func IsMarketOpen(t time.Time, marketType domain.MarketType) bool {
@@ -35,10 +27,6 @@ func normalizeMarketType(marketType domain.MarketType) domain.MarketType {
 }
 
 func isUSEquityMarketOpen(t time.Time) bool {
-	if !hasNewYorkLocation {
-		return false
-	}
-
 	et := t.In(newYorkLocation)
 	if et.Weekday() == time.Saturday || et.Weekday() == time.Sunday {
 		return false
@@ -59,6 +47,7 @@ func isNYSEHoliday(t time.Time) bool {
 
 	holidays := []time.Time{
 		observedDate(year, time.January, 1),
+		observedDate(year+1, time.January, 1),
 		nthWeekdayOfMonth(year, time.January, time.Monday, 3),
 		nthWeekdayOfMonth(year, time.February, time.Monday, 3),
 		easterSunday(year).AddDate(0, 0, -2),
@@ -77,6 +66,15 @@ func isNYSEHoliday(t time.Time) bool {
 	}
 
 	return false
+}
+
+func mustLoadLocation(name string) *time.Location {
+	location, err := time.LoadLocation(name)
+	if err != nil {
+		panic(err)
+	}
+
+	return location
 }
 
 func observedDate(year int, month time.Month, day int) time.Time {
