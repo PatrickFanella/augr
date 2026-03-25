@@ -36,6 +36,7 @@ type Reflector struct {
 	decisionRepo  repository.AgentDecisionRepository
 	positionRepo  repository.PositionRepository
 	llmProvider   llm.Provider
+	model         string
 	logger        *slog.Logger
 }
 
@@ -47,6 +48,7 @@ func NewReflector(
 	decisionRepo repository.AgentDecisionRepository,
 	positionRepo repository.PositionRepository,
 	llmProvider llm.Provider,
+	model string,
 	logger *slog.Logger,
 ) *Reflector {
 	if logger == nil {
@@ -58,6 +60,7 @@ func NewReflector(
 		decisionRepo: decisionRepo,
 		positionRepo: positionRepo,
 		llmProvider:  llmProvider,
+		model:        model,
 		logger:       logger,
 	}
 }
@@ -71,6 +74,11 @@ func (r *Reflector) Reflect(ctx context.Context, positionID uuid.UUID) error {
 		return fmt.Errorf("load position %s: %w", positionID, err)
 	}
 
+	// Only reflect on closed positions.
+	if pos.ClosedAt == nil {
+		return fmt.Errorf("position %s is not closed", positionID)
+	}
+
 	// 2. Find the linked pipeline run via the position's strategy.
 	run, err := r.findPipelineRun(ctx, pos)
 	if err != nil {
@@ -78,7 +86,9 @@ func (r *Reflector) Reflect(ctx context.Context, positionID uuid.UUID) error {
 	}
 
 	// 3. Load all agent decisions for that run.
-	decisions, err := r.decisionRepo.GetByRun(ctx, run.ID, repository.AgentDecisionFilter{}, 100, 0)
+	// Use a large limit to cover multi-round debates; only the 5 reflection
+	// roles are extracted from the result set.
+	decisions, err := r.decisionRepo.GetByRun(ctx, run.ID, repository.AgentDecisionFilter{}, 500, 0)
 	if err != nil {
 		return fmt.Errorf("load decisions for run %s: %w", run.ID, err)
 	}
@@ -94,9 +104,9 @@ func (r *Reflector) Reflect(ctx context.Context, positionID uuid.UUID) error {
 	// 5. Generate a memory for each reflection role.
 	for _, role := range reflectionRoles {
 		decision, ok := decisionsByRole[role]
-		recommendation := "no recommendation recorded"
+		agentRecommendation := "no recommendation recorded"
 		if ok {
-			recommendation = decision.OutputText
+			agentRecommendation = decision.OutputText
 		}
 
 		situation := fmt.Sprintf(
@@ -106,10 +116,11 @@ func (r *Reflector) Reflect(ctx context.Context, positionID uuid.UUID) error {
 
 		userPrompt := fmt.Sprintf(
 			"Situation: %s\nThe %s recommended: %s\nOutcome: %s",
-			situation, role, recommendation, outcome,
+			situation, role, agentRecommendation, outcome,
 		)
 
 		resp, err := r.llmProvider.Complete(ctx, llm.CompletionRequest{
+			Model: r.model,
 			Messages: []llm.Message{
 				{Role: "system", Content: reflectionSystemPrompt},
 				{Role: "user", Content: userPrompt},
@@ -120,13 +131,18 @@ func (r *Reflector) Reflect(ctx context.Context, positionID uuid.UUID) error {
 				"role", role, "position_id", positionID, "error", err)
 			continue
 		}
+		if resp == nil {
+			r.logger.WarnContext(ctx, "reflection LLM call returned nil response",
+				"role", role, "position_id", positionID)
+			continue
+		}
 
 		runID := run.ID
 		mem := &domain.AgentMemory{
 			AgentRole:      role,
 			Situation:      situation,
-			Recommendation: recommendation,
-			Outcome:        resp.Content,
+			Recommendation: resp.Content,
+			Outcome:        outcome,
 			PipelineRunID:  &runID,
 		}
 
@@ -144,17 +160,24 @@ func (r *Reflector) Reflect(ctx context.Context, positionID uuid.UUID) error {
 }
 
 // findPipelineRun locates the most recent completed pipeline run linked to the
-// position through its strategy and ticker.
+// position through its strategy and ticker, constrained to runs that started
+// within the position's open/close window.
 func (r *Reflector) findPipelineRun(ctx context.Context, pos *domain.Position) (*domain.PipelineRun, error) {
 	if pos.StrategyID == nil {
 		return nil, fmt.Errorf("position %s has no strategy", pos.ID)
 	}
 
-	runs, err := r.pipelineRepo.List(ctx, repository.PipelineRunFilter{
-		StrategyID: pos.StrategyID,
-		Ticker:     pos.Ticker,
-		Status:     domain.PipelineStatusCompleted,
-	}, 1, 0)
+	filter := repository.PipelineRunFilter{
+		StrategyID:   pos.StrategyID,
+		Ticker:       pos.Ticker,
+		Status:       domain.PipelineStatusCompleted,
+		StartedAfter: &pos.OpenedAt,
+	}
+	if pos.ClosedAt != nil {
+		filter.StartedBefore = pos.ClosedAt
+	}
+
+	runs, err := r.pipelineRepo.List(ctx, filter, 1, 0)
 	if err != nil {
 		return nil, err
 	}

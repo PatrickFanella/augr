@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -172,7 +173,7 @@ func TestReflect_GeneratesFiveMemories(t *testing.T) {
 		response: &llm.CompletionResponse{Content: "lesson learned"},
 	}
 
-	ref := NewReflector(memRepo, pipeRepo, decRepo, posRepo, provider, discardLogger())
+	ref := NewReflector(memRepo, pipeRepo, decRepo, posRepo, provider, "test-model", discardLogger())
 
 	if err := ref.Reflect(context.Background(), pos.ID); err != nil {
 		t.Fatalf("Reflect() error = %v, want nil", err)
@@ -190,17 +191,17 @@ func TestReflect_GeneratesFiveMemories(t *testing.T) {
 	for _, m := range memRepo.created {
 		seenRoles[m.AgentRole] = true
 
-		if m.Outcome != "lesson learned" {
-			t.Errorf("memory outcome = %q, want %q", m.Outcome, "lesson learned")
+		if m.Recommendation != "lesson learned" {
+			t.Errorf("memory recommendation = %q, want %q", m.Recommendation, "lesson learned")
+		}
+		if m.Outcome == "" {
+			t.Error("memory outcome is empty, want non-empty outcome summary")
 		}
 		if m.PipelineRunID == nil || *m.PipelineRunID != runID {
 			t.Errorf("memory pipeline_run_id = %v, want %s", m.PipelineRunID, runID)
 		}
 		if m.Situation == "" {
 			t.Error("memory situation is empty")
-		}
-		if m.Recommendation == "" {
-			t.Error("memory recommendation is empty")
 		}
 	}
 
@@ -224,7 +225,7 @@ func TestReflect_MissingPipelineRun(t *testing.T) {
 		response: &llm.CompletionResponse{Content: "lesson"},
 	}
 
-	ref := NewReflector(memRepo, pipeRepo, decRepo, posRepo, provider, discardLogger())
+	ref := NewReflector(memRepo, pipeRepo, decRepo, posRepo, provider, "test-model", discardLogger())
 
 	err := ref.Reflect(context.Background(), pos.ID)
 	if err == nil {
@@ -250,7 +251,7 @@ func TestReflect_MissingPosition(t *testing.T) {
 		response: &llm.CompletionResponse{Content: "lesson"},
 	}
 
-	ref := NewReflector(memRepo, pipeRepo, decRepo, posRepo, provider, discardLogger())
+	ref := NewReflector(memRepo, pipeRepo, decRepo, posRepo, provider, "test-model", discardLogger())
 
 	err := ref.Reflect(context.Background(), uuid.New())
 	if err == nil {
@@ -267,6 +268,7 @@ func TestReflect_NilLoggerDefaultsToSlogDefault(t *testing.T) {
 		&mockDecisionRepo{},
 		&mockPositionRepo{},
 		&mockLLMProvider{},
+		"test-model",
 		nil,
 	)
 
@@ -291,6 +293,12 @@ func TestComputeOutcome_Profit(t *testing.T) {
 	if out == "" {
 		t.Fatal("computeOutcome() returned empty string")
 	}
+
+	for _, want := range []string{"profit", "50.00", "5.00%", "d "} {
+		if !strings.Contains(out, want) {
+			t.Errorf("computeOutcome() = %q, want substring %q", out, want)
+		}
+	}
 }
 
 func TestComputeOutcome_Loss(t *testing.T) {
@@ -308,5 +316,40 @@ func TestComputeOutcome_Loss(t *testing.T) {
 	out := computeOutcome(pos)
 	if out == "" {
 		t.Fatal("computeOutcome() returned empty string")
+	}
+
+	for _, want := range []string{"loss", "30.00", "-3.00%"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("computeOutcome() = %q, want substring %q", out, want)
+		}
+	}
+	if strings.Contains(out, "still open") {
+		t.Errorf("computeOutcome() = %q, should not contain 'still open' for closed position", out)
+	}
+}
+
+func TestReflect_OpenPositionReturnsError(t *testing.T) {
+	t.Parallel()
+
+	pos := newTestPosition()
+	pos.ClosedAt = nil // still open
+
+	memRepo := &mockMemoryRepo{}
+	pipeRepo := &mockPipelineRunRepo{}
+	decRepo := &mockDecisionRepo{}
+	posRepo := &mockPositionRepo{position: pos}
+	provider := &mockLLMProvider{
+		response: &llm.CompletionResponse{Content: "lesson"},
+	}
+
+	ref := NewReflector(memRepo, pipeRepo, decRepo, posRepo, provider, "test-model", discardLogger())
+
+	err := ref.Reflect(context.Background(), pos.ID)
+	if err == nil {
+		t.Fatal("Reflect() error = nil, want error for open position")
+	}
+
+	if provider.calls != 0 {
+		t.Errorf("LLM calls = %d, want 0 for open position", provider.calls)
 	}
 }
