@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/config"
@@ -68,6 +69,7 @@ type DataService struct {
 	cacheRepo   repository.MarketDataCacheRepository
 	historyRepo repository.HistoricalOHLCVRepository
 	logger      *slog.Logger
+	nowMu       sync.RWMutex
 	now         func() time.Time
 }
 
@@ -217,7 +219,7 @@ func (s *DataService) DownloadHistoricalOHLCV(
 	if toUTC.Before(fromUTC) {
 		return nil, fmt.Errorf("data: invalid historical range %s > %s", fromUTC, toUTC)
 	}
-  
+
 	providerName, chain, err := s.resolveChain(marketType)
 	if err != nil {
 		return nil, err
@@ -354,41 +356,6 @@ func (s *DataService) ListHistoricalOHLCV(
 	return result, nil
 }
 
-// GetSocialSentiment returns social sentiment snapshots using the market-type
-// chain and caches results by query window.
-func (s *DataService) GetSocialSentiment(ctx context.Context, marketType domain.MarketType, ticker string, from, to time.Time) ([]SocialSentiment, error) {
-	fromUTC := from.UTC()
-	toUTC := to.UTC()
-
-	providerName, chain, err := s.resolveChain(marketType)
-	if err != nil {
-		return nil, err
-	}
-
-	key := repository.MarketDataCacheKey{
-		Ticker:    ticker,
-		Provider:  providerName,
-		DataType:  cacheDataTypeSocial,
-		Timeframe: newsCacheWindow(fromUTC, toUTC),
-		DateFrom:  &fromUTC,
-		DateTo:    &toUTC,
-	}
-
-	if cached, ok := s.loadCachedSocialSentiment(ctx, key); ok {
-		return normalizeSocialSentiment(cached, fromUTC, toUTC), nil
-	}
-
-	snapshots, err := chain.GetSocialSentiment(ctx, ticker, from, to)
-	if err != nil {
-		return nil, err
-	}
-	snapshots = normalizeSocialSentiment(snapshots, fromUTC, toUTC)
-
-	s.storeCached(ctx, key, snapshots, 30*time.Minute)
-
-	return snapshots, nil
-}
-
 func (s *DataService) resolveChain(marketType domain.MarketType) (string, DataProvider, error) {
 	switch normalizeMarketType(marketType) {
 	case domain.MarketTypeStock:
@@ -490,11 +457,31 @@ func (s *DataService) storeCached(ctx context.Context, key repository.MarketData
 }
 
 func (s *DataService) currentTime() time.Time {
-	if s == nil || s.now == nil {
+	if s == nil {
+		return time.Now()
+	}
+
+	s.nowMu.RLock()
+	defer s.nowMu.RUnlock()
+
+	if s.now == nil {
 		return time.Now()
 	}
 
 	return s.now()
+}
+
+// SetNowFunc overrides the data service time source so cache timestamps can be
+// aligned with simulated backtest time.
+func (s *DataService) SetNowFunc(now func() time.Time) {
+	if s == nil || now == nil {
+		return
+	}
+
+	s.nowMu.Lock()
+	defer s.nowMu.Unlock()
+
+	s.now = now
 }
 
 func ttlForOHLCV(timeframe Timeframe) time.Duration {

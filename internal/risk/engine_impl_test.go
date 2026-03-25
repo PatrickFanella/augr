@@ -695,6 +695,22 @@ func TestCooldownAutoResets_CheckPreTrade(t *testing.T) {
 	}
 }
 
+func TestGetStatus_UsesInjectedClockForUpdatedAt(t *testing.T) {
+	t.Parallel()
+
+	engine := newTestEngine()
+	now := time.Date(2026, 3, 25, 9, 15, 0, 0, time.UTC)
+	engine.SetNowFunc(func() time.Time { return now })
+
+	status, err := engine.GetStatus(context.Background())
+	if err != nil {
+		t.Fatalf("GetStatus() error = %v", err)
+	}
+	if !status.UpdatedAt.Equal(now) {
+		t.Fatalf("UpdatedAt = %s, want %s", status.UpdatedAt, now)
+	}
+}
+
 func TestDefaultCircuitBreakerConfig(t *testing.T) {
 	t.Parallel()
 

@@ -127,6 +127,17 @@ func TestDataServiceGetOHLCVCacheHitReturnsCachedData(t *testing.T) {
 	}
 }
 
+func TestDataServiceSetNowFuncOverridesCacheClock(t *testing.T) {
+	now := time.Date(2026, 3, 25, 11, 0, 0, 0, time.UTC)
+	service := &DataService{logger: discardLogger()}
+
+	service.SetNowFunc(func() time.Time { return now })
+
+	if got := service.currentTime(); !got.Equal(now) {
+		t.Fatalf("currentTime() = %s, want %s", got, now)
+	}
+}
+
 func TestDataServiceGetOHLCVCacheMissCallsChainAndCachesResult(t *testing.T) {
 	now := time.Date(2026, 3, 22, 17, 0, 0, 0, time.UTC)
 	from := now.Add(-time.Hour)

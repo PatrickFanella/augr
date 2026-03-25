@@ -168,6 +168,41 @@ func TestSimTimeTracksCurrentBar(t *testing.T) {
 	}
 }
 
+func TestReplayIteratorClockAdvancesWithBars(t *testing.T) {
+	t1 := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
+	t2 := t1.Add(24 * time.Hour)
+
+	iter, err := NewReplayIterator([]domain.OHLCV{
+		makeBar(t1, 101),
+		makeBar(t2, 102),
+	})
+	if err != nil {
+		t.Fatalf("NewReplayIterator() error = %v", err)
+	}
+
+	clock := iter.Clock()
+	if clock == nil {
+		t.Fatal("Clock() = nil, want non-nil")
+	}
+	if got := clock.Now(); !got.IsZero() {
+		t.Fatalf("Clock().Now() before Next = %s, want zero time", got)
+	}
+
+	if !iter.Next() {
+		t.Fatal("Next() = false, want true")
+	}
+	if got := clock.Now(); !got.Equal(t1) {
+		t.Fatalf("Clock().Now() after first Next = %s, want %s", got, t1)
+	}
+
+	if !iter.Next() {
+		t.Fatal("Next() second call = false, want true")
+	}
+	if got := clock.Now(); !got.Equal(t2) {
+		t.Fatalf("Clock().Now() after second Next = %s, want %s", got, t2)
+	}
+}
+
 func TestBarsOnlyReturnsUpToSimTime(t *testing.T) {
 	t1 := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
 	t2 := t1.Add(24 * time.Hour)

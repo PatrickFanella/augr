@@ -46,10 +46,11 @@ type RiskEngineImpl struct {
 	positionRepo       repository.PositionRepository
 	logger             *slog.Logger
 	state              engineState
-	nowFunc            func() time.Time          // for testability; defaults to time.Now
-	killSwitchFilePath string                    // file flag path; defaults to defaultKillSwitchFilePath
-	fileExistsFunc     func(string) bool         // for testability; defaults to defaultFileExists
-	getEnvFunc         func(string) string       // for testability; defaults to os.Getenv
+	nowMu              sync.RWMutex
+	nowFunc            func() time.Time    // for testability; defaults to time.Now
+	killSwitchFilePath string              // file flag path; defaults to defaultKillSwitchFilePath
+	fileExistsFunc     func(string) bool   // for testability; defaults to defaultFileExists
+	getEnvFunc         func(string) string // for testability; defaults to os.Getenv
 }
 
 // defaultFileExists checks whether the given path exists on the filesystem.
@@ -87,6 +88,34 @@ func NewRiskEngine(limits PositionLimits, cbConfig CircuitBreakerConfig, positio
 	}
 }
 
+// SetNowFunc overrides the risk engine time source, allowing backtests to
+// evaluate cooldowns and status timestamps against simulated time.
+func (e *RiskEngineImpl) SetNowFunc(now func() time.Time) {
+	if e == nil || now == nil {
+		return
+	}
+
+	e.nowMu.Lock()
+	defer e.nowMu.Unlock()
+
+	e.nowFunc = now
+}
+
+func (e *RiskEngineImpl) currentTime() time.Time {
+	if e == nil {
+		return time.Now()
+	}
+
+	e.nowMu.RLock()
+	defer e.nowMu.RUnlock()
+
+	if e.nowFunc == nil {
+		return time.Now()
+	}
+
+	return e.nowFunc()
+}
+
 // checkCooldownLocked checks if the circuit breaker cooldown has expired and
 // auto-resets to open. Must be called with e.state.mu held for writing.
 // Returns true if the breaker was auto-reset so the caller can log outside
@@ -98,7 +127,7 @@ func (e *RiskEngineImpl) checkCooldownLocked() bool {
 	if e.state.cb.CooldownEnd == nil {
 		return false
 	}
-	if e.nowFunc().Before(*e.state.cb.CooldownEnd) {
+	if e.currentTime().Before(*e.state.cb.CooldownEnd) {
 		return false
 	}
 	e.state.cb = CircuitBreakerStatus{State: CircuitBreakerPhaseOpen}
@@ -114,7 +143,7 @@ func (e *RiskEngineImpl) tripLocked(reason string) bool {
 	if e.state.cb.State == CircuitBreakerPhaseTripped {
 		return false
 	}
-	now := e.nowFunc()
+	now := e.currentTime()
 	cooldownEnd := now.Add(e.cbConfig.CooldownDuration)
 	e.state.cb = CircuitBreakerStatus{
 		State:       CircuitBreakerPhaseTripped,
@@ -283,7 +312,7 @@ func (e *RiskEngineImpl) GetStatus(ctx context.Context) (EngineStatus, error) {
 		CircuitBreaker: cb,
 		KillSwitch:     ks,
 		PositionLimits: limits,
-		UpdatedAt:      time.Now(),
+		UpdatedAt:      e.currentTime(),
 	}
 
 	if cooldownReset {
@@ -339,7 +368,7 @@ func (e *RiskEngineImpl) ActivateKillSwitch(ctx context.Context, reason string) 
 	e.state.mu.Lock()
 	defer e.state.mu.Unlock()
 
-	now := e.nowFunc()
+	now := e.currentTime()
 	e.state.ks = KillSwitchStatus{
 		Active:      true,
 		Reason:      reason,

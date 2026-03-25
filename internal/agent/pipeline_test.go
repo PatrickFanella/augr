@@ -22,6 +22,28 @@ import (
 // Compile-time check that NoopPersister satisfies DecisionPersister.
 var _ DecisionPersister = NoopPersister{}
 
+type capturePersister struct {
+	startRun      *domain.PipelineRun
+	completedAt   time.Time
+	completedStat domain.PipelineStatus
+}
+
+func (p *capturePersister) RecordRunStart(_ context.Context, run *domain.PipelineRun) error {
+	cp := *run
+	p.startRun = &cp
+	return nil
+}
+
+func (p *capturePersister) RecordRunComplete(_ context.Context, _ uuid.UUID, _ time.Time, status domain.PipelineStatus, completedAt time.Time, _ string) error {
+	p.completedStat = status
+	p.completedAt = completedAt
+	return nil
+}
+
+func (*capturePersister) PersistDecision(context.Context, uuid.UUID, Node, *int, string, *DecisionLLMResponse) error {
+	return nil
+}
+
 // mockAnalystNode is a test double for a PhaseAnalysis Node.
 type mockAnalystNode struct {
 	name    string
@@ -196,6 +218,117 @@ func TestExecuteAnalysisPhase(t *testing.T) {
 		}
 		if e.OccurredAt.IsZero() {
 			t.Error("event OccurredAt is zero")
+		}
+	}
+}
+
+func TestPipelineExecute_UsesInjectedClockForRunAndEvents(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 3, 25, 14, 45, 0, 0, time.UTC)
+	persister := &capturePersister{}
+	events := make(chan PipelineEvent, 10)
+	pipeline := NewPipeline(PipelineConfig{ResearchDebateRounds: 1, RiskDebateRounds: 1}, persister, events, slog.Default())
+	pipeline.SetNowFunc(func() time.Time { return now })
+
+	pipeline.RegisterNode(&mockAnalystNode{
+		name: "market_analyst",
+		role: AgentRoleMarketAnalyst,
+		execute: func(_ context.Context, state *PipelineState) error {
+			state.SetAnalystReport(AgentRoleMarketAnalyst, "trend")
+			return nil
+		},
+	})
+	pipeline.RegisterNode(&mockDebateNode{
+		name: "bull_researcher",
+		role: AgentRoleBullResearcher,
+		execute: func(_ context.Context, state *PipelineState) error {
+			state.ResearchDebate.Rounds[len(state.ResearchDebate.Rounds)-1].Contributions[AgentRoleBullResearcher] = "bull"
+			return nil
+		},
+	})
+	pipeline.RegisterNode(&mockDebateNode{
+		name: "bear_researcher",
+		role: AgentRoleBearResearcher,
+		execute: func(_ context.Context, state *PipelineState) error {
+			state.ResearchDebate.Rounds[len(state.ResearchDebate.Rounds)-1].Contributions[AgentRoleBearResearcher] = "bear"
+			return nil
+		},
+	})
+	pipeline.RegisterNode(&mockDebateNode{
+		name: "invest_judge",
+		role: AgentRoleInvestJudge,
+		execute: func(_ context.Context, state *PipelineState) error {
+			state.ResearchDebate.InvestmentPlan = "hold"
+			return nil
+		},
+	})
+	pipeline.RegisterNode(&mockTradingNode{
+		name: "trader",
+		role: AgentRoleTrader,
+		execute: func(_ context.Context, state *PipelineState) error {
+			state.TradingPlan = TradingPlan{Action: PipelineSignalBuy, Ticker: state.Ticker}
+			return nil
+		},
+	})
+	pipeline.RegisterNode(&mockRiskDebateNode{
+		name: "aggressive_analyst",
+		role: AgentRoleAggressiveAnalyst,
+		execute: func(_ context.Context, state *PipelineState) error {
+			state.RiskDebate.Rounds[len(state.RiskDebate.Rounds)-1].Contributions[AgentRoleAggressiveAnalyst] = "aggressive"
+			return nil
+		},
+	})
+	pipeline.RegisterNode(&mockRiskDebateNode{
+		name: "conservative_analyst",
+		role: AgentRoleConservativeAnalyst,
+		execute: func(_ context.Context, state *PipelineState) error {
+			state.RiskDebate.Rounds[len(state.RiskDebate.Rounds)-1].Contributions[AgentRoleConservativeAnalyst] = "conservative"
+			return nil
+		},
+	})
+	pipeline.RegisterNode(&mockRiskDebateNode{
+		name: "neutral_analyst",
+		role: AgentRoleNeutralAnalyst,
+		execute: func(_ context.Context, state *PipelineState) error {
+			state.RiskDebate.Rounds[len(state.RiskDebate.Rounds)-1].Contributions[AgentRoleNeutralAnalyst] = "neutral"
+			return nil
+		},
+	})
+	pipeline.RegisterNode(&mockRiskDebateNode{
+		name: "risk_manager",
+		role: AgentRoleRiskManager,
+		execute: func(_ context.Context, state *PipelineState) error {
+			state.RiskDebate.FinalSignal = "approve"
+			return nil
+		},
+	})
+
+	strategyID := uuid.New()
+	if _, err := pipeline.Execute(context.Background(), strategyID, "AAPL"); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	if persister.startRun == nil {
+		t.Fatal("RecordRunStart() was not called")
+	}
+	if !persister.startRun.StartedAt.Equal(now) {
+		t.Fatalf("StartedAt = %s, want %s", persister.startRun.StartedAt, now)
+	}
+	if !persister.startRun.TradeDate.Equal(now.Truncate(24 * time.Hour)) {
+		t.Fatalf("TradeDate = %s, want %s", persister.startRun.TradeDate, now.Truncate(24*time.Hour))
+	}
+	if persister.completedStat != domain.PipelineStatusCompleted {
+		t.Fatalf("completed status = %q, want %q", persister.completedStat, domain.PipelineStatusCompleted)
+	}
+	if !persister.completedAt.Equal(now) {
+		t.Fatalf("completedAt = %s, want %s", persister.completedAt, now)
+	}
+
+	close(events)
+	for event := range events {
+		if !event.OccurredAt.Equal(now) {
+			t.Fatalf("event %q OccurredAt = %s, want %s", event.Type, event.OccurredAt, now)
 		}
 	}
 }

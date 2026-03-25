@@ -5,6 +5,7 @@ import (
 	"math"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution"
@@ -185,6 +186,46 @@ func TestPaperBrokerSubmitOrder_NormalizesTickerForPositions(t *testing.T) {
 		t.Fatalf("positions[0].Ticker = %q, want %q", positions[0].Ticker, "AAPL")
 	}
 	assertFloatClose(t, positions[0].Quantity, 3, 1e-9)
+}
+
+func TestPaperBrokerSubmitOrder_UsesInjectedClock(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 3, 25, 15, 30, 0, 0, time.UTC)
+	broker := NewPaperBroker(1000, 0, 0)
+	broker.SetNowFunc(func() time.Time { return now })
+
+	order := &domain.Order{
+		Ticker:    "AAPL",
+		Side:      domain.OrderSideBuy,
+		OrderType: domain.OrderTypeMarket,
+		Quantity:  1,
+		StopPrice: floatPtr(100),
+	}
+
+	if _, err := broker.SubmitOrder(context.Background(), order); err != nil {
+		t.Fatalf("SubmitOrder() error = %v", err)
+	}
+	if order.SubmittedAt == nil || !order.SubmittedAt.Equal(now) {
+		t.Fatalf("SubmittedAt = %v, want %s", order.SubmittedAt, now)
+	}
+	if order.FilledAt == nil || !order.FilledAt.Equal(now) {
+		t.Fatalf("FilledAt = %v, want %s", order.FilledAt, now)
+	}
+	if !order.CreatedAt.Equal(now) {
+		t.Fatalf("CreatedAt = %s, want %s", order.CreatedAt, now)
+	}
+
+	positions, err := broker.GetPositions(context.Background())
+	if err != nil {
+		t.Fatalf("GetPositions() error = %v", err)
+	}
+	if len(positions) != 1 {
+		t.Fatalf("GetPositions() len = %d, want 1", len(positions))
+	}
+	if !positions[0].OpenedAt.Equal(now) {
+		t.Fatalf("positions[0].OpenedAt = %s, want %s", positions[0].OpenedAt, now)
+	}
 }
 
 func TestPaperBrokerSubmitOrder_ClampsExtremeSellSlippage(t *testing.T) {

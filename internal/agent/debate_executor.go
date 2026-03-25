@@ -3,7 +3,6 @@ package agent
 import (
 	"context"
 	"log/slog"
-	"time"
 )
 
 // DebateConfig configures a debate phase execution.
@@ -87,7 +86,7 @@ func (d *DebateExecutor) Execute(ctx context.Context, state *PipelineState) erro
 				Ticker:        state.Ticker,
 				Phase:         d.config.Phase,
 				Round:         i,
-				OccurredAt:    time.Now().UTC(),
+				OccurredAt:    d.pipeline.currentTime().UTC(),
 			}
 			select {
 			case d.pipeline.events <- event:

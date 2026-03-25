@@ -30,6 +30,8 @@ type Pipeline struct {
 	events    chan<- PipelineEvent
 	logger    *slog.Logger
 	config    PipelineConfig
+	nowMu     sync.RWMutex
+	now       func() time.Time
 }
 
 // NewPipeline constructs a Pipeline with the supplied dependencies. Default
@@ -55,7 +57,21 @@ func NewPipeline(
 		events:    events,
 		logger:    logger,
 		config:    config,
+		now:       time.Now,
 	}
+}
+
+// SetNowFunc overrides the pipeline time source, allowing backtests to inject a
+// simulated clock instead of wall-clock time.
+func (p *Pipeline) SetNowFunc(now func() time.Time) {
+	if p == nil || now == nil {
+		return
+	}
+
+	p.nowMu.Lock()
+	defer p.nowMu.Unlock()
+
+	p.now = now
 }
 
 // RegisterNode adds a node to the phase group determined by node.Phase().
@@ -188,7 +204,7 @@ func (p *Pipeline) executeAnalysisPhase(ctx context.Context, state *PipelineStat
 					Ticker:        state.Ticker,
 					AgentRole:     node.Role(),
 					Phase:         PhaseAnalysis,
-					OccurredAt:    time.Now().UTC(),
+					OccurredAt:    p.currentTime().UTC(),
 				}
 				// Non-blocking send: drop the event rather than let the goroutine
 				// stall if the channel is full or the phase context is cancelled.
@@ -247,7 +263,7 @@ func (p *Pipeline) executeTradingPhase(ctx context.Context, state *PipelineState
 			Ticker:        state.Ticker,
 			AgentRole:     traderNode.Role(),
 			Phase:         PhaseTrading,
-			OccurredAt:    time.Now().UTC(),
+			OccurredAt:    p.currentTime().UTC(),
 		}
 		select {
 		case p.events <- event:
@@ -322,7 +338,7 @@ func (p *Pipeline) Execute(ctx context.Context, strategyID uuid.UUID, ticker str
 	cacheStatsCollector := llm.NewCacheStatsCollector()
 	ctx = llm.WithCacheStatsCollector(ctx, cacheStatsCollector)
 
-	now := time.Now().UTC()
+	now := p.currentTime().UTC()
 	run := &domain.PipelineRun{
 		ID:         uuid.New(),
 		StrategyID: strategyID,
@@ -349,7 +365,7 @@ func (p *Pipeline) Execute(ctx context.Context, strategyID uuid.UUID, ticker str
 		PipelineRunID: run.ID,
 		StrategyID:    strategyID,
 		Ticker:        ticker,
-		OccurredAt:    time.Now().UTC(),
+		OccurredAt:    p.currentTime().UTC(),
 	})
 
 	// Execute phases in order.
@@ -370,7 +386,7 @@ func (p *Pipeline) Execute(ctx context.Context, strategyID uuid.UUID, ticker str
 				slog.Any("error", err),
 			)
 
-			completedAt := time.Now().UTC()
+			completedAt := p.currentTime().UTC()
 			_ = p.persister.RecordRunComplete(ctx, run.ID, run.TradeDate, domain.PipelineStatusFailed, completedAt, err.Error())
 			p.emitCacheStats(state, cacheStatsCollector, run.ID, strategyID, ticker)
 
@@ -380,7 +396,7 @@ func (p *Pipeline) Execute(ctx context.Context, strategyID uuid.UUID, ticker str
 				StrategyID:    strategyID,
 				Ticker:        ticker,
 				Error:         err.Error(),
-				OccurredAt:    time.Now().UTC(),
+				OccurredAt:    p.currentTime().UTC(),
 			})
 
 			return state, err
@@ -388,7 +404,7 @@ func (p *Pipeline) Execute(ctx context.Context, strategyID uuid.UUID, ticker str
 	}
 
 	// All phases succeeded – mark the run as completed.
-	completedAt := time.Now().UTC()
+	completedAt := p.currentTime().UTC()
 	_ = p.persister.RecordRunComplete(ctx, run.ID, run.TradeDate, domain.PipelineStatusCompleted, completedAt, "")
 	p.emitCacheStats(state, cacheStatsCollector, run.ID, strategyID, ticker)
 
@@ -397,7 +413,7 @@ func (p *Pipeline) Execute(ctx context.Context, strategyID uuid.UUID, ticker str
 		PipelineRunID: run.ID,
 		StrategyID:    strategyID,
 		Ticker:        ticker,
-		OccurredAt:    time.Now().UTC(),
+		OccurredAt:    p.currentTime().UTC(),
 	})
 
 	return state, nil
@@ -420,6 +436,19 @@ func (p *Pipeline) emitEvent(event PipelineEvent) {
 	}
 }
 
+func (p *Pipeline) currentTime() time.Time {
+	if p == nil {
+		return time.Now()
+	}
+
+	p.nowMu.RLock()
+	defer p.nowMu.RUnlock()
+
+	if p.now == nil {
+		return time.Now()
+	}
+
+	return p.now()
 func (p *Pipeline) emitCacheStats(state *PipelineState, collector *llm.CacheStatsCollector, runID, strategyID uuid.UUID, ticker string) {
 	stats := collector.Snapshot()
 	if state != nil {

@@ -32,6 +32,7 @@ var (
 type ReplayIterator struct {
 	bars  []domain.OHLCV // sorted ascending by timestamp
 	index int            // current position; -1 means not started
+	clock *SimulatedClock
 }
 
 // NewReplayIterator creates a ReplayIterator from the given bars.
@@ -51,6 +52,7 @@ func NewReplayIterator(bars []domain.OHLCV) (*ReplayIterator, error) {
 	return &ReplayIterator{
 		bars:  sorted,
 		index: -1,
+		clock: newSimulatedClock(),
 	}, nil
 }
 
@@ -61,6 +63,7 @@ func (r *ReplayIterator) Next() bool {
 		return false
 	}
 	r.index++
+	r.clock.set(r.bars[r.index].Timestamp)
 	return true
 }
 
@@ -158,4 +161,13 @@ func (r *ReplayIterator) Len() int {
 // Done returns true when all bars have been consumed.
 func (r *ReplayIterator) Done() bool {
 	return r.index >= len(r.bars)-1
+}
+
+// Clock returns the simulated wall clock that advances with each consumed bar.
+func (r *ReplayIterator) Clock() Clock {
+	if r == nil {
+		return nil
+	}
+
+	return r.clock
 }

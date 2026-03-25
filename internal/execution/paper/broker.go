@@ -25,12 +25,14 @@ const (
 // PaperBroker implements an in-memory execution.Broker for paper trading.
 type PaperBroker struct {
 	mu          sync.RWMutex
+	nowMu       sync.RWMutex
 	orders      map[string]*domain.Order
 	positions   map[string]*domain.Position
 	balance     execution.Balance
 	slippageBps float64
 	feePct      float64
 	nextOrderID uint64
+	now         func() time.Time
 }
 
 // NewPaperBroker constructs an in-memory paper trading broker.
@@ -53,7 +55,21 @@ func NewPaperBroker(initialBalance float64, slippageBps float64, feePct float64)
 		},
 		slippageBps: slippageBps,
 		feePct:      feePct,
+		now:         time.Now,
 	}
+}
+
+// SetNowFunc overrides the broker time source, allowing callers to inject a
+// simulated clock during backtests.
+func (b *PaperBroker) SetNowFunc(now func() time.Time) {
+	if b == nil || now == nil {
+		return
+	}
+
+	b.nowMu.Lock()
+	defer b.nowMu.Unlock()
+
+	b.now = now
 }
 
 // SubmitOrder simulates an immediate paper-trading fill when the order is marketable.
@@ -79,7 +95,7 @@ func (b *PaperBroker) SubmitOrder(ctx context.Context, order *domain.Order) (str
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	now := time.Now().UTC()
+	now := b.currentTime().UTC()
 	externalID := b.nextExternalIDLocked()
 
 	order.Ticker = ticker
@@ -230,6 +246,21 @@ func (b *PaperBroker) GetAccountBalance(ctx context.Context) (execution.Balance,
 func (b *PaperBroker) nextExternalIDLocked() string {
 	b.nextOrderID++
 	return fmt.Sprintf("paper-%d", b.nextOrderID)
+}
+
+func (b *PaperBroker) currentTime() time.Time {
+	if b == nil {
+		return time.Now()
+	}
+
+	b.nowMu.RLock()
+	defer b.nowMu.RUnlock()
+
+	if b.now == nil {
+		return time.Now()
+	}
+
+	return b.now()
 }
 
 func (b *PaperBroker) simulateFillPrice(order *domain.Order) (float64, bool, error) {

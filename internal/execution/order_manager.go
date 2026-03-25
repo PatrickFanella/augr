@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -38,13 +39,13 @@ type TradingPlan struct {
 
 // SizingConfig holds the parameters used to size positions.
 type SizingConfig struct {
-	Method       PositionSizingMethod
-	RiskPct      float64
+	Method        PositionSizingMethod
+	RiskPct       float64
 	ATRMultiplier float64
-	WinRate      float64
-	WinLossRatio float64
-	FractionPct  float64
-	HalfKelly    bool
+	WinRate       float64
+	WinLossRatio  float64
+	FractionPct   float64
+	HalfKelly     bool
 }
 
 // OrderManager orchestrates the full order lifecycle:
@@ -59,6 +60,7 @@ type OrderManager struct {
 	auditLogRepo repository.AuditLogRepository
 	sizingConfig SizingConfig
 	logger       *slog.Logger
+	nowMu        sync.RWMutex
 	nowFunc      func() time.Time
 }
 
@@ -90,6 +92,34 @@ func NewOrderManager(
 		logger:       logger,
 		nowFunc:      time.Now,
 	}
+}
+
+// SetNowFunc overrides the order manager time source, allowing callers to
+// drive all execution timestamps from a simulated backtest clock.
+func (m *OrderManager) SetNowFunc(now func() time.Time) {
+	if m == nil || now == nil {
+		return
+	}
+
+	m.nowMu.Lock()
+	defer m.nowMu.Unlock()
+
+	m.nowFunc = now
+}
+
+func (m *OrderManager) currentTime() time.Time {
+	if m == nil {
+		return time.Now()
+	}
+
+	m.nowMu.RLock()
+	defer m.nowMu.RUnlock()
+
+	if m.nowFunc == nil {
+		return time.Now()
+	}
+
+	return m.nowFunc()
 }
 
 // ProcessSignal executes the full order lifecycle for a trading signal.
@@ -181,7 +211,7 @@ func (m *OrderManager) ProcessSignal(
 	}
 
 	// 4. Create order (status = pending).
-	now := m.nowFunc()
+	now := m.currentTime()
 	side := m.signalToSide(signal.Signal)
 	orderType := m.entryTypeToOrderType(plan.EntryType)
 
@@ -259,7 +289,7 @@ func (m *OrderManager) ProcessSignal(
 		return fmt.Errorf("order_manager: submit order: %w", err)
 	}
 
-	submittedAt := m.nowFunc()
+	submittedAt := m.currentTime()
 	order.ExternalID = externalID
 	order.Status = domain.OrderStatusSubmitted
 	order.SubmittedAt = &submittedAt
@@ -312,7 +342,7 @@ func (m *OrderManager) handleFill(
 	plan TradingPlan,
 	strategyID uuid.UUID,
 ) error {
-	now := m.nowFunc()
+	now := m.currentTime()
 	order.FilledQuantity = order.Quantity
 	order.FilledAt = &now
 
@@ -441,7 +471,7 @@ func (m *OrderManager) audit(
 		EntityID:   entityID,
 		Actor:      "order_manager",
 		Details:    raw,
-		CreatedAt:  m.nowFunc(),
+		CreatedAt:  m.currentTime(),
 	}
 
 	return m.auditLogRepo.Create(ctx, entry)
