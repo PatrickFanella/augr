@@ -217,7 +217,7 @@ func (s *DataService) DownloadHistoricalOHLCV(
 	if toUTC.Before(fromUTC) {
 		return nil, fmt.Errorf("data: invalid historical range %s > %s", fromUTC, toUTC)
 	}
-
+  
 	providerName, chain, err := s.resolveChain(marketType)
 	if err != nil {
 		return nil, err
@@ -352,6 +352,41 @@ func (s *DataService) ListHistoricalOHLCV(
 	}
 
 	return result, nil
+}
+
+// GetSocialSentiment returns social sentiment snapshots using the market-type
+// chain and caches results by query window.
+func (s *DataService) GetSocialSentiment(ctx context.Context, marketType domain.MarketType, ticker string, from, to time.Time) ([]SocialSentiment, error) {
+	fromUTC := from.UTC()
+	toUTC := to.UTC()
+
+	providerName, chain, err := s.resolveChain(marketType)
+	if err != nil {
+		return nil, err
+	}
+
+	key := repository.MarketDataCacheKey{
+		Ticker:    ticker,
+		Provider:  providerName,
+		DataType:  cacheDataTypeSocial,
+		Timeframe: newsCacheWindow(fromUTC, toUTC),
+		DateFrom:  &fromUTC,
+		DateTo:    &toUTC,
+	}
+
+	if cached, ok := s.loadCachedSocialSentiment(ctx, key); ok {
+		return normalizeSocialSentiment(cached, fromUTC, toUTC), nil
+	}
+
+	snapshots, err := chain.GetSocialSentiment(ctx, ticker, from, to)
+	if err != nil {
+		return nil, err
+	}
+	snapshots = normalizeSocialSentiment(snapshots, fromUTC, toUTC)
+
+	s.storeCached(ctx, key, snapshots, 30*time.Minute)
+
+	return snapshots, nil
 }
 
 func (s *DataService) resolveChain(marketType domain.MarketType) (string, DataProvider, error) {
