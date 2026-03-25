@@ -29,6 +29,7 @@ type Pipeline struct {
 	events    chan<- PipelineEvent
 	logger    *slog.Logger
 	config    PipelineConfig
+	nowMu     sync.RWMutex
 	now       func() time.Time
 }
 
@@ -65,6 +66,9 @@ func (p *Pipeline) SetNowFunc(now func() time.Time) {
 	if p == nil || now == nil {
 		return
 	}
+
+	p.nowMu.Lock()
+	defer p.nowMu.Unlock()
 
 	p.now = now
 }
@@ -428,7 +432,14 @@ func (p *Pipeline) emitEvent(event PipelineEvent) {
 }
 
 func (p *Pipeline) currentTime() time.Time {
-	if p == nil || p.now == nil {
+	if p == nil {
+		return time.Now()
+	}
+
+	p.nowMu.RLock()
+	defer p.nowMu.RUnlock()
+
+	if p.now == nil {
 		return time.Now()
 	}
 

@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/config"
@@ -68,6 +69,7 @@ type DataService struct {
 	cacheRepo   repository.MarketDataCacheRepository
 	historyRepo repository.HistoricalOHLCVRepository
 	logger      *slog.Logger
+	nowMu       sync.RWMutex
 	now         func() time.Time
 }
 
@@ -455,7 +457,14 @@ func (s *DataService) storeCached(ctx context.Context, key repository.MarketData
 }
 
 func (s *DataService) currentTime() time.Time {
-	if s == nil || s.now == nil {
+	if s == nil {
+		return time.Now()
+	}
+
+	s.nowMu.RLock()
+	defer s.nowMu.RUnlock()
+
+	if s.now == nil {
 		return time.Now()
 	}
 
@@ -468,6 +477,9 @@ func (s *DataService) SetNowFunc(now func() time.Time) {
 	if s == nil || now == nil {
 		return
 	}
+
+	s.nowMu.Lock()
+	defer s.nowMu.Unlock()
 
 	s.now = now
 }

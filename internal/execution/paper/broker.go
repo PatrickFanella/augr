@@ -25,6 +25,7 @@ const (
 // PaperBroker implements an in-memory execution.Broker for paper trading.
 type PaperBroker struct {
 	mu          sync.RWMutex
+	nowMu       sync.RWMutex
 	orders      map[string]*domain.Order
 	positions   map[string]*domain.Position
 	balance     execution.Balance
@@ -64,6 +65,9 @@ func (b *PaperBroker) SetNowFunc(now func() time.Time) {
 	if b == nil || now == nil {
 		return
 	}
+
+	b.nowMu.Lock()
+	defer b.nowMu.Unlock()
 
 	b.now = now
 }
@@ -245,7 +249,14 @@ func (b *PaperBroker) nextExternalIDLocked() string {
 }
 
 func (b *PaperBroker) currentTime() time.Time {
-	if b == nil || b.now == nil {
+	if b == nil {
+		return time.Now()
+	}
+
+	b.nowMu.RLock()
+	defer b.nowMu.RUnlock()
+
+	if b.now == nil {
 		return time.Now()
 	}
 
