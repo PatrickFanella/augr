@@ -17,8 +17,10 @@ import (
 )
 
 var (
-	ErrNilFillEngine = errors.New("backtest: fill engine is required")
-	ErrMissingBar    = errors.New("backtest: current market bar is required")
+	ErrNilFillEngine       = errors.New("backtest: fill engine is required")
+	ErrMissingBar          = errors.New("backtest: current market bar is required")
+	ErrInvalidBarTimestamp = errors.New("backtest: market bar timestamp is required")
+	errBacktestInvalidBar  = fmt.Errorf("backtest: %w", ErrInvalidBar)
 )
 
 // BrokerAdapter implements execution.Broker using the backtest fill engine.
@@ -57,8 +59,11 @@ func (b *BrokerAdapter) SetMarketBar(ticker string, bar domain.OHLCV) error {
 	if b == nil {
 		return errors.New("backtest: broker is required")
 	}
+	if bar.Timestamp.IsZero() {
+		return ErrInvalidBarTimestamp
+	}
 	if bar.Close <= 0 {
-		return ErrInvalidBar
+		return errBacktestInvalidBar
 	}
 
 	normalizedTicker, err := normalizeTicker(ticker)
@@ -73,6 +78,7 @@ func (b *BrokerAdapter) SetMarketBar(ticker string, bar domain.OHLCV) error {
 	if position, ok := b.positions[normalizedTicker]; ok {
 		position.CurrentPrice = floatPtr(bar.Close)
 	}
+	b.processRestingOrdersLocked(normalizedTicker, bar)
 	b.balance.Equity = b.markToMarketEquityLocked()
 	return nil
 }
@@ -106,10 +112,6 @@ func (b *BrokerAdapter) SubmitOrder(ctx context.Context, order *domain.Order) (s
 
 	bar, ok := b.bars[ticker]
 	if !ok {
-		order.SubmittedAt = timePtr(time.Now().UTC())
-		if order.CreatedAt.IsZero() {
-			order.CreatedAt = *order.SubmittedAt
-		}
 		order.Status = domain.OrderStatusRejected
 		b.orders[externalID] = cloneOrder(order)
 		return externalID, fmt.Errorf("%w for %s", ErrMissingBar, ticker)
@@ -260,6 +262,82 @@ func (b *BrokerAdapter) GetAccountBalance(ctx context.Context) (execution.Balanc
 func (b *BrokerAdapter) nextExternalIDLocked() string {
 	b.nextOrderID++
 	return fmt.Sprintf("backtest-%d", b.nextOrderID)
+}
+
+func (b *BrokerAdapter) processRestingOrdersLocked(ticker string, bar domain.OHLCV) {
+	orderIDs := make([]string, 0, len(b.orders))
+	for externalID, order := range b.orders {
+		if order.Ticker != ticker {
+			continue
+		}
+		if order.Status != domain.OrderStatusSubmitted && order.Status != domain.OrderStatusPartial {
+			continue
+		}
+		orderIDs = append(orderIDs, externalID)
+	}
+	sort.Strings(orderIDs)
+
+	for _, externalID := range orderIDs {
+		order := b.orders[externalID]
+		if order == nil {
+			continue
+		}
+		if order.Status != domain.OrderStatusSubmitted && order.Status != domain.OrderStatusPartial {
+			continue
+		}
+
+		remainingQuantity := order.Quantity - order.FilledQuantity
+		if remainingQuantity <= 0 {
+			continue
+		}
+
+		remainingOrder := cloneOrder(order)
+		remainingOrder.Quantity = remainingQuantity
+		remainingOrder.FilledQuantity = 0
+		remainingOrder.FilledAvgPrice = nil
+		remainingOrder.FilledAt = nil
+
+		result, err := b.fillEngine.SimulateFill(remainingOrder, bar)
+		switch {
+		case err == nil:
+		case errors.Is(err, ErrNoFill):
+			continue
+		default:
+			if order.FilledQuantity == 0 {
+				order.Status = domain.OrderStatusRejected
+			}
+			b.orders[externalID] = cloneOrder(order)
+			continue
+		}
+
+		if order.Side == domain.OrderSideBuy && b.balance.Cash < result.TotalCost {
+			if order.FilledQuantity == 0 {
+				order.Status = domain.OrderStatusRejected
+				b.orders[externalID] = cloneOrder(order)
+			}
+			continue
+		}
+
+		if order.Side == domain.OrderSideBuy {
+			b.balance.Cash -= result.TotalCost
+		} else {
+			b.balance.Cash += result.TotalCost
+		}
+
+		totalFilled := order.FilledQuantity + result.FillQuantity
+		order.FilledAvgPrice = weightedFillPrice(order.FilledAvgPrice, order.FilledQuantity, result.FillPrice, result.FillQuantity)
+		order.FilledQuantity = totalFilled
+		order.FilledAt = timePtr(currentBarTime(bar))
+		if totalFilled >= order.Quantity {
+			order.Status = domain.OrderStatusFilled
+		} else {
+			order.Status = domain.OrderStatusPartial
+		}
+
+		b.applyFillLocked(ticker, order.Side, result.FillQuantity, result.FillPrice, bar.Close, *order.FilledAt)
+		b.balance.BuyingPower = b.balance.Cash
+		b.orders[externalID] = cloneOrder(order)
+	}
 }
 
 func (b *BrokerAdapter) applyFillLocked(ticker string, side domain.OrderSide, quantity float64, fillPrice float64, markPrice float64, filledAt time.Time) {
@@ -417,8 +495,22 @@ func timePtr(value time.Time) *time.Time {
 }
 
 func currentBarTime(bar domain.OHLCV) time.Time {
-	if bar.Timestamp.IsZero() {
-		return time.Now().UTC()
-	}
 	return bar.Timestamp.UTC()
+}
+
+func weightedFillPrice(existing *float64, existingQty float64, fillPrice float64, fillQty float64) *float64 {
+	if fillQty <= 0 {
+		return cloneFloatPtr(existing)
+	}
+	if existing == nil || existingQty <= 0 {
+		return floatPtr(fillPrice)
+	}
+
+	totalQty := existingQty + fillQty
+	if totalQty <= 0 {
+		return cloneFloatPtr(existing)
+	}
+
+	weighted := ((*existing * existingQty) + (fillPrice * fillQty)) / totalQty
+	return floatPtr(weighted)
 }

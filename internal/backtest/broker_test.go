@@ -232,6 +232,12 @@ func TestBrokerAdapterSubmitOrder_RejectsMissingMarketBar(t *testing.T) {
 	if order.Status != domain.OrderStatusRejected {
 		t.Fatalf("SubmitOrder() status = %q, want %q", order.Status, domain.OrderStatusRejected)
 	}
+	if order.SubmittedAt != nil {
+		t.Fatalf("SubmittedAt = %v, want nil", order.SubmittedAt)
+	}
+	if !order.CreatedAt.IsZero() {
+		t.Fatalf("CreatedAt = %s, want zero", order.CreatedAt)
+	}
 
 	status, statusErr := broker.GetOrderStatus(context.Background(), externalID)
 	if statusErr != nil {
@@ -240,6 +246,153 @@ func TestBrokerAdapterSubmitOrder_RejectsMissingMarketBar(t *testing.T) {
 	if status != domain.OrderStatusRejected {
 		t.Fatalf("GetOrderStatus() = %q, want %q", status, domain.OrderStatusRejected)
 	}
+}
+
+func TestBrokerAdapterSetMarketBar_RejectsZeroTimestampAndWrapsInvalidBar(t *testing.T) {
+	t.Parallel()
+
+	engine, err := NewFillEngine(FillConfig{Slippage: FixedSlippage{}})
+	if err != nil {
+		t.Fatalf("NewFillEngine() error = %v", err)
+	}
+
+	broker, err := NewBrokerAdapter(1000, engine)
+	if err != nil {
+		t.Fatalf("NewBrokerAdapter() error = %v", err)
+	}
+
+	err = broker.SetMarketBar("AAPL", domain.OHLCV{Close: 100})
+	if !errors.Is(err, ErrInvalidBarTimestamp) {
+		t.Fatalf("SetMarketBar() error = %v, want %v", err, ErrInvalidBarTimestamp)
+	}
+
+	err = broker.SetMarketBar("AAPL", domain.OHLCV{
+		Timestamp: time.Date(2026, 3, 25, 15, 30, 0, 0, time.UTC),
+		Close:     0,
+	})
+	if !errors.Is(err, ErrInvalidBar) {
+		t.Fatalf("SetMarketBar() error = %v, want ErrInvalidBar", err)
+	}
+	if got := err.Error(); got != "backtest: fill: bar close price must be greater than zero" {
+		t.Fatalf("SetMarketBar() error = %q, want backtest-scoped invalid bar message", got)
+	}
+}
+
+func TestBrokerAdapterSetMarketBar_FillsRestingLimitOrderOnLaterBar(t *testing.T) {
+	t.Parallel()
+
+	engine, err := NewFillEngine(FillConfig{Slippage: FixedSlippage{}})
+	if err != nil {
+		t.Fatalf("NewFillEngine() error = %v", err)
+	}
+
+	broker, err := NewBrokerAdapter(1000, engine)
+	if err != nil {
+		t.Fatalf("NewBrokerAdapter() error = %v", err)
+	}
+
+	firstBar := testBar(105, 106, 104, 100)
+	if err := broker.SetMarketBar("AAPL", firstBar); err != nil {
+		t.Fatalf("SetMarketBar(first) error = %v", err)
+	}
+
+	order := &domain.Order{
+		Ticker:     "AAPL",
+		Side:       domain.OrderSideBuy,
+		OrderType:  domain.OrderTypeLimit,
+		Quantity:   1,
+		LimitPrice: fp(100),
+	}
+
+	externalID, err := broker.SubmitOrder(context.Background(), order)
+	if err != nil {
+		t.Fatalf("SubmitOrder() error = %v", err)
+	}
+	if order.Status != domain.OrderStatusSubmitted {
+		t.Fatalf("SubmitOrder() status = %q, want %q", order.Status, domain.OrderStatusSubmitted)
+	}
+
+	secondBar := testBar(99, 101, 98, 100)
+	if err := broker.SetMarketBar("AAPL", secondBar); err != nil {
+		t.Fatalf("SetMarketBar(second) error = %v", err)
+	}
+
+	status, err := broker.GetOrderStatus(context.Background(), externalID)
+	if err != nil {
+		t.Fatalf("GetOrderStatus() error = %v", err)
+	}
+	if status != domain.OrderStatusFilled {
+		t.Fatalf("GetOrderStatus() = %q, want %q", status, domain.OrderStatusFilled)
+	}
+
+	positions, err := broker.GetPositions(context.Background())
+	if err != nil {
+		t.Fatalf("GetPositions() error = %v", err)
+	}
+	if len(positions) != 1 {
+		t.Fatalf("GetPositions() len = %d, want 1", len(positions))
+	}
+	floatClose(t, positions[0].Quantity, 1, 1e-9)
+	floatClose(t, positions[0].AvgEntry, 99, 1e-9)
+}
+
+func TestBrokerAdapterSetMarketBar_CompletesRestingPartialOrderOnLaterBar(t *testing.T) {
+	t.Parallel()
+
+	engine, err := NewFillEngine(FillConfig{
+		Slippage:     FixedSlippage{},
+		MaxVolumePct: 0.5,
+	})
+	if err != nil {
+		t.Fatalf("NewFillEngine() error = %v", err)
+	}
+
+	broker, err := NewBrokerAdapter(2000, engine)
+	if err != nil {
+		t.Fatalf("NewBrokerAdapter() error = %v", err)
+	}
+
+	if err := broker.SetMarketBar("AAPL", testBar(100, 101, 99, 10)); err != nil {
+		t.Fatalf("SetMarketBar(first) error = %v", err)
+	}
+
+	order := &domain.Order{
+		Ticker:    "AAPL",
+		Side:      domain.OrderSideBuy,
+		OrderType: domain.OrderTypeMarket,
+		Quantity:  10,
+	}
+
+	externalID, err := broker.SubmitOrder(context.Background(), order)
+	if err != nil {
+		t.Fatalf("SubmitOrder() error = %v", err)
+	}
+	if order.Status != domain.OrderStatusPartial {
+		t.Fatalf("SubmitOrder() status = %q, want %q", order.Status, domain.OrderStatusPartial)
+	}
+	floatClose(t, order.FilledQuantity, 5, 1e-9)
+
+	if err := broker.SetMarketBar("AAPL", testBar(102, 103, 101, 10)); err != nil {
+		t.Fatalf("SetMarketBar(second) error = %v", err)
+	}
+
+	status, err := broker.GetOrderStatus(context.Background(), externalID)
+	if err != nil {
+		t.Fatalf("GetOrderStatus() error = %v", err)
+	}
+	if status != domain.OrderStatusFilled {
+		t.Fatalf("GetOrderStatus() = %q, want %q", status, domain.OrderStatusFilled)
+	}
+
+	positions, err := broker.GetPositions(context.Background())
+	if err != nil {
+		t.Fatalf("GetPositions() error = %v", err)
+	}
+	if len(positions) != 1 {
+		t.Fatalf("GetPositions() len = %d, want 1", len(positions))
+	}
+	floatClose(t, positions[0].Quantity, 10, 1e-9)
+	floatClose(t, positions[0].AvgEntry, 101, 1e-9)
 }
 
 func TestBrokerAdapterSetMarketBarUpdatesEquity(t *testing.T) {
