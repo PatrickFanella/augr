@@ -293,6 +293,9 @@ func TestBarAtReturnsErrorForMissingTimestamp(t *testing.T) {
 	if errors.Is(err, ErrFutureAccess) {
 		t.Fatal("BarAt(missing) should not be ErrFutureAccess")
 	}
+	if !errors.Is(err, ErrBarNotFound) {
+		t.Fatalf("BarAt(missing) error = %v, want %v", err, ErrBarNotFound)
+	}
 }
 
 func TestBarAtBeforeNextReturnsErrNotStarted(t *testing.T) {

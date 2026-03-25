@@ -18,12 +18,12 @@ var (
 	// call to Next.
 	ErrNotStarted = errors.New("backtest: iterator not started; call Next first")
 
-	// ErrExhausted indicates Next was called after all bars have been consumed.
-	ErrExhausted = errors.New("backtest: no more bars")
-
 	// ErrFutureAccess indicates an attempt to access data with a timestamp
 	// beyond the current simulated time.
 	ErrFutureAccess = errors.New("backtest: future data access denied")
+
+	// ErrBarNotFound indicates no bar exists at the requested timestamp.
+	ErrBarNotFound = errors.New("backtest: no bar at timestamp")
 )
 
 // ReplayIterator steps through a sorted slice of historical OHLCV bars one at
@@ -97,7 +97,7 @@ func (r *ReplayIterator) Bars() ([]domain.OHLCV, error) {
 // BarAt returns the bar whose timestamp matches t exactly.
 // Returns ErrFutureAccess if t is after the current simulated time, or
 // ErrNotStarted if Next has not been called yet.
-// Returns a wrapped error if no bar exists at the requested timestamp.
+// Returns ErrBarNotFound (wrapped) if no bar exists at the requested timestamp.
 func (r *ReplayIterator) BarAt(t time.Time) (domain.OHLCV, error) {
 	if r.index < 0 {
 		return domain.OHLCV{}, ErrNotStarted
@@ -106,12 +106,14 @@ func (r *ReplayIterator) BarAt(t time.Time) (domain.OHLCV, error) {
 	if t.After(simTime) {
 		return domain.OHLCV{}, fmt.Errorf("%w: requested %s, sim time %s", ErrFutureAccess, t, simTime)
 	}
-	for i := 0; i <= r.index; i++ {
-		if r.bars[i].Timestamp.Equal(t) {
-			return r.bars[i], nil
-		}
+	visible := r.bars[:r.index+1]
+	i := sort.Search(len(visible), func(i int) bool {
+		return !visible[i].Timestamp.Before(t)
+	})
+	if i < len(visible) && visible[i].Timestamp.Equal(t) {
+		return visible[i], nil
 	}
-	return domain.OHLCV{}, fmt.Errorf("backtest: no bar at timestamp %s", t)
+	return domain.OHLCV{}, fmt.Errorf("%w: %s", ErrBarNotFound, t)
 }
 
 // BarsInRange returns bars within [from, to] that have timestamps <= the
@@ -125,13 +127,21 @@ func (r *ReplayIterator) BarsInRange(from, to time.Time) ([]domain.OHLCV, error)
 	if to.After(simTime) {
 		return nil, fmt.Errorf("%w: requested to %s, sim time %s", ErrFutureAccess, to, simTime)
 	}
-	result := make([]domain.OHLCV, 0)
-	for i := 0; i <= r.index; i++ {
-		ts := r.bars[i].Timestamp
-		if (ts.Equal(from) || ts.After(from)) && (ts.Equal(to) || ts.Before(to)) {
-			result = append(result, r.bars[i])
-		}
+	visible := r.bars[:r.index+1]
+
+	start := sort.Search(len(visible), func(i int) bool {
+		return !visible[i].Timestamp.Before(from)
+	})
+	end := sort.Search(len(visible), func(i int) bool {
+		return visible[i].Timestamp.After(to)
+	})
+
+	if start >= end {
+		return []domain.OHLCV{}, nil
 	}
+
+	result := make([]domain.OHLCV, end-start)
+	copy(result, visible[start:end])
 	return result, nil
 }
 
