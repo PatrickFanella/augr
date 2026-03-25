@@ -79,7 +79,7 @@ func TestIsMarketOpenStockHolidayClosed(t *testing.T) {
 
 	tests := []time.Time{
 		time.Date(2024, time.December, 25, 10, 0, 0, 0, loc),
-		time.Date(2021, time.December, 31, 10, 0, 0, 0, loc),
+		time.Date(2024, time.November, 28, 10, 0, 0, 0, loc),
 	}
 
 	for _, at := range tests {

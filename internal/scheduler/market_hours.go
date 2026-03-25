@@ -7,14 +7,16 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 )
 
-var newYorkLocation = func() *time.Location {
-	loc, err := time.LoadLocation("America/New_York")
-	if err != nil {
-		return time.FixedZone("America/New_York", -5*60*60)
-	}
+var (
+	newYorkLocation    *time.Location
+	hasNewYorkLocation bool
+)
 
-	return loc
-}()
+func init() {
+	var err error
+	newYorkLocation, err = time.LoadLocation("America/New_York")
+	hasNewYorkLocation = err == nil
+}
 
 // IsMarketOpen reports whether the given market is open at the provided time.
 func IsMarketOpen(t time.Time, marketType domain.MarketType) bool {
@@ -33,6 +35,10 @@ func normalizeMarketType(marketType domain.MarketType) domain.MarketType {
 }
 
 func isUSEquityMarketOpen(t time.Time) bool {
+	if !hasNewYorkLocation {
+		return false
+	}
+
 	et := t.In(newYorkLocation)
 	if et.Weekday() == time.Saturday || et.Weekday() == time.Sunday {
 		return false
@@ -53,7 +59,6 @@ func isNYSEHoliday(t time.Time) bool {
 
 	holidays := []time.Time{
 		observedDate(year, time.January, 1),
-		observedDate(year+1, time.January, 1),
 		nthWeekdayOfMonth(year, time.January, time.Monday, 3),
 		nthWeekdayOfMonth(year, time.February, time.Monday, 3),
 		easterSunday(year).AddDate(0, 0, -2),
@@ -112,6 +117,7 @@ func sameDay(a, b time.Time) bool {
 	return ay == by && am == bm && ad == bd
 }
 
+// easterSunday computes Easter Sunday using the Anonymous Gregorian algorithm.
 func easterSunday(year int) time.Time {
 	a := year % 19
 	b := year / 100
