@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -13,12 +14,14 @@ import (
 	"github.com/robfig/cron/v3"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/agent"
+	"github.com/PatrickFanella/get-rich-quick/internal/backtest"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 	"github.com/PatrickFanella/get-rich-quick/internal/risk"
 )
 
 const defaultStrategyPageSize = 100
+const defaultBacktestConfigPageSize = 100
 const defaultJobTimeout = 10 * time.Minute
 
 var ErrAlreadyStarted = errors.New("scheduler: already started")
@@ -33,21 +36,44 @@ type cronEngine interface {
 	Stop() context.Context
 }
 
+type backtestRunner interface {
+	Run(ctx context.Context, config domain.BacktestConfig) (*backtest.OrchestratorResult, error)
+}
+
+type Option func(*Scheduler)
+
+// WithBacktestScheduling enables cron-triggered backtest runs and persistence.
+func WithBacktestScheduling(
+	configRepo repository.BacktestConfigRepository,
+	runRepo repository.BacktestRunRepository,
+	runner backtestRunner,
+) Option {
+	return func(s *Scheduler) {
+		s.backtestConfigRepo = configRepo
+		s.backtestRunRepo = runRepo
+		s.backtestRunner = runner
+	}
+}
+
 // Scheduler loads active strategies and triggers pipeline runs on cron schedules.
 type Scheduler struct {
-	mu           sync.Mutex
-	cron         cronEngine
-	strategyRepo repository.StrategyRepository
-	pipeline     pipelineExecutor
-	riskEngine   risk.RiskEngine
-	logger       *slog.Logger
-	nowFunc      func() time.Time
-	newCron      func() cronEngine
-	ctx          context.Context
-	cancel       context.CancelFunc
-	jobTimeout   time.Duration
-	dedup        strategyDedup
-	riskMonitor  *riskMonitor
+	mu                 sync.Mutex
+	cron               cronEngine
+	strategyRepo       repository.StrategyRepository
+	pipeline           pipelineExecutor
+	riskEngine         risk.RiskEngine
+	backtestConfigRepo repository.BacktestConfigRepository
+	backtestRunRepo    repository.BacktestRunRepository
+	backtestRunner     backtestRunner
+	logger             *slog.Logger
+	nowFunc            func() time.Time
+	newCron            func() cronEngine
+	ctx                context.Context
+	cancel             context.CancelFunc
+	jobTimeout         time.Duration
+	dedup              strategyDedup
+	backtestDedup      strategyDedup
+	riskMonitor        *riskMonitor
 }
 
 // NewScheduler constructs a Scheduler with the supplied dependencies.
@@ -56,12 +82,13 @@ func NewScheduler(
 	pipeline pipelineExecutor,
 	riskEngine risk.RiskEngine,
 	logger *slog.Logger,
+	opts ...Option,
 ) *Scheduler {
 	if logger == nil {
 		logger = slog.Default()
 	}
 
-	return &Scheduler{
+	s := &Scheduler{
 		strategyRepo: strategyRepo,
 		pipeline:     pipeline,
 		riskEngine:   riskEngine,
@@ -77,6 +104,14 @@ func NewScheduler(
 			logger:       logger,
 		},
 	}
+
+	for _, opt := range opts {
+		if opt != nil {
+			opt(s)
+		}
+	}
+
+	return s
 }
 
 // Start loads all active strategies, registers cron jobs, and starts the scheduler.
@@ -92,6 +127,10 @@ func (s *Scheduler) Start() error {
 	}
 
 	strategies, err := s.loadActiveStrategies(context.Background())
+	if err != nil {
+		return err
+	}
+	backtests, err := s.loadScheduledBacktests(context.Background())
 	if err != nil {
 		return err
 	}
@@ -142,10 +181,39 @@ func (s *Scheduler) Start() error {
 		)
 	}
 
+	for _, config := range backtests {
+		spec := strings.TrimSpace(config.ScheduleCron)
+		if spec == "" {
+			continue
+		}
+
+		config := config
+		entryID, err := engine.AddFunc(spec, func() {
+			s.runBacktest(config)
+		})
+		if err != nil {
+			_, cancel := s.clearStateLocked()
+			if cancel != nil {
+				cancel()
+			}
+			return fmt.Errorf("scheduler: register backtest %s schedule %q: %w", config.ID, spec, err)
+		}
+
+		registered++
+		s.logger.Info("scheduler: registered backtest schedule",
+			slog.String("backtest_config_id", config.ID.String()),
+			slog.String("strategy_id", config.StrategyID.String()),
+			slog.String("name", config.Name),
+			slog.String("schedule", spec),
+			slog.Int("entry_id", int(entryID)),
+		)
+	}
+
 	engine.Start()
 
 	s.logger.Info("scheduler: started",
 		slog.Int("active_strategies", len(strategies)),
+		slog.Int("scheduled_backtests", len(backtests)),
 		slog.Int("registered_jobs", registered),
 	)
 
@@ -187,6 +255,34 @@ func (s *Scheduler) loadActiveStrategies(ctx context.Context) ([]domain.Strategy
 	}
 
 	return strategies, nil
+}
+
+func (s *Scheduler) loadScheduledBacktests(ctx context.Context) ([]domain.BacktestConfig, error) {
+	if s.backtestConfigRepo == nil && s.backtestRunRepo == nil && s.backtestRunner == nil {
+		return nil, nil
+	}
+	if s.backtestConfigRepo == nil || s.backtestRunRepo == nil || s.backtestRunner == nil {
+		return nil, fmt.Errorf("scheduler: backtest scheduling requires config repository, run repository, and runner")
+	}
+
+	var configs []domain.BacktestConfig
+	for offset := 0; ; offset += defaultBacktestConfigPageSize {
+		batch, err := s.backtestConfigRepo.List(ctx, repository.BacktestConfigFilter{}, defaultBacktestConfigPageSize, offset)
+		if err != nil {
+			return nil, fmt.Errorf("scheduler: list backtest configs: %w", err)
+		}
+
+		for _, config := range batch {
+			if strings.TrimSpace(config.ScheduleCron) != "" {
+				configs = append(configs, config)
+			}
+		}
+		if len(batch) < defaultBacktestConfigPageSize {
+			break
+		}
+	}
+
+	return configs, nil
 }
 
 func (s *Scheduler) runStrategy(strategy domain.Strategy) {
@@ -256,6 +352,64 @@ func (s *Scheduler) runStrategy(strategy domain.Strategy) {
 	)
 }
 
+func (s *Scheduler) runBacktest(config domain.BacktestConfig) {
+	if !s.backtestDedup.TryAcquire(config.ID) {
+		s.logger.Warn("scheduler: skipping backtest; already in flight",
+			slog.String("backtest_config_id", config.ID.String()),
+			slog.String("name", config.Name),
+		)
+		return
+	}
+	defer s.backtestDedup.Release(config.ID)
+
+	triggeredAt := s.nowFunc().UTC()
+	started := time.Now()
+	ctx, cancel := s.jobContext()
+	defer cancel()
+
+	s.logger.Info("scheduler: triggered backtest schedule",
+		slog.String("backtest_config_id", config.ID.String()),
+		slog.String("strategy_id", config.StrategyID.String()),
+		slog.String("name", config.Name),
+		slog.Time("triggered_at", triggeredAt),
+	)
+
+	result, err := s.backtestRunner.Run(ctx, config)
+	if err != nil {
+		s.logger.Error("scheduler: backtest execution failed",
+			slog.String("backtest_config_id", config.ID.String()),
+			slog.String("name", config.Name),
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	run, err := newBacktestRun(config.ID, triggeredAt, time.Since(started), result)
+	if err != nil {
+		s.logger.Error("scheduler: failed to encode backtest result",
+			slog.String("backtest_config_id", config.ID.String()),
+			slog.String("name", config.Name),
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	if err := s.backtestRunRepo.Create(ctx, run); err != nil {
+		s.logger.Error("scheduler: failed to persist backtest run",
+			slog.String("backtest_config_id", config.ID.String()),
+			slog.String("name", config.Name),
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	s.logger.Info("scheduler: backtest execution completed",
+		slog.String("backtest_config_id", config.ID.String()),
+		slog.String("name", config.Name),
+		slog.String("run_id", run.ID.String()),
+	)
+}
+
 func (s *Scheduler) clearStateLocked() (cronEngine, context.CancelFunc) {
 	engine := s.cron
 	cancel := s.cancel
@@ -279,4 +433,39 @@ func (s *Scheduler) jobContext() (context.Context, context.CancelFunc) {
 	}
 
 	return context.WithTimeout(baseCtx, timeout)
+}
+
+func newBacktestRun(
+	configID uuid.UUID,
+	triggeredAt time.Time,
+	duration time.Duration,
+	result *backtest.OrchestratorResult,
+) (*domain.BacktestRun, error) {
+	if result == nil {
+		return nil, fmt.Errorf("scheduler: backtest result is required")
+	}
+
+	metricsJSON, err := json.Marshal(result.Metrics)
+	if err != nil {
+		return nil, fmt.Errorf("scheduler: marshal backtest metrics: %w", err)
+	}
+	tradeLogJSON, err := json.Marshal(result.Trades)
+	if err != nil {
+		return nil, fmt.Errorf("scheduler: marshal backtest trades: %w", err)
+	}
+	equityCurveJSON, err := json.Marshal(result.EquityCurve)
+	if err != nil {
+		return nil, fmt.Errorf("scheduler: marshal backtest equity curve: %w", err)
+	}
+
+	return &domain.BacktestRun{
+		BacktestConfigID:  configID,
+		Metrics:           metricsJSON,
+		TradeLog:          tradeLogJSON,
+		EquityCurve:       equityCurveJSON,
+		RunTimestamp:      triggeredAt,
+		Duration:          duration,
+		PromptVersion:     result.PromptVersion,
+		PromptVersionHash: result.PromptVersionHash,
+	}, nil
 }

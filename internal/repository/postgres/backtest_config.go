@@ -41,13 +41,14 @@ func (r *BacktestConfigRepo) Create(ctx context.Context, config *domain.Backtest
 
 	row := r.pool.QueryRow(ctx,
 		`INSERT INTO backtest_configs (
-			strategy_id, name, description, start_date, end_date, simulation_params
+			strategy_id, name, description, schedule_cron, start_date, end_date, simulation_params
 		)
-		 VALUES ($1, $2, $3, $4, $5, $6)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)
 		 RETURNING id, created_at, updated_at`,
 		config.StrategyID,
 		config.Name,
 		config.Description,
+		config.ScheduleCron,
 		config.StartDate,
 		config.EndDate,
 		simulationJSON,
@@ -117,15 +118,17 @@ func (r *BacktestConfigRepo) Update(ctx context.Context, config *domain.Backtest
 		 SET strategy_id = $1,
 		     name = $2,
 		     description = $3,
-		     start_date = $4,
-		     end_date = $5,
-		     simulation_params = $6,
+		     schedule_cron = $4,
+		     start_date = $5,
+		     end_date = $6,
+		     simulation_params = $7,
 		     updated_at = NOW()
-		 WHERE id = $7
+		 WHERE id = $8
 		 RETURNING updated_at`,
 		config.StrategyID,
 		config.Name,
 		config.Description,
+		config.ScheduleCron,
 		config.StartDate,
 		config.EndDate,
 		simulationJSON,
@@ -156,7 +159,7 @@ func (r *BacktestConfigRepo) Delete(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-const backtestConfigSelectSQL = `SELECT id, strategy_id, name, COALESCE(description, ''), start_date, end_date, simulation_params, created_at, updated_at
+const backtestConfigSelectSQL = `SELECT id, strategy_id, name, COALESCE(description, ''), COALESCE(schedule_cron, ''), start_date, end_date, simulation_params, created_at, updated_at
 	 FROM backtest_configs`
 
 // scanBacktestConfig scans a single row (pgx.Row or pgx.Rows) into a BacktestConfig.
@@ -171,6 +174,7 @@ func scanBacktestConfig(sc scanner) (*domain.BacktestConfig, error) {
 		&config.StrategyID,
 		&config.Name,
 		&config.Description,
+		&config.ScheduleCron,
 		&config.StartDate,
 		&config.EndDate,
 		&simulationJSON,
