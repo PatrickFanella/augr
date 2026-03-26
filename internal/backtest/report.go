@@ -46,7 +46,7 @@ type ReportFillConfiguration struct {
 	Slippage         ReportModelConfiguration  `json:"slippage"`
 	Spread           *ReportModelConfiguration `json:"spread,omitempty"`
 	TransactionCosts ReportTransactionCosts    `json:"transaction_costs"`
-	MaxVolumePct     float64                   `json:"max_volume_pct,omitempty"`
+	MaxVolumePct     float64                   `json:"max_volume_pct"`
 }
 
 // ReportModelConfiguration describes a configured fill sub-model.
