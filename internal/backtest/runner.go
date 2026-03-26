@@ -32,11 +32,12 @@ type BarResult struct {
 	Err   error
 }
 
-// RunResult captures the full backtest outcome including per-bar results and
-// the aggregated equity curve.
+// RunResult captures the full backtest outcome including per-bar results, the
+// aggregated equity curve, and drawdown overlay data derived from that curve.
 type RunResult struct {
-	BarResults  []BarResult
-	EquityCurve []EquityPoint
+	BarResults        []BarResult
+	EquityCurve       []EquityPoint
+	EquityCurveReport EquityCurveReport
 }
 
 // Runner orchestrates the backtest loop: it iterates over historical bars,
@@ -162,5 +163,6 @@ func (r *Runner) Run(ctx context.Context) (*RunResult, error) {
 	}
 
 	result.EquityCurve = r.tracker.EquityCurve()
+	result.EquityCurveReport = GenerateEquityCurveReport(result.EquityCurve)
 	return result, nil
 }

@@ -151,6 +151,12 @@ func TestRunnerRunProcessesAllBars(t *testing.T) {
 	if len(result.EquityCurve) != 3 {
 		t.Errorf("Run() equity curve len = %d, want 3", len(result.EquityCurve))
 	}
+	if len(result.EquityCurveReport.Points) != 3 {
+		t.Errorf("Run() equity report points len = %d, want 3", len(result.EquityCurveReport.Points))
+	}
+	if len(result.EquityCurveReport.DrawdownPeriods) != 0 {
+		t.Errorf("Run() drawdown periods len = %d, want 0", len(result.EquityCurveReport.DrawdownPeriods))
+	}
 }
 
 func TestRunnerRunRespectsContextCancellation(t *testing.T) {
@@ -239,6 +245,18 @@ func TestRunnerRunAdvancesClock(t *testing.T) {
 	}
 	if !result.EquityCurve[1].Timestamp.Equal(t2) {
 		t.Errorf("equity[1].Timestamp = %v, want %v", result.EquityCurve[1].Timestamp, t2)
+	}
+	if len(result.EquityCurveReport.Points) != 2 {
+		t.Fatalf("equity report points len = %d, want 2", len(result.EquityCurveReport.Points))
+	}
+	for i, point := range result.EquityCurveReport.Points {
+		if !point.Timestamp.Equal(result.EquityCurve[i].Timestamp) {
+			t.Errorf("equity report point[%d].Timestamp = %v, want %v", i, point.Timestamp, result.EquityCurve[i].Timestamp)
+		}
+		assertFloatEqual(t, point.PortfolioValue, result.EquityCurve[i].Equity, "equity report PortfolioValue")
+		assertFloatEqual(t, point.PeakEquity, result.EquityCurve[i].Equity, "equity report PeakEquity")
+		assertFloatEqual(t, point.DrawdownValue, 0, "equity report DrawdownValue")
+		assertFloatEqual(t, point.DrawdownPct, 0, "equity report DrawdownPct")
 	}
 }
 
