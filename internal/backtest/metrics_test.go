@@ -304,4 +304,69 @@ func TestComputeMetricsBenchmarkZeroTrackingError(t *testing.T) {
 	if m.Beta != 0 {
 		t.Errorf("Beta = %f, want 0 when benchmark variance is zero", m.Beta)
 	}
+	if m.Alpha != 0 {
+		t.Errorf("Alpha = %f, want 0 when strategy returns match zero-variance benchmark", m.Alpha)
+	}
+}
+
+func TestComputeMetricsBenchmarkOrderIndependence(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	curve := []EquityPoint{
+		{Timestamp: base, Equity: 100},
+		{Timestamp: base.Add(24 * time.Hour), Equity: 110},
+		{Timestamp: base.Add(48 * time.Hour), Equity: 116.6},
+	}
+	sortedBenchmark := []domain.OHLCV{
+		makeBar(base, 100),
+		makeBar(base.Add(24*time.Hour), 105),
+		makeBar(base.Add(48*time.Hour), 108.15),
+	}
+	unsortedBenchmark := []domain.OHLCV{
+		makeBar(base.Add(48*time.Hour), 108.15),
+		makeBar(base, 100),
+		makeBar(base.Add(24*time.Hour), 105),
+	}
+
+	sortedMetrics := ComputeMetrics(curve, sortedBenchmark)
+	unsortedMetrics := ComputeMetrics(curve, unsortedBenchmark)
+
+	if math.Abs(sortedMetrics.BuyAndHoldReturn-unsortedMetrics.BuyAndHoldReturn) > 1e-9 {
+		t.Errorf("BuyAndHoldReturn mismatch for unsorted bars: sorted=%f unsorted=%f", sortedMetrics.BuyAndHoldReturn, unsortedMetrics.BuyAndHoldReturn)
+	}
+	if math.Abs(sortedMetrics.Beta-unsortedMetrics.Beta) > 1e-9 {
+		t.Errorf("Beta mismatch for unsorted bars: sorted=%f unsorted=%f", sortedMetrics.Beta, unsortedMetrics.Beta)
+	}
+	if math.Abs(sortedMetrics.Alpha-unsortedMetrics.Alpha) > 1e-9 {
+		t.Errorf("Alpha mismatch for unsorted bars: sorted=%f unsorted=%f", sortedMetrics.Alpha, unsortedMetrics.Alpha)
+	}
+	if math.Abs(sortedMetrics.InformationRatio-unsortedMetrics.InformationRatio) > 1e-9 {
+		t.Errorf("InformationRatio mismatch for unsorted bars: sorted=%f unsorted=%f", sortedMetrics.InformationRatio, unsortedMetrics.InformationRatio)
+	}
+}
+
+func TestComputeMetricsBenchmarkSampleTooShort(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	curve := []EquityPoint{
+		{Timestamp: base, Equity: 100},
+		{Timestamp: base.Add(24 * time.Hour), Equity: 110},
+	}
+	benchmark := []domain.OHLCV{
+		makeBar(base, 100),
+		makeBar(base.Add(24*time.Hour), 105),
+	}
+
+	m := ComputeMetrics(curve, benchmark)
+	if m.Beta != 0 {
+		t.Errorf("Beta = %f, want 0 for single aligned return observation", m.Beta)
+	}
+	if m.Alpha != 0 {
+		t.Errorf("Alpha = %f, want 0 for single aligned return observation", m.Alpha)
+	}
+	if m.InformationRatio != 0 {
+		t.Errorf("InformationRatio = %f, want 0 for single aligned return observation", m.InformationRatio)
+	}
 }

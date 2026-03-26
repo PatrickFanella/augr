@@ -2,6 +2,7 @@ package backtest
 
 import (
 	"math"
+	"sort"
 	"time"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
@@ -76,12 +77,14 @@ func ComputeMetrics(curve []EquityPoint, benchmarkBars []domain.OHLCV) Metrics {
 		returns = append(returns, (curve[i].Equity-prev)/prev)
 	}
 
-	m.BuyAndHoldReturn = buyAndHoldReturn(benchmarkBars)
-	benchmarkReturns := barReturns(benchmarkBars)
+	sortedBenchmarkBars := sortedBarsByTimestamp(benchmarkBars)
+	m.BuyAndHoldReturn = buyAndHoldReturn(sortedBenchmarkBars)
+	benchmarkReturns := barReturns(sortedBenchmarkBars)
 	alignedStrategy, alignedBenchmark := alignReturnSeries(returns, benchmarkReturns)
-	if len(alignedStrategy) > 0 {
-		m.Beta = beta(alignedStrategy, alignedBenchmark)
-		m.Alpha = alpha(alignedStrategy, alignedBenchmark, m.Beta)
+	if len(alignedStrategy) >= 2 {
+		b, benchmarkVariance := beta(alignedStrategy, alignedBenchmark)
+		m.Beta = b
+		m.Alpha = alpha(alignedStrategy, alignedBenchmark, b, benchmarkVariance)
 		m.InformationRatio = informationRatio(alignedStrategy, alignedBenchmark)
 	}
 
@@ -170,6 +173,14 @@ func buyAndHoldReturn(bars []domain.OHLCV) float64 {
 	return (bars[len(bars)-1].Close - bars[0].Close) / bars[0].Close
 }
 
+func sortedBarsByTimestamp(bars []domain.OHLCV) []domain.OHLCV {
+	sorted := append([]domain.OHLCV(nil), bars...)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		return sorted[i].Timestamp.Before(sorted[j].Timestamp)
+	})
+	return sorted
+}
+
 func barReturns(bars []domain.OHLCV) []float64 {
 	if len(bars) < 2 {
 		return nil
@@ -197,7 +208,7 @@ func alignReturnSeries(a, b []float64) ([]float64, []float64) {
 	return a[:n], b[:n]
 }
 
-func beta(strategyReturns, benchmarkReturns []float64) float64 {
+func beta(strategyReturns, benchmarkReturns []float64) (float64, float64) {
 	meanStrategy := mean(strategyReturns)
 	meanBenchmark := mean(benchmarkReturns)
 
@@ -210,14 +221,20 @@ func beta(strategyReturns, benchmarkReturns []float64) float64 {
 		variance += b * b
 	}
 	if variance == 0 {
-		return 0
+		return 0, 0
 	}
-	return covariance / variance
+	return covariance / variance, variance
 }
 
-func alpha(strategyReturns, benchmarkReturns []float64, b float64) float64 {
+func alpha(strategyReturns, benchmarkReturns []float64, b float64, benchmarkVariance float64) float64 {
 	meanStrategy := mean(strategyReturns)
 	meanBenchmark := mean(benchmarkReturns)
+
+	if benchmarkVariance == 0 {
+		perBarAlpha := meanStrategy - meanBenchmark
+		return perBarAlpha * annualTradingDays
+	}
+
 	perBarAlpha := meanStrategy - (b * meanBenchmark)
 	return perBarAlpha * annualTradingDays
 }
