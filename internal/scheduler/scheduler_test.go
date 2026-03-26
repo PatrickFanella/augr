@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -14,6 +15,7 @@ import (
 	"github.com/robfig/cron/v3"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/agent"
+	"github.com/PatrickFanella/get-rich-quick/internal/backtest"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 	"github.com/PatrickFanella/get-rich-quick/internal/risk"
@@ -104,6 +106,113 @@ func (m *mockPipeline) firstContext() (context.Context, bool) {
 		return nil, false
 	}
 	return m.ctxs[0], true
+}
+
+type mockBacktestConfigRepo struct {
+	mu      sync.Mutex
+	configs []domain.BacktestConfig
+	filters []repository.BacktestConfigFilter
+	listErr error
+}
+
+func (m *mockBacktestConfigRepo) Create(context.Context, *domain.BacktestConfig) error { return nil }
+
+func (m *mockBacktestConfigRepo) Get(context.Context, uuid.UUID) (*domain.BacktestConfig, error) {
+	return nil, nil
+}
+
+func (m *mockBacktestConfigRepo) List(_ context.Context, filter repository.BacktestConfigFilter, limit, offset int) ([]domain.BacktestConfig, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.filters = append(m.filters, filter)
+	if m.listErr != nil {
+		return nil, m.listErr
+	}
+	if offset >= len(m.configs) {
+		return nil, nil
+	}
+
+	end := offset + limit
+	if end > len(m.configs) {
+		end = len(m.configs)
+	}
+
+	return append([]domain.BacktestConfig(nil), m.configs[offset:end]...), nil
+}
+
+func (m *mockBacktestConfigRepo) Update(context.Context, *domain.BacktestConfig) error { return nil }
+
+func (m *mockBacktestConfigRepo) Delete(context.Context, uuid.UUID) error { return nil }
+
+type mockBacktestRunRepo struct {
+	mu        sync.Mutex
+	runs      []*domain.BacktestRun
+	createErr error
+}
+
+func (m *mockBacktestRunRepo) Create(_ context.Context, run *domain.BacktestRun) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.createErr != nil {
+		return m.createErr
+	}
+
+	copied := *run
+	if copied.ID == uuid.Nil {
+		copied.ID = uuid.New()
+	}
+	if copied.CreatedAt.IsZero() {
+		copied.CreatedAt = time.Now().UTC()
+	}
+	if copied.UpdatedAt.IsZero() {
+		copied.UpdatedAt = copied.CreatedAt
+	}
+	m.runs = append(m.runs, &copied)
+	run.ID = copied.ID
+	run.CreatedAt = copied.CreatedAt
+	run.UpdatedAt = copied.UpdatedAt
+	return nil
+}
+
+func (m *mockBacktestRunRepo) Get(context.Context, uuid.UUID) (*domain.BacktestRun, error) {
+	return nil, nil
+}
+
+func (m *mockBacktestRunRepo) List(context.Context, repository.BacktestRunFilter, int, int) ([]domain.BacktestRun, error) {
+	return nil, nil
+}
+
+func (m *mockBacktestRunRepo) firstRun() (*domain.BacktestRun, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(m.runs) == 0 {
+		return nil, false
+	}
+	copied := *m.runs[0]
+	return &copied, true
+}
+
+type mockBacktestRunner struct {
+	mu     sync.Mutex
+	calls  []domain.BacktestConfig
+	result *backtest.OrchestratorResult
+	err    error
+	ctxs   []context.Context
+}
+
+func (m *mockBacktestRunner) Run(ctx context.Context, config domain.BacktestConfig) (*backtest.OrchestratorResult, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.calls = append(m.calls, config)
+	m.ctxs = append(m.ctxs, ctx)
+	return m.result, m.err
+}
+
+func (m *mockBacktestRunner) callCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.calls)
 }
 
 type mockRiskEngine struct {
@@ -411,5 +520,112 @@ func TestSchedulerRunStrategySkipsOutsideStockMarketHours(t *testing.T) {
 
 	if got := pipeline.callCount(); got != 0 {
 		t.Fatalf("pipeline calls = %d, want 0", got)
+	}
+}
+
+func TestSchedulerStartTriggersScheduledBacktestAndPersistsRun(t *testing.T) {
+	configID := uuid.New()
+	triggeredAt := time.Date(2026, time.March, 25, 2, 0, 0, 0, time.UTC)
+
+	backtestRepo := &mockBacktestConfigRepo{
+		configs: []domain.BacktestConfig{
+			{
+				ID:           configID,
+				StrategyID:   uuid.New(),
+				Name:         "Nightly benchmark",
+				ScheduleCron: "@daily",
+				StartDate:    time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+				EndDate:      time.Date(2024, 12, 31, 0, 0, 0, 0, time.UTC),
+				Simulation: domain.BacktestSimulationParameters{
+					InitialCapital: 100000,
+				},
+			},
+		},
+	}
+	runRepo := &mockBacktestRunRepo{}
+	runner := &mockBacktestRunner{
+		result: &backtest.OrchestratorResult{
+			Metrics: backtest.Metrics{
+				TotalReturn: 0.12,
+				SharpeRatio: 1.8,
+			},
+			Trades: []domain.Trade{
+				{Ticker: "BTCUSD"},
+			},
+			EquityCurve: []backtest.EquityPoint{
+				{Timestamp: triggeredAt, Equity: 100000},
+			},
+			PromptVersion:     "prompt-v1",
+			PromptVersionHash: "hash-v1",
+		},
+	}
+	fakeCron := &fakeCronEngine{}
+	s := NewScheduler(
+		&mockStrategyRepo{},
+		&mockPipeline{},
+		&mockRiskEngine{},
+		testLogger(),
+		WithBacktestScheduling(backtestRepo, runRepo, runner),
+	)
+	s.newCron = func() cronEngine { return fakeCron }
+	s.nowFunc = func() time.Time { return triggeredAt }
+
+	if err := s.Start(); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	defer s.Stop()
+
+	if got := fakeCron.jobCount(); got != 1 {
+		t.Fatalf("registered jobs = %d, want 1", got)
+	}
+
+	fakeCron.Run(0)
+
+	if got := runner.callCount(); got != 1 {
+		t.Fatalf("backtest runner calls = %d, want 1", got)
+	}
+
+	run, ok := runRepo.firstRun()
+	if !ok {
+		t.Fatal("expected persisted backtest run")
+	}
+	if run.BacktestConfigID != configID {
+		t.Fatalf("run BacktestConfigID = %s, want %s", run.BacktestConfigID, configID)
+	}
+	if !run.RunTimestamp.Equal(triggeredAt) {
+		t.Fatalf("run RunTimestamp = %s, want %s", run.RunTimestamp, triggeredAt)
+	}
+	if run.Duration < 0 {
+		t.Fatalf("run Duration = %s, want non-negative", run.Duration)
+	}
+	if run.PromptVersion != "prompt-v1" {
+		t.Fatalf("run PromptVersion = %q, want %q", run.PromptVersion, "prompt-v1")
+	}
+	if run.PromptVersionHash != "hash-v1" {
+		t.Fatalf("run PromptVersionHash = %q, want %q", run.PromptVersionHash, "hash-v1")
+	}
+
+	var metrics backtest.Metrics
+	if err := json.Unmarshal(run.Metrics, &metrics); err != nil {
+		t.Fatalf("unmarshal metrics: %v", err)
+	}
+	if metrics.TotalReturn != 0.12 {
+		t.Fatalf("metrics TotalReturn = %v, want %v", metrics.TotalReturn, 0.12)
+	}
+
+	var trades []domain.Trade
+	if err := json.Unmarshal(run.TradeLog, &trades); err != nil {
+		t.Fatalf("unmarshal trade log: %v", err)
+	}
+	if len(trades) != 1 || trades[0].Ticker != "BTCUSD" {
+		t.Fatalf("trade log = %+v, want one BTCUSD trade", trades)
+	}
+
+	var curve []backtest.EquityPoint
+	if err := json.Unmarshal(run.EquityCurve, &curve); err != nil {
+		t.Fatalf("unmarshal equity curve: %v", err)
+	}
+	if len(curve) != 1 || !curve[0].Timestamp.Equal(triggeredAt) {
+		t.Fatalf("equity curve = %+v, want timestamp %s", curve, triggeredAt)
 	}
 }

@@ -22,15 +22,16 @@ type BacktestSimulationParameters struct {
 
 // BacktestConfig represents a reusable backtest definition.
 type BacktestConfig struct {
-	ID          uuid.UUID                    `json:"id"`
-	StrategyID  uuid.UUID                    `json:"strategy_id"`
-	Name        string                       `json:"name"`
-	Description string                       `json:"description,omitempty"`
-	StartDate   time.Time                    `json:"start_date"`
-	EndDate     time.Time                    `json:"end_date"`
-	Simulation  BacktestSimulationParameters `json:"simulation"`
-	CreatedAt   time.Time                    `json:"created_at"`
-	UpdatedAt   time.Time                    `json:"updated_at"`
+	ID           uuid.UUID                    `json:"id"`
+	StrategyID   uuid.UUID                    `json:"strategy_id"`
+	Name         string                       `json:"name"`
+	Description  string                       `json:"description,omitempty"`
+	ScheduleCron string                       `json:"schedule_cron,omitempty"`
+	StartDate    time.Time                    `json:"start_date"`
+	EndDate      time.Time                    `json:"end_date"`
+	Simulation   BacktestSimulationParameters `json:"simulation"`
+	CreatedAt    time.Time                    `json:"created_at"`
+	UpdatedAt    time.Time                    `json:"updated_at"`
 }
 
 // Validate checks that the backtest configuration has valid required fields.

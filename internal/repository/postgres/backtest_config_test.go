@@ -143,11 +143,12 @@ func TestBacktestConfigRepoIntegration_CRUD(t *testing.T) {
 	strategyID := createTestPositionStrategy(t, ctx, pool)
 
 	config := &domain.BacktestConfig{
-		StrategyID:  strategyID,
-		Name:        "Momentum 2024 baseline",
-		Description: "Reusable baseline backtest",
-		StartDate:   time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
-		EndDate:     time.Date(2024, 12, 31, 0, 0, 0, 0, time.UTC),
+		StrategyID:   strategyID,
+		Name:         "Momentum 2024 baseline",
+		Description:  "Reusable baseline backtest",
+		ScheduleCron: "@weekly",
+		StartDate:    time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+		EndDate:      time.Date(2024, 12, 31, 0, 0, 0, 0, time.UTC),
 		Simulation: domain.BacktestSimulationParameters{
 			InitialCapital:   100000,
 			SlippageModel:    json.RawMessage(`{"type":"proportional","basis_points":12}`),
@@ -185,6 +186,7 @@ func TestBacktestConfigRepoIntegration_CRUD(t *testing.T) {
 	originalUpdatedAt := config.UpdatedAt
 	time.Sleep(time.Millisecond)
 	config.Description = "Updated reusable baseline backtest"
+	config.ScheduleCron = "0 2 * * *"
 	config.EndDate = time.Date(2025, 1, 31, 0, 0, 0, 0, time.UTC)
 	config.Simulation.InitialCapital = 250000
 	config.Simulation.TransactionCosts = json.RawMessage(`{"commission_per_order":0.75,"exchange_fee_pct":0.0005}`)
@@ -221,6 +223,7 @@ func ensureBacktestConfigTable(t *testing.T, ctx context.Context, pool *pgxpool.
 		strategy_id       UUID        NOT NULL REFERENCES strategies (id),
 		name              TEXT        NOT NULL,
 		description       TEXT        NOT NULL DEFAULT '',
+		schedule_cron     TEXT        NOT NULL DEFAULT '',
 		start_date        DATE        NOT NULL,
 		end_date          DATE        NOT NULL,
 		simulation_params JSONB       NOT NULL DEFAULT '{}',
@@ -246,6 +249,9 @@ func assertBacktestConfigEqual(t *testing.T, got, want *domain.BacktestConfig) {
 	}
 	if got.Description != want.Description {
 		t.Fatalf("expected Description %q, got %q", want.Description, got.Description)
+	}
+	if got.ScheduleCron != want.ScheduleCron {
+		t.Fatalf("expected ScheduleCron %q, got %q", want.ScheduleCron, got.ScheduleCron)
 	}
 	if !got.StartDate.Equal(want.StartDate) {
 		t.Fatalf("expected StartDate %s, got %s", want.StartDate, got.StartDate)
