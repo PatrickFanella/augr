@@ -142,6 +142,53 @@ func TestComputeMetricsNoLosses(t *testing.T) {
 	if !math.IsInf(m.ProfitFactor, 1) {
 		t.Errorf("ProfitFactor = %f, want +Inf", m.ProfitFactor)
 	}
+	if !math.IsInf(m.AvgWinLossRatio, 1) {
+		t.Errorf("AvgWinLossRatio = %f, want +Inf", m.AvgWinLossRatio)
+	}
+}
+
+func TestComputeMetricsCalmarAndAvgWinLossRatio(t *testing.T) {
+	t.Parallel()
+
+	start := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	// Returns: +25%, -20%, +10%, -5% over >1 year.
+	curve := []EquityPoint{
+		{Timestamp: start, Equity: 100},
+		{Timestamp: start.Add(24 * time.Hour), Equity: 125},
+		{Timestamp: start.Add(48 * time.Hour), Equity: 100},
+		{Timestamp: start.Add(72 * time.Hour), Equity: 110},
+		{Timestamp: start.Add(96 * time.Hour), Equity: 104.5},
+		{Timestamp: start.Add(366 * 24 * time.Hour), Equity: 104.5},
+	}
+
+	m := ComputeMetrics(curve)
+
+	wantAvgWinLoss := ((0.25 + 0.10) / 2.0) / ((0.20 + 0.05) / 2.0) // 1.4
+	if math.Abs(m.AvgWinLossRatio-wantAvgWinLoss) > 1e-9 {
+		t.Errorf("AvgWinLossRatio = %f, want %f", m.AvgWinLossRatio, wantAvgWinLoss)
+	}
+	if m.CalmarRatio <= 0 {
+		t.Errorf("CalmarRatio = %f, want > 0", m.CalmarRatio)
+	}
+}
+
+func TestComputeMetricsCalmarZeroWhenNoDrawdown(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	curve := []EquityPoint{
+		{Timestamp: base, Equity: 100},
+		{Timestamp: base.Add(24 * time.Hour), Equity: 110},
+		{Timestamp: base.Add(48 * time.Hour), Equity: 120},
+	}
+	m := ComputeMetrics(curve)
+
+	if m.MaxDrawdown != 0 {
+		t.Errorf("MaxDrawdown = %f, want 0", m.MaxDrawdown)
+	}
+	if m.CalmarRatio != 0 {
+		t.Errorf("CalmarRatio = %f, want 0", m.CalmarRatio)
+	}
 }
 
 func TestComputeMetricsTimestamps(t *testing.T) {
