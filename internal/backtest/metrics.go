@@ -1,6 +1,7 @@
 package backtest
 
 import (
+	"encoding/json"
 	"math"
 	"sort"
 	"time"
@@ -16,26 +17,77 @@ const (
 
 // Metrics holds computed performance statistics derived from an equity curve.
 type Metrics struct {
-	TotalReturn      float64 // (final equity − initial equity) / initial equity
-	BuyAndHoldReturn float64 // passive return from first to last benchmark close
-	MaxDrawdown      float64 // worst peak-to-trough drawdown (positive value)
-	CalmarRatio      float64 // annualised return / max drawdown
-	SharpeRatio      float64 // annualised risk-adjusted return (risk-free = 0)
-	SortinoRatio     float64 // annualised downside risk-adjusted return
-	Alpha            float64 // annualised excess return beyond benchmark exposure
-	Beta             float64 // covariance(strategy, benchmark) / variance(benchmark)
-	InformationRatio float64 // annualised mean active return / tracking error
-	WinRate          float64 // fraction of bars with positive returns
-	ProfitFactor     float64 // gross profits / gross losses (Inf when no losses)
-	AvgWinLossRatio  float64 // average positive return / average absolute negative return
-	Volatility       float64 // annualised standard deviation of returns
-	StartEquity      float64
-	EndEquity        float64
-	StartTime        time.Time
-	EndTime          time.Time
-	TotalBars        int
-	RealizedPnL      float64
-	UnrealizedPnL    float64
+	TotalReturn      float64   `json:"total_return"`        // (final equity − initial equity) / initial equity
+	BuyAndHoldReturn float64   `json:"buy_and_hold_return"` // passive return from first to last benchmark close
+	MaxDrawdown      float64   `json:"max_drawdown"`        // worst peak-to-trough drawdown (positive value)
+	CalmarRatio      float64   `json:"calmar_ratio"`        // annualised return / max drawdown
+	SharpeRatio      float64   `json:"sharpe_ratio"`        // annualised risk-adjusted return (risk-free = 0)
+	SortinoRatio     float64   `json:"sortino_ratio"`       // annualised downside risk-adjusted return
+	Alpha            float64   `json:"alpha"`               // annualised excess return beyond benchmark exposure
+	Beta             float64   `json:"beta"`                // covariance(strategy, benchmark) / variance(benchmark)
+	InformationRatio float64   `json:"information_ratio"`   // annualised mean active return / tracking error
+	WinRate          float64   `json:"win_rate"`            // fraction of bars with positive returns
+	ProfitFactor     float64   `json:"profit_factor"`       // gross profits / gross losses (Inf when no losses)
+	AvgWinLossRatio  float64   `json:"avg_win_loss_ratio"`  // average positive return / average absolute negative return
+	Volatility       float64   `json:"volatility"`          // annualised standard deviation of returns
+	StartEquity      float64   `json:"start_equity"`
+	EndEquity        float64   `json:"end_equity"`
+	StartTime        time.Time `json:"start_time"`
+	EndTime          time.Time `json:"end_time"`
+	TotalBars        int       `json:"total_bars"`
+	RealizedPnL      float64   `json:"realized_pnl"`
+	UnrealizedPnL    float64   `json:"unrealized_pnl"`
+}
+
+// MarshalJSON converts non-finite floating-point values into string sentinels so
+// report output stays valid JSON even when metrics such as profit factor are
+// mathematically infinite.
+func (m Metrics) MarshalJSON() ([]byte, error) {
+	type metricsJSON struct {
+		TotalReturn      any       `json:"total_return"`
+		BuyAndHoldReturn any       `json:"buy_and_hold_return"`
+		MaxDrawdown      any       `json:"max_drawdown"`
+		CalmarRatio      any       `json:"calmar_ratio"`
+		SharpeRatio      any       `json:"sharpe_ratio"`
+		SortinoRatio     any       `json:"sortino_ratio"`
+		Alpha            any       `json:"alpha"`
+		Beta             any       `json:"beta"`
+		InformationRatio any       `json:"information_ratio"`
+		WinRate          any       `json:"win_rate"`
+		ProfitFactor     any       `json:"profit_factor"`
+		AvgWinLossRatio  any       `json:"avg_win_loss_ratio"`
+		Volatility       any       `json:"volatility"`
+		StartEquity      any       `json:"start_equity"`
+		EndEquity        any       `json:"end_equity"`
+		StartTime        time.Time `json:"start_time"`
+		EndTime          time.Time `json:"end_time"`
+		TotalBars        int       `json:"total_bars"`
+		RealizedPnL      any       `json:"realized_pnl"`
+		UnrealizedPnL    any       `json:"unrealized_pnl"`
+	}
+
+	return json.Marshal(metricsJSON{
+		TotalReturn:      jsonFloatValue(m.TotalReturn),
+		BuyAndHoldReturn: jsonFloatValue(m.BuyAndHoldReturn),
+		MaxDrawdown:      jsonFloatValue(m.MaxDrawdown),
+		CalmarRatio:      jsonFloatValue(m.CalmarRatio),
+		SharpeRatio:      jsonFloatValue(m.SharpeRatio),
+		SortinoRatio:     jsonFloatValue(m.SortinoRatio),
+		Alpha:            jsonFloatValue(m.Alpha),
+		Beta:             jsonFloatValue(m.Beta),
+		InformationRatio: jsonFloatValue(m.InformationRatio),
+		WinRate:          jsonFloatValue(m.WinRate),
+		ProfitFactor:     jsonFloatValue(m.ProfitFactor),
+		AvgWinLossRatio:  jsonFloatValue(m.AvgWinLossRatio),
+		Volatility:       jsonFloatValue(m.Volatility),
+		StartEquity:      jsonFloatValue(m.StartEquity),
+		EndEquity:        jsonFloatValue(m.EndEquity),
+		StartTime:        m.StartTime,
+		EndTime:          m.EndTime,
+		TotalBars:        m.TotalBars,
+		RealizedPnL:      jsonFloatValue(m.RealizedPnL),
+		UnrealizedPnL:    jsonFloatValue(m.UnrealizedPnL),
+	})
 }
 
 // ComputeMetrics calculates performance metrics from an equity curve.

@@ -1,6 +1,7 @@
 package backtest
 
 import (
+	"encoding/json"
 	"math"
 	"sort"
 	"time"
@@ -11,22 +12,40 @@ import (
 // HoldingPeriodStats summarizes the distribution of closed-trade holding
 // periods.
 type HoldingPeriodStats struct {
-	Min    time.Duration
-	Max    time.Duration
-	Mean   time.Duration
-	Median time.Duration
+	Min    time.Duration `json:"min"`
+	Max    time.Duration `json:"max"`
+	Mean   time.Duration `json:"mean"`
+	Median time.Duration `json:"median"`
 }
 
 // TradeAnalytics contains trade-level diagnostics derived from backtest
 // executions.
 type TradeAnalytics struct {
-	HoldingPeriods       HoldingPeriodStats
-	ClosedTrades         int
-	TradeFrequencyPerDay float64
-	LargestSingleWin     float64
-	LargestSingleLoss    float64
-	MaxConsecutiveWins   int
-	MaxConsecutiveLosses int
+	HoldingPeriods       HoldingPeriodStats `json:"holding_periods"`
+	ClosedTrades         int                `json:"closed_trades"`
+	TradeFrequencyPerDay float64            `json:"trade_frequency_per_day"`
+	LargestSingleWin     float64            `json:"largest_single_win"`
+	LargestSingleLoss    float64            `json:"largest_single_loss"`
+	MaxConsecutiveWins   int                `json:"max_consecutive_wins"`
+	MaxConsecutiveLosses int                `json:"max_consecutive_losses"`
+}
+
+// MarshalJSON renders holding periods as readable duration strings instead of
+// raw nanoseconds to keep backtest report output human- and machine-friendly.
+func (s HoldingPeriodStats) MarshalJSON() ([]byte, error) {
+	type holdingPeriodStatsJSON struct {
+		Min    JSONDuration `json:"min"`
+		Max    JSONDuration `json:"max"`
+		Mean   JSONDuration `json:"mean"`
+		Median JSONDuration `json:"median"`
+	}
+
+	return json.Marshal(holdingPeriodStatsJSON{
+		Min:    JSONDuration(s.Min),
+		Max:    JSONDuration(s.Max),
+		Mean:   JSONDuration(s.Mean),
+		Median: JSONDuration(s.Median),
+	})
 }
 
 type openLot struct {

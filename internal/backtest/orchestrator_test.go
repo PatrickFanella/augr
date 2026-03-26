@@ -148,6 +148,9 @@ func TestOrchestratorRunProcessesBars(t *testing.T) {
 	if len(result.EquityCurve) != 3 {
 		t.Errorf("EquityCurve len = %d, want 3", len(result.EquityCurve))
 	}
+	if len(result.EquityCurveReport.Points) != 3 {
+		t.Errorf("EquityCurveReport.Points len = %d, want 3", len(result.EquityCurveReport.Points))
+	}
 	if result.Metrics.TotalBars != 3 {
 		t.Errorf("Metrics.TotalBars = %d, want 3", result.Metrics.TotalBars)
 	}

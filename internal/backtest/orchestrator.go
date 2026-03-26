@@ -41,6 +41,7 @@ type OrchestratorResult struct {
 	BarResults        []BarResult
 	Positions         []TrackedPosition
 	EquityCurve       []EquityPoint
+	EquityCurveReport EquityCurveReport
 	Metrics           Metrics
 	TradeAnalytics    TradeAnalytics
 	PromptVersion     string
@@ -174,6 +175,7 @@ func (o *Orchestrator) Run(ctx context.Context) (*OrchestratorResult, error) {
 		BarResults:        runResult.BarResults,
 		Positions:         positions,
 		EquityCurve:       equityCurve,
+		EquityCurveReport: runResult.EquityCurveReport,
 		Metrics:           metrics,
 		TradeAnalytics:    tradeAnalytics,
 		PromptVersion:     o.config.PromptVersion,
