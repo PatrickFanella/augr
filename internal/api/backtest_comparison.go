@@ -18,6 +18,7 @@ import (
 const (
 	defaultBacktestComparisonLimit = 50
 	backtestComparisonPageSize     = 100
+	maxBacktestWindowSize          = int(^uint(0) >> 1)
 )
 
 // BacktestComparisonAPI exposes filtered historical backtest queries and
@@ -245,6 +246,9 @@ func normalizeBacktestQuery(query HistoricalBacktestRunsQuery) (int, int, error)
 	}
 	if limit < 0 {
 		return 0, 0, fmt.Errorf("api: limit must be positive")
+	}
+	if query.Offset > maxBacktestWindowSize-limit {
+		return 0, 0, fmt.Errorf("api: limit + offset exceeds supported range")
 	}
 	return limit, query.Offset, nil
 }

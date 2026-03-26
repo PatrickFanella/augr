@@ -131,6 +131,14 @@ func TestBacktestComparisonAPIRejectsInvalidRequests(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "at least 2 run IDs") {
 		t.Fatalf("expected comparison validation error, got %v", err)
 	}
+
+	_, err = api.QueryHistoricalRuns(context.Background(), HistoricalBacktestRunsQuery{
+		Limit:  2,
+		Offset: int(^uint(0)>>1) - 1,
+	})
+	if err == nil || !strings.Contains(err.Error(), "limit + offset") {
+		t.Fatalf("expected limit+offset validation error, got %v", err)
+	}
 }
 
 var (
