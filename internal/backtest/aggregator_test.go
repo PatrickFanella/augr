@@ -197,6 +197,20 @@ func TestRunMulti_RunFuncError(t *testing.T) {
 	}
 }
 
+func TestRunMulti_NilResult(t *testing.T) {
+	cfg := MultiRunConfig{
+		Runs: 3,
+		RunFunc: func(_ context.Context) (*OrchestratorResult, error) {
+			return nil, nil
+		},
+	}
+
+	_, err := RunMulti(context.Background(), cfg)
+	if err == nil {
+		t.Fatal("expected error when RunFunc returns nil result")
+	}
+}
+
 func TestRunMulti_ContextCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel immediately
