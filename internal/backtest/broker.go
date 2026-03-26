@@ -264,6 +264,44 @@ func (b *BrokerAdapter) nextExternalIDLocked() string {
 	return fmt.Sprintf("backtest-%d", b.nextOrderID)
 }
 
+// FilledTrades returns all fully or partially filled orders converted to
+// domain.Trade values sorted by external ID.
+func (b *BrokerAdapter) FilledTrades() []domain.Trade {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
+	ids := make([]string, 0, len(b.orders))
+	for id, order := range b.orders {
+		if order.Status == domain.OrderStatusFilled || order.Status == domain.OrderStatusPartial {
+			ids = append(ids, id)
+		}
+	}
+	sort.Strings(ids)
+
+	trades := make([]domain.Trade, 0, len(ids))
+	for _, id := range ids {
+		order := b.orders[id]
+		var price float64
+		if order.FilledAvgPrice != nil {
+			price = *order.FilledAvgPrice
+		}
+		var executedAt time.Time
+		if order.FilledAt != nil {
+			executedAt = *order.FilledAt
+		}
+		trades = append(trades, domain.Trade{
+			ID:         order.ID,
+			Ticker:     order.Ticker,
+			Side:       order.Side,
+			Quantity:   order.FilledQuantity,
+			Price:      price,
+			ExecutedAt: executedAt,
+			CreatedAt:  order.CreatedAt,
+		})
+	}
+	return trades
+}
+
 func (b *BrokerAdapter) processRestingOrdersLocked(ticker string, bar domain.OHLCV) {
 	orderIDs := make([]string, 0, len(b.orders))
 	for externalID, order := range b.orders {

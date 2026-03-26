@@ -167,5 +167,5 @@ func downsideDeviation(returns []float64, target float64) float64 {
 	if count == 0 {
 		return 0
 	}
-	return math.Sqrt(sumSq / float64(len(returns)))
+	return math.Sqrt(sumSq / float64(count))
 }

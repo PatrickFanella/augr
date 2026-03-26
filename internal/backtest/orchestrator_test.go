@@ -47,6 +47,15 @@ func TestNewOrchestratorRejectsInvalidConfig(t *testing.T) {
 		}
 	})
 
+	t.Run("whitespace-only ticker", func(t *testing.T) {
+		cfg := validCfg
+		cfg.Ticker = "   "
+		_, err := NewOrchestrator(cfg, bars, pipeline, nil)
+		if err == nil {
+			t.Fatal("expected error for whitespace-only ticker")
+		}
+	})
+
 	t.Run("zero start date", func(t *testing.T) {
 		cfg := validCfg
 		cfg.StartDate = time.Time{}
@@ -320,6 +329,10 @@ func TestOrchestratorResultHasMetrics(t *testing.T) {
 		t.Fatalf("Run() error = %v", err)
 	}
 
+	// With no pipeline-generated orders, trades should be empty.
+	if len(result.Trades) != 0 {
+		t.Errorf("Trades len = %d, want 0", len(result.Trades))
+	}
 	// With no trades, equity stays flat at initial cash.
 	if result.Metrics.StartEquity != result.Metrics.EndEquity {
 		t.Errorf("with no trades, start (%f) and end (%f) equity should match",

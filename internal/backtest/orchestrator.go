@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -30,9 +31,10 @@ type OrchestratorConfig struct {
 }
 
 // OrchestratorResult aggregates every output produced by a backtest run:
-// per-bar results, final positions, the full equity curve, and computed
-// performance metrics.
+// trades, per-bar results, final positions, the full equity curve, and
+// computed performance metrics.
 type OrchestratorResult struct {
+	Trades      []domain.Trade
 	BarResults  []BarResult
 	Positions   []TrackedPosition
 	EquityCurve []EquityPoint
@@ -141,12 +143,14 @@ func (o *Orchestrator) Run(ctx context.Context) (*OrchestratorResult, error) {
 		return nil, fmt.Errorf("backtest: running simulation: %w", err)
 	}
 
+	trades := broker.FilledTrades()
 	positions := tracker.Positions()
 	equityCurve := runResult.EquityCurve
 	metrics := ComputeMetrics(equityCurve)
 
 	o.logger.Info("backtest: orchestrated run complete",
 		slog.Int("bars_processed", len(runResult.BarResults)),
+		slog.Int("trades", len(trades)),
 		slog.Int("open_positions", len(positions)),
 		slog.Float64("total_return", metrics.TotalReturn),
 		slog.Float64("max_drawdown", metrics.MaxDrawdown),
@@ -154,6 +158,7 @@ func (o *Orchestrator) Run(ctx context.Context) (*OrchestratorResult, error) {
 	)
 
 	return &OrchestratorResult{
+		Trades:      trades,
 		BarResults:  runResult.BarResults,
 		Positions:   positions,
 		EquityCurve: equityCurve,
@@ -176,7 +181,7 @@ func validateOrchestratorConfig(cfg OrchestratorConfig) error {
 	if cfg.StrategyID == uuid.Nil {
 		return fmt.Errorf("backtest: strategy ID is required")
 	}
-	if cfg.Ticker == "" {
+	if strings.TrimSpace(cfg.Ticker) == "" {
 		return fmt.Errorf("backtest: ticker is required")
 	}
 	if cfg.StartDate.IsZero() {
