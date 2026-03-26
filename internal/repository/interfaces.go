@@ -17,6 +17,13 @@ type StrategyFilter struct {
 	IsPaper    *bool
 }
 
+// BacktestConfigFilter defines supported filters when listing backtest configurations.
+type BacktestConfigFilter struct {
+	StrategyID    *uuid.UUID
+	CreatedAfter  *time.Time
+	CreatedBefore *time.Time
+}
+
 // PipelineRunFilter defines supported filters when listing pipeline runs.
 type PipelineRunFilter struct {
 	StrategyID    *uuid.UUID
@@ -130,6 +137,15 @@ type StrategyRepository interface {
 	Get(ctx context.Context, id uuid.UUID) (*domain.Strategy, error)
 	List(ctx context.Context, filter StrategyFilter, limit, offset int) ([]domain.Strategy, error)
 	Update(ctx context.Context, strategy *domain.Strategy) error
+	Delete(ctx context.Context, id uuid.UUID) error
+}
+
+// BacktestConfigRepository provides CRUD operations for backtest configurations.
+type BacktestConfigRepository interface {
+	Create(ctx context.Context, config *domain.BacktestConfig) error
+	Get(ctx context.Context, id uuid.UUID) (*domain.BacktestConfig, error)
+	List(ctx context.Context, filter BacktestConfigFilter, limit, offset int) ([]domain.BacktestConfig, error)
+	Update(ctx context.Context, config *domain.BacktestConfig) error
 	Delete(ctx context.Context, id uuid.UUID) error
 }
 

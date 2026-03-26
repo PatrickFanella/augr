@@ -2,6 +2,9 @@ package domain
 
 import (
 	"testing"
+	"time"
+
+	"github.com/google/uuid"
 )
 
 func TestRequireNonEmpty(t *testing.T) {
@@ -333,4 +336,100 @@ func TestStrategyValidate(t *testing.T) {
 			t.Error("Strategy.Validate() expected error for invalid market type")
 		}
 	})
+}
+
+func TestBacktestConfigValidate(t *testing.T) {
+	valid := &BacktestConfig{
+		StrategyID: uuid.New(),
+		Name:       "baseline",
+		StartDate:  time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+		EndDate:    time.Date(2024, 12, 31, 0, 0, 0, 0, time.UTC),
+		Simulation: BacktestSimulationParameters{
+			InitialCapital: 100000,
+			MaxVolumePct:   0.25,
+		},
+	}
+
+	tests := []struct {
+		name   string
+		config *BacktestConfig
+	}{
+		{name: "valid config", config: valid},
+		{name: "nil config", config: nil},
+		{name: "missing strategy id", config: &BacktestConfig{
+			Name:      "baseline",
+			StartDate: valid.StartDate,
+			EndDate:   valid.EndDate,
+			Simulation: BacktestSimulationParameters{
+				InitialCapital: 100000,
+			},
+		}},
+		{name: "empty name", config: &BacktestConfig{
+			StrategyID: valid.StrategyID,
+			StartDate:  valid.StartDate,
+			EndDate:    valid.EndDate,
+			Simulation: BacktestSimulationParameters{InitialCapital: 100000},
+		}},
+		{name: "missing start date", config: &BacktestConfig{
+			StrategyID: valid.StrategyID,
+			Name:       "baseline",
+			EndDate:    valid.EndDate,
+			Simulation: BacktestSimulationParameters{InitialCapital: 100000},
+		}},
+		{name: "missing end date", config: &BacktestConfig{
+			StrategyID: valid.StrategyID,
+			Name:       "baseline",
+			StartDate:  valid.StartDate,
+			Simulation: BacktestSimulationParameters{InitialCapital: 100000},
+		}},
+		{name: "end before start", config: &BacktestConfig{
+			StrategyID: valid.StrategyID,
+			Name:       "baseline",
+			StartDate:  valid.EndDate,
+			EndDate:    valid.StartDate,
+			Simulation: BacktestSimulationParameters{InitialCapital: 100000},
+		}},
+		{name: "non-positive capital", config: &BacktestConfig{
+			StrategyID: valid.StrategyID,
+			Name:       "baseline",
+			StartDate:  valid.StartDate,
+			EndDate:    valid.EndDate,
+			Simulation: BacktestSimulationParameters{},
+		}},
+		{name: "negative max volume", config: &BacktestConfig{
+			StrategyID: valid.StrategyID,
+			Name:       "baseline",
+			StartDate:  valid.StartDate,
+			EndDate:    valid.EndDate,
+			Simulation: BacktestSimulationParameters{
+				InitialCapital: 100000,
+				MaxVolumePct:   -0.1,
+			},
+		}},
+		{name: "max volume above one", config: &BacktestConfig{
+			StrategyID: valid.StrategyID,
+			Name:       "baseline",
+			StartDate:  valid.StartDate,
+			EndDate:    valid.EndDate,
+			Simulation: BacktestSimulationParameters{
+				InitialCapital: 100000,
+				MaxVolumePct:   1.1,
+			},
+		}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.config.Validate()
+			if tc.name == "valid config" {
+				if err != nil {
+					t.Fatalf("BacktestConfig.Validate() unexpected error: %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("BacktestConfig.Validate() expected error, got nil")
+			}
+		})
+	}
 }
