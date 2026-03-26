@@ -208,6 +208,42 @@ func computeStats(values []float64) MetricStats {
 	}
 }
 
+// tKey identifies a (degrees-of-freedom, confidence-level) pair in the
+// t-distribution lookup table.
+type tKey struct {
+	df    int
+	level float64
+}
+
+// tTable holds two-tailed t-distribution critical values for common
+// confidence levels and small degrees of freedom.
+var tTable = map[tKey]float64{
+	{1, 0.90}: 6.314, {1, 0.95}: 12.706, {1, 0.99}: 63.657,
+	{2, 0.90}: 2.920, {2, 0.95}: 4.303, {2, 0.99}: 9.925,
+	{3, 0.90}: 2.353, {3, 0.95}: 3.182, {3, 0.99}: 5.841,
+	{4, 0.90}: 2.132, {4, 0.95}: 2.776, {4, 0.99}: 4.604,
+	{5, 0.90}: 2.015, {5, 0.95}: 2.571, {5, 0.99}: 4.032,
+	{6, 0.90}: 1.943, {6, 0.95}: 2.447, {6, 0.99}: 3.707,
+	{7, 0.90}: 1.895, {7, 0.95}: 2.365, {7, 0.99}: 3.499,
+	{8, 0.90}: 1.860, {8, 0.95}: 2.306, {8, 0.99}: 3.355,
+	{9, 0.90}: 1.833, {9, 0.95}: 2.262, {9, 0.99}: 3.250,
+	{10, 0.90}: 1.812, {10, 0.95}: 2.228, {10, 0.99}: 3.169,
+	{15, 0.90}: 1.753, {15, 0.95}: 2.131, {15, 0.99}: 2.947,
+	{20, 0.90}: 1.725, {20, 0.95}: 2.086, {20, 0.99}: 2.845,
+	{25, 0.90}: 1.708, {25, 0.95}: 2.060, {25, 0.99}: 2.787,
+	{30, 0.90}: 1.697, {30, 0.95}: 2.042, {30, 0.99}: 2.750,
+}
+
+// zValues holds z-approximation critical values used for df > 30.
+var zValues = map[float64]float64{
+	0.90: 1.645,
+	0.95: 1.960,
+	0.99: 2.576,
+}
+
+// tTableDF lists the degrees of freedom present in tTable, sorted ascending.
+var tTableDF = []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25, 30}
+
 // tCritical returns the two-tailed t-distribution critical value for the
 // given degrees of freedom and confidence level. Only 0.90, 0.95, and 0.99
 // are supported. For df > 30 the z-approximation is used.
@@ -216,50 +252,20 @@ func tCritical(df int, level float64) (float64, bool) {
 		return 0, false
 	}
 
-	// Two-tailed t-values for common confidence levels and small df.
-	type key struct {
-		df    int
-		level float64
-	}
-	table := map[key]float64{
-		{1, 0.90}: 6.314, {1, 0.95}: 12.706, {1, 0.99}: 63.657,
-		{2, 0.90}: 2.920, {2, 0.95}: 4.303, {2, 0.99}: 9.925,
-		{3, 0.90}: 2.353, {3, 0.95}: 3.182, {3, 0.99}: 5.841,
-		{4, 0.90}: 2.132, {4, 0.95}: 2.776, {4, 0.99}: 4.604,
-		{5, 0.90}: 2.015, {5, 0.95}: 2.571, {5, 0.99}: 4.032,
-		{6, 0.90}: 1.943, {6, 0.95}: 2.447, {6, 0.99}: 3.707,
-		{7, 0.90}: 1.895, {7, 0.95}: 2.365, {7, 0.99}: 3.499,
-		{8, 0.90}: 1.860, {8, 0.95}: 2.306, {8, 0.99}: 3.355,
-		{9, 0.90}: 1.833, {9, 0.95}: 2.262, {9, 0.99}: 3.250,
-		{10, 0.90}: 1.812, {10, 0.95}: 2.228, {10, 0.99}: 3.169,
-		{15, 0.90}: 1.753, {15, 0.95}: 2.131, {15, 0.99}: 2.947,
-		{20, 0.90}: 1.725, {20, 0.95}: 2.086, {20, 0.99}: 2.845,
-		{25, 0.90}: 1.708, {25, 0.95}: 2.060, {25, 0.99}: 2.787,
-		{30, 0.90}: 1.697, {30, 0.95}: 2.042, {30, 0.99}: 2.750,
-	}
-
-	// For df > 30 use z-approximation.
-	zValues := map[float64]float64{
-		0.90: 1.645,
-		0.95: 1.960,
-		0.99: 2.576,
-	}
-
 	if df > 30 {
 		z, ok := zValues[level]
 		return z, ok
 	}
 
 	// Try exact lookup.
-	if v, ok := table[key{df, level}]; ok {
+	if v, ok := tTable[tKey{df, level}]; ok {
 		return v, true
 	}
 
 	// For unlisted df, use the next lower available df in the table
 	// (conservative estimate).
-	available := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25, 30}
 	best := -1
-	for _, d := range available {
+	for _, d := range tTableDF {
 		if d <= df {
 			best = d
 		}
@@ -267,6 +273,6 @@ func tCritical(df int, level float64) (float64, bool) {
 	if best < 0 {
 		return 0, false
 	}
-	v, ok := table[key{best, level}]
+	v, ok := tTable[tKey{best, level}]
 	return v, ok
 }
