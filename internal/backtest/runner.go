@@ -114,9 +114,13 @@ func NewRunner(
 func (r *Runner) Run(ctx context.Context) (*RunResult, error) {
 	result := &RunResult{}
 
-	for r.replay.Next() {
+	for {
 		if err := ctx.Err(); err != nil {
 			return result, fmt.Errorf("backtest: context cancelled: %w", err)
+		}
+
+		if !r.replay.Next() {
+			break
 		}
 
 		bar, err := r.replay.Current()
@@ -124,7 +128,7 @@ func (r *Runner) Run(ctx context.Context) (*RunResult, error) {
 			return result, fmt.Errorf("backtest: reading current bar: %w", err)
 		}
 
-		r.logger.Info("backtest: processing bar",
+		r.logger.Debug("backtest: processing bar",
 			slog.String("ticker", r.config.Ticker),
 			slog.Time("timestamp", bar.Timestamp),
 			slog.Float64("close", bar.Close),
@@ -139,6 +143,12 @@ func (r *Runner) Run(ctx context.Context) (*RunResult, error) {
 
 		// Execute the full analysis pipeline for this bar.
 		state, pipeErr := r.pipeline.Execute(ctx, r.config.StrategyID, r.config.Ticker)
+
+		// Update position tracker marks to the latest bar close before
+		// recording an equity snapshot so unrealized P&L is accurate.
+		if err := r.tracker.UpdateMarketPrice(r.config.Ticker, bar.Close); err != nil {
+			return result, fmt.Errorf("backtest: updating position tracker: %w", err)
+		}
 
 		// Record an equity snapshot after the pipeline (and any resulting
 		// order processing) has completed.

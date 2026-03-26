@@ -2,6 +2,7 @@ package backtest
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -30,7 +31,10 @@ func TestHistoricalDataProviderGetOHLCV_FiltersToSimTime(t *testing.T) {
 	iter.Next() // t1
 	iter.Next() // t2
 
-	prov := NewHistoricalDataProvider(iter.Clock(), WithBars(bars))
+	prov, err := NewHistoricalDataProvider(iter.Clock(), WithBars(bars))
+	if err != nil {
+		t.Fatalf("NewHistoricalDataProvider() error = %v", err)
+	}
 
 	// Request all bars; only bars up to t2 (the current sim time) should be
 	// returned.
@@ -68,7 +72,10 @@ func TestHistoricalDataProviderGetOHLCV_FiltersByDateRange(t *testing.T) {
 	iter.Next()
 	iter.Next() // advance to t3
 
-	prov := NewHistoricalDataProvider(iter.Clock(), WithBars(bars))
+	prov, err := NewHistoricalDataProvider(iter.Clock(), WithBars(bars))
+	if err != nil {
+		t.Fatalf("NewHistoricalDataProvider() error = %v", err)
+	}
 
 	// Request only bars in [t2, t3].
 	got, err := prov.GetOHLCV(context.Background(), "AAPL", data.Timeframe1d, t2, t3)
@@ -89,7 +96,10 @@ func TestHistoricalDataProviderGetOHLCV_EmptyBars(t *testing.T) {
 	clock := newSimulatedClock()
 	clock.set(time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC))
 
-	prov := NewHistoricalDataProvider(clock)
+	prov, err := NewHistoricalDataProvider(clock)
+	if err != nil {
+		t.Fatalf("NewHistoricalDataProvider() error = %v", err)
+	}
 
 	got, err := prov.GetOHLCV(context.Background(), "AAPL", data.Timeframe1d,
 		time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
@@ -114,7 +124,10 @@ func TestHistoricalDataProviderGetFundamentals(t *testing.T) {
 			MarketCap: 3e12,
 			PERatio:   30,
 		}
-		prov := NewHistoricalDataProvider(clock, WithFundamentals(f))
+		prov, err := NewHistoricalDataProvider(clock, WithFundamentals(f))
+		if err != nil {
+			t.Fatalf("NewHistoricalDataProvider() error = %v", err)
+		}
 		got, err := prov.GetFundamentals(context.Background(), "AAPL")
 		if err != nil {
 			t.Fatalf("GetFundamentals() error = %v", err)
@@ -125,8 +138,11 @@ func TestHistoricalDataProviderGetFundamentals(t *testing.T) {
 	})
 
 	t.Run("returns ErrNotImplemented when nil", func(t *testing.T) {
-		prov := NewHistoricalDataProvider(clock)
-		_, err := prov.GetFundamentals(context.Background(), "AAPL")
+		prov, err := NewHistoricalDataProvider(clock)
+		if err != nil {
+			t.Fatalf("NewHistoricalDataProvider() error = %v", err)
+		}
+		_, err = prov.GetFundamentals(context.Background(), "AAPL")
 		if err != data.ErrNotImplemented {
 			t.Fatalf("GetFundamentals() error = %v, want %v", err, data.ErrNotImplemented)
 		}
@@ -149,7 +165,10 @@ func TestHistoricalDataProviderGetNews_FiltersToSimTime(t *testing.T) {
 	clock := newSimulatedClock()
 	clock.set(t2) // sim time = t2
 
-	prov := NewHistoricalDataProvider(clock, WithNews(news))
+	prov, err := NewHistoricalDataProvider(clock, WithNews(news))
+	if err != nil {
+		t.Fatalf("NewHistoricalDataProvider() error = %v", err)
+	}
 
 	got, err := prov.GetNews(context.Background(), "AAPL", t1, t3)
 	if err != nil {
@@ -179,7 +198,10 @@ func TestHistoricalDataProviderGetSocialSentiment_FiltersToSimTime(t *testing.T)
 	clock := newSimulatedClock()
 	clock.set(t2)
 
-	prov := NewHistoricalDataProvider(clock, WithSocialSentiment(social))
+	prov, err := NewHistoricalDataProvider(clock, WithSocialSentiment(social))
+	if err != nil {
+		t.Fatalf("NewHistoricalDataProvider() error = %v", err)
+	}
 
 	got, err := prov.GetSocialSentiment(context.Background(), "AAPL", t1, t3)
 	if err != nil {
@@ -215,7 +237,10 @@ func TestHistoricalDataProviderSortsInputData(t *testing.T) {
 	iter.Next()
 	iter.Next()
 
-	prov := NewHistoricalDataProvider(iter.Clock(), WithBars(bars))
+	prov, err := NewHistoricalDataProvider(iter.Clock(), WithBars(bars))
+	if err != nil {
+		t.Fatalf("NewHistoricalDataProvider() error = %v", err)
+	}
 
 	got, err := prov.GetOHLCV(context.Background(), "AAPL", data.Timeframe1d, t1, t3)
 	if err != nil {
@@ -229,5 +254,62 @@ func TestHistoricalDataProviderSortsInputData(t *testing.T) {
 		if got[i].Timestamp.Before(got[i-1].Timestamp) {
 			t.Fatalf("GetOHLCV() bars not sorted at index %d", i)
 		}
+	}
+}
+
+func TestNewHistoricalDataProviderRejectsNilClock(t *testing.T) {
+	t.Parallel()
+
+	_, err := NewHistoricalDataProvider(nil)
+	if err != ErrNilClock {
+		t.Fatalf("NewHistoricalDataProvider(nil) error = %v, want %v", err, ErrNilClock)
+	}
+}
+
+func TestHistoricalDataProviderRejectsEmptyTicker(t *testing.T) {
+	t.Parallel()
+
+	clock := newSimulatedClock()
+	clock.set(time.Now())
+	prov, err := NewHistoricalDataProvider(clock)
+	if err != nil {
+		t.Fatalf("NewHistoricalDataProvider() error = %v", err)
+	}
+
+	from := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	to := time.Date(2026, 12, 31, 0, 0, 0, 0, time.UTC)
+
+	_, err = prov.GetOHLCV(context.Background(), "", data.Timeframe1d, from, to)
+	if err != ErrEmptyTicker {
+		t.Fatalf("GetOHLCV() error = %v, want %v", err, ErrEmptyTicker)
+	}
+
+	_, err = prov.GetNews(context.Background(), "", from, to)
+	if err != ErrEmptyTicker {
+		t.Fatalf("GetNews() error = %v, want %v", err, ErrEmptyTicker)
+	}
+
+	_, err = prov.GetSocialSentiment(context.Background(), "", from, to)
+	if err != ErrEmptyTicker {
+		t.Fatalf("GetSocialSentiment() error = %v, want %v", err, ErrEmptyTicker)
+	}
+}
+
+func TestHistoricalDataProviderRejectsInvalidRange(t *testing.T) {
+	t.Parallel()
+
+	clock := newSimulatedClock()
+	clock.set(time.Now())
+	prov, err := NewHistoricalDataProvider(clock)
+	if err != nil {
+		t.Fatalf("NewHistoricalDataProvider() error = %v", err)
+	}
+
+	from := time.Date(2026, 12, 31, 0, 0, 0, 0, time.UTC)
+	to := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC) // before from
+
+	_, err = prov.GetOHLCV(context.Background(), "AAPL", data.Timeframe1d, from, to)
+	if !errors.Is(err, ErrInvalidRange) {
+		t.Fatalf("GetOHLCV() error = %v, want %v", err, ErrInvalidRange)
 	}
 }
