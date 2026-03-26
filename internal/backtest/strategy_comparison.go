@@ -59,32 +59,6 @@ type StrategyComparisonResult struct {
 	Strategies []StrategyComparisonEntry
 }
 
-type metricComparisonSpec struct {
-	name  string
-	value func(Metrics) float64
-}
-
-var metricComparisonSpecs = []metricComparisonSpec{
-	{name: "Total Return", value: func(m Metrics) float64 { return m.TotalReturn }},
-	{name: "Buy & Hold Return", value: func(m Metrics) float64 { return m.BuyAndHoldReturn }},
-	{name: "Max Drawdown", value: func(m Metrics) float64 { return m.MaxDrawdown }},
-	{name: "Calmar Ratio", value: func(m Metrics) float64 { return m.CalmarRatio }},
-	{name: "Sharpe Ratio", value: func(m Metrics) float64 { return m.SharpeRatio }},
-	{name: "Sortino Ratio", value: func(m Metrics) float64 { return m.SortinoRatio }},
-	{name: "Alpha", value: func(m Metrics) float64 { return m.Alpha }},
-	{name: "Beta", value: func(m Metrics) float64 { return m.Beta }},
-	{name: "Information Ratio", value: func(m Metrics) float64 { return m.InformationRatio }},
-	{name: "Win Rate", value: func(m Metrics) float64 { return m.WinRate }},
-	{name: "Profit Factor", value: func(m Metrics) float64 { return m.ProfitFactor }},
-	{name: "Avg Win/Loss Ratio", value: func(m Metrics) float64 { return m.AvgWinLossRatio }},
-	{name: "Volatility", value: func(m Metrics) float64 { return m.Volatility }},
-	{name: "Start Equity", value: func(m Metrics) float64 { return m.StartEquity }},
-	{name: "End Equity", value: func(m Metrics) float64 { return m.EndEquity }},
-	{name: "Realized PnL", value: func(m Metrics) float64 { return m.RealizedPnL }},
-	{name: "Unrealized PnL", value: func(m Metrics) float64 { return m.UnrealizedPnL }},
-	{name: "Total Bars", value: func(m Metrics) float64 { return float64(m.TotalBars) }},
-}
-
 // RunStrategyComparison executes multiple strategy pipelines against the same
 // bars, date range, fill configuration, and starting capital so their metrics
 // can be compared under identical conditions.
@@ -133,32 +107,17 @@ func (o *Orchestrator) RunStrategyComparison(ctx context.Context, cfg StrategyCo
 // MetricTable returns the side-by-side KPI comparison table for all compared
 // strategies.
 func (r StrategyComparisonResult) MetricTable() MetricComparisonTable {
-	headers := make([]string, 0, len(r.Strategies)+1)
-	headers = append(headers, "Metric")
+	inputs := make([]MetricComparisonInput, 0, len(r.Strategies))
 	for _, strategy := range r.Strategies {
-		headers = append(headers, strategy.Name)
-	}
-
-	rows := make([]MetricComparisonRow, 0, len(metricComparisonSpecs))
-	for _, spec := range metricComparisonSpecs {
-		row := MetricComparisonRow{
-			Metric: spec.name,
-			Values: make([]float64, 0, len(r.Strategies)),
+		input := MetricComparisonInput{
+			Name: strategy.Name,
 		}
-		for _, strategy := range r.Strategies {
-			if strategy.Result == nil {
-				row.Values = append(row.Values, math.NaN())
-				continue
-			}
-			row.Values = append(row.Values, spec.value(strategy.Result.Metrics))
+		if strategy.Result != nil {
+			input.Metrics = &strategy.Result.Metrics
 		}
-		rows = append(rows, row)
+		inputs = append(inputs, input)
 	}
-
-	return MetricComparisonTable{
-		Headers: headers,
-		Rows:    rows,
-	}
+	return BuildMetricComparisonTable(inputs)
 }
 
 // FormatMetricTable renders the metric comparison as a plain-text table.
