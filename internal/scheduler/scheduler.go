@@ -2,7 +2,6 @@ package scheduler
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -45,12 +44,12 @@ type Option func(*Scheduler)
 // WithBacktestScheduling enables cron-triggered backtest runs and persistence.
 func WithBacktestScheduling(
 	configRepo repository.BacktestConfigRepository,
-	runRepo repository.BacktestRunRepository,
+	persister backtest.BacktestPersister,
 	runner backtestRunner,
 ) Option {
 	return func(s *Scheduler) {
 		s.backtestConfigRepo = configRepo
-		s.backtestRunRepo = runRepo
+		s.backtestPersister = persister
 		s.backtestRunner = runner
 	}
 }
@@ -63,7 +62,7 @@ type Scheduler struct {
 	pipeline           pipelineExecutor
 	riskEngine         risk.RiskEngine
 	backtestConfigRepo repository.BacktestConfigRepository
-	backtestRunRepo    repository.BacktestRunRepository
+	backtestPersister  backtest.BacktestPersister
 	backtestRunner     backtestRunner
 	logger             *slog.Logger
 	nowFunc            func() time.Time
@@ -261,11 +260,11 @@ func (s *Scheduler) loadActiveStrategies(ctx context.Context) ([]domain.Strategy
 }
 
 func (s *Scheduler) loadScheduledBacktests(ctx context.Context) ([]domain.BacktestConfig, error) {
-	if s.backtestConfigRepo == nil && s.backtestRunRepo == nil && s.backtestRunner == nil {
+	if s.backtestConfigRepo == nil && s.backtestPersister == nil && s.backtestRunner == nil {
 		return nil, nil
 	}
-	if s.backtestConfigRepo == nil || s.backtestRunRepo == nil || s.backtestRunner == nil {
-		return nil, fmt.Errorf("scheduler: backtest scheduling requires config repository, run repository, and runner")
+	if s.backtestConfigRepo == nil || s.backtestPersister == nil || s.backtestRunner == nil {
+		return nil, fmt.Errorf("scheduler: backtest scheduling requires config repository, persister, and runner")
 	}
 
 	var configs []domain.BacktestConfig
@@ -387,17 +386,7 @@ func (s *Scheduler) runBacktest(config domain.BacktestConfig) {
 		return
 	}
 
-	run, err := newBacktestRun(config.ID, triggeredAt, time.Since(started), result)
-	if err != nil {
-		s.logger.Error("scheduler: failed to encode backtest result",
-			slog.String("backtest_config_id", config.ID.String()),
-			slog.String("name", config.Name),
-			slog.Any("error", err),
-		)
-		return
-	}
-
-	if err := s.backtestRunRepo.Create(ctx, run); err != nil {
+	if err := s.backtestPersister.PersistRun(ctx, config.ID, triggeredAt, time.Since(started), result); err != nil {
 		s.logger.Error("scheduler: failed to persist backtest run",
 			slog.String("backtest_config_id", config.ID.String()),
 			slog.String("name", config.Name),
@@ -409,7 +398,6 @@ func (s *Scheduler) runBacktest(config domain.BacktestConfig) {
 	s.logger.Info("scheduler: backtest execution completed",
 		slog.String("backtest_config_id", config.ID.String()),
 		slog.String("name", config.Name),
-		slog.String("run_id", run.ID.String()),
 	)
 }
 
@@ -438,37 +426,3 @@ func (s *Scheduler) jobContext() (context.Context, context.CancelFunc) {
 	return context.WithTimeout(baseCtx, timeout)
 }
 
-func newBacktestRun(
-	configID uuid.UUID,
-	triggeredAt time.Time,
-	duration time.Duration,
-	result *backtest.OrchestratorResult,
-) (*domain.BacktestRun, error) {
-	if result == nil {
-		return nil, fmt.Errorf("scheduler: backtest result is required")
-	}
-
-	metricsJSON, err := json.Marshal(result.Metrics)
-	if err != nil {
-		return nil, fmt.Errorf("scheduler: marshal backtest metrics: %w", err)
-	}
-	tradeLogJSON, err := json.Marshal(result.Trades)
-	if err != nil {
-		return nil, fmt.Errorf("scheduler: marshal backtest trades: %w", err)
-	}
-	equityCurveJSON, err := json.Marshal(result.EquityCurve)
-	if err != nil {
-		return nil, fmt.Errorf("scheduler: marshal backtest equity curve: %w", err)
-	}
-
-	return &domain.BacktestRun{
-		BacktestConfigID:  configID,
-		Metrics:           metricsJSON,
-		TradeLog:          tradeLogJSON,
-		EquityCurve:       equityCurveJSON,
-		RunTimestamp:      triggeredAt,
-		Duration:          duration,
-		PromptVersion:     result.PromptVersion,
-		PromptVersionHash: result.PromptVersionHash,
-	}, nil
-}

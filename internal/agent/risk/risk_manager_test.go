@@ -459,8 +459,8 @@ func TestParseFinalSignalMalformedJSON(t *testing.T) {
 	if err == nil {
 		t.Fatal("ParseFinalSignal() error = nil, want non-nil for malformed JSON")
 	}
-	if got := err.Error(); !strings.Contains(got, "failed to parse final signal JSON") {
-		t.Fatalf("error = %q, want it to contain %q", got, "failed to parse final signal JSON")
+	if got := err.Error(); !strings.Contains(got, "failed to parse JSON") {
+		t.Fatalf("error = %q, want it to contain %q", got, "failed to parse JSON")
 	}
 }
 

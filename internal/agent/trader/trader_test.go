@@ -376,8 +376,8 @@ func TestParseTradingPlanMalformedJSON(t *testing.T) {
 	if err == nil {
 		t.Fatal("ParseTradingPlan() error = nil, want non-nil for malformed JSON")
 	}
-	if got := err.Error(); !strings.Contains(got, "failed to parse trading plan JSON") {
-		t.Fatalf("error = %q, want it to contain %q", got, "failed to parse trading plan JSON")
+	if got := err.Error(); !strings.Contains(got, "failed to parse JSON") {
+		t.Fatalf("error = %q, want it to contain %q", got, "failed to parse JSON")
 	}
 }
 

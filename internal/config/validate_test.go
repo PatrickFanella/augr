@@ -211,6 +211,7 @@ func TestLoadFloat64Field_ValidValue(t *testing.T) {
 	t.Setenv("APP_ENV", "test")
 	t.Setenv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/tradingagent?sslmode=disable")
 	t.Setenv("OPENAI_API_KEY", "test-key")
+	t.Setenv("POLYGON_API_KEY", "test-polygon-key")
 	t.Setenv("RISK_MAX_POSITION_SIZE_PCT", "0.25")
 
 	cfg, err := Load()
@@ -261,6 +262,7 @@ func TestLoadDotEnv_NonDevDoesNotFail(t *testing.T) {
 	t.Setenv("APP_ENV", "production")
 	t.Setenv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/tradingagent?sslmode=disable")
 	t.Setenv("OPENAI_API_KEY", "test-key")
+	t.Setenv("POLYGON_API_KEY", "test-polygon-key")
 
 	_, err := Load()
 	if err != nil {
@@ -289,6 +291,7 @@ func validConfig() Config {
 			},
 		},
 		DataProviders: DataProviderConfigs{
+			Polygon:      DataProviderConfig{APIKey: "test-polygon-key"},
 			AlphaVantage: DataProviderConfig{RateLimitPerMinute: 5},
 			Finnhub:      DataProviderConfig{RateLimitPerMinute: 60},
 		},
@@ -300,6 +303,53 @@ func validConfig() Config {
 			CircuitBreakerThreshold: 0.05,
 			CircuitBreakerCooldown:  15 * time.Minute,
 		},
+	}
+}
+
+func TestValidateRequiresDataProvider(t *testing.T) {
+	cfg := validConfig()
+	cfg.DataProviders.Polygon.APIKey = ""
+	cfg.DataProviders.AlphaVantage.APIKey = ""
+	cfg.DataProviders.Finnhub.APIKey = ""
+
+	err := Validate(cfg)
+	if err == nil {
+		t.Fatal("Validate() error = nil, want error")
+	}
+	if !strings.Contains(err.Error(), "at least one data provider must be configured") {
+		t.Fatalf("Validate() error = %q, want data provider message", err)
+	}
+}
+
+func TestValidateAllowsPolygonOnly(t *testing.T) {
+	cfg := validConfig()
+	cfg.DataProviders.AlphaVantage.APIKey = ""
+	cfg.DataProviders.Finnhub.APIKey = ""
+
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("Validate() error = %v, want nil", err)
+	}
+}
+
+func TestValidateWhitespaceOnlyDeepThinkModel(t *testing.T) {
+	cfg := validConfig()
+	cfg.LLM.DeepThinkModel = "   "
+
+	err := Validate(cfg)
+	if err == nil {
+		t.Fatal("Validate() error = nil, want error")
+	}
+	if !strings.Contains(err.Error(), "LLM_DEEP_THINK_MODEL must not be whitespace-only") {
+		t.Fatalf("Validate() error = %q, want model message", err)
+	}
+}
+
+func TestValidateEmptyDeepThinkModelAllowed(t *testing.T) {
+	cfg := validConfig()
+	cfg.LLM.DeepThinkModel = ""
+
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("Validate() error = %v, want nil (empty is allowed)", err)
 	}
 }
 

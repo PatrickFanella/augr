@@ -151,18 +151,7 @@ func (r *ResearchManager) Execute(ctx context.Context, state *agent.PipelineStat
 // markdown code fences around the JSON. If parsing fails entirely, it returns
 // a descriptive error.
 func ParseInvestmentPlan(content string) (*InvestmentPlanOutput, error) {
-	cleaned := parse.StripCodeFences(content)
-
-	var plan InvestmentPlanOutput
-	if err := json.Unmarshal([]byte(cleaned), &plan); err != nil {
-		return nil, fmt.Errorf("failed to parse investment plan JSON: %w", err)
-	}
-
-	if err := validateInvestmentPlan(&plan); err != nil {
-		return nil, err
-	}
-
-	return &plan, nil
+	return parse.Parse(content, validateInvestmentPlan)
 }
 
 // validateInvestmentPlan checks that the parsed plan has valid field values.

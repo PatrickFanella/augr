@@ -246,18 +246,7 @@ func mapToTradingPlan(plan *TradingPlanOutput) agent.TradingPlan {
 // markdown code fences around the JSON. If parsing fails entirely, it returns
 // a descriptive error.
 func ParseTradingPlan(content string) (*TradingPlanOutput, error) {
-	cleaned := parse.StripCodeFences(content)
-
-	var plan TradingPlanOutput
-	if err := json.Unmarshal([]byte(cleaned), &plan); err != nil {
-		return nil, fmt.Errorf("failed to parse trading plan JSON: %w", err)
-	}
-
-	if err := validateTradingPlan(&plan); err != nil {
-		return nil, err
-	}
-
-	return &plan, nil
+	return parse.Parse(content, validateTradingPlan)
 }
 
 // validateTradingPlan checks that the parsed plan has valid field values.

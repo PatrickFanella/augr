@@ -108,36 +108,57 @@ func (p *Pipeline) nodeByRole(phase Phase, role AgentRole) Node {
 	return nil
 }
 
+// debatePhaseSpec describes the roles and configuration for a single debate
+// phase so that executeDebatePhase can handle both research and risk debates.
+type debatePhaseSpec struct {
+	phase       Phase
+	rounds      int
+	debaters    []AgentRole
+	judge       AgentRole
+	appendRound func(*PipelineState, DebateRound)
+}
+
+// executeDebatePhase resolves the required nodes for a debate, validates they
+// exist, and runs the configured number of rounds via DebateExecutor.
+func (p *Pipeline) executeDebatePhase(ctx context.Context, state *PipelineState, spec debatePhaseSpec) error {
+	debaters := make([]Node, 0, len(spec.debaters))
+	for _, role := range spec.debaters {
+		n := p.nodeByRole(spec.phase, role)
+		if n == nil {
+			return fmt.Errorf("agent/pipeline: %s phase requires a %s node", spec.phase, role)
+		}
+		debaters = append(debaters, n)
+	}
+
+	judgeNode := p.nodeByRole(spec.phase, spec.judge)
+	if judgeNode == nil {
+		return fmt.Errorf("agent/pipeline: %s phase requires a %s node", spec.phase, spec.judge)
+	}
+
+	return NewDebateExecutor(p, DebateConfig{
+		Phase:       spec.phase,
+		Rounds:      spec.rounds,
+		Debaters:    debaters,
+		Judge:       judgeNode,
+		AppendRound: spec.appendRound,
+	}).Execute(ctx, state)
+}
+
 // executeResearchDebatePhase runs the multi-round research debate. For each
 // round (up to config.ResearchDebateRounds), the BullResearcher and
 // BearResearcher nodes execute sequentially. A DebateRoundCompleted event is
 // emitted after each completed round. After all rounds the InvestJudge node
 // runs to produce the investment plan.
 func (p *Pipeline) executeResearchDebatePhase(ctx context.Context, state *PipelineState) error {
-	bullNode := p.nodeByRole(PhaseResearchDebate, AgentRoleBullResearcher)
-	bearNode := p.nodeByRole(PhaseResearchDebate, AgentRoleBearResearcher)
-	judgeNode := p.nodeByRole(PhaseResearchDebate, AgentRoleInvestJudge)
-
-	// Fail fast when required debate nodes are missing.
-	if bullNode == nil {
-		return fmt.Errorf("agent/pipeline: research debate phase requires a %s node", AgentRoleBullResearcher)
-	}
-	if bearNode == nil {
-		return fmt.Errorf("agent/pipeline: research debate phase requires a %s node", AgentRoleBearResearcher)
-	}
-	if judgeNode == nil {
-		return fmt.Errorf("agent/pipeline: research debate phase requires a %s node", AgentRoleInvestJudge)
-	}
-
-	return NewDebateExecutor(p, DebateConfig{
-		Phase:    PhaseResearchDebate,
-		Rounds:   p.config.ResearchDebateRounds,
-		Debaters: []Node{bullNode, bearNode},
-		Judge:    judgeNode,
-		AppendRound: func(state *PipelineState, round DebateRound) {
-			state.ResearchDebate.Rounds = append(state.ResearchDebate.Rounds, round)
+	return p.executeDebatePhase(ctx, state, debatePhaseSpec{
+		phase:    PhaseResearchDebate,
+		rounds:   p.config.ResearchDebateRounds,
+		debaters: []AgentRole{AgentRoleBullResearcher, AgentRoleBearResearcher},
+		judge:    AgentRoleInvestJudge,
+		appendRound: func(s *PipelineState, r DebateRound) {
+			s.ResearchDebate.Rounds = append(s.ResearchDebate.Rounds, r)
 		},
-	}).Execute(ctx, state)
+	})
 }
 
 // executeAnalysisPhase runs all registered PhaseAnalysis nodes concurrently using
@@ -287,34 +308,15 @@ func (p *Pipeline) executeTradingPhase(ctx context.Context, state *PipelineState
 // after each completed round. After all rounds the RiskManager node runs to
 // produce the final risk signal.
 func (p *Pipeline) executeRiskDebatePhase(ctx context.Context, state *PipelineState) error {
-	aggressiveNode := p.nodeByRole(PhaseRiskDebate, AgentRoleAggressiveAnalyst)
-	conservativeNode := p.nodeByRole(PhaseRiskDebate, AgentRoleConservativeAnalyst)
-	neutralNode := p.nodeByRole(PhaseRiskDebate, AgentRoleNeutralAnalyst)
-	riskManagerNode := p.nodeByRole(PhaseRiskDebate, AgentRoleRiskManager)
-
-	// Fail fast when required debate nodes are missing.
-	if aggressiveNode == nil {
-		return fmt.Errorf("agent/pipeline: risk debate phase requires a %s node", AgentRoleAggressiveAnalyst)
-	}
-	if conservativeNode == nil {
-		return fmt.Errorf("agent/pipeline: risk debate phase requires a %s node", AgentRoleConservativeAnalyst)
-	}
-	if neutralNode == nil {
-		return fmt.Errorf("agent/pipeline: risk debate phase requires a %s node", AgentRoleNeutralAnalyst)
-	}
-	if riskManagerNode == nil {
-		return fmt.Errorf("agent/pipeline: risk debate phase requires a %s node", AgentRoleRiskManager)
-	}
-
-	return NewDebateExecutor(p, DebateConfig{
-		Phase:    PhaseRiskDebate,
-		Rounds:   p.config.RiskDebateRounds,
-		Debaters: []Node{aggressiveNode, conservativeNode, neutralNode},
-		Judge:    riskManagerNode,
-		AppendRound: func(state *PipelineState, round DebateRound) {
-			state.RiskDebate.Rounds = append(state.RiskDebate.Rounds, round)
+	return p.executeDebatePhase(ctx, state, debatePhaseSpec{
+		phase:    PhaseRiskDebate,
+		rounds:   p.config.RiskDebateRounds,
+		debaters: []AgentRole{AgentRoleAggressiveAnalyst, AgentRoleConservativeAnalyst, AgentRoleNeutralAnalyst},
+		judge:    AgentRoleRiskManager,
+		appendRound: func(s *PipelineState, r DebateRound) {
+			s.RiskDebate.Rounds = append(s.RiskDebate.Rounds, r)
 		},
-	}).Execute(ctx, state)
+	})
 }
 
 // Execute runs the full pipeline for the given strategy and ticker. It creates

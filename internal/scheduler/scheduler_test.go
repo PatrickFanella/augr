@@ -543,6 +543,7 @@ func TestSchedulerStartTriggersScheduledBacktestAndPersistsRun(t *testing.T) {
 		},
 	}
 	runRepo := &mockBacktestRunRepo{}
+	persister := backtest.NewRepoPersister(runRepo)
 	runner := &mockBacktestRunner{
 		result: &backtest.OrchestratorResult{
 			Metrics: backtest.Metrics{
@@ -565,7 +566,7 @@ func TestSchedulerStartTriggersScheduledBacktestAndPersistsRun(t *testing.T) {
 		&mockPipeline{},
 		&mockRiskEngine{},
 		testLogger(),
-		WithBacktestScheduling(backtestRepo, runRepo, runner),
+		WithBacktestScheduling(backtestRepo, persister, runner),
 	)
 	s.newCron = func() cronEngine { return fakeCron }
 	s.nowFunc = func() time.Time { return triggeredAt }

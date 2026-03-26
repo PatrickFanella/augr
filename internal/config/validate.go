@@ -38,6 +38,10 @@ func Validate(cfg Config) error {
 		errs = append(errs, "FINNHUB_RATE_LIMIT_PER_MINUTE must be greater than 0")
 	}
 
+	if !hasDataProvider(cfg.DataProviders) {
+		errs = append(errs, "at least one data provider must be configured (POLYGON_API_KEY, ALPHA_VANTAGE_API_KEY, or FINNHUB_API_KEY)")
+	}
+
 	validateBrokerCredentials(&errs, "ALPACA_API_KEY", cfg.Brokers.Alpaca.APIKey, "ALPACA_API_SECRET", cfg.Brokers.Alpaca.APISecret)
 	validateBrokerCredentials(&errs, "BINANCE_API_KEY", cfg.Brokers.Binance.APIKey, "BINANCE_API_SECRET", cfg.Brokers.Binance.APISecret)
 
@@ -63,6 +67,13 @@ func Validate(cfg Config) error {
 
 	if cfg.Risk.CircuitBreakerCooldown <= 0 {
 		errs = append(errs, "RISK_CIRCUIT_BREAKER_COOLDOWN must be greater than 0")
+	}
+
+	if cfg.LLM.DeepThinkModel != "" && strings.TrimSpace(cfg.LLM.DeepThinkModel) == "" {
+		errs = append(errs, "LLM_DEEP_THINK_MODEL must not be whitespace-only when set")
+	}
+	if cfg.LLM.QuickThinkModel != "" && strings.TrimSpace(cfg.LLM.QuickThinkModel) == "" {
+		errs = append(errs, "LLM_QUICK_THINK_MODEL must not be whitespace-only when set")
 	}
 
 	// Cross-field: live trading requires at least one fully configured broker.
@@ -93,6 +104,12 @@ func Validate(cfg Config) error {
 	}
 
 	return nil
+}
+
+func hasDataProvider(providers DataProviderConfigs) bool {
+	return strings.TrimSpace(providers.Polygon.APIKey) != "" ||
+		strings.TrimSpace(providers.AlphaVantage.APIKey) != "" ||
+		strings.TrimSpace(providers.Finnhub.APIKey) != ""
 }
 
 func hasLLMProvider(providers LLMProviderConfigs) bool {

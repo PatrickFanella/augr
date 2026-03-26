@@ -191,26 +191,15 @@ func (r *RiskManager) Execute(ctx context.Context, state *agent.PipelineState) e
 // markdown code fences around the JSON. If parsing fails entirely, it returns
 // a descriptive error.
 func ParseFinalSignal(content string) (*FinalSignalOutput, error) {
-	cleaned := parse.StripCodeFences(content)
-
-	var signal FinalSignalOutput
-	if err := json.Unmarshal([]byte(cleaned), &signal); err != nil {
-		return nil, fmt.Errorf("failed to parse final signal JSON: %w", err)
-	}
-
-	if err := validateFinalSignal(&signal); err != nil {
-		return nil, err
-	}
-
-	// Normalize action to uppercase.
-	signal.Action = strings.ToUpper(signal.Action)
-
-	return &signal, nil
+	return parse.Parse(content, validateFinalSignal)
 }
 
 // validateFinalSignal checks that the parsed signal has valid field values.
 func validateFinalSignal(signal *FinalSignalOutput) error {
-	action := strings.ToUpper(signal.Action)
+	// Normalize action to uppercase during validation so callers receive
+	// a consistently cased value from parse.Parse.
+	signal.Action = strings.ToUpper(signal.Action)
+	action := signal.Action
 	switch action {
 	case "BUY", "SELL", "HOLD":
 		// valid
