@@ -62,20 +62,24 @@ func (s MetricStats) ConfidenceInterval(level float64) (lower, upper float64) {
 // AggregatedMetrics contains summary statistics for every numeric field of
 // Metrics, computed across multiple backtest runs.
 type AggregatedMetrics struct {
-	TotalReturn     MetricStats
-	MaxDrawdown     MetricStats
-	CalmarRatio     MetricStats
-	SharpeRatio     MetricStats
-	SortinoRatio    MetricStats
-	WinRate         MetricStats
-	ProfitFactor    MetricStats
-	AvgWinLossRatio MetricStats
-	Volatility      MetricStats
-	StartEquity     MetricStats
-	EndEquity       MetricStats
-	RealizedPnL     MetricStats
-	UnrealizedPnL   MetricStats
-	TotalBars       MetricStats
+	TotalReturn      MetricStats
+	BuyAndHoldReturn MetricStats
+	MaxDrawdown      MetricStats
+	CalmarRatio      MetricStats
+	SharpeRatio      MetricStats
+	SortinoRatio     MetricStats
+	Alpha            MetricStats
+	Beta             MetricStats
+	InformationRatio MetricStats
+	WinRate          MetricStats
+	ProfitFactor     MetricStats
+	AvgWinLossRatio  MetricStats
+	Volatility       MetricStats
+	StartEquity      MetricStats
+	EndEquity        MetricStats
+	RealizedPnL      MetricStats
+	UnrealizedPnL    MetricStats
+	TotalBars        MetricStats
 }
 
 // RunMulti executes cfg.RunFunc the specified number of times and aggregates
@@ -123,10 +127,14 @@ func validateMultiRunConfig(cfg MultiRunConfig) error {
 func aggregateMetrics(metrics []Metrics) AggregatedMetrics {
 	n := len(metrics)
 	totalReturn := make([]float64, n)
+	buyAndHoldReturn := make([]float64, n)
 	maxDrawdown := make([]float64, n)
 	calmarRatio := make([]float64, n)
 	sharpeRatio := make([]float64, n)
 	sortinoRatio := make([]float64, n)
+	alpha := make([]float64, n)
+	beta := make([]float64, n)
+	informationRatio := make([]float64, n)
 	winRate := make([]float64, n)
 	profitFactor := make([]float64, n)
 	avgWinLoss := make([]float64, n)
@@ -139,10 +147,14 @@ func aggregateMetrics(metrics []Metrics) AggregatedMetrics {
 
 	for i, m := range metrics {
 		totalReturn[i] = m.TotalReturn
+		buyAndHoldReturn[i] = m.BuyAndHoldReturn
 		maxDrawdown[i] = m.MaxDrawdown
 		calmarRatio[i] = m.CalmarRatio
 		sharpeRatio[i] = m.SharpeRatio
 		sortinoRatio[i] = m.SortinoRatio
+		alpha[i] = m.Alpha
+		beta[i] = m.Beta
+		informationRatio[i] = m.InformationRatio
 		winRate[i] = m.WinRate
 		profitFactor[i] = m.ProfitFactor
 		avgWinLoss[i] = m.AvgWinLossRatio
@@ -155,20 +167,24 @@ func aggregateMetrics(metrics []Metrics) AggregatedMetrics {
 	}
 
 	return AggregatedMetrics{
-		TotalReturn:     computeStats(totalReturn),
-		MaxDrawdown:     computeStats(maxDrawdown),
-		CalmarRatio:     computeStats(calmarRatio),
-		SharpeRatio:     computeStats(sharpeRatio),
-		SortinoRatio:    computeStats(sortinoRatio),
-		WinRate:         computeStats(winRate),
-		ProfitFactor:    computeStats(profitFactor),
-		AvgWinLossRatio: computeStats(avgWinLoss),
-		Volatility:      computeStats(volatility),
-		StartEquity:     computeStats(startEquity),
-		EndEquity:       computeStats(endEquity),
-		RealizedPnL:     computeStats(realizedPnL),
-		UnrealizedPnL:   computeStats(unrealizedPnL),
-		TotalBars:       computeStats(totalBars),
+		TotalReturn:      computeStats(totalReturn),
+		BuyAndHoldReturn: computeStats(buyAndHoldReturn),
+		MaxDrawdown:      computeStats(maxDrawdown),
+		CalmarRatio:      computeStats(calmarRatio),
+		SharpeRatio:      computeStats(sharpeRatio),
+		SortinoRatio:     computeStats(sortinoRatio),
+		Alpha:            computeStats(alpha),
+		Beta:             computeStats(beta),
+		InformationRatio: computeStats(informationRatio),
+		WinRate:          computeStats(winRate),
+		ProfitFactor:     computeStats(profitFactor),
+		AvgWinLossRatio:  computeStats(avgWinLoss),
+		Volatility:       computeStats(volatility),
+		StartEquity:      computeStats(startEquity),
+		EndEquity:        computeStats(endEquity),
+		RealizedPnL:      computeStats(realizedPnL),
+		UnrealizedPnL:    computeStats(unrealizedPnL),
+		TotalBars:        computeStats(totalBars),
 	}
 }
 

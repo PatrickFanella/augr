@@ -2,7 +2,10 @@ package backtest
 
 import (
 	"math"
+	"sort"
 	"time"
+
+	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 )
 
 const (
@@ -13,29 +16,33 @@ const (
 
 // Metrics holds computed performance statistics derived from an equity curve.
 type Metrics struct {
-	TotalReturn     float64 // (final equity − initial equity) / initial equity
-	MaxDrawdown     float64 // worst peak-to-trough drawdown (positive value)
-	CalmarRatio     float64 // annualised return / max drawdown
-	SharpeRatio     float64 // annualised risk-adjusted return (risk-free = 0)
-	SortinoRatio    float64 // annualised downside risk-adjusted return
-	WinRate         float64 // fraction of bars with positive returns
-	ProfitFactor    float64 // gross profits / gross losses (Inf when no losses)
-	AvgWinLossRatio float64 // average positive return / average absolute negative return
-	Volatility      float64 // annualised standard deviation of returns
-	StartEquity     float64
-	EndEquity       float64
-	StartTime       time.Time
-	EndTime         time.Time
-	TotalBars       int
-	RealizedPnL     float64
-	UnrealizedPnL   float64
+	TotalReturn      float64 // (final equity − initial equity) / initial equity
+	BuyAndHoldReturn float64 // passive return from first to last benchmark close
+	MaxDrawdown      float64 // worst peak-to-trough drawdown (positive value)
+	CalmarRatio      float64 // annualised return / max drawdown
+	SharpeRatio      float64 // annualised risk-adjusted return (risk-free = 0)
+	SortinoRatio     float64 // annualised downside risk-adjusted return
+	Alpha            float64 // annualised excess return beyond benchmark exposure
+	Beta             float64 // covariance(strategy, benchmark) / variance(benchmark)
+	InformationRatio float64 // annualised mean active return / tracking error
+	WinRate          float64 // fraction of bars with positive returns
+	ProfitFactor     float64 // gross profits / gross losses (Inf when no losses)
+	AvgWinLossRatio  float64 // average positive return / average absolute negative return
+	Volatility       float64 // annualised standard deviation of returns
+	StartEquity      float64
+	EndEquity        float64
+	StartTime        time.Time
+	EndTime          time.Time
+	TotalBars        int
+	RealizedPnL      float64
+	UnrealizedPnL    float64
 }
 
 // ComputeMetrics calculates performance metrics from an equity curve.
 // At least two equity points are required to compute return-based metrics;
 // with fewer points the struct is returned with zero-value fields and the
 // start/end equity filled from whatever points are available.
-func ComputeMetrics(curve []EquityPoint) Metrics {
+func ComputeMetrics(curve []EquityPoint, benchmarkBars []domain.OHLCV) Metrics {
 	if len(curve) == 0 {
 		return Metrics{}
 	}
@@ -68,6 +75,17 @@ func ComputeMetrics(curve []EquityPoint) Metrics {
 			continue
 		}
 		returns = append(returns, (curve[i].Equity-prev)/prev)
+	}
+
+	sortedBenchmarkBars := sortedBarsByTimestamp(benchmarkBars)
+	m.BuyAndHoldReturn = buyAndHoldReturn(sortedBenchmarkBars)
+	benchmarkReturns := barReturns(sortedBenchmarkBars)
+	alignedStrategy, alignedBenchmark := alignReturnSeries(returns, benchmarkReturns)
+	if len(alignedStrategy) >= 2 {
+		b, benchmarkVariance := beta(alignedStrategy, alignedBenchmark)
+		m.Beta = b
+		m.Alpha = alpha(alignedStrategy, alignedBenchmark, b, benchmarkVariance)
+		m.InformationRatio = informationRatio(alignedStrategy, alignedBenchmark)
 	}
 
 	// Max drawdown.
@@ -146,6 +164,92 @@ func ComputeMetrics(curve []EquityPoint) Metrics {
 	}
 
 	return m
+}
+
+func buyAndHoldReturn(bars []domain.OHLCV) float64 {
+	if len(bars) < 2 || bars[0].Close == 0 {
+		return 0
+	}
+	return (bars[len(bars)-1].Close - bars[0].Close) / bars[0].Close
+}
+
+func sortedBarsByTimestamp(bars []domain.OHLCV) []domain.OHLCV {
+	sorted := append([]domain.OHLCV(nil), bars...)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		return sorted[i].Timestamp.Before(sorted[j].Timestamp)
+	})
+	return sorted
+}
+
+func barReturns(bars []domain.OHLCV) []float64 {
+	if len(bars) < 2 {
+		return nil
+	}
+	returns := make([]float64, 0, len(bars)-1)
+	for i := 1; i < len(bars); i++ {
+		prev := bars[i-1].Close
+		if prev == 0 {
+			returns = append(returns, 0)
+			continue
+		}
+		returns = append(returns, (bars[i].Close-prev)/prev)
+	}
+	return returns
+}
+
+func alignReturnSeries(a, b []float64) ([]float64, []float64) {
+	n := len(a)
+	if len(b) < n {
+		n = len(b)
+	}
+	if n <= 0 {
+		return nil, nil
+	}
+	return a[:n], b[:n]
+}
+
+func beta(strategyReturns, benchmarkReturns []float64) (float64, float64) {
+	meanStrategy := mean(strategyReturns)
+	meanBenchmark := mean(benchmarkReturns)
+
+	var covariance float64
+	var variance float64
+	for i := range strategyReturns {
+		s := strategyReturns[i] - meanStrategy
+		b := benchmarkReturns[i] - meanBenchmark
+		covariance += s * b
+		variance += b * b
+	}
+	if variance == 0 {
+		return 0, 0
+	}
+	return covariance / variance, variance
+}
+
+func alpha(strategyReturns, benchmarkReturns []float64, b float64, benchmarkVariance float64) float64 {
+	meanStrategy := mean(strategyReturns)
+	meanBenchmark := mean(benchmarkReturns)
+
+	if benchmarkVariance == 0 {
+		perBarAlpha := meanStrategy - meanBenchmark
+		return perBarAlpha * annualTradingDays
+	}
+
+	perBarAlpha := meanStrategy - (b * meanBenchmark)
+	return perBarAlpha * annualTradingDays
+}
+
+func informationRatio(strategyReturns, benchmarkReturns []float64) float64 {
+	active := make([]float64, len(strategyReturns))
+	for i := range strategyReturns {
+		active[i] = strategyReturns[i] - benchmarkReturns[i]
+	}
+	meanActive := mean(active)
+	trackingError := stddev(active, meanActive)
+	if trackingError == 0 {
+		return 0
+	}
+	return (meanActive / trackingError) * math.Sqrt(annualTradingDays)
 }
 
 // mean returns the arithmetic mean of a float64 slice.

@@ -60,18 +60,22 @@ func TestRunMulti_RequiresRunFunc(t *testing.T) {
 
 func TestRunMulti_IdenticalRuns(t *testing.T) {
 	m := Metrics{
-		TotalReturn:     0.10,
-		MaxDrawdown:     0.05,
-		CalmarRatio:     2.0,
-		SharpeRatio:     1.5,
-		SortinoRatio:    2.0,
-		WinRate:         0.6,
-		ProfitFactor:    1.8,
-		AvgWinLossRatio: 1.2,
-		Volatility:      0.15,
-		EndEquity:       110_000,
-		RealizedPnL:     5_000,
-		UnrealizedPnL:   5_000,
+		TotalReturn:      0.10,
+		BuyAndHoldReturn: 0.08,
+		MaxDrawdown:      0.05,
+		CalmarRatio:      2.0,
+		SharpeRatio:      1.5,
+		SortinoRatio:     2.0,
+		Alpha:            0.01,
+		Beta:             1.1,
+		InformationRatio: 0.7,
+		WinRate:          0.6,
+		ProfitFactor:     1.8,
+		AvgWinLossRatio:  1.2,
+		Volatility:       0.15,
+		EndEquity:        110_000,
+		RealizedPnL:      5_000,
+		UnrealizedPnL:    5_000,
 	}
 
 	cfg := MultiRunConfig{
@@ -94,17 +98,21 @@ func TestRunMulti_IdenticalRuns(t *testing.T) {
 	// All identical → stddev should be 0 for every metric.
 	agg := result.Aggregated
 	assertStats(t, "TotalReturn", agg.TotalReturn, 0.10, 0, 0.10, 0.10)
+	assertStats(t, "BuyAndHoldReturn", agg.BuyAndHoldReturn, 0.08, 0, 0.08, 0.08)
 	assertStats(t, "MaxDrawdown", agg.MaxDrawdown, 0.05, 0, 0.05, 0.05)
 	assertStats(t, "SharpeRatio", agg.SharpeRatio, 1.5, 0, 1.5, 1.5)
+	assertStats(t, "Alpha", agg.Alpha, 0.01, 0, 0.01, 0.01)
+	assertStats(t, "Beta", agg.Beta, 1.1, 0, 1.1, 1.1)
+	assertStats(t, "InformationRatio", agg.InformationRatio, 0.7, 0, 0.7, 0.7)
 	assertStats(t, "WinRate", agg.WinRate, 0.6, 0, 0.6, 0.6)
 	assertStats(t, "EndEquity", agg.EndEquity, 110_000, 0, 110_000, 110_000)
 }
 
 func TestRunMulti_VaryingRuns(t *testing.T) {
 	metrics := []Metrics{
-		{TotalReturn: 0.10, SharpeRatio: 1.0, EndEquity: 110_000},
-		{TotalReturn: 0.20, SharpeRatio: 2.0, EndEquity: 120_000},
-		{TotalReturn: 0.30, SharpeRatio: 3.0, EndEquity: 130_000},
+		{TotalReturn: 0.10, BuyAndHoldReturn: 0.05, SharpeRatio: 1.0, Alpha: 0.01, Beta: 1.0, InformationRatio: 0.5, EndEquity: 110_000},
+		{TotalReturn: 0.20, BuyAndHoldReturn: 0.06, SharpeRatio: 2.0, Alpha: 0.02, Beta: 1.1, InformationRatio: 0.6, EndEquity: 120_000},
+		{TotalReturn: 0.30, BuyAndHoldReturn: 0.07, SharpeRatio: 3.0, Alpha: 0.03, Beta: 1.2, InformationRatio: 0.7, EndEquity: 130_000},
 	}
 
 	cfg := MultiRunConfig{
@@ -130,6 +138,10 @@ func TestRunMulti_VaryingRuns(t *testing.T) {
 	}
 
 	assertFloat(t, "SharpeRatio.Mean", agg.SharpeRatio.Mean, 2.0)
+	assertFloat(t, "BuyAndHoldReturn.Mean", agg.BuyAndHoldReturn.Mean, 0.06)
+	assertFloat(t, "Alpha.Mean", agg.Alpha.Mean, 0.02)
+	assertFloat(t, "Beta.Mean", agg.Beta.Mean, 1.1)
+	assertFloat(t, "InformationRatio.Mean", agg.InformationRatio.Mean, 0.6)
 	assertFloat(t, "EndEquity.Mean", agg.EndEquity.Mean, 120_000)
 }
 

@@ -192,6 +192,48 @@ func TestOrchestratorFiltersBarsToDateRange(t *testing.T) {
 	if len(result.BarResults) != 3 {
 		t.Errorf("BarResults len = %d, want 3", len(result.BarResults))
 	}
+	wantBuyAndHold := (102.0 - 100.0) / 100.0
+	if result.Metrics.BuyAndHoldReturn != wantBuyAndHold {
+		t.Errorf("Metrics.BuyAndHoldReturn = %f, want %f", result.Metrics.BuyAndHoldReturn, wantBuyAndHold)
+	}
+}
+
+func TestOrchestratorBenchmarkUsesExecutionOrderWhenInputBarsUnsorted(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
+	bars := []domain.OHLCV{
+		makeBar(base.Add(48*time.Hour), 102),
+		makeBar(base, 100),
+		makeBar(base.Add(24*time.Hour), 101),
+	}
+
+	cfg := OrchestratorConfig{
+		StrategyID:  uuid.New(),
+		Ticker:      "AAPL",
+		StartDate:   base,
+		EndDate:     base.Add(48 * time.Hour),
+		InitialCash: 100_000,
+		FillConfig: FillConfig{
+			Slippage: ProportionalSlippage{BasisPoints: 0},
+		},
+	}
+
+	pipeline := makePipeline()
+	orch, err := NewOrchestrator(cfg, bars, pipeline, nil)
+	if err != nil {
+		t.Fatalf("NewOrchestrator() error = %v", err)
+	}
+
+	result, err := orch.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	wantBuyAndHold := (102.0 - 100.0) / 100.0
+	if result.Metrics.BuyAndHoldReturn != wantBuyAndHold {
+		t.Errorf("Metrics.BuyAndHoldReturn = %f, want %f", result.Metrics.BuyAndHoldReturn, wantBuyAndHold)
+	}
 }
 
 func TestOrchestratorRunRejectsEmptyDateRange(t *testing.T) {

@@ -147,7 +147,7 @@ func (o *Orchestrator) Run(ctx context.Context) (*OrchestratorResult, error) {
 	trades := broker.FilledTrades()
 	positions := tracker.Positions()
 	equityCurve := runResult.EquityCurve
-	metrics := ComputeMetrics(equityCurve)
+	metrics := ComputeMetrics(equityCurve, filtered)
 	tradeAnalytics := ComputeTradeAnalytics(trades, o.config.StartDate, o.config.EndDate)
 
 	o.logger.Info("backtest: orchestrated run complete",
