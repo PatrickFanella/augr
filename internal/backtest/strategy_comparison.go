@@ -222,7 +222,8 @@ func formatComparisonMetricValue(value float64) string {
 	}
 }
 
+var comparisonCellReplacer = strings.NewReplacer("\n", " ", "\r", " ", "\t", " ")
+
 func sanitizeComparisonCell(value string) string {
-	replacer := strings.NewReplacer("\n", " ", "\r", " ", "\t", " ")
-	return strings.TrimSpace(replacer.Replace(value))
+	return strings.TrimSpace(comparisonCellReplacer.Replace(value))
 }
