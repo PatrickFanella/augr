@@ -34,11 +34,12 @@ type OrchestratorConfig struct {
 // trades, per-bar results, final positions, the full equity curve, and
 // computed performance metrics.
 type OrchestratorResult struct {
-	Trades      []domain.Trade
-	BarResults  []BarResult
-	Positions   []TrackedPosition
-	EquityCurve []EquityPoint
-	Metrics     Metrics
+	Trades         []domain.Trade
+	BarResults     []BarResult
+	Positions      []TrackedPosition
+	EquityCurve    []EquityPoint
+	Metrics        Metrics
+	TradeAnalytics TradeAnalytics
 }
 
 // Orchestrator coordinates all backtest subsystems (data loading, pipeline
@@ -147,6 +148,7 @@ func (o *Orchestrator) Run(ctx context.Context) (*OrchestratorResult, error) {
 	positions := tracker.Positions()
 	equityCurve := runResult.EquityCurve
 	metrics := ComputeMetrics(equityCurve)
+	tradeAnalytics := ComputeTradeAnalytics(trades, o.config.StartDate, o.config.EndDate)
 
 	o.logger.Info("backtest: orchestrated run complete",
 		slog.Int("bars_processed", len(runResult.BarResults)),
@@ -158,11 +160,12 @@ func (o *Orchestrator) Run(ctx context.Context) (*OrchestratorResult, error) {
 	)
 
 	return &OrchestratorResult{
-		Trades:      trades,
-		BarResults:  runResult.BarResults,
-		Positions:   positions,
-		EquityCurve: equityCurve,
-		Metrics:     metrics,
+		Trades:         trades,
+		BarResults:     runResult.BarResults,
+		Positions:      positions,
+		EquityCurve:    equityCurve,
+		Metrics:        metrics,
+		TradeAnalytics: tradeAnalytics,
 	}, nil
 }
 

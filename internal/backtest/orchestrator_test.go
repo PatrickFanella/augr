@@ -159,11 +159,11 @@ func TestOrchestratorFiltersBarsToDateRange(t *testing.T) {
 
 	base := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
 	bars := []domain.OHLCV{
-		makeBar(base, 100),                     // in range
-		makeBar(base.Add(24*time.Hour), 101),    // in range
-		makeBar(base.Add(48*time.Hour), 102),    // in range
-		makeBar(base.Add(72*time.Hour), 103),    // out of range
-		makeBar(base.Add(96*time.Hour), 104),    // out of range
+		makeBar(base, 100),                   // in range
+		makeBar(base.Add(24*time.Hour), 101), // in range
+		makeBar(base.Add(48*time.Hour), 102), // in range
+		makeBar(base.Add(72*time.Hour), 103), // out of range
+		makeBar(base.Add(96*time.Hour), 104), // out of range
 	}
 
 	cfg := OrchestratorConfig{
@@ -343,6 +343,9 @@ func TestOrchestratorResultHasMetrics(t *testing.T) {
 	}
 	if !result.Metrics.StartTime.Equal(base) {
 		t.Errorf("Metrics.StartTime = %v, want %v", result.Metrics.StartTime, base)
+	}
+	if result.TradeAnalytics.ClosedTrades != 0 {
+		t.Errorf("TradeAnalytics.ClosedTrades = %d, want 0", result.TradeAnalytics.ClosedTrades)
 	}
 }
 
