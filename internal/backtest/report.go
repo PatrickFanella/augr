@@ -60,9 +60,9 @@ type ReportModelConfiguration struct {
 
 // ReportTransactionCosts captures transaction-cost inputs in JSON-friendly form.
 type ReportTransactionCosts struct {
-	CommissionPerOrder float64 `json:"commission_per_order,omitempty"`
-	CommissionPerUnit  float64 `json:"commission_per_unit,omitempty"`
-	ExchangeFeePct     float64 `json:"exchange_fee_pct,omitempty"`
+	CommissionPerOrder float64 `json:"commission_per_order"`
+	CommissionPerUnit  float64 `json:"commission_per_unit"`
+	ExchangeFeePct     float64 `json:"exchange_fee_pct"`
 }
 
 // BenchmarkComparison isolates the benchmark-relative metrics in the report.
