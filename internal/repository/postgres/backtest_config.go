@@ -30,6 +30,10 @@ func NewBacktestConfigRepo(pool *pgxpool.Pool) *BacktestConfigRepo {
 
 // Create inserts a new backtest configuration and populates the generated ID and timestamps.
 func (r *BacktestConfigRepo) Create(ctx context.Context, config *domain.BacktestConfig) error {
+	if err := config.Validate(); err != nil {
+		return fmt.Errorf("postgres: validate backtest config: %w", err)
+	}
+
 	simulationJSON, err := marshalBacktestSimulation(config.Simulation)
 	if err != nil {
 		return err
@@ -99,6 +103,10 @@ func (r *BacktestConfigRepo) List(ctx context.Context, filter repository.Backtes
 
 // Update persists changes to an existing backtest configuration.
 func (r *BacktestConfigRepo) Update(ctx context.Context, config *domain.BacktestConfig) error {
+	if err := config.Validate(); err != nil {
+		return fmt.Errorf("postgres: validate backtest config: %w", err)
+	}
+
 	simulationJSON, err := marshalBacktestSimulation(config.Simulation)
 	if err != nil {
 		return err
@@ -148,7 +156,7 @@ func (r *BacktestConfigRepo) Delete(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-const backtestConfigSelectSQL = `SELECT id, strategy_id, name, description, start_date, end_date, simulation_params, created_at, updated_at
+const backtestConfigSelectSQL = `SELECT id, strategy_id, name, COALESCE(description, ''), start_date, end_date, simulation_params, created_at, updated_at
 	 FROM backtest_configs`
 
 // scanBacktestConfig scans a single row (pgx.Row or pgx.Rows) into a BacktestConfig.

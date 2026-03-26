@@ -2,7 +2,7 @@ CREATE TABLE backtest_configs (
     id                UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     strategy_id       UUID        NOT NULL REFERENCES strategies (id),
     name              TEXT        NOT NULL,
-    description       TEXT,
+    description       TEXT        NOT NULL DEFAULT '',
     start_date        DATE        NOT NULL,
     end_date          DATE        NOT NULL,
     simulation_params JSONB       NOT NULL DEFAULT '{}',

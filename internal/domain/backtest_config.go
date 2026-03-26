@@ -35,6 +35,9 @@ type BacktestConfig struct {
 
 // Validate checks that the backtest configuration has valid required fields.
 func (c *BacktestConfig) Validate() error {
+	if c == nil {
+		return fmt.Errorf("backtest config is required")
+	}
 	if c.StrategyID == uuid.Nil {
 		return fmt.Errorf("strategy_id is required")
 	}

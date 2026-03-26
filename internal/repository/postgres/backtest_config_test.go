@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -90,6 +91,44 @@ func TestMarshalBacktestSimulation_InvalidJSON(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected error for invalid JSON, got nil")
+	}
+}
+
+func TestBacktestConfigRepoCreate_ValidateError(t *testing.T) {
+	repo := NewBacktestConfigRepo(nil)
+
+	err := repo.Create(context.Background(), &domain.BacktestConfig{
+		StrategyID: uuid.New(),
+		Name:       "invalid",
+		StartDate:  time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+		EndDate:    time.Date(2024, 12, 31, 0, 0, 0, 0, time.UTC),
+	})
+	if err == nil {
+		t.Fatal("expected validation error, got nil")
+	}
+	if !strings.Contains(err.Error(), "validate backtest config") {
+		t.Fatalf("expected wrapped validation error, got %v", err)
+	}
+}
+
+func TestBacktestConfigRepoUpdate_ValidateError(t *testing.T) {
+	repo := NewBacktestConfigRepo(nil)
+
+	err := repo.Update(context.Background(), &domain.BacktestConfig{
+		ID:         uuid.New(),
+		StrategyID: uuid.New(),
+		Name:       "invalid",
+		StartDate:  time.Date(2024, 12, 31, 0, 0, 0, 0, time.UTC),
+		EndDate:    time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+		Simulation: domain.BacktestSimulationParameters{
+			InitialCapital: 100000,
+		},
+	})
+	if err == nil {
+		t.Fatal("expected validation error, got nil")
+	}
+	if !strings.Contains(err.Error(), "validate backtest config") {
+		t.Fatalf("expected wrapped validation error, got %v", err)
 	}
 }
 
@@ -181,7 +220,7 @@ func ensureBacktestConfigTable(t *testing.T, ctx context.Context, pool *pgxpool.
 		id                UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
 		strategy_id       UUID        NOT NULL REFERENCES strategies (id),
 		name              TEXT        NOT NULL,
-		description       TEXT,
+		description       TEXT        NOT NULL DEFAULT '',
 		start_date        DATE        NOT NULL,
 		end_date          DATE        NOT NULL,
 		simulation_params JSONB       NOT NULL DEFAULT '{}',
