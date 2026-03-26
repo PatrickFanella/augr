@@ -191,10 +191,10 @@ func (a *BacktestComparisonAPI) CompareHistoricalRuns(
 			return nil, err
 		}
 		runs = append(runs, summary)
-		stableSummary := &runs[len(runs)-1]
+		metrics := summary.Metrics
 		inputs = append(inputs, backtest.MetricComparisonInput{
-			Name:    stableSummary.ComparisonLabel,
-			Metrics: &stableSummary.Metrics,
+			Name:    summary.ComparisonLabel,
+			Metrics: &metrics,
 		})
 	}
 
