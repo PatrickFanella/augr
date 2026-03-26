@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"strings"
 )
 
 // MinRecommendedRuns is the minimum number of runs recommended to establish
@@ -25,9 +26,47 @@ type MultiRunConfig struct {
 // MultiRunResult holds per-run metrics and aggregated statistics across N
 // backtest runs, enabling quantification of non-determinism from LLM responses.
 type MultiRunResult struct {
-	Runs       int
-	Individual []Metrics
-	Aggregated AggregatedMetrics
+	Runs                int
+	Individual          []Metrics
+	PromptVersions      []string
+	PromptVersionHashes []string
+	Aggregated          AggregatedMetrics
+}
+
+// PromptVariantSummary identifies the prompt metadata associated with a set of
+// aggregated backtest runs.
+type PromptVariantSummary struct {
+	PromptVersion     string
+	PromptVersionHash string
+	Runs              int
+	Aggregated        AggregatedMetrics
+}
+
+// ConfidenceIntervalBounds stores the explicit interval used in a comparison report.
+type ConfidenceIntervalBounds struct {
+	Level float64
+	Lower float64
+	Upper float64
+}
+
+// PromptMetricComparison presents a single metric side-by-side for two prompt variants.
+type PromptMetricComparison struct {
+	Name                       string
+	Left                       MetricStats
+	Right                      MetricStats
+	LeftConfidenceInterval     ConfidenceIntervalBounds
+	RightConfidenceInterval    ConfidenceIntervalBounds
+	MeanDelta                  float64
+	ConfidenceIntervalsOverlap bool
+}
+
+// PromptABComparisonReport provides side-by-side aggregated metrics for two
+// prompt variants evaluated on the same historical data.
+type PromptABComparisonReport struct {
+	Left            PromptVariantSummary
+	Right           PromptVariantSummary
+	ConfidenceLevel float64
+	Metrics         []PromptMetricComparison
 }
 
 // MetricStats holds descriptive statistics for a single metric across runs.
@@ -91,6 +130,8 @@ func RunMulti(ctx context.Context, cfg MultiRunConfig) (*MultiRunResult, error) 
 	}
 
 	individual := make([]Metrics, 0, cfg.Runs)
+	promptVersions := make([]string, 0, cfg.Runs)
+	promptVersionHashes := make([]string, 0, cfg.Runs)
 	for i := 0; i < cfg.Runs; i++ {
 		if err := ctx.Err(); err != nil {
 			return nil, fmt.Errorf("aggregator: context cancelled before run %d: %w", i+1, err)
@@ -103,14 +144,96 @@ func RunMulti(ctx context.Context, cfg MultiRunConfig) (*MultiRunResult, error) 
 		if result == nil {
 			return nil, fmt.Errorf("aggregator: run %d returned nil result", i+1)
 		}
+		if err := validatePromptMetadata(result, i+1); err != nil {
+			return nil, err
+		}
 
 		individual = append(individual, result.Metrics)
+		promptVersions = append(promptVersions, result.PromptVersion)
+		promptVersionHashes = append(promptVersionHashes, result.PromptVersionHash)
 	}
 
 	return &MultiRunResult{
-		Runs:       cfg.Runs,
-		Individual: individual,
-		Aggregated: aggregateMetrics(individual),
+		Runs:                cfg.Runs,
+		Individual:          individual,
+		PromptVersions:      promptVersions,
+		PromptVersionHashes: promptVersionHashes,
+		Aggregated:          aggregateMetrics(individual),
+	}, nil
+}
+
+// ComparePromptVariants produces a side-by-side report for two prompt variants
+// that were each aggregated via RunMulti.
+func ComparePromptVariants(left, right *MultiRunResult, confidenceLevel float64) (*PromptABComparisonReport, error) {
+	if left == nil || right == nil {
+		return nil, fmt.Errorf("aggregator: both prompt variants are required")
+	}
+	if _, ok := tCritical(1, confidenceLevel); !ok {
+		return nil, fmt.Errorf("aggregator: unsupported confidence level %.2f", confidenceLevel)
+	}
+
+	leftSummary, err := summarizePromptVariant(left)
+	if err != nil {
+		return nil, err
+	}
+	rightSummary, err := summarizePromptVariant(right)
+	if err != nil {
+		return nil, err
+	}
+
+	metricNames := []struct {
+		name  string
+		left  MetricStats
+		right MetricStats
+	}{
+		{name: "TotalReturn", left: left.Aggregated.TotalReturn, right: right.Aggregated.TotalReturn},
+		{name: "BuyAndHoldReturn", left: left.Aggregated.BuyAndHoldReturn, right: right.Aggregated.BuyAndHoldReturn},
+		{name: "MaxDrawdown", left: left.Aggregated.MaxDrawdown, right: right.Aggregated.MaxDrawdown},
+		{name: "CalmarRatio", left: left.Aggregated.CalmarRatio, right: right.Aggregated.CalmarRatio},
+		{name: "SharpeRatio", left: left.Aggregated.SharpeRatio, right: right.Aggregated.SharpeRatio},
+		{name: "SortinoRatio", left: left.Aggregated.SortinoRatio, right: right.Aggregated.SortinoRatio},
+		{name: "Alpha", left: left.Aggregated.Alpha, right: right.Aggregated.Alpha},
+		{name: "Beta", left: left.Aggregated.Beta, right: right.Aggregated.Beta},
+		{name: "InformationRatio", left: left.Aggregated.InformationRatio, right: right.Aggregated.InformationRatio},
+		{name: "WinRate", left: left.Aggregated.WinRate, right: right.Aggregated.WinRate},
+		{name: "ProfitFactor", left: left.Aggregated.ProfitFactor, right: right.Aggregated.ProfitFactor},
+		{name: "AvgWinLossRatio", left: left.Aggregated.AvgWinLossRatio, right: right.Aggregated.AvgWinLossRatio},
+		{name: "Volatility", left: left.Aggregated.Volatility, right: right.Aggregated.Volatility},
+		{name: "StartEquity", left: left.Aggregated.StartEquity, right: right.Aggregated.StartEquity},
+		{name: "EndEquity", left: left.Aggregated.EndEquity, right: right.Aggregated.EndEquity},
+		{name: "RealizedPnL", left: left.Aggregated.RealizedPnL, right: right.Aggregated.RealizedPnL},
+		{name: "UnrealizedPnL", left: left.Aggregated.UnrealizedPnL, right: right.Aggregated.UnrealizedPnL},
+		{name: "TotalBars", left: left.Aggregated.TotalBars, right: right.Aggregated.TotalBars},
+	}
+
+	comparisons := make([]PromptMetricComparison, 0, len(metricNames))
+	for _, metric := range metricNames {
+		leftLower, leftUpper := metric.left.ConfidenceInterval(confidenceLevel)
+		rightLower, rightUpper := metric.right.ConfidenceInterval(confidenceLevel)
+		comparisons = append(comparisons, PromptMetricComparison{
+			Name:  metric.name,
+			Left:  metric.left,
+			Right: metric.right,
+			LeftConfidenceInterval: ConfidenceIntervalBounds{
+				Level: confidenceLevel,
+				Lower: leftLower,
+				Upper: leftUpper,
+			},
+			RightConfidenceInterval: ConfidenceIntervalBounds{
+				Level: confidenceLevel,
+				Lower: rightLower,
+				Upper: rightUpper,
+			},
+			MeanDelta:                  metric.right.Mean - metric.left.Mean,
+			ConfidenceIntervalsOverlap: intervalsOverlap(leftLower, leftUpper, rightLower, rightUpper),
+		})
+	}
+
+	return &PromptABComparisonReport{
+		Left:            leftSummary,
+		Right:           rightSummary,
+		ConfidenceLevel: confidenceLevel,
+		Metrics:         comparisons,
 	}, nil
 }
 
@@ -122,6 +245,56 @@ func validateMultiRunConfig(cfg MultiRunConfig) error {
 		return fmt.Errorf("aggregator: RunFunc is required")
 	}
 	return nil
+}
+
+func validatePromptMetadata(result *OrchestratorResult, runIndex int) error {
+	if strings.TrimSpace(result.PromptVersion) == "" {
+		return fmt.Errorf("aggregator: run %d missing prompt_version metadata", runIndex)
+	}
+	if strings.TrimSpace(result.PromptVersionHash) == "" {
+		return fmt.Errorf("aggregator: run %d missing prompt_version_hash metadata", runIndex)
+	}
+	return nil
+}
+
+func summarizePromptVariant(result *MultiRunResult) (PromptVariantSummary, error) {
+	version, err := uniquePromptField("prompt_version", result.PromptVersions)
+	if err != nil {
+		return PromptVariantSummary{}, err
+	}
+	hash, err := uniquePromptField("prompt_version_hash", result.PromptVersionHashes)
+	if err != nil {
+		return PromptVariantSummary{}, err
+	}
+	return PromptVariantSummary{
+		PromptVersion:     version,
+		PromptVersionHash: hash,
+		Runs:              result.Runs,
+		Aggregated:        result.Aggregated,
+	}, nil
+}
+
+func uniquePromptField(name string, values []string) (string, error) {
+	if len(values) == 0 {
+		return "", fmt.Errorf("aggregator: %s metadata is required", name)
+	}
+	base := values[0]
+	if strings.TrimSpace(base) == "" {
+		return "", fmt.Errorf("aggregator: %s metadata is required", name)
+	}
+	for _, value := range values[1:] {
+		if value != base {
+			return "", fmt.Errorf("aggregator: %s must be identical across runs", name)
+		}
+	}
+	return base, nil
+}
+
+func intervalsOverlap(leftLower, leftUpper, rightLower, rightUpper float64) bool {
+	if math.IsNaN(leftLower) || math.IsNaN(leftUpper) || math.IsNaN(rightLower) || math.IsNaN(rightUpper) {
+		return false
+	}
+	return leftLower <= rightUpper && rightLower <= leftUpper
 }
 
 func aggregateMetrics(metrics []Metrics) AggregatedMetrics {

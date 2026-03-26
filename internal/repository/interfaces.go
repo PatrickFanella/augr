@@ -26,10 +26,11 @@ type BacktestConfigFilter struct {
 
 // BacktestRunFilter defines supported filters when listing persisted backtest runs.
 type BacktestRunFilter struct {
-	BacktestConfigID *uuid.UUID
-	PromptVersion    string
-	RunAfter         *time.Time
-	RunBefore        *time.Time
+	BacktestConfigID  *uuid.UUID
+	PromptVersion     string
+	PromptVersionHash string
+	RunAfter          *time.Time
+	RunBefore         *time.Time
 }
 
 // PipelineRunFilter defines supported filters when listing pipeline runs.

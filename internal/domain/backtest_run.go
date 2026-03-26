@@ -10,16 +10,17 @@ import (
 
 // BacktestRun stores the persisted results of a single executed backtest.
 type BacktestRun struct {
-	ID               uuid.UUID       `json:"id"`
-	BacktestConfigID uuid.UUID       `json:"backtest_config_id"`
-	Metrics          json.RawMessage `json:"metrics"`
-	TradeLog         json.RawMessage `json:"trade_log"`
-	EquityCurve      json.RawMessage `json:"equity_curve"`
-	RunTimestamp     time.Time       `json:"run_timestamp"`
-	Duration         time.Duration   `json:"duration"`
-	PromptVersion    string          `json:"prompt_version"`
-	CreatedAt        time.Time       `json:"created_at"`
-	UpdatedAt        time.Time       `json:"updated_at"`
+	ID                uuid.UUID       `json:"id"`
+	BacktestConfigID  uuid.UUID       `json:"backtest_config_id"`
+	Metrics           json.RawMessage `json:"metrics"`
+	TradeLog          json.RawMessage `json:"trade_log"`
+	EquityCurve       json.RawMessage `json:"equity_curve"`
+	RunTimestamp      time.Time       `json:"run_timestamp"`
+	Duration          time.Duration   `json:"duration"`
+	PromptVersion     string          `json:"prompt_version"`
+	PromptVersionHash string          `json:"prompt_version_hash"`
+	CreatedAt         time.Time       `json:"created_at"`
+	UpdatedAt         time.Time       `json:"updated_at"`
 }
 
 // Validate checks that the persisted backtest run has all required metadata and results.
@@ -46,6 +47,9 @@ func (r *BacktestRun) Validate() error {
 		return fmt.Errorf("duration must be non-negative")
 	}
 	if err := requireNonEmpty("prompt_version", r.PromptVersion); err != nil {
+		return err
+	}
+	if err := requireNonEmpty("prompt_version_hash", r.PromptVersionHash); err != nil {
 		return err
 	}
 	return nil

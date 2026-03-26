@@ -6,13 +6,21 @@ import (
 	"math"
 	"testing"
 	"time"
+
+	"github.com/PatrickFanella/get-rich-quick/internal/agent/analysts"
 )
 
 // --- helpers ---------------------------------------------------------------
 
+var testPromptHash = analysts.HashPromptVersion("prompt-v1")
+
 // makeOrchestratorResult builds an OrchestratorResult with the given Metrics.
 func makeOrchestratorResult(m Metrics) *OrchestratorResult {
-	return &OrchestratorResult{Metrics: m}
+	return &OrchestratorResult{
+		Metrics:           m,
+		PromptVersion:     "prompt-v1",
+		PromptVersionHash: testPromptHash,
+	}
 }
 
 // fixedRunFunc returns a RunFunc that always returns the provided Metrics.
@@ -30,6 +38,15 @@ func sequentialRunFunc(results []Metrics) RunFunc {
 		m := results[idx]
 		idx++
 		return makeOrchestratorResult(m), nil
+	}
+}
+
+func sequentialPromptRunFunc(results []*OrchestratorResult) RunFunc {
+	idx := 0
+	return func(_ context.Context) (*OrchestratorResult, error) {
+		result := results[idx]
+		idx++
+		return result, nil
 	}
 }
 
@@ -93,6 +110,17 @@ func TestRunMulti_IdenticalRuns(t *testing.T) {
 	}
 	if len(result.Individual) != 5 {
 		t.Fatalf("expected 5 individual results, got %d", len(result.Individual))
+	}
+	if len(result.PromptVersions) != 5 || len(result.PromptVersionHashes) != 5 {
+		t.Fatalf("expected prompt metadata for 5 runs, got %d versions and %d hashes", len(result.PromptVersions), len(result.PromptVersionHashes))
+	}
+	for i := range result.PromptVersions {
+		if result.PromptVersions[i] != "prompt-v1" {
+			t.Fatalf("PromptVersions[%d] = %q, want %q", i, result.PromptVersions[i], "prompt-v1")
+		}
+		if result.PromptVersionHashes[i] != testPromptHash {
+			t.Fatalf("PromptVersionHashes[%d] = %q, want %q", i, result.PromptVersionHashes[i], testPromptHash)
+		}
 	}
 
 	// All identical → stddev should be 0 for every metric.
@@ -220,6 +248,40 @@ func TestRunMulti_NilResult(t *testing.T) {
 	_, err := RunMulti(context.Background(), cfg)
 	if err == nil {
 		t.Fatal("expected error when RunFunc returns nil result")
+	}
+}
+
+func TestRunMulti_RequiresPromptMetadata(t *testing.T) {
+	tests := []struct {
+		name   string
+		result *OrchestratorResult
+	}{
+		{
+			name: "missing prompt version",
+			result: &OrchestratorResult{
+				Metrics:           Metrics{},
+				PromptVersionHash: testPromptHash,
+			},
+		},
+		{
+			name: "missing prompt version hash",
+			result: &OrchestratorResult{
+				Metrics:       Metrics{},
+				PromptVersion: "prompt-v1",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := RunMulti(context.Background(), MultiRunConfig{
+				Runs:    3,
+				RunFunc: sequentialPromptRunFunc([]*OrchestratorResult{tt.result, tt.result, tt.result}),
+			})
+			if err == nil {
+				t.Fatal("expected error for missing prompt metadata")
+			}
+		})
 	}
 }
 
@@ -366,6 +428,101 @@ func TestRunMulti_PreservesStartEndTime(t *testing.T) {
 	}
 	if !result.Individual[2].EndTime.Equal(now.Add(3 * time.Hour)) {
 		t.Error("individual run end time not preserved")
+	}
+}
+
+func TestComparePromptVariants_SideBySideMetrics(t *testing.T) {
+	left, err := RunMulti(context.Background(), MultiRunConfig{
+		Runs: 3,
+		RunFunc: sequentialPromptRunFunc([]*OrchestratorResult{
+			{Metrics: Metrics{TotalReturn: 0.10, SharpeRatio: 1.0, TotalBars: 3}, PromptVersion: "prompt-a", PromptVersionHash: "1111111111111111111111111111111111111111111111111111111111111111"},
+			{Metrics: Metrics{TotalReturn: 0.10, SharpeRatio: 1.0, TotalBars: 3}, PromptVersion: "prompt-a", PromptVersionHash: "1111111111111111111111111111111111111111111111111111111111111111"},
+			{Metrics: Metrics{TotalReturn: 0.10, SharpeRatio: 1.0, TotalBars: 3}, PromptVersion: "prompt-a", PromptVersionHash: "1111111111111111111111111111111111111111111111111111111111111111"},
+		}),
+	})
+	if err != nil {
+		t.Fatalf("RunMulti(left) error = %v", err)
+	}
+
+	right, err := RunMulti(context.Background(), MultiRunConfig{
+		Runs: 3,
+		RunFunc: sequentialPromptRunFunc([]*OrchestratorResult{
+			{Metrics: Metrics{TotalReturn: 0.50, SharpeRatio: 2.0, TotalBars: 3}, PromptVersion: "prompt-b", PromptVersionHash: "2222222222222222222222222222222222222222222222222222222222222222"},
+			{Metrics: Metrics{TotalReturn: 0.50, SharpeRatio: 2.0, TotalBars: 3}, PromptVersion: "prompt-b", PromptVersionHash: "2222222222222222222222222222222222222222222222222222222222222222"},
+			{Metrics: Metrics{TotalReturn: 0.50, SharpeRatio: 2.0, TotalBars: 3}, PromptVersion: "prompt-b", PromptVersionHash: "2222222222222222222222222222222222222222222222222222222222222222"},
+		}),
+	})
+	if err != nil {
+		t.Fatalf("RunMulti(right) error = %v", err)
+	}
+
+	report, err := ComparePromptVariants(left, right, 0.95)
+	if err != nil {
+		t.Fatalf("ComparePromptVariants() error = %v", err)
+	}
+
+	if report.Left.PromptVersion != "prompt-a" || report.Right.PromptVersion != "prompt-b" {
+		t.Fatalf("unexpected prompt versions in report: left=%q right=%q", report.Left.PromptVersion, report.Right.PromptVersion)
+	}
+	if report.Left.PromptVersionHash == report.Right.PromptVersionHash {
+		t.Fatal("expected different prompt hashes in comparison report")
+	}
+
+	var totalReturn PromptMetricComparison
+	found := false
+	for _, metric := range report.Metrics {
+		if metric.Name == "TotalReturn" {
+			totalReturn = metric
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("expected TotalReturn comparison in report")
+	}
+	assertFloat(t, "TotalReturn.LeftMean", totalReturn.Left.Mean, 0.10)
+	assertFloat(t, "TotalReturn.RightMean", totalReturn.Right.Mean, 0.50)
+	assertFloat(t, "TotalReturn.MeanDelta", totalReturn.MeanDelta, 0.40)
+	if totalReturn.ConfidenceIntervalsOverlap {
+		t.Fatal("expected non-overlapping total return confidence intervals")
+	}
+}
+
+func TestComparePromptVariants_RejectsMixedPromptMetadata(t *testing.T) {
+	left, err := RunMulti(context.Background(), MultiRunConfig{
+		Runs: 3,
+		RunFunc: sequentialPromptRunFunc([]*OrchestratorResult{
+			{Metrics: Metrics{TotalReturn: 0.10}, PromptVersion: "prompt-a", PromptVersionHash: "1111111111111111111111111111111111111111111111111111111111111111"},
+			{Metrics: Metrics{TotalReturn: 0.20}, PromptVersion: "prompt-b", PromptVersionHash: "1111111111111111111111111111111111111111111111111111111111111111"},
+			{Metrics: Metrics{TotalReturn: 0.30}, PromptVersion: "prompt-a", PromptVersionHash: "1111111111111111111111111111111111111111111111111111111111111111"},
+		}),
+	})
+	if err != nil {
+		t.Fatalf("RunMulti(left) error = %v", err)
+	}
+
+	right := &MultiRunResult{
+		Runs:                3,
+		PromptVersions:      []string{"prompt-c", "prompt-c", "prompt-c"},
+		PromptVersionHashes: []string{"3333333333333333333333333333333333333333333333333333333333333333", "3333333333333333333333333333333333333333333333333333333333333333", "3333333333333333333333333333333333333333333333333333333333333333"},
+		Aggregated:          aggregateMetrics([]Metrics{{TotalReturn: 0.4}, {TotalReturn: 0.5}, {TotalReturn: 0.6}}),
+	}
+
+	if _, err := ComparePromptVariants(left, right, 0.95); err == nil {
+		t.Fatal("expected error for mixed prompt metadata")
+	}
+}
+
+func TestComparePromptVariants_RejectsUnsupportedConfidenceLevel(t *testing.T) {
+	result := &MultiRunResult{
+		Runs:                3,
+		PromptVersions:      []string{"prompt-a", "prompt-a", "prompt-a"},
+		PromptVersionHashes: []string{"hash-a", "hash-a", "hash-a"},
+		Aggregated:          aggregateMetrics([]Metrics{{TotalReturn: 0.1}, {TotalReturn: 0.1}, {TotalReturn: 0.1}}),
+	}
+
+	if _, err := ComparePromptVariants(result, result, 0.92); err == nil {
+		t.Fatal("expected error for unsupported confidence level")
 	}
 }
 

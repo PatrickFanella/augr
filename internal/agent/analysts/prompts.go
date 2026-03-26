@@ -3,6 +3,8 @@
 package analysts
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"strings"
 	"time"
@@ -10,6 +12,31 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/data"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 )
+
+var currentPromptVersionHash = HashPromptVersion(
+	MarketAnalystSystemPrompt,
+	FundamentalsAnalystSystemPrompt,
+	SocialAnalystSystemPrompt,
+	NewsAnalystSystemPrompt,
+)
+
+// HashPromptVersion returns a stable hash for the provided prompt-version inputs.
+// It is used to tag backtest runs so prompt variants can be compared later even
+// when the human-readable version labels are reused.
+func HashPromptVersion(parts ...string) string {
+	h := sha256.New()
+	for _, part := range parts {
+		_, _ = h.Write([]byte(part))
+		_, _ = h.Write([]byte{0})
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// CurrentPromptVersionHash returns the hash of the analyst prompt set that is
+// currently compiled into the binary.
+func CurrentPromptVersionHash() string {
+	return currentPromptVersionHash
+}
 
 // MarketAnalystSystemPrompt is the system prompt that instructs the LLM to
 // perform technical analysis on OHLCV price data and technical indicators.

@@ -39,32 +39,35 @@ func TestBuildBacktestRunListQuery_AllFilters(t *testing.T) {
 	runBefore := time.Date(2026, 3, 21, 0, 0, 0, 0, time.UTC)
 
 	query, args := buildBacktestRunListQuery(repository.BacktestRunFilter{
-		BacktestConfigID: &configID,
-		PromptVersion:    "prompt-v2",
-		RunAfter:         &runAfter,
-		RunBefore:        &runBefore,
+		BacktestConfigID:  &configID,
+		PromptVersion:     "prompt-v2",
+		PromptVersionHash: "hash-v2",
+		RunAfter:          &runAfter,
+		RunBefore:         &runBefore,
 	}, 25, 50)
 
-	if len(args) != 6 {
-		t.Fatalf("expected 6 args, got %d: %v", len(args), args)
+	if len(args) != 7 {
+		t.Fatalf("expected 7 args, got %d: %v", len(args), args)
 	}
 
 	assertContains(t, query, "backtest_config_id = $1")
 	assertContains(t, query, "prompt_version = $2")
-	assertContains(t, query, "run_timestamp >= $3")
-	assertContains(t, query, "run_timestamp <= $4")
-	assertContains(t, query, "LIMIT $5 OFFSET $6")
+	assertContains(t, query, "prompt_version_hash = $3")
+	assertContains(t, query, "run_timestamp >= $4")
+	assertContains(t, query, "run_timestamp <= $5")
+	assertContains(t, query, "LIMIT $6 OFFSET $7")
 }
 
 func TestBacktestRunRepoCreate_ValidateError(t *testing.T) {
 	repo := NewBacktestRunRepo(nil)
 
 	err := repo.Create(context.Background(), &domain.BacktestRun{
-		BacktestConfigID: uuid.New(),
-		Metrics:          []byte(`{"total_return":0.12}`),
-		TradeLog:         []byte(`[]`),
-		EquityCurve:      []byte(`[]`),
-		RunTimestamp:     time.Date(2024, 1, 1, 14, 30, 0, 0, time.UTC),
+		BacktestConfigID:  uuid.New(),
+		Metrics:           []byte(`{"total_return":0.12}`),
+		TradeLog:          []byte(`[]`),
+		EquityCurve:       []byte(`[]`),
+		RunTimestamp:      time.Date(2024, 1, 1, 14, 30, 0, 0, time.UTC),
+		PromptVersionHash: "hash-v1",
 	})
 	if err == nil {
 		t.Fatal("expected validation error, got nil")
@@ -86,22 +89,24 @@ func TestBacktestRunRepoIntegration_CreateGetList(t *testing.T) {
 	repo := NewBacktestRunRepo(pool)
 
 	first := &domain.BacktestRun{
-		BacktestConfigID: configID,
-		Metrics:          []byte(`{"total_return":0.12,"max_drawdown":0.05}`),
-		TradeLog:         []byte(`[{"ticker":"AAPL","side":"buy","quantity":10,"price":100,"fee":1}]`),
-		EquityCurve:      []byte(`[{"timestamp":"2024-01-02T14:30:00Z","equity":100000},{"timestamp":"2024-01-03T14:30:00Z","equity":112000}]`),
-		RunTimestamp:     time.Date(2024, 1, 3, 21, 0, 0, 0, time.UTC),
-		Duration:         37 * time.Minute,
-		PromptVersion:    "prompt-v1",
+		BacktestConfigID:  configID,
+		Metrics:           []byte(`{"total_return":0.12,"max_drawdown":0.05}`),
+		TradeLog:          []byte(`[{"ticker":"AAPL","side":"buy","quantity":10,"price":100,"fee":1}]`),
+		EquityCurve:       []byte(`[{"timestamp":"2024-01-02T14:30:00Z","equity":100000},{"timestamp":"2024-01-03T14:30:00Z","equity":112000}]`),
+		RunTimestamp:      time.Date(2024, 1, 3, 21, 0, 0, 0, time.UTC),
+		Duration:          37 * time.Minute,
+		PromptVersion:     "prompt-v1",
+		PromptVersionHash: "hash-v1",
 	}
 	second := &domain.BacktestRun{
-		BacktestConfigID: configID,
-		Metrics:          []byte(`{"total_return":0.08,"max_drawdown":0.02}`),
-		TradeLog:         []byte(`[]`),
-		EquityCurve:      []byte(`[{"timestamp":"2024-02-02T14:30:00Z","equity":100000},{"timestamp":"2024-02-03T14:30:00Z","equity":108000}]`),
-		RunTimestamp:     time.Date(2024, 2, 3, 21, 0, 0, 0, time.UTC),
-		Duration:         22 * time.Minute,
-		PromptVersion:    "prompt-v2",
+		BacktestConfigID:  configID,
+		Metrics:           []byte(`{"total_return":0.08,"max_drawdown":0.02}`),
+		TradeLog:          []byte(`[]`),
+		EquityCurve:       []byte(`[{"timestamp":"2024-02-02T14:30:00Z","equity":100000},{"timestamp":"2024-02-03T14:30:00Z","equity":108000}]`),
+		RunTimestamp:      time.Date(2024, 2, 3, 21, 0, 0, 0, time.UTC),
+		Duration:          22 * time.Minute,
+		PromptVersion:     "prompt-v2",
+		PromptVersionHash: "hash-v2",
 	}
 
 	if err := repo.Create(ctx, first); err != nil {
@@ -125,8 +130,9 @@ func TestBacktestRunRepoIntegration_CreateGetList(t *testing.T) {
 	assertBacktestRunEqual(t, got, first)
 
 	listed, err := repo.List(ctx, repository.BacktestRunFilter{
-		BacktestConfigID: &configID,
-		PromptVersion:    "prompt-v2",
+		BacktestConfigID:  &configID,
+		PromptVersion:     "prompt-v2",
+		PromptVersionHash: "hash-v2",
 	}, 10, 0)
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
@@ -165,6 +171,7 @@ func ensureBacktestRunTable(t *testing.T, ctx context.Context, pool *pgxpool.Poo
 		run_timestamp      TIMESTAMPTZ NOT NULL,
 		duration_ns        BIGINT      NOT NULL CHECK (duration_ns >= 0),
 		prompt_version     TEXT        NOT NULL,
+		prompt_version_hash TEXT       NOT NULL,
 		created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 		updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
 	)`)
@@ -219,5 +226,8 @@ func assertBacktestRunEqual(t *testing.T, got, want *domain.BacktestRun) {
 	}
 	if got.PromptVersion != want.PromptVersion {
 		t.Fatalf("expected PromptVersion %q, got %q", want.PromptVersion, got.PromptVersion)
+	}
+	if got.PromptVersionHash != want.PromptVersionHash {
+		t.Fatalf("expected PromptVersionHash %q, got %q", want.PromptVersionHash, got.PromptVersionHash)
 	}
 }

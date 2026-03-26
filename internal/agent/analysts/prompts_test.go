@@ -1,6 +1,8 @@
 package analysts
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"strings"
 	"testing"
 	"time"
@@ -8,6 +10,36 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/data"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 )
+
+func TestHashPromptVersionIsStableAndOrderSensitive(t *testing.T) {
+	got := HashPromptVersion("prompt-a", "prompt-b")
+	gotAgain := HashPromptVersion("prompt-a", "prompt-b")
+	if got != gotAgain {
+		t.Fatalf("HashPromptVersion() should be stable: %q != %q", got, gotAgain)
+	}
+
+	if got == HashPromptVersion("prompt-b", "prompt-a") {
+		t.Fatal("HashPromptVersion() should change when input order changes")
+	}
+
+	sum := sha256.Sum256([]byte("prompt-a\x00prompt-b\x00"))
+	want := hex.EncodeToString(sum[:])
+	if got != want {
+		t.Fatalf("HashPromptVersion() = %q, want %q", got, want)
+	}
+}
+
+func TestCurrentPromptVersionHashUsesAllAnalystPrompts(t *testing.T) {
+	want := HashPromptVersion(
+		MarketAnalystSystemPrompt,
+		FundamentalsAnalystSystemPrompt,
+		SocialAnalystSystemPrompt,
+		NewsAnalystSystemPrompt,
+	)
+	if got := CurrentPromptVersionHash(); got != want {
+		t.Fatalf("CurrentPromptVersionHash() = %q, want %q", got, want)
+	}
+}
 
 func TestMarketAnalystSystemPromptIsNonEmpty(t *testing.T) {
 	if MarketAnalystSystemPrompt == "" {

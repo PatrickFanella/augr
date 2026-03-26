@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/agent"
+	"github.com/PatrickFanella/get-rich-quick/internal/agent/analysts"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 )
 
@@ -26,20 +27,24 @@ type OrchestratorConfig struct {
 	EndDate   time.Time
 
 	// Simulation parameters.
-	InitialCash float64
-	FillConfig  FillConfig
+	InitialCash       float64
+	FillConfig        FillConfig
+	PromptVersion     string
+	PromptVersionHash string
 }
 
 // OrchestratorResult aggregates every output produced by a backtest run:
 // trades, per-bar results, final positions, the full equity curve, and
 // computed performance metrics.
 type OrchestratorResult struct {
-	Trades         []domain.Trade
-	BarResults     []BarResult
-	Positions      []TrackedPosition
-	EquityCurve    []EquityPoint
-	Metrics        Metrics
-	TradeAnalytics TradeAnalytics
+	Trades            []domain.Trade
+	BarResults        []BarResult
+	Positions         []TrackedPosition
+	EquityCurve       []EquityPoint
+	Metrics           Metrics
+	TradeAnalytics    TradeAnalytics
+	PromptVersion     string
+	PromptVersionHash string
 }
 
 // Orchestrator coordinates all backtest subsystems (data loading, pipeline
@@ -75,6 +80,9 @@ func NewOrchestrator(
 
 	if logger == nil {
 		logger = slog.Default()
+	}
+	if strings.TrimSpace(cfg.PromptVersionHash) == "" {
+		cfg.PromptVersionHash = analysts.CurrentPromptVersionHash()
 	}
 
 	return &Orchestrator{
@@ -137,6 +145,8 @@ func (o *Orchestrator) Run(ctx context.Context) (*OrchestratorResult, error) {
 		slog.Time("end", o.config.EndDate),
 		slog.Int("bars", len(filtered)),
 		slog.Float64("initial_cash", o.config.InitialCash),
+		slog.String("prompt_version", o.config.PromptVersion),
+		slog.String("prompt_version_hash", o.config.PromptVersionHash),
 	)
 
 	runResult, err := runner.Run(ctx)
@@ -160,12 +170,14 @@ func (o *Orchestrator) Run(ctx context.Context) (*OrchestratorResult, error) {
 	)
 
 	return &OrchestratorResult{
-		Trades:         trades,
-		BarResults:     runResult.BarResults,
-		Positions:      positions,
-		EquityCurve:    equityCurve,
-		Metrics:        metrics,
-		TradeAnalytics: tradeAnalytics,
+		Trades:            trades,
+		BarResults:        runResult.BarResults,
+		Positions:         positions,
+		EquityCurve:       equityCurve,
+		Metrics:           metrics,
+		TradeAnalytics:    tradeAnalytics,
+		PromptVersion:     o.config.PromptVersion,
+		PromptVersionHash: o.config.PromptVersionHash,
 	}, nil
 }
 

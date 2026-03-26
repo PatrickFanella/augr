@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/PatrickFanella/get-rich-quick/internal/agent/analysts"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 )
 
@@ -119,11 +120,12 @@ func TestOrchestratorRunProcessesBars(t *testing.T) {
 	}
 
 	cfg := OrchestratorConfig{
-		StrategyID:  uuid.New(),
-		Ticker:      "AAPL",
-		StartDate:   start,
-		EndDate:     start.Add(48 * time.Hour),
-		InitialCash: 100_000,
+		StrategyID:    uuid.New(),
+		Ticker:        "AAPL",
+		StartDate:     start,
+		EndDate:       start.Add(48 * time.Hour),
+		InitialCash:   100_000,
+		PromptVersion: "baseline",
 		FillConfig: FillConfig{
 			Slippage: ProportionalSlippage{BasisPoints: 0},
 		},
@@ -151,6 +153,12 @@ func TestOrchestratorRunProcessesBars(t *testing.T) {
 	}
 	if result.Metrics.StartEquity != 100_000 {
 		t.Errorf("Metrics.StartEquity = %f, want 100000", result.Metrics.StartEquity)
+	}
+	if result.PromptVersion != "baseline" {
+		t.Errorf("PromptVersion = %q, want %q", result.PromptVersion, "baseline")
+	}
+	if result.PromptVersionHash != analysts.CurrentPromptVersionHash() {
+		t.Errorf("PromptVersionHash = %q, want current prompt-set hash", result.PromptVersionHash)
 	}
 }
 
