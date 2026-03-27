@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/gorilla/websocket"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 	"github.com/PatrickFanella/get-rich-quick/internal/risk"
@@ -32,7 +33,8 @@ type Server struct {
 	risk risk.RiskEngine
 
 	// WebSocket hub for real-time event streaming.
-	hub *Hub
+	hub        *Hub
+	wsUpgrader websocket.Upgrader
 }
 
 // ServerConfig holds configuration for the API server.
@@ -111,6 +113,7 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 		memories:   deps.Memories,
 		risk:       deps.Risk,
 		hub:        hub,
+		wsUpgrader: newUpgrader(cfg.CORSConfig.AllowedOrigins),
 	}
 
 	r := chi.NewRouter()
@@ -207,6 +210,7 @@ func (s *Server) Start() error {
 	go s.hub.Run()
 	s.logger.Info("api server starting", slog.String("addr", s.httpServer.Addr))
 	if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		s.hub.Stop()
 		return fmt.Errorf("api server: %w", err)
 	}
 	return nil

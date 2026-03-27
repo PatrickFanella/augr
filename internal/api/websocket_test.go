@@ -353,6 +353,24 @@ func TestClientHandleCommandInvalid(t *testing.T) {
 	if msg == nil {
 		t.Fatal("expected error message for unknown action")
 	}
+
+	// Subscribe with invalid UUID should return an error, not "ok".
+	cmd, _ = json.Marshal(clientCommand{
+		Action:      "subscribe",
+		StrategyIDs: []string{"not-a-uuid"},
+	})
+	c.handleCommand(cmd)
+	msg = drainSend(c.send)
+	if msg == nil {
+		t.Fatal("expected error message for invalid UUID")
+	}
+	var invalidResp map[string]string
+	if err := json.Unmarshal(msg, &invalidResp); err != nil {
+		t.Fatalf("unmarshal invalid uuid response: %v", err)
+	}
+	if invalidResp["type"] != "error" {
+		t.Fatalf("expected error type for invalid UUID, got %q", invalidResp["type"])
+	}
 }
 
 // ---------------------------------------------------------------------------

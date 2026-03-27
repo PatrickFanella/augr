@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -28,12 +29,30 @@ const (
 	sendBufferSize = 256
 )
 
-// upgrader is the default WebSocket upgrader. CheckOrigin allows all origins
-// because the REST API already applies CORS at the middleware layer.
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-	CheckOrigin:     func(_ *http.Request) bool { return true },
+// newUpgrader creates a WebSocket upgrader that validates the Origin header
+// against the server's configured CORS allowed origins.
+func newUpgrader(allowedOrigins []string) websocket.Upgrader {
+	allowAll := len(allowedOrigins) == 1 && allowedOrigins[0] == "*"
+	allowed := make(map[string]struct{}, len(allowedOrigins))
+	for _, o := range allowedOrigins {
+		allowed[o] = struct{}{}
+	}
+
+	return websocket.Upgrader{
+		ReadBufferSize:  1024,
+		WriteBufferSize: 1024,
+		CheckOrigin: func(r *http.Request) bool {
+			if allowAll {
+				return true
+			}
+			origin := r.Header.Get("Origin")
+			if origin == "" {
+				return true // non-browser clients typically omit Origin
+			}
+			_, ok := allowed[origin]
+			return ok
+		},
+	}
 }
 
 // Subscriptions tracks what a client is interested in.
@@ -60,15 +79,28 @@ type clientCommand struct {
 	RunIDs      []string `json:"run_ids,omitempty"`
 }
 
-// matchesSubscription checks whether msg should be delivered to this client.
-func (c *Client) matchesSubscription(msg []byte) bool {
+// matchesParsed checks whether a pre-parsed event envelope should be
+// delivered to this client. This avoids repeated JSON unmarshalling in the
+// hub's broadcast loop.
+func (c *Client) matchesParsed(strategyID, runID uuid.UUID) bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
 	if c.subscriptions.AllEvents {
 		return true
 	}
+	if strategyID != uuid.Nil && c.subscriptions.StrategyIDs[strategyID] {
+		return true
+	}
+	if runID != uuid.Nil && c.subscriptions.RunIDs[runID] {
+		return true
+	}
+	return false
+}
 
+// matchesSubscription checks whether msg should be delivered to this client.
+// Used only in tests; the hub's broadcast loop uses matchesParsed instead.
+func (c *Client) matchesSubscription(msg []byte) bool {
 	var envelope struct {
 		StrategyID uuid.UUID `json:"strategy_id"`
 		RunID      uuid.UUID `json:"run_id"`
@@ -76,21 +108,17 @@ func (c *Client) matchesSubscription(msg []byte) bool {
 	if err := json.Unmarshal(msg, &envelope); err != nil {
 		return false
 	}
-
-	if envelope.StrategyID != uuid.Nil && c.subscriptions.StrategyIDs[envelope.StrategyID] {
-		return true
-	}
-	if envelope.RunID != uuid.Nil && c.subscriptions.RunIDs[envelope.RunID] {
-		return true
-	}
-	return false
+	return c.matchesParsed(envelope.StrategyID, envelope.RunID)
 }
 
 // readPump reads subscription commands from the client. It runs in its own
 // goroutine and unregisters the client when the connection is closed.
 func (c *Client) readPump() {
 	defer func() {
-		c.hub.unregister <- c
+		select {
+		case c.hub.unregister <- c:
+		case <-c.hub.done:
+		}
 		c.conn.Close()
 	}()
 
@@ -128,7 +156,10 @@ func (c *Client) writePump() {
 			_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if !ok {
 				// Hub closed the channel.
-				_ = c.conn.WriteMessage(websocket.CloseMessage, nil)
+				_ = c.conn.WriteMessage(
+					websocket.CloseMessage,
+					websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""),
+				)
 				return
 			}
 			if err := c.conn.WriteMessage(websocket.TextMessage, msg); err != nil {
@@ -154,7 +185,10 @@ func (c *Client) handleCommand(raw []byte) {
 
 	switch cmd.Action {
 	case "subscribe":
-		c.applySubscribe(cmd)
+		if errs := c.applySubscribe(cmd); len(errs) > 0 {
+			c.sendError("invalid ids: " + strings.Join(errs, ", "))
+			return
+		}
 	case "unsubscribe":
 		c.applyUnsubscribe(cmd)
 	case "subscribe_all":
@@ -181,20 +215,28 @@ func (c *Client) handleCommand(raw []byte) {
 	}
 }
 
-func (c *Client) applySubscribe(cmd clientCommand) {
+func (c *Client) applySubscribe(cmd clientCommand) []string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	var invalid []string
 	for _, raw := range cmd.StrategyIDs {
-		if id, err := uuid.Parse(raw); err == nil {
-			c.subscriptions.StrategyIDs[id] = true
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			invalid = append(invalid, raw)
+			continue
 		}
+		c.subscriptions.StrategyIDs[id] = true
 	}
 	for _, raw := range cmd.RunIDs {
-		if id, err := uuid.Parse(raw); err == nil {
-			c.subscriptions.RunIDs[id] = true
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			invalid = append(invalid, raw)
+			continue
 		}
+		c.subscriptions.RunIDs[id] = true
 	}
+	return invalid
 }
 
 func (c *Client) applyUnsubscribe(cmd clientCommand) {
@@ -230,7 +272,7 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn, err := upgrader.Upgrade(w, r, nil)
+	conn, err := s.wsUpgrader.Upgrade(w, r, nil)
 	if err != nil {
 		s.logger.Error("ws upgrade failed", slog.String("error", err.Error()))
 		return
@@ -246,8 +288,12 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
-	s.hub.register <- client
-
-	go client.writePump()
-	go client.readPump()
+	select {
+	case s.hub.register <- client:
+		go client.writePump()
+		go client.readPump()
+	case <-s.hub.done:
+		s.logger.Error("ws hub not accepting registrations")
+		_ = conn.Close()
+	}
 }

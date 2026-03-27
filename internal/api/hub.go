@@ -34,6 +34,14 @@ type WSMessage struct {
 	Timestamp  time.Time   `json:"timestamp"`
 }
 
+// broadcastMessage carries pre-parsed routing info alongside the raw JSON
+// bytes so that subscription matching does not re-unmarshal per client.
+type broadcastMessage struct {
+	data       []byte
+	strategyID uuid.UUID
+	runID      uuid.UUID
+}
+
 // Hub manages all active WebSocket clients and broadcasts events to
 // subscribers. A single goroutine (Run) serialises register, unregister,
 // and broadcast operations.
@@ -41,7 +49,7 @@ type Hub struct {
 	clients    map[*Client]bool
 	register   chan *Client
 	unregister chan *Client
-	broadcast  chan []byte
+	broadcast  chan broadcastMessage
 
 	mu     sync.RWMutex // protects clients for ClientCount
 	logger *slog.Logger
@@ -57,7 +65,7 @@ func NewHub(logger *slog.Logger) *Hub {
 		clients:    make(map[*Client]bool),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
-		broadcast:  make(chan []byte, 256),
+		broadcast:  make(chan broadcastMessage, 256),
 		logger:     logger,
 		done:       make(chan struct{}),
 	}
@@ -92,12 +100,12 @@ func (h *Hub) Run() {
 			h.mu.Unlock()
 			h.logger.Info("ws client unregistered", slog.Int("total", h.ClientCount()))
 
-		case message := <-h.broadcast:
+		case bm := <-h.broadcast:
 			h.mu.Lock()
 			for client := range h.clients {
-				if client.matchesSubscription(message) {
+				if client.matchesParsed(bm.strategyID, bm.runID) {
 					select {
-					case client.send <- message:
+					case client.send <- bm.data:
 					default:
 						// Slow consumer — drop the client.
 						delete(h.clients, client)
@@ -128,8 +136,13 @@ func (h *Hub) Broadcast(msg WSMessage) {
 		h.logger.Error("ws broadcast marshal error", slog.String("error", err.Error()))
 		return
 	}
+	bm := broadcastMessage{
+		data:       data,
+		strategyID: msg.StrategyID,
+		runID:      msg.RunID,
+	}
 	select {
-	case h.broadcast <- data:
+	case h.broadcast <- bm:
 	default:
 		h.logger.Warn("ws broadcast channel full, dropping message")
 	}
