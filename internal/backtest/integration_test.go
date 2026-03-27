@@ -131,7 +131,7 @@ func makeIntegrationPipeline(trader *integrationTradingNode) *agent.Pipeline {
 //  4. Position tracking and equity curve recording
 //  5. Metric computation (validated against hand-computed values)
 //  6. Trade analytics computation
-//  7. Report generation and JSON serialisation
+//  7. Report generation and JSON serialization
 func TestBacktestIntegrationEndToEnd(t *testing.T) {
 	t.Parallel()
 
@@ -401,7 +401,7 @@ func TestBacktestIntegrationEndToEnd(t *testing.T) {
 		t.Errorf("Report.PromptVersionHash = %q, want %q", report.StrategyConfiguration.PromptVersionHash, "abc123")
 	}
 
-	// ---- validate JSON serialisation ----
+	// ---- validate JSON serialization ----
 
 	data, err := json.Marshal(report)
 	if err != nil {
@@ -410,7 +410,7 @@ func TestBacktestIntegrationEndToEnd(t *testing.T) {
 
 	// Unmarshal into a generic map to verify the JSON is valid and contains
 	// expected top-level keys. A full struct round-trip is not possible here
-	// because HoldingPeriodStats serialises durations as human-readable
+	// because HoldingPeriodStats serializes durations as human-readable
 	// strings via JSONDuration, which has no matching UnmarshalJSON.
 	var decoded map[string]json.RawMessage
 	if err := json.Unmarshal(data, &decoded); err != nil {
