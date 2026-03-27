@@ -3,6 +3,7 @@ package backtest
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
@@ -250,13 +251,13 @@ func TestBacktestIntegrationEndToEnd(t *testing.T) {
 
 	wantEquity := []float64{initialCash, initialCash, 99_980, 100_030, 100_030}
 	for i, want := range wantEquity {
-		assertFloatEqual(t, curve[i].Equity, want, "EquityCurve[%d].Equity")
+		assertFloatEqual(t, curve[i].Equity, want, fmt.Sprintf("EquityCurve[%d].Equity", i))
 	}
 
 	// Cash expectations.
 	wantCash := []float64{initialCash, 98_950, 98_950, 100_030, 100_030}
 	for i, want := range wantCash {
-		assertFloatEqual(t, curve[i].Cash, want, "EquityCurve[%d].Cash")
+		assertFloatEqual(t, curve[i].Cash, want, fmt.Sprintf("EquityCurve[%d].Cash", i))
 	}
 
 	// ---- validate trades from broker ----
