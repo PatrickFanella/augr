@@ -11,7 +11,7 @@ const (
 	ErrCodeNotFound       = "ERR_NOT_FOUND"
 	ErrCodeInternal       = "ERR_INTERNAL"
 	ErrCodeValidation     = "ERR_VALIDATION"
-	ErrCodeMethodNotAllow = "ERR_METHOD_NOT_ALLOWED"
+	ErrCodeMethodNotAllowed = "ERR_METHOD_NOT_ALLOWED"
 	ErrCodeRateLimited    = "ERR_RATE_LIMITED"
 )
 

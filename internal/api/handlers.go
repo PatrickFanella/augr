@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -179,25 +180,38 @@ func (s *Server) handleListRuns(w http.ResponseWriter, r *http.Request) {
 	respondList(w, runs, len(runs), limit, offset)
 }
 
+// findRunByID looks up a pipeline run by ID. The PipelineRunRepository.Get
+// method requires a tradeDate which is not available from the URL, so we
+// list recent runs and scan for a match.
+func (s *Server) findRunByID(ctx context.Context, id uuid.UUID) (*domain.PipelineRun, error) {
+	runs, err := s.runs.List(ctx, repository.PipelineRunFilter{}, maxLimit, 0)
+	if err != nil {
+		return nil, err
+	}
+	for i := range runs {
+		if runs[i].ID == id {
+			return &runs[i], nil
+		}
+	}
+	return nil, nil
+}
+
 func (s *Server) handleGetRun(w http.ResponseWriter, r *http.Request) {
 	id, err := parseUUID(r, "id")
 	if err != nil {
 		respondError(w, http.StatusBadRequest, err.Error(), ErrCodeBadRequest)
 		return
 	}
-	// PipelineRunRepository.Get requires tradeDate; list and find by ID.
-	runs, listErr := s.runs.List(r.Context(), repository.PipelineRunFilter{}, maxLimit, 0)
-	if listErr != nil {
+	run, err := s.findRunByID(r.Context(), id)
+	if err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to get run", ErrCodeInternal)
 		return
 	}
-	for i := range runs {
-		if runs[i].ID == id {
-			respondJSON(w, http.StatusOK, &runs[i])
-			return
-		}
+	if run == nil {
+		respondError(w, http.StatusNotFound, "run not found", ErrCodeNotFound)
+		return
 	}
-	respondError(w, http.StatusNotFound, "run not found", ErrCodeNotFound)
+	respondJSON(w, http.StatusOK, run)
 }
 
 func (s *Server) handleGetRunDecisions(w http.ResponseWriter, r *http.Request) {
@@ -221,30 +235,27 @@ func (s *Server) handleCancelRun(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, err.Error(), ErrCodeBadRequest)
 		return
 	}
-	// Try to find the run by listing
-	runs, listErr := s.runs.List(r.Context(), repository.PipelineRunFilter{}, maxLimit, 0)
-	if listErr != nil {
+	run, err := s.findRunByID(r.Context(), id)
+	if err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to cancel run", ErrCodeInternal)
 		return
 	}
-	for i := range runs {
-		if runs[i].ID == id {
-			if !runs[i].Status.CanTransitionTo(domain.PipelineStatusCancelled) {
-				respondError(w, http.StatusBadRequest, "run cannot be cancelled in its current state", ErrCodeBadRequest)
-				return
-			}
-			update := repository.PipelineRunStatusUpdate{
-				Status: domain.PipelineStatusCancelled,
-			}
-			if err := s.runs.UpdateStatus(r.Context(), id, runs[i].TradeDate, update); err != nil {
-				respondError(w, http.StatusInternalServerError, "failed to cancel run", ErrCodeInternal)
-				return
-			}
-			respondJSON(w, http.StatusOK, map[string]string{"status": "cancelled"})
-			return
-		}
+	if run == nil {
+		respondError(w, http.StatusNotFound, "run not found", ErrCodeNotFound)
+		return
 	}
-	respondError(w, http.StatusNotFound, "run not found", ErrCodeNotFound)
+	if !run.Status.CanTransitionTo(domain.PipelineStatusCancelled) {
+		respondError(w, http.StatusBadRequest, "run cannot be cancelled in its current state", ErrCodeBadRequest)
+		return
+	}
+	update := repository.PipelineRunStatusUpdate{
+		Status: domain.PipelineStatusCancelled,
+	}
+	if err := s.runs.UpdateStatus(r.Context(), id, run.TradeDate, update); err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to cancel run", ErrCodeInternal)
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]string{"status": "cancelled"})
 }
 
 // --- Portfolio handlers ---
