@@ -15,8 +15,9 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 )
 
-// ErrNotFound is returned when a requested entity does not exist.
-var ErrNotFound = errors.New("not found")
+// ErrNotFound is an alias for the repository-level sentinel so that existing
+// postgres code and tests can reference it without a package prefix.
+var ErrNotFound = repository.ErrNotFound
 
 // StrategyRepo implements repository.StrategyRepository using PostgreSQL.
 type StrategyRepo struct {

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -29,15 +30,31 @@ func DefaultCORSConfig() CORSConfig {
 }
 
 // CORS returns middleware that sets Cross-Origin Resource Sharing headers.
+// When configured with "*", the wildcard is returned. When specific origins are
+// listed, the middleware echoes back the request Origin only when it matches
+// one of the allowed values.
 func CORS(cfg CORSConfig) func(http.Handler) http.Handler {
-	origins := strings.Join(cfg.AllowedOrigins, ", ")
 	methods := strings.Join(cfg.AllowedMethods, ", ")
 	headers := strings.Join(cfg.AllowedHeaders, ", ")
 	maxAgeStr := strconv.Itoa(cfg.MaxAge)
 
+	allowAll := len(cfg.AllowedOrigins) == 1 && cfg.AllowedOrigins[0] == "*"
+	allowed := make(map[string]struct{}, len(cfg.AllowedOrigins))
+	for _, o := range cfg.AllowedOrigins {
+		allowed[o] = struct{}{}
+	}
+
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Access-Control-Allow-Origin", origins)
+			origin := r.Header.Get("Origin")
+			if allowAll {
+				w.Header().Set("Access-Control-Allow-Origin", "*")
+			} else if origin != "" {
+				if _, ok := allowed[origin]; ok {
+					w.Header().Set("Access-Control-Allow-Origin", origin)
+					w.Header().Set("Vary", "Origin")
+				}
+			}
 			w.Header().Set("Access-Control-Allow-Methods", methods)
 			w.Header().Set("Access-Control-Allow-Headers", headers)
 			w.Header().Set("Access-Control-Max-Age", maxAgeStr)
@@ -51,14 +68,16 @@ func CORS(cfg CORSConfig) func(http.Handler) http.Handler {
 	}
 }
 
-// RateLimiter provides simple per-client rate limiting based on a sliding
-// window counter keyed by the client's IP address.
+// RateLimiter provides simple per-client rate limiting based on a fixed
+// window counter keyed by the client's IP address. Expired entries are
+// evicted lazily during Allow() calls.
 type RateLimiter struct {
-	mu       sync.Mutex
-	clients  map[string]*clientWindow
-	limit    int
-	window   time.Duration
-	nowFunc  func() time.Time
+	mu             sync.Mutex
+	clients        map[string]*clientWindow
+	limit          int
+	window         time.Duration
+	nowFunc        func() time.Time
+	trustedProxies []*net.IPNet
 }
 
 type clientWindow struct {
@@ -77,6 +96,16 @@ func NewRateLimiter(limit int, window time.Duration) *RateLimiter {
 	}
 }
 
+// evictExpiredLocked removes entries whose window has expired. Must be called
+// with rl.mu held.
+func (rl *RateLimiter) evictExpiredLocked(now time.Time) {
+	for key, cw := range rl.clients {
+		if now.After(cw.resetAt) {
+			delete(rl.clients, key)
+		}
+	}
+}
+
 // Allow returns true if the client identified by key has not exceeded the rate
 // limit.
 func (rl *RateLimiter) Allow(key string) bool {
@@ -84,6 +113,12 @@ func (rl *RateLimiter) Allow(key string) bool {
 	defer rl.mu.Unlock()
 
 	now := rl.nowFunc()
+
+	// Periodically evict expired entries to bound map growth.
+	if len(rl.clients) > rl.limit {
+		rl.evictExpiredLocked(now)
+	}
+
 	cw, ok := rl.clients[key]
 	if !ok || now.After(cw.resetAt) {
 		rl.clients[key] = &clientWindow{count: 1, resetAt: now.Add(rl.window)}
@@ -97,7 +132,7 @@ func (rl *RateLimiter) Allow(key string) bool {
 // the rate limit with 429 Too Many Requests.
 func (rl *RateLimiter) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		key := clientIP(r)
+		key := clientIP(r, rl.trustedProxies)
 		if !rl.Allow(key) {
 			respondError(w, http.StatusTooManyRequests, "rate limit exceeded", ErrCodeRateLimited)
 			return
@@ -106,22 +141,59 @@ func (rl *RateLimiter) Middleware(next http.Handler) http.Handler {
 	})
 }
 
-// clientIP extracts the client IP from the request, preferring
-// X-Forwarded-For and X-Real-IP headers.
-func clientIP(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		if parts := strings.SplitN(xff, ",", 2); len(parts) > 0 {
-			return strings.TrimSpace(parts[0])
-		}
-	}
-	if xri := r.Header.Get("X-Real-IP"); xri != "" {
-		return xri
-	}
+// clientIP extracts the client IP from the request. It only trusts
+// X-Forwarded-For and X-Real-IP headers when the immediate peer is
+// within one of the configured trusted proxy CIDR ranges.
+func clientIP(r *http.Request, trustedProxies []*net.IPNet) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
-		return r.RemoteAddr
+		host = r.RemoteAddr
 	}
+
+	if len(trustedProxies) > 0 {
+		peerIP := net.ParseIP(host)
+		if isTrustedProxy(peerIP, trustedProxies) {
+			if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+				if parts := strings.SplitN(xff, ",", 2); len(parts) > 0 {
+					return strings.TrimSpace(parts[0])
+				}
+			}
+			if xri := r.Header.Get("X-Real-IP"); xri != "" {
+				return xri
+			}
+		}
+	}
+
 	return host
+}
+
+// isTrustedProxy reports whether ip falls within any of the given CIDR ranges.
+func isTrustedProxy(ip net.IP, nets []*net.IPNet) bool {
+	if ip == nil {
+		return false
+	}
+	for _, n := range nets {
+		if n.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+// ParseTrustedProxies parses a slice of CIDR strings into net.IPNet values.
+func ParseTrustedProxies(cidrs []string) ([]*net.IPNet, error) {
+	nets := make([]*net.IPNet, 0, len(cidrs))
+	for _, cidr := range cidrs {
+		if cidr == "" {
+			continue
+		}
+		_, ipnet, err := net.ParseCIDR(cidr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid trusted proxy CIDR %q: %w", cidr, err)
+		}
+		nets = append(nets, ipnet)
+	}
+	return nets, nil
 }
 
 // RequestLogger returns middleware that logs each HTTP request using the

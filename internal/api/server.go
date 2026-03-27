@@ -34,11 +34,12 @@ type Server struct {
 
 // ServerConfig holds configuration for the API server.
 type ServerConfig struct {
-	Host        string
-	Port        int
-	CORSConfig  CORSConfig
-	RateLimit   int           // requests per window
-	RateWindow  time.Duration // window duration
+	Host           string
+	Port           int
+	CORSConfig     CORSConfig
+	RateLimit      int           // requests per window
+	RateWindow     time.Duration // window duration
+	TrustedProxies []string      // CIDR ranges of trusted reverse proxies
 }
 
 // DefaultServerConfig returns a sensible default server configuration.
@@ -108,11 +109,18 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 
 	r := chi.NewRouter()
 
+	// Parse trusted proxy CIDRs for rate limiter IP extraction.
+	trustedNets, err := ParseTrustedProxies(cfg.TrustedProxies)
+	if err != nil {
+		return nil, fmt.Errorf("parse trusted proxies: %w", err)
+	}
+
 	// Global middleware
 	r.Use(RequestLogger(logger))
 	r.Use(CORS(cfg.CORSConfig))
 	if cfg.RateLimit > 0 {
 		rl := NewRateLimiter(cfg.RateLimit, cfg.RateWindow)
+		rl.trustedProxies = trustedNets
 		r.Use(rl.Middleware)
 	}
 

@@ -6,7 +6,6 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -73,7 +72,7 @@ func (s *Server) handleListStrategies(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to list strategies", ErrCodeInternal)
 		return
 	}
-	respondList(w, strategies, len(strategies), limit, offset)
+	respondList(w, strategies, limit, offset)
 }
 
 func (s *Server) handleGetStrategy(w http.ResponseWriter, r *http.Request) {
@@ -177,23 +176,32 @@ func (s *Server) handleListRuns(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to list runs", ErrCodeInternal)
 		return
 	}
-	respondList(w, runs, len(runs), limit, offset)
+	respondList(w, runs, limit, offset)
 }
 
 // findRunByID looks up a pipeline run by ID. The PipelineRunRepository.Get
 // method requires a tradeDate which is not available from the URL, so we
-// list recent runs and scan for a match.
+// list runs in pages and scan for a match.
 func (s *Server) findRunByID(ctx context.Context, id uuid.UUID) (*domain.PipelineRun, error) {
-	runs, err := s.runs.List(ctx, repository.PipelineRunFilter{}, maxLimit, 0)
-	if err != nil {
-		return nil, err
-	}
-	for i := range runs {
-		if runs[i].ID == id {
-			return &runs[i], nil
+	offset := 0
+	for {
+		runs, err := s.runs.List(ctx, repository.PipelineRunFilter{}, maxLimit, offset)
+		if err != nil {
+			return nil, err
 		}
+		if len(runs) == 0 {
+			return nil, nil
+		}
+		for i := range runs {
+			if runs[i].ID == id {
+				return &runs[i], nil
+			}
+		}
+		if len(runs) < maxLimit {
+			return nil, nil
+		}
+		offset += maxLimit
 	}
-	return nil, nil
 }
 
 func (s *Server) handleGetRun(w http.ResponseWriter, r *http.Request) {
@@ -226,7 +234,7 @@ func (s *Server) handleGetRunDecisions(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to get decisions", ErrCodeInternal)
 		return
 	}
-	respondList(w, decisions, len(decisions), limit, offset)
+	respondList(w, decisions, limit, offset)
 }
 
 func (s *Server) handleCancelRun(w http.ResponseWriter, r *http.Request) {
@@ -274,7 +282,7 @@ func (s *Server) handleListPositions(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to list positions", ErrCodeInternal)
 		return
 	}
-	respondList(w, positions, len(positions), limit, offset)
+	respondList(w, positions, limit, offset)
 }
 
 func (s *Server) handleGetOpenPositions(w http.ResponseWriter, r *http.Request) {
@@ -284,7 +292,7 @@ func (s *Server) handleGetOpenPositions(w http.ResponseWriter, r *http.Request) 
 		respondError(w, http.StatusInternalServerError, "failed to list open positions", ErrCodeInternal)
 		return
 	}
-	respondList(w, positions, len(positions), limit, offset)
+	respondList(w, positions, limit, offset)
 }
 
 func (s *Server) handlePortfolioSummary(w http.ResponseWriter, r *http.Request) {
@@ -327,7 +335,7 @@ func (s *Server) handleListOrders(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to list orders", ErrCodeInternal)
 		return
 	}
-	respondList(w, orders, len(orders), limit, offset)
+	respondList(w, orders, limit, offset)
 }
 
 func (s *Server) handleGetOrder(w http.ResponseWriter, r *http.Request) {
@@ -387,7 +395,7 @@ func (s *Server) handleListTrades(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusInternalServerError, "failed to list trades", ErrCodeInternal)
 			return
 		}
-		respondList(w, trades, len(trades), limit, offset)
+		respondList(w, trades, limit, offset)
 		return
 	}
 
@@ -402,12 +410,12 @@ func (s *Server) handleListTrades(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusInternalServerError, "failed to list trades", ErrCodeInternal)
 			return
 		}
-		respondList(w, trades, len(trades), limit, offset)
+		respondList(w, trades, limit, offset)
 		return
 	}
 
 	// No filter: return empty list as the interface has no general List method.
-	respondList(w, []domain.Trade{}, 0, limit, offset)
+	respondList(w, []domain.Trade{}, limit, offset)
 }
 
 // --- Memory handlers ---
@@ -426,14 +434,18 @@ func (s *Server) handleListMemories(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to search memories", ErrCodeInternal)
 		return
 	}
-	respondList(w, memories, len(memories), limit, offset)
+	respondList(w, memories, limit, offset)
 }
 
 func (s *Server) handleSearchMemories(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Query string `json:"query"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Query == "" {
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body", ErrCodeBadRequest)
+		return
+	}
+	if body.Query == "" {
 		respondError(w, http.StatusBadRequest, "query is required", ErrCodeValidation)
 		return
 	}
@@ -443,7 +455,7 @@ func (s *Server) handleSearchMemories(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to search memories", ErrCodeInternal)
 		return
 	}
-	respondList(w, memories, len(memories), limit, offset)
+	respondList(w, memories, limit, offset)
 }
 
 func (s *Server) handleDeleteMemory(w http.ResponseWriter, r *http.Request) {
@@ -485,6 +497,10 @@ func (s *Server) handleKillSwitchToggle(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if body.Active {
+		if body.Reason == "" {
+			respondError(w, http.StatusBadRequest, "reason is required when activating kill switch", ErrCodeValidation)
+			return
+		}
 		if err := s.risk.ActivateKillSwitch(r.Context(), body.Reason); err != nil {
 			respondError(w, http.StatusInternalServerError, "failed to activate kill switch", ErrCodeInternal)
 			return
@@ -498,8 +514,7 @@ func (s *Server) handleKillSwitchToggle(w http.ResponseWriter, r *http.Request) 
 	respondJSON(w, http.StatusOK, map[string]bool{"active": body.Active})
 }
 
-// isNotFound checks whether err indicates a not-found condition. It matches
-// the "not found" substring used by the postgres repository layer.
+// isNotFound checks whether err wraps repository.ErrNotFound.
 func isNotFound(err error) bool {
-	return err != nil && strings.Contains(strings.ToLower(err.Error()), "not found")
+	return errors.Is(err, repository.ErrNotFound)
 }

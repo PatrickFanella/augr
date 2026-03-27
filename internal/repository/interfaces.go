@@ -2,12 +2,17 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 )
+
+// ErrNotFound is returned by repository implementations when a requested
+// entity does not exist. Callers should check with errors.Is.
+var ErrNotFound = errors.New("not found")
 
 // StrategyFilter defines supported filters when listing strategies.
 type StrategyFilter struct {

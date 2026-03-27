@@ -349,6 +349,28 @@ func TestSearchMemoriesValidation(t *testing.T) {
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", rr.Code, http.StatusBadRequest)
 	}
+	body := decodeJSON[ErrorResponse](t, rr)
+	if body.Code != ErrCodeValidation {
+		t.Fatalf("code = %q, want %q", body.Code, ErrCodeValidation)
+	}
+}
+
+func TestSearchMemoriesInvalidJSON(t *testing.T) {
+	t.Parallel()
+	srv := newTestServer(t)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/memories/search", strings.NewReader("{invalid"))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	srv.Router().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusBadRequest)
+	}
+	body := decodeJSON[ErrorResponse](t, rr)
+	if body.Code != ErrCodeBadRequest {
+		t.Fatalf("code = %q, want %q", body.Code, ErrCodeBadRequest)
+	}
 }
 
 func TestDeleteMemory(t *testing.T) {
@@ -391,6 +413,24 @@ func TestKillSwitchToggle(t *testing.T) {
 	}
 }
 
+func TestKillSwitchToggleRequiresReason(t *testing.T) {
+	t.Parallel()
+	srv := newTestServer(t)
+
+	rr := doRequest(t, srv, http.MethodPost, "/api/v1/risk/killswitch", map[string]any{
+		"active": true,
+		"reason": "",
+	})
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusBadRequest)
+	}
+	body := decodeJSON[ErrorResponse](t, rr)
+	if body.Code != ErrCodeValidation {
+		t.Fatalf("code = %q, want %q", body.Code, ErrCodeValidation)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // CORS
 // ---------------------------------------------------------------------------
@@ -406,6 +446,43 @@ func TestCORSPreflight(t *testing.T) {
 	}
 	if rr.Header().Get("Access-Control-Allow-Origin") == "" {
 		t.Fatal("missing CORS origin header")
+	}
+}
+
+func TestCORSEchoesMatchingOrigin(t *testing.T) {
+	t.Parallel()
+
+	cfg := DefaultServerConfig()
+	cfg.CORSConfig = CORSConfig{
+		AllowedOrigins: []string{"https://example.com", "https://other.com"},
+		AllowedMethods: []string{"GET"},
+		AllowedHeaders: []string{"Content-Type"},
+		MaxAge:         3600,
+	}
+	cfg.RateLimit = 0 // disable rate limiting for this test
+	srv, err := NewServer(cfg, testDeps(), slog.Default())
+	if err != nil {
+		t.Fatalf("NewServer() error = %v", err)
+	}
+
+	// Matching origin → echoed back.
+	req := httptest.NewRequest(http.MethodOptions, "/api/v1/strategies", nil)
+	req.Header.Set("Origin", "https://example.com")
+	rr := httptest.NewRecorder()
+	srv.Router().ServeHTTP(rr, req)
+
+	if got := rr.Header().Get("Access-Control-Allow-Origin"); got != "https://example.com" {
+		t.Fatalf("origin = %q, want %q", got, "https://example.com")
+	}
+
+	// Non-matching origin → no Access-Control-Allow-Origin header.
+	req2 := httptest.NewRequest(http.MethodOptions, "/api/v1/strategies", nil)
+	req2.Header.Set("Origin", "https://evil.com")
+	rr2 := httptest.NewRecorder()
+	srv.Router().ServeHTTP(rr2, req2)
+
+	if got := rr2.Header().Get("Access-Control-Allow-Origin"); got != "" {
+		t.Fatalf("origin should be empty for non-matching, got %q", got)
 	}
 }
 
@@ -448,6 +525,39 @@ func TestRateLimiterWindowReset(t *testing.T) {
 	now = now.Add(2 * time.Millisecond)
 	if !rl.Allow("client") {
 		t.Fatal("request after window reset should be allowed")
+	}
+}
+
+func TestClientIPTrustedProxy(t *testing.T) {
+	t.Parallel()
+
+	trustedNets, err := ParseTrustedProxies([]string{"10.0.0.0/8"})
+	if err != nil {
+		t.Fatalf("ParseTrustedProxies() error = %v", err)
+	}
+
+	// Request from trusted proxy: should use X-Forwarded-For.
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "10.0.0.1:1234"
+	req.Header.Set("X-Forwarded-For", "203.0.113.50, 10.0.0.1")
+	if got := clientIP(req, trustedNets); got != "203.0.113.50" {
+		t.Fatalf("clientIP from trusted proxy = %q, want %q", got, "203.0.113.50")
+	}
+
+	// Request from untrusted peer: should ignore X-Forwarded-For.
+	req2 := httptest.NewRequest(http.MethodGet, "/", nil)
+	req2.RemoteAddr = "192.168.1.100:5678"
+	req2.Header.Set("X-Forwarded-For", "203.0.113.99")
+	if got := clientIP(req2, trustedNets); got != "192.168.1.100" {
+		t.Fatalf("clientIP from untrusted peer = %q, want %q", got, "192.168.1.100")
+	}
+
+	// No trusted proxies configured: should use RemoteAddr.
+	req3 := httptest.NewRequest(http.MethodGet, "/", nil)
+	req3.RemoteAddr = "10.0.0.1:1234"
+	req3.Header.Set("X-Forwarded-For", "203.0.113.50")
+	if got := clientIP(req3, nil); got != "10.0.0.1" {
+		t.Fatalf("clientIP with no trusted proxies = %q, want %q", got, "10.0.0.1")
 	}
 }
 
@@ -513,7 +623,7 @@ func (s *stubStrategyRepo) Create(_ context.Context, strategy *domain.Strategy) 
 func (s *stubStrategyRepo) Get(_ context.Context, id uuid.UUID) (*domain.Strategy, error) {
 	st, ok := s.items[id]
 	if !ok {
-		return nil, fmt.Errorf("strategy %s not found", id)
+		return nil, fmt.Errorf("strategy %s: %w", id, repository.ErrNotFound)
 	}
 	return &st, nil
 }
@@ -528,7 +638,7 @@ func (s *stubStrategyRepo) List(_ context.Context, _ repository.StrategyFilter, 
 
 func (s *stubStrategyRepo) Update(_ context.Context, strategy *domain.Strategy) error {
 	if _, ok := s.items[strategy.ID]; !ok {
-		return fmt.Errorf("strategy %s not found", strategy.ID)
+		return fmt.Errorf("strategy %s: %w", strategy.ID, repository.ErrNotFound)
 	}
 	s.items[strategy.ID] = *strategy
 	return nil
@@ -536,7 +646,7 @@ func (s *stubStrategyRepo) Update(_ context.Context, strategy *domain.Strategy) 
 
 func (s *stubStrategyRepo) Delete(_ context.Context, id uuid.UUID) error {
 	if _, ok := s.items[id]; !ok {
-		return fmt.Errorf("strategy %s not found", id)
+		return fmt.Errorf("strategy %s: %w", id, repository.ErrNotFound)
 	}
 	delete(s.items, id)
 	return nil
@@ -548,7 +658,7 @@ type stubRunRepo struct{}
 
 func (stubRunRepo) Create(context.Context, *domain.PipelineRun) error { return nil }
 func (stubRunRepo) Get(_ context.Context, _ uuid.UUID, _ time.Time) (*domain.PipelineRun, error) {
-	return nil, fmt.Errorf("not found")
+	return nil, fmt.Errorf("run: %w", repository.ErrNotFound)
 }
 func (stubRunRepo) List(context.Context, repository.PipelineRunFilter, int, int) ([]domain.PipelineRun, error) {
 	return nil, nil
@@ -571,7 +681,7 @@ func (stubDecisionRepo) GetByRun(context.Context, uuid.UUID, repository.AgentDec
 type stubOrderRepo struct{}
 
 func (stubOrderRepo) Create(context.Context, *domain.Order) error                   { return nil }
-func (stubOrderRepo) Get(_ context.Context, _ uuid.UUID) (*domain.Order, error)     { return nil, fmt.Errorf("not found") }
+func (stubOrderRepo) Get(_ context.Context, _ uuid.UUID) (*domain.Order, error)     { return nil, fmt.Errorf("order: %w", repository.ErrNotFound) }
 func (stubOrderRepo) List(context.Context, repository.OrderFilter, int, int) ([]domain.Order, error) {
 	return nil, nil
 }
@@ -589,7 +699,7 @@ func (stubOrderRepo) GetByRun(context.Context, uuid.UUID, repository.OrderFilter
 type stubPositionRepo struct{}
 
 func (stubPositionRepo) Create(context.Context, *domain.Position) error                { return nil }
-func (stubPositionRepo) Get(_ context.Context, _ uuid.UUID) (*domain.Position, error)  { return nil, fmt.Errorf("not found") }
+func (stubPositionRepo) Get(_ context.Context, _ uuid.UUID) (*domain.Position, error)  { return nil, fmt.Errorf("position: %w", repository.ErrNotFound) }
 func (stubPositionRepo) List(context.Context, repository.PositionFilter, int, int) ([]domain.Position, error) {
 	return nil, nil
 }
