@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -32,6 +33,8 @@ type Server struct {
 	// Risk engine
 	risk risk.RiskEngine
 
+	auth *AuthManager
+
 	// WebSocket hub for real-time event streaming.
 	hub        *Hub
 	wsUpgrader websocket.Upgrader
@@ -39,22 +42,28 @@ type Server struct {
 
 // ServerConfig holds configuration for the API server.
 type ServerConfig struct {
-	Host           string
-	Port           int
-	CORSConfig     CORSConfig
-	RateLimit      int           // requests per window
-	RateWindow     time.Duration // window duration
-	TrustedProxies []string      // CIDR ranges of trusted reverse proxies
+	Host            string
+	Port            int
+	CORSConfig      CORSConfig
+	RateLimit       int           // requests per window
+	RateWindow      time.Duration // window duration
+	TrustedProxies  []string      // CIDR ranges of trusted reverse proxies
+	JWTSecret       string
+	RefreshTokenTTL time.Duration
+	APIKeyRateLimit int
+	APIKeyWindow    time.Duration
 }
 
 // DefaultServerConfig returns a sensible default server configuration.
 func DefaultServerConfig() ServerConfig {
 	return ServerConfig{
-		Host:       "0.0.0.0",
-		Port:       8080,
-		CORSConfig: DefaultCORSConfig(),
-		RateLimit:  100,
-		RateWindow: time.Minute,
+		Host:            "0.0.0.0",
+		Port:            8080,
+		CORSConfig:      DefaultCORSConfig(),
+		RateLimit:       100,
+		RateWindow:      time.Minute,
+		APIKeyRateLimit: 100,
+		APIKeyWindow:    time.Minute,
 	}
 }
 
@@ -67,6 +76,7 @@ type Deps struct {
 	Positions  repository.PositionRepository
 	Trades     repository.TradeRepository
 	Memories   repository.MemoryRepository
+	APIKeys    repository.APIKeyRepository
 	Risk       risk.RiskEngine
 }
 
@@ -100,6 +110,21 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 		return nil, fmt.Errorf("risk engine is required")
 	}
 
+	if strings.TrimSpace(cfg.JWTSecret) == "" {
+		return nil, fmt.Errorf("jwt secret is required")
+	}
+
+	authManager, err := NewAuthManager(AuthConfig{
+		JWTSecret:       cfg.JWTSecret,
+		RefreshTokenTTL: cfg.RefreshTokenTTL,
+		APIKeys:         deps.APIKeys,
+		APIKeyRateLimit: cfg.APIKeyRateLimit,
+		APIKeyWindow:    cfg.APIKeyWindow,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create auth manager: %w", err)
+	}
+
 	hub := NewHub(logger)
 
 	s := &Server{
@@ -112,6 +137,7 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 		trades:     deps.Trades,
 		memories:   deps.Memories,
 		risk:       deps.Risk,
+		auth:       authManager,
 		hub:        hub,
 		wsUpgrader: newUpgrader(cfg.CORSConfig.AllowedOrigins),
 	}
@@ -135,12 +161,15 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 
 	// Health check
 	r.Get("/health", s.handleHealth)
+	r.Get("/metrics", s.handleMetrics)
 
 	// WebSocket endpoint for real-time event streaming.
 	r.Get("/ws", s.handleWebSocket)
 
 	// API v1
 	r.Route("/api/v1", func(v1 chi.Router) {
+		v1.Use(s.authMiddleware)
+
 		// Strategies
 		v1.Route("/strategies", func(sr chi.Router) {
 			sr.Get("/", s.handleListStrategies)
@@ -231,4 +260,34 @@ func (s *Server) Hub() *Hub {
 // handleHealth returns 200 OK with a simple status payload.
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// handleMetrics returns a placeholder Prometheus-compatible metrics payload.
+func (s *Server) handleMetrics(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/plain; version=0.0.4")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("# metrics placeholder\n"))
+}
+
+func (s *Server) authMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodOptions {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		result, err := s.auth.AuthenticateRequest(r)
+		if err != nil {
+			respondError(w, http.StatusUnauthorized, "authentication required", ErrCodeUnauthorized)
+			return
+		}
+
+		if result.APIKey != nil && !s.auth.keyLimiter.Allow(result.APIKey.ID.String(), result.APIKey.RateLimitPerMinute) {
+			respondError(w, http.StatusTooManyRequests, "rate limit exceeded", ErrCodeRateLimited)
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), authPrincipalContextKey, result.Principal)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
 }

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -26,7 +27,10 @@ import (
 func newTestServer(t *testing.T) *Server {
 	t.Helper()
 
-	srv, err := NewServer(DefaultServerConfig(), testDeps(), slog.Default())
+	cfg := DefaultServerConfig()
+	cfg.JWTSecret = "test-jwt-secret"
+
+	srv, err := NewServer(cfg, testDeps(), slog.Default())
 	if err != nil {
 		t.Fatalf("NewServer() error = %v", err)
 	}
@@ -47,6 +51,7 @@ func testDeps() Deps {
 		Positions: &stubPositionRepo{},
 		Trades:    &stubTradeRepo{},
 		Memories:  &stubMemoryRepo{},
+		APIKeys:   newStubAPIKeyRepo(),
 		Risk:      &stubRiskEngine{},
 	}
 }
@@ -88,6 +93,13 @@ func doRequest(t *testing.T, srv *Server, method, path string, body any) *httpte
 
 	req := httptest.NewRequest(method, path, reqBody)
 	req.Header.Set("Content-Type", "application/json")
+	if strings.HasPrefix(path, "/api/v1") && method != http.MethodOptions {
+		tokenPair, err := srv.auth.GenerateTokenPair("test-user")
+		if err != nil {
+			t.Fatalf("GenerateTokenPair() error = %v", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+tokenPair.AccessToken)
+	}
 	rr := httptest.NewRecorder()
 	srv.Router().ServeHTTP(rr, req)
 	return rr
@@ -118,6 +130,22 @@ func TestHealthEndpoint(t *testing.T) {
 	body := decodeJSON[map[string]string](t, rr)
 	if body["status"] != "ok" {
 		t.Fatalf("health status = %q, want %q", body["status"], "ok")
+	}
+}
+
+func TestMetricsEndpointIsPublic(t *testing.T) {
+	t.Parallel()
+	srv := newTestServer(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	rr := httptest.NewRecorder()
+	srv.Router().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+	}
+	if got := rr.Header().Get("Content-Type"); got == "" {
+		t.Fatal("missing content type")
 	}
 }
 
@@ -361,6 +389,11 @@ func TestSearchMemoriesInvalidJSON(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/memories/search", strings.NewReader("{invalid"))
 	req.Header.Set("Content-Type", "application/json")
+	tokenPair, err := srv.auth.GenerateTokenPair("test-user")
+	if err != nil {
+		t.Fatalf("GenerateTokenPair() error = %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+tokenPair.AccessToken)
 	rr := httptest.NewRecorder()
 	srv.Router().ServeHTTP(rr, req)
 
@@ -453,6 +486,7 @@ func TestCORSEchoesMatchingOrigin(t *testing.T) {
 	t.Parallel()
 
 	cfg := DefaultServerConfig()
+	cfg.JWTSecret = "test-jwt-secret"
 	cfg.CORSConfig = CORSConfig{
 		AllowedOrigins: []string{"https://example.com", "https://other.com"},
 		AllowedMethods: []string{"GET"},
@@ -586,6 +620,11 @@ func TestInvalidJSONReturns400(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/strategies", strings.NewReader("{invalid"))
 	req.Header.Set("Content-Type", "application/json")
+	tokenPair, err := srv.auth.GenerateTokenPair("test-user")
+	if err != nil {
+		t.Fatalf("GenerateTokenPair() error = %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+tokenPair.AccessToken)
 	rr := httptest.NewRecorder()
 	srv.Router().ServeHTTP(rr, req)
 
@@ -601,7 +640,10 @@ func TestInvalidJSONReturns400(t *testing.T) {
 func TestNewServerRequiresDeps(t *testing.T) {
 	t.Parallel()
 
-	_, err := NewServer(DefaultServerConfig(), Deps{}, slog.Default())
+	cfg := DefaultServerConfig()
+	cfg.JWTSecret = "test-jwt-secret"
+
+	_, err := NewServer(cfg, Deps{}, slog.Default())
 	if err == nil {
 		t.Fatal("expected error for missing deps")
 	}
@@ -613,6 +655,82 @@ func TestNewServerRequiresDeps(t *testing.T) {
 
 type stubStrategyRepo struct {
 	items map[uuid.UUID]domain.Strategy
+}
+
+type stubAPIKeyRepo struct {
+	mu    sync.Mutex
+	items map[string]domain.APIKey
+}
+
+func newStubAPIKeyRepo() *stubAPIKeyRepo {
+	return &stubAPIKeyRepo{items: make(map[string]domain.APIKey)}
+}
+
+func (s *stubAPIKeyRepo) Create(_ context.Context, key *domain.APIKey) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if key.ID == uuid.Nil {
+		key.ID = uuid.New()
+	}
+	now := time.Now().UTC()
+	key.CreatedAt = now
+	key.UpdatedAt = now
+	s.items[key.KeyPrefix] = *key
+	return nil
+}
+
+func (s *stubAPIKeyRepo) GetByPrefix(_ context.Context, prefix string) (*domain.APIKey, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	key, ok := s.items[prefix]
+	if !ok {
+		return nil, fmt.Errorf("api key %s: %w", prefix, repository.ErrNotFound)
+	}
+	copy := key
+	return &copy, nil
+}
+
+func (s *stubAPIKeyRepo) List(_ context.Context, _, _ int) ([]domain.APIKey, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	out := make([]domain.APIKey, 0, len(s.items))
+	for _, item := range s.items {
+		out = append(out, item)
+	}
+	return out, nil
+}
+
+func (s *stubAPIKeyRepo) Revoke(_ context.Context, id uuid.UUID, revokedAt time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for prefix, item := range s.items {
+		if item.ID == id {
+			item.RevokedAt = &revokedAt
+			item.UpdatedAt = revokedAt
+			s.items[prefix] = item
+			return nil
+		}
+	}
+	return fmt.Errorf("api key %s: %w", id, repository.ErrNotFound)
+}
+
+func (s *stubAPIKeyRepo) TouchLastUsed(_ context.Context, id uuid.UUID, lastUsedAt time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for prefix, item := range s.items {
+		if item.ID == id {
+			item.LastUsedAt = &lastUsedAt
+			item.UpdatedAt = lastUsedAt
+			s.items[prefix] = item
+			return nil
+		}
+	}
+	return fmt.Errorf("api key %s: %w", id, repository.ErrNotFound)
 }
 
 func (s *stubStrategyRepo) Create(_ context.Context, strategy *domain.Strategy) error {
@@ -680,13 +798,15 @@ func (stubDecisionRepo) GetByRun(context.Context, uuid.UUID, repository.AgentDec
 
 type stubOrderRepo struct{}
 
-func (stubOrderRepo) Create(context.Context, *domain.Order) error                   { return nil }
-func (stubOrderRepo) Get(_ context.Context, _ uuid.UUID) (*domain.Order, error)     { return nil, fmt.Errorf("order: %w", repository.ErrNotFound) }
+func (stubOrderRepo) Create(context.Context, *domain.Order) error { return nil }
+func (stubOrderRepo) Get(_ context.Context, _ uuid.UUID) (*domain.Order, error) {
+	return nil, fmt.Errorf("order: %w", repository.ErrNotFound)
+}
 func (stubOrderRepo) List(context.Context, repository.OrderFilter, int, int) ([]domain.Order, error) {
 	return nil, nil
 }
-func (stubOrderRepo) Update(context.Context, *domain.Order) error   { return nil }
-func (stubOrderRepo) Delete(context.Context, uuid.UUID) error       { return nil }
+func (stubOrderRepo) Update(context.Context, *domain.Order) error { return nil }
+func (stubOrderRepo) Delete(context.Context, uuid.UUID) error     { return nil }
 func (stubOrderRepo) GetByStrategy(context.Context, uuid.UUID, repository.OrderFilter, int, int) ([]domain.Order, error) {
 	return nil, nil
 }
@@ -698,8 +818,10 @@ func (stubOrderRepo) GetByRun(context.Context, uuid.UUID, repository.OrderFilter
 
 type stubPositionRepo struct{}
 
-func (stubPositionRepo) Create(context.Context, *domain.Position) error                { return nil }
-func (stubPositionRepo) Get(_ context.Context, _ uuid.UUID) (*domain.Position, error)  { return nil, fmt.Errorf("position: %w", repository.ErrNotFound) }
+func (stubPositionRepo) Create(context.Context, *domain.Position) error { return nil }
+func (stubPositionRepo) Get(_ context.Context, _ uuid.UUID) (*domain.Position, error) {
+	return nil, fmt.Errorf("position: %w", repository.ErrNotFound)
+}
 func (stubPositionRepo) List(context.Context, repository.PositionFilter, int, int) ([]domain.Position, error) {
 	return nil, nil
 }
@@ -750,9 +872,9 @@ func (stubRiskEngine) GetStatus(context.Context) (risk.EngineStatus, error) {
 		UpdatedAt:  time.Now(),
 	}, nil
 }
-func (stubRiskEngine) TripCircuitBreaker(context.Context, string) error  { return nil }
-func (stubRiskEngine) ResetCircuitBreaker(context.Context) error         { return nil }
-func (stubRiskEngine) IsKillSwitchActive(context.Context) (bool, error)  { return false, nil }
-func (stubRiskEngine) ActivateKillSwitch(context.Context, string) error  { return nil }
-func (stubRiskEngine) DeactivateKillSwitch(context.Context) error        { return nil }
+func (stubRiskEngine) TripCircuitBreaker(context.Context, string) error           { return nil }
+func (stubRiskEngine) ResetCircuitBreaker(context.Context) error                  { return nil }
+func (stubRiskEngine) IsKillSwitchActive(context.Context) (bool, error)           { return false, nil }
+func (stubRiskEngine) ActivateKillSwitch(context.Context, string) error           { return nil }
+func (stubRiskEngine) DeactivateKillSwitch(context.Context) error                 { return nil }
 func (stubRiskEngine) UpdateMetrics(context.Context, float64, float64, int) error { return nil }

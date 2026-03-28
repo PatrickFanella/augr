@@ -7,12 +7,13 @@ import (
 
 // Standard error codes used in API error responses.
 const (
-	ErrCodeBadRequest     = "ERR_BAD_REQUEST"
-	ErrCodeNotFound       = "ERR_NOT_FOUND"
-	ErrCodeInternal       = "ERR_INTERNAL"
-	ErrCodeValidation     = "ERR_VALIDATION"
+	ErrCodeBadRequest       = "ERR_BAD_REQUEST"
+	ErrCodeNotFound         = "ERR_NOT_FOUND"
+	ErrCodeInternal         = "ERR_INTERNAL"
+	ErrCodeValidation       = "ERR_VALIDATION"
 	ErrCodeMethodNotAllowed = "ERR_METHOD_NOT_ALLOWED"
-	ErrCodeRateLimited    = "ERR_RATE_LIMITED"
+	ErrCodeUnauthorized     = "ERR_UNAUTHORIZED"
+	ErrCodeRateLimited      = "ERR_RATE_LIMITED"
 )
 
 // ErrorResponse is the standard error envelope returned by the API.

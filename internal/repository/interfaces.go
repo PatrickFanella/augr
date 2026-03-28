@@ -242,3 +242,12 @@ type AuditLogRepository interface {
 	Create(ctx context.Context, entry *domain.AuditLogEntry) error
 	Query(ctx context.Context, filter AuditLogFilter, limit, offset int) ([]domain.AuditLogEntry, error)
 }
+
+// APIKeyRepository provides storage for hashed API keys used for programmatic access.
+type APIKeyRepository interface {
+	Create(ctx context.Context, key *domain.APIKey) error
+	GetByPrefix(ctx context.Context, prefix string) (*domain.APIKey, error)
+	List(ctx context.Context, limit, offset int) ([]domain.APIKey, error)
+	Revoke(ctx context.Context, id uuid.UUID, revokedAt time.Time) error
+	TouchLastUsed(ctx context.Context, id uuid.UUID, lastUsedAt time.Time) error
+}

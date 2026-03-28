@@ -17,6 +17,7 @@ func TestLoadParsesEnvironmentValues(t *testing.T) {
 	t.Setenv("XAI_BASE_URL", "https://xai.example.com/v1")
 	t.Setenv("APP_HOST", "127.0.0.1")
 	t.Setenv("APP_PORT", "9090")
+	t.Setenv("JWT_SECRET", "super-secret")
 	t.Setenv("DATABASE_POOL_SIZE", "25")
 	t.Setenv("DATABASE_SSL_MODE", "require")
 	t.Setenv("REDIS_URL", "redis://localhost:6379/0")
@@ -39,6 +40,10 @@ func TestLoadParsesEnvironmentValues(t *testing.T) {
 
 	if cfg.Server.Port != 9090 {
 		t.Fatalf("cfg.Server.Port = %d, want %d", cfg.Server.Port, 9090)
+	}
+
+	if cfg.Server.JWTSecret != "super-secret" {
+		t.Fatalf("cfg.Server.JWTSecret = %q, want %q", cfg.Server.JWTSecret, "super-secret")
 	}
 
 	if cfg.Database.PoolSize != 25 {
