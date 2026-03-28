@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/gorilla/websocket"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 	"github.com/PatrickFanella/get-rich-quick/internal/risk"
@@ -30,6 +31,10 @@ type Server struct {
 
 	// Risk engine
 	risk risk.RiskEngine
+
+	// WebSocket hub for real-time event streaming.
+	hub        *Hub
+	wsUpgrader websocket.Upgrader
 }
 
 // ServerConfig holds configuration for the API server.
@@ -95,6 +100,8 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 		return nil, fmt.Errorf("risk engine is required")
 	}
 
+	hub := NewHub(logger)
+
 	s := &Server{
 		logger:     logger,
 		strategies: deps.Strategies,
@@ -105,6 +112,8 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 		trades:     deps.Trades,
 		memories:   deps.Memories,
 		risk:       deps.Risk,
+		hub:        hub,
+		wsUpgrader: newUpgrader(cfg.CORSConfig.AllowedOrigins),
 	}
 
 	r := chi.NewRouter()
@@ -126,6 +135,9 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 
 	// Health check
 	r.Get("/health", s.handleHealth)
+
+	// WebSocket endpoint for real-time event streaming.
+	r.Get("/ws", s.handleWebSocket)
 
 	// API v1
 	r.Route("/api/v1", func(v1 chi.Router) {
@@ -195,8 +207,10 @@ func (s *Server) Router() http.Handler {
 // Start begins listening for HTTP requests. It blocks until the server is
 // stopped or encounters an error.
 func (s *Server) Start() error {
+	go s.hub.Run()
 	s.logger.Info("api server starting", slog.String("addr", s.httpServer.Addr))
 	if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		s.hub.Stop()
 		return fmt.Errorf("api server: %w", err)
 	}
 	return nil
@@ -205,7 +219,13 @@ func (s *Server) Start() error {
 // Shutdown gracefully stops the HTTP server.
 func (s *Server) Shutdown(ctx context.Context) error {
 	s.logger.Info("api server shutting down")
+	s.hub.Stop()
 	return s.httpServer.Shutdown(ctx)
+}
+
+// Hub returns the WebSocket hub for broadcasting events.
+func (s *Server) Hub() *Hub {
+	return s.hub
 }
 
 // handleHealth returns 200 OK with a simple status payload.

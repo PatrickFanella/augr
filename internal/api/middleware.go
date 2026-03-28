@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bufio"
 	"fmt"
 	"log/slog"
 	"net"
@@ -236,4 +237,13 @@ func (sw *statusCapture) Write(b []byte) (int, error) {
 		sw.WriteHeader(http.StatusOK)
 	}
 	return sw.ResponseWriter.Write(b)
+}
+
+// Hijack implements http.Hijacker so that WebSocket upgrades work through the
+// request-logging middleware.
+func (sw *statusCapture) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	if hj, ok := sw.ResponseWriter.(http.Hijacker); ok {
+		return hj.Hijack()
+	}
+	return nil, nil, fmt.Errorf("underlying ResponseWriter does not implement http.Hijacker")
 }
