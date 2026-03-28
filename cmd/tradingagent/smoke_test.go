@@ -23,6 +23,8 @@ import (
 	pgrepo "github.com/PatrickFanella/get-rich-quick/internal/repository/postgres"
 )
 
+const smokeTestTimeout = 60 * time.Second
+
 func TestSmokeEndToEnd(t *testing.T) {
 	if os.Getenv("RUN_SMOKE_TEST") != "1" {
 		t.Skip("set RUN_SMOKE_TEST=1 to run the docker-compose smoke test")
@@ -32,7 +34,7 @@ func TestSmokeEndToEnd(t *testing.T) {
 	dbURL := firstNonEmpty(os.Getenv("SMOKE_DATABASE_URL"), "postgres://postgres:postgres@127.0.0.1:5432/tradingagent?sslmode=disable")
 	jwtSecret := firstNonEmpty(os.Getenv("SMOKE_JWT_SECRET"), "smoke-jwt-secret")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), smokeTestTimeout)
 	defer cancel()
 
 	waitForSmokeHealth(t, ctx, baseURL+"/health")
@@ -135,6 +137,9 @@ func TestSmokeEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decisionRepo.GetByRun() error = %v", err)
 	}
+	// The deterministic smoke pipeline persists one decision for each of its
+	// nine registered nodes: analysis, two research debaters, judge, trader,
+	// three risk debaters, and the risk manager.
 	if len(decisions) < 9 {
 		t.Fatalf("decision count = %d, want at least 9", len(decisions))
 	}

@@ -278,7 +278,7 @@ func (s *Server) Hub() *Hub {
 }
 
 func (s *Server) broadcastRunResult(result *StrategyRunResult) {
-	if s == nil || s.hub == nil || result == nil {
+	if s.hub == nil || result == nil {
 		return
 	}
 

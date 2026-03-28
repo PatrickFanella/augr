@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -201,6 +202,15 @@ func (r *smokeStrategyRunner) RunStrategy(ctx context.Context, strategy domain.S
 }
 
 func (r *smokeStrategyRunner) findRun(ctx context.Context, runID uuid.UUID) (*domain.PipelineRun, error) {
+	tradeDate := time.Now().UTC().Truncate(24 * time.Hour)
+	run, err := r.runRepo.Get(ctx, runID, tradeDate)
+	if err == nil {
+		return run, nil
+	}
+	if !errors.Is(err, repository.ErrNotFound) {
+		return nil, err
+	}
+
 	runs, err := r.runRepo.List(ctx, repository.PipelineRunFilter{}, 100, 0)
 	if err != nil {
 		return nil, err
@@ -244,7 +254,7 @@ func newSmokePipeline(
 		role:  agent.AgentRoleBullResearcher,
 		phase: agent.PhaseResearchDebate,
 		exec: func(state *agent.PipelineState) error {
-			return recordDebateContribution(&state.ResearchDebate, agent.AgentRoleBullResearcher, "Bull case: strong setup for a paper-trade entry.")
+			return recordResearchDebateContribution(&state.ResearchDebate, agent.AgentRoleBullResearcher, "Bull case: strong setup for a paper-trade entry.")
 		},
 	})
 	pipeline.RegisterNode(smokeNode{
@@ -252,7 +262,7 @@ func newSmokePipeline(
 		role:  agent.AgentRoleBearResearcher,
 		phase: agent.PhaseResearchDebate,
 		exec: func(state *agent.PipelineState) error {
-			return recordDebateContribution(&state.ResearchDebate, agent.AgentRoleBearResearcher, "Bear case: downside risk is bounded by the configured stop.")
+			return recordResearchDebateContribution(&state.ResearchDebate, agent.AgentRoleBearResearcher, "Bear case: downside risk is bounded by the configured stop.")
 		},
 	})
 	pipeline.RegisterNode(smokeNode{
@@ -297,7 +307,7 @@ func newSmokePipeline(
 		role:  agent.AgentRoleAggressiveAnalyst,
 		phase: agent.PhaseRiskDebate,
 		exec: func(state *agent.PipelineState) error {
-			return recordDebateContribution(&state.RiskDebate, agent.AgentRoleAggressiveAnalyst, "Aggressive view: approve the trade.")
+			return recordRiskDebateContribution(&state.RiskDebate, agent.AgentRoleAggressiveAnalyst, "Aggressive view: approve the trade.")
 		},
 	})
 	pipeline.RegisterNode(smokeNode{
@@ -305,7 +315,7 @@ func newSmokePipeline(
 		role:  agent.AgentRoleConservativeAnalyst,
 		phase: agent.PhaseRiskDebate,
 		exec: func(state *agent.PipelineState) error {
-			return recordDebateContribution(&state.RiskDebate, agent.AgentRoleConservativeAnalyst, "Conservative view: size is acceptable for smoke validation.")
+			return recordRiskDebateContribution(&state.RiskDebate, agent.AgentRoleConservativeAnalyst, "Conservative view: size is acceptable for smoke validation.")
 		},
 	})
 	pipeline.RegisterNode(smokeNode{
@@ -313,7 +323,7 @@ func newSmokePipeline(
 		role:  agent.AgentRoleNeutralAnalyst,
 		phase: agent.PhaseRiskDebate,
 		exec: func(state *agent.PipelineState) error {
-			return recordDebateContribution(&state.RiskDebate, agent.AgentRoleNeutralAnalyst, "Neutral view: proceed and observe the paper execution.")
+			return recordRiskDebateContribution(&state.RiskDebate, agent.AgentRoleNeutralAnalyst, "Neutral view: proceed and observe the paper execution.")
 		},
 	})
 	pipeline.RegisterNode(smokeNode{
@@ -356,16 +366,30 @@ func (n smokeNode) Execute(ctx context.Context, state *agent.PipelineState) erro
 	return n.exec(state)
 }
 
-func recordDebateContribution(state any, role agent.AgentRole, contribution string) error {
-	var rounds []agent.DebateRound
-	switch s := state.(type) {
-	case *agent.ResearchDebateState:
-		rounds = s.Rounds
-	case *agent.RiskDebateState:
-		rounds = s.Rounds
-	default:
-		return fmt.Errorf("unsupported debate state type %T", state)
+func recordResearchDebateContribution(state *agent.ResearchDebateState, role agent.AgentRole, contribution string) error {
+	if state == nil {
+		return fmt.Errorf("research debate state is required")
 	}
+	return recordDebateRoundContribution(state.Rounds, func(rounds []agent.DebateRound) {
+		state.Rounds = rounds
+	}, role, contribution)
+}
+
+func recordRiskDebateContribution(state *agent.RiskDebateState, role agent.AgentRole, contribution string) error {
+	if state == nil {
+		return fmt.Errorf("risk debate state is required")
+	}
+	return recordDebateRoundContribution(state.Rounds, func(rounds []agent.DebateRound) {
+		state.Rounds = rounds
+	}, role, contribution)
+}
+
+func recordDebateRoundContribution(
+	rounds []agent.DebateRound,
+	setRounds func([]agent.DebateRound),
+	role agent.AgentRole,
+	contribution string,
+) error {
 	if len(rounds) == 0 {
 		return fmt.Errorf("debate round is not initialized")
 	}
@@ -376,13 +400,7 @@ func recordDebateContribution(state any, role agent.AgentRole, contribution stri
 	}
 	round.Contributions[role] = contribution
 	rounds[len(rounds)-1] = round
-
-	switch s := state.(type) {
-	case *agent.ResearchDebateState:
-		s.Rounds = rounds
-	case *agent.RiskDebateState:
-		s.Rounds = rounds
-	}
+	setRounds(rounds)
 
 	return nil
 }
