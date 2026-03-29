@@ -72,7 +72,7 @@ export function PortfolioChart() {
                 tickFormatter={(value: number) => currencyFormatter.format(value)}
               />
               <Tooltip
-                formatter={(value: number) => [currencyFormatter.format(value), 'P&L']}
+                formatter={(value) => [currencyFormatter.format(Number(value)), 'P&L']}
                 contentStyle={{ borderRadius: '0.5rem', fontSize: '0.875rem' }}
               />
               <Area
