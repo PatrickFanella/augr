@@ -42,6 +42,16 @@ export function AnalystCards({ decisions, onSelectDecision }: AnalystCardsProps)
               key={role}
               className={decision ? 'cursor-pointer transition-shadow hover:shadow-md' : ''}
               onClick={() => decision && onSelectDecision(decision)}
+              role={decision ? 'button' : undefined}
+              tabIndex={decision ? 0 : -1}
+              aria-disabled={!decision}
+              onKeyDown={(event) => {
+                if (!decision) return
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  onSelectDecision(decision)
+                }
+              }}
               data-testid={`analyst-card-${role}`}
             >
               <CardHeader className="pb-2">

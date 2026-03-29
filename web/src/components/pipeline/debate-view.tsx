@@ -81,12 +81,23 @@ export function DebateView({ title, roles, decisions, onSelectDecision }: Debate
       ) : (
         <div className={`grid gap-3 ${roles.length <= 2 ? 'sm:grid-cols-2' : 'sm:grid-cols-3'}`}>
           {roles.map((role) => {
-            const entry = activeRound.entries.find((e) => e.agent_role === role)
+            const entry = activeRound.entries
+              .filter((e) => e.agent_role === role)
+              .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
             return (
               <Card
                 key={role}
                 className={entry ? 'cursor-pointer transition-shadow hover:shadow-md' : ''}
                 onClick={() => entry && onSelectDecision(entry)}
+                role={entry ? 'button' : undefined}
+                tabIndex={entry ? 0 : undefined}
+                onKeyDown={(event) => {
+                  if (!entry) return
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    onSelectDecision(entry)
+                  }
+                }}
                 data-testid={`debate-card-${role}`}
               >
                 <CardHeader className="pb-2">

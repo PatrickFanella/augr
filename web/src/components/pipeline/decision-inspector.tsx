@@ -43,7 +43,13 @@ export function DecisionInspector({ decision, onClose }: DecisionInspectorProps)
             {decision.round_number ? ` · Round ${decision.round_number}` : ''}
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={onClose} data-testid="inspector-close">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onClose}
+          data-testid="inspector-close"
+          aria-label="Close decision inspector"
+        >
           <X className="size-4" />
         </Button>
       </CardHeader>

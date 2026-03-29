@@ -39,7 +39,7 @@ export function PhaseProgress({ phases }: PhaseProgressProps) {
             <div
               className={cn(
                 'h-0.5 w-6 sm:w-10',
-                phase.status !== 'pending' ? 'bg-primary' : 'bg-muted',
+                phases[index - 1].status !== 'pending' ? 'bg-primary' : 'bg-muted',
               )}
             />
           )}

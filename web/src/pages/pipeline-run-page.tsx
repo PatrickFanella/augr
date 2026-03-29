@@ -1,6 +1,6 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft } from 'lucide-react'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
 import { AnalystCards } from '@/components/pipeline/analyst-cards'
@@ -12,7 +12,7 @@ import { TraderPlan } from '@/components/pipeline/trader-plan'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { apiClient } from '@/lib/api/client'
-import type { AgentDecision, AgentRole, WebSocketServerMessage } from '@/lib/api/types'
+import type { AgentDecision, AgentRole, WebSocketMessage, WebSocketServerMessage } from '@/lib/api/types'
 import { useWebSocketClient } from '@/hooks/use-websocket-client'
 
 const analysisRoles: AgentRole[] = [
@@ -42,10 +42,13 @@ function computePhases(decisions: AgentDecision[], isCompleted: boolean): PhaseI
     return 'pending'
   }
 
-  const analysisDone = analysisDecisions.length >= analysisRoles.length
-  const debateDone = debateDecisions.length > 0 && debateDecisions.length >= debateRoles.length
+  const analysisDone =
+    new Set(analysisDecisions.map((d) => d.agent_role)).size >= analysisRoles.length
+  const debateDone =
+    new Set(debateDecisions.map((d) => d.agent_role)).size >= debateRoles.length
   const traderDone = !!traderDecision
-  const riskDone = riskDecisions.length >= riskDebateRoles.length
+  const riskDone =
+    new Set(riskDecisions.map((d) => d.agent_role)).size >= riskDebateRoles.length
   const judgeDone = !!judgeDecision
 
   return [
@@ -77,9 +80,15 @@ function computePhases(decisions: AgentDecision[], isCompleted: boolean): PhaseI
   ]
 }
 
+function isWebSocketMessage(msg: WebSocketServerMessage): msg is WebSocketMessage {
+  return 'type' in msg && !('status' in msg)
+}
+
 export function PipelineRunPage() {
   const { id } = useParams<{ id: string }>()
+  const queryClient = useQueryClient()
   const [selectedDecision, setSelectedDecision] = useState<AgentDecision | null>(null)
+  const subscribedRef = useRef(false)
 
   const {
     data: run,
@@ -97,7 +106,7 @@ export function PipelineRunPage() {
 
   const { data: decisionsData } = useQuery({
     queryKey: ['run-decisions', id],
-    queryFn: () => apiClient.getRunDecisions(id!, { limit: 100 }),
+    queryFn: () => apiClient.getRunDecisions(id!, { limit: 10_000 }),
     enabled: !!id,
     refetchInterval: () => {
       return run?.status === 'running' ? 3_000 : false
@@ -108,20 +117,45 @@ export function PipelineRunPage() {
 
   const handleWebSocketMessage = useCallback(
     (msg: WebSocketServerMessage) => {
-      if ('type' in msg && msg.type !== 'error' && 'run_id' in msg && msg.run_id === id) {
-        // Trigger refetch on relevant WebSocket events
-      }
+      if (!isWebSocketMessage(msg)) return
+      if (msg.run_id !== id) return
+
+      queryClient.invalidateQueries({ queryKey: ['run', id] })
+      queryClient.invalidateQueries({ queryKey: ['run-decisions', id] })
     },
-    [id],
+    [id, queryClient],
   )
 
-  useWebSocketClient({
+  const { status: wsStatus, subscribe } = useWebSocketClient({
     enabled: run?.status === 'running',
     onMessage: handleWebSocketMessage,
   })
 
-  const traderDecision = useMemo(() => decisions.find((d) => d.agent_role === 'trader'), [decisions])
-  const judgeDecision = useMemo(() => decisions.find((d) => d.agent_role === 'invest_judge'), [decisions])
+  const isWsConnected = wsStatus === 'open'
+
+  useEffect(() => {
+    if (isWsConnected && !subscribedRef.current && id) {
+      subscribe({ run_ids: [id] })
+      subscribedRef.current = true
+    }
+    if (!isWsConnected) {
+      subscribedRef.current = false
+    }
+  }, [isWsConnected, subscribe, id])
+
+  const traderDecision = useMemo(() => {
+    for (let i = decisions.length - 1; i >= 0; i--) {
+      if (decisions[i].agent_role === 'trader') return decisions[i]
+    }
+    return undefined
+  }, [decisions])
+
+  const judgeDecision = useMemo(() => {
+    for (let i = decisions.length - 1; i >= 0; i--) {
+      if (decisions[i].agent_role === 'invest_judge') return decisions[i]
+    }
+    return undefined
+  }, [decisions])
 
   const phases = useMemo(
     () => computePhases(decisions, run?.status === 'completed'),

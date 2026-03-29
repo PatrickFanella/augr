@@ -41,6 +41,15 @@ export function FinalSignal({ signal, judgeDecision, onSelectDecision }: FinalSi
       <Card
         className={judgeDecision ? 'cursor-pointer transition-shadow hover:shadow-md' : ''}
         onClick={() => judgeDecision && onSelectDecision(judgeDecision)}
+        role={judgeDecision ? 'button' : undefined}
+        tabIndex={judgeDecision ? 0 : -1}
+        onKeyDown={(event) => {
+          if (!judgeDecision) return
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault()
+            onSelectDecision(judgeDecision)
+          }
+        }}
       >
         <CardHeader className="pb-2">
           <CardTitle className="text-sm">Investment Judge</CardTitle>
