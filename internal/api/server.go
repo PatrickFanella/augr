@@ -32,8 +32,9 @@ type Server struct {
 	memories   repository.MemoryRepository
 
 	// Risk engine
-	risk   risk.RiskEngine
-	runner StrategyRunner
+	risk     risk.RiskEngine
+	settings SettingsService
+	runner   StrategyRunner
 
 	auth *AuthManager
 
@@ -93,6 +94,7 @@ type Deps struct {
 	Memories   repository.MemoryRepository
 	APIKeys    repository.APIKeyRepository
 	Risk       risk.RiskEngine
+	Settings   SettingsService
 	Runner     StrategyRunner
 }
 
@@ -144,6 +146,11 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 
 	hub := NewHub(logger)
 
+	settingsService := deps.Settings
+	if settingsService == nil {
+		settingsService = NewMemorySettingsService(SettingsBootstrap{})
+	}
+
 	s := &Server{
 		logger:     logger,
 		strategies: deps.Strategies,
@@ -154,6 +161,7 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 		trades:     deps.Trades,
 		memories:   deps.Memories,
 		risk:       deps.Risk,
+		settings:   settingsService,
 		runner:     deps.Runner,
 		auth:       authManager,
 		hub:        hub,
@@ -234,6 +242,12 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 		v1.Route("/risk", func(rr chi.Router) {
 			rr.Get("/status", s.handleRiskStatus)
 			rr.Post("/killswitch", s.handleKillSwitchToggle)
+		})
+
+		// Settings
+		v1.Route("/settings", func(sr chi.Router) {
+			sr.Get("/", s.handleGetSettings)
+			sr.Put("/", s.handleUpdateSettings)
 		})
 	})
 

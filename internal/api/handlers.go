@@ -549,6 +549,30 @@ func (s *Server) handleKillSwitchToggle(w http.ResponseWriter, r *http.Request) 
 	respondJSON(w, http.StatusOK, map[string]bool{"active": body.Active})
 }
 
+func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
+	settings, err := s.settings.Get(r.Context())
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to get settings", ErrCodeInternal)
+		return
+	}
+	respondJSON(w, http.StatusOK, settings)
+}
+
+func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
+	var body SettingsUpdateRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body", ErrCodeBadRequest)
+		return
+	}
+
+	settings, err := s.settings.Update(r.Context(), body)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, err.Error(), ErrCodeValidation)
+		return
+	}
+	respondJSON(w, http.StatusOK, settings)
+}
+
 // isNotFound checks whether err wraps repository.ErrNotFound.
 func isNotFound(err error) bool {
 	return errors.Is(err, repository.ErrNotFound)

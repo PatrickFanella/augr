@@ -18,6 +18,8 @@ import type {
   PositionListParams,
   PortfolioSummary,
   RunListParams,
+  Settings,
+  SettingsUpdateRequest,
   Strategy,
   StrategyCreateRequest,
   StrategyListParams,
@@ -168,6 +170,17 @@ export class ApiClient {
   async toggleKillSwitch(payload: KillSwitchToggleRequest) {
     return this.request<KillSwitchToggleResponse>('/api/v1/risk/killswitch', {
       method: 'POST',
+      body: payload,
+    })
+  }
+
+  async getSettings() {
+    return this.request<Settings>('/api/v1/settings')
+  }
+
+  async updateSettings(payload: SettingsUpdateRequest) {
+    return this.request<Settings>('/api/v1/settings', {
+      method: 'PUT',
       body: payload,
     })
   }

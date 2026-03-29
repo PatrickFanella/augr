@@ -1,4 +1,4 @@
-import { Activity, Brain, BriefcaseBusiness, LayoutDashboard, RadioTower, ShieldAlert } from 'lucide-react'
+import { Activity, Brain, BriefcaseBusiness, LayoutDashboard, RadioTower, Settings2, ShieldAlert } from 'lucide-react'
 import { NavLink, Outlet } from 'react-router-dom'
 
 import { cn } from '@/lib/utils'
@@ -9,6 +9,7 @@ const navigationItems = [
   { to: '/runs', label: 'Runs', icon: Activity },
   { to: '/portfolio', label: 'Portfolio', icon: BriefcaseBusiness },
   { to: '/memories', label: 'Memories', icon: Brain },
+  { to: '/settings', label: 'Settings', icon: Settings2 },
   { to: '/risk', label: 'Risk', icon: ShieldAlert },
   { to: '/realtime', label: 'Realtime', icon: RadioTower },
 ]

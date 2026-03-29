@@ -215,6 +215,79 @@ export interface KillSwitchToggleResponse {
   active: boolean
 }
 
+export interface LLMProviderSettings {
+  api_key_configured?: boolean
+  api_key_last4?: string
+  base_url?: string
+  model: string
+}
+
+export interface OllamaSettings {
+  base_url?: string
+  model: string
+}
+
+export interface LLMProviderSettingsGroup {
+  openai: LLMProviderSettings
+  anthropic: LLMProviderSettings
+  google: LLMProviderSettings
+  openrouter: LLMProviderSettings
+  xai: LLMProviderSettings
+  ollama: OllamaSettings
+}
+
+export interface Settings {
+  llm: {
+    default_provider: string
+    deep_think_model: string
+    quick_think_model: string
+    providers: LLMProviderSettingsGroup
+  }
+  risk: {
+    max_position_size_pct: number
+    max_daily_loss_pct: number
+    max_drawdown_pct: number
+    max_open_positions: number
+    max_total_exposure_pct: number
+    max_per_market_exposure_pct: number
+    circuit_breaker_threshold_pct: number
+    circuit_breaker_cooldown_min: number
+  }
+  system: {
+    environment: string
+    version: string
+    uptime_seconds: number
+    connected_brokers: Array<{
+      name: string
+      paper_mode: boolean
+      configured: boolean
+    }>
+  }
+}
+
+export interface LLMProviderUpdateRequest {
+  api_key?: string
+  base_url?: string
+  model: string
+}
+
+export interface SettingsUpdateRequest {
+  llm: {
+    default_provider: string
+    deep_think_model: string
+    quick_think_model: string
+    providers: {
+      openai: LLMProviderUpdateRequest
+      anthropic: LLMProviderUpdateRequest
+      google: LLMProviderUpdateRequest
+      openrouter: LLMProviderUpdateRequest
+      xai: LLMProviderUpdateRequest
+      ollama: OllamaSettings
+    }
+  }
+  risk: Settings['risk']
+}
+
 export interface WebSocketMessage<TData = unknown> {
   type: WebSocketEventType
   strategy_id?: UUID

@@ -65,6 +65,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 		Memories:   memoryRepo,
 		APIKeys:    apiKeyRepo,
 		Risk:       riskEngine,
+		Settings:   api.NewMemorySettingsServiceFromConfig(cfg),
 	}
 
 	if strings.EqualFold(cfg.Environment, "smoke") {
