@@ -34,6 +34,9 @@ type NeutralRisk struct {
 	providerName string
 }
 
+// Compile-time check: *NeutralRisk implements agent.DebaterNode.
+var _ agent.DebaterNode = (*NeutralRisk)(nil)
+
 // NewNeutralRisk returns a NeutralRisk wired to the given LLM provider and
 // model. providerName (e.g. "openai") is recorded in decision metadata. A nil
 // logger is replaced with the default logger.
@@ -65,4 +68,10 @@ func (n *NeutralRisk) Phase() agent.Phase { return agent.PhaseRiskDebate }
 // persistence.
 func (n *NeutralRisk) Execute(ctx context.Context, state *agent.PipelineState) error {
 	return executeRiskDebate(ctx, state, n.BaseDebater, agent.AgentRoleNeutralAnalyst, NeutralRiskSystemPrompt, n.providerName)
+}
+
+// Debate implements the DebaterNode interface. It calls the LLM with the
+// neutral risk system prompt and returns the debate contribution.
+func (n *NeutralRisk) Debate(ctx context.Context, input agent.DebateInput) (agent.DebateOutput, error) {
+	return debateRiskFromInput(ctx, n.BaseDebater, NeutralRiskSystemPrompt, n.providerName, input)
 }

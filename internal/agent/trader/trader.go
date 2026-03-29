@@ -84,6 +84,9 @@ type Trader struct {
 	logger       *slog.Logger
 }
 
+// Compile-time check: *Trader implements agent.TraderNode.
+var _ agent.TraderNode = (*Trader)(nil)
+
 // NewTrader returns a Trader wired to the given LLM provider and model.
 // providerName (e.g. "openai") is recorded in decision metadata.
 // A nil logger is replaced with the default logger.
@@ -113,11 +116,29 @@ func (t *Trader) Phase() agent.Phase { return agent.PhaseTrading }
 // into a TradingPlanOutput and maps it to state.TradingPlan. If parsing fails,
 // a default hold plan is stored so the pipeline can proceed.
 func (t *Trader) Execute(ctx context.Context, state *agent.PipelineState) error {
+	input := agent.TradingInput{
+		Ticker:         state.Ticker,
+		InvestmentPlan: state.ResearchDebate.InvestmentPlan,
+		AnalystReports: state.AnalystReports,
+	}
+	output, err := t.Trade(ctx, input)
+	if err != nil {
+		return err
+	}
+	state.TradingPlan = output.Plan
+	state.RecordDecision(agent.AgentRoleTrader, agent.PhaseTrading, nil, output.StoredOutput, output.LLMResponse)
+	return nil
+}
+
+// Trade implements the TraderNode interface. It calls the LLM with the trader
+// system prompt, the investment plan, and analyst reports and returns a typed
+// TradingOutput with the parsed trading plan.
+func (t *Trader) Trade(ctx context.Context, input agent.TradingInput) (agent.TradingOutput, error) {
 	if t.provider == nil {
-		return fmt.Errorf("trader (trading): nil llm provider")
+		return agent.TradingOutput{}, fmt.Errorf("trader (trading): nil llm provider")
 	}
 
-	userContent := buildUserPrompt(state)
+	userContent := buildUserPromptFromInput(input)
 
 	resp, err := t.provider.Complete(ctx, llm.CompletionRequest{
 		Model: t.model,
@@ -127,57 +148,55 @@ func (t *Trader) Execute(ctx context.Context, state *agent.PipelineState) error 
 		},
 	})
 	if err != nil {
-		return fmt.Errorf("trader (trading): llm completion failed: %w", err)
+		return agent.TradingOutput{}, fmt.Errorf("trader (trading): llm completion failed: %w", err)
 	}
 	if resp == nil {
-		return fmt.Errorf("trader (trading): nil llm response")
+		return agent.TradingOutput{}, fmt.Errorf("trader (trading): nil llm response")
 	}
 
 	content := resp.Content
 	usage := resp.Usage
 
 	// Attempt to parse the structured output. When parsing succeeds we
-	// populate the state TradingPlan from the parsed fields. On failure we
+	// populate the TradingPlan from the parsed fields. On failure we
 	// store a default hold plan so the pipeline can still proceed.
 	storedOutput := content
+	var tradingPlan agent.TradingPlan
 	plan, parseErr := ParseTradingPlan(content)
 	if parseErr != nil {
 		t.logger.Warn("trader: failed to parse structured output; storing default hold plan",
 			slog.String("error", parseErr.Error()),
 		)
-		state.TradingPlan = agent.TradingPlan{
+		tradingPlan = agent.TradingPlan{
 			Action:    agent.PipelineSignalHold,
-			Ticker:    state.Ticker,
+			Ticker:    input.Ticker,
 			Rationale: "Failed to parse trading plan: " + parseErr.Error(),
 		}
 	} else {
 		// Validate that the LLM-returned ticker matches the pipeline ticker.
-		// Override with state.Ticker to prevent acting on a hallucinated symbol.
-		if !strings.EqualFold(strings.TrimSpace(plan.Ticker), state.Ticker) {
+		// Override with input.Ticker to prevent acting on a hallucinated symbol.
+		if !strings.EqualFold(strings.TrimSpace(plan.Ticker), input.Ticker) {
 			t.logger.Warn("trader: LLM returned mismatched ticker; overriding with pipeline ticker",
 				slog.String("llm_ticker", plan.Ticker),
-				slog.String("pipeline_ticker", state.Ticker),
+				slog.String("pipeline_ticker", input.Ticker),
 			)
-			plan.Ticker = state.Ticker
+			plan.Ticker = input.Ticker
 		}
 		t.logger.Info("trader: parsed trading plan",
 			slog.String("action", plan.Action),
 			slog.String("ticker", plan.Ticker),
 			slog.Float64("confidence", plan.Confidence),
 		)
-		state.TradingPlan = mapToTradingPlan(plan)
+		tradingPlan = mapToTradingPlan(plan)
 		if normalized, err := json.Marshal(plan); err == nil {
 			storedOutput = string(normalized)
 		}
 	}
 
-	// Record the decision so the pipeline can persist it with LLM metadata.
-	state.RecordDecision(
-		agent.AgentRoleTrader,
-		agent.PhaseTrading,
-		nil,
-		storedOutput,
-		&agent.DecisionLLMResponse{
+	return agent.TradingOutput{
+		Plan:         tradingPlan,
+		StoredOutput: storedOutput,
+		LLMResponse: &agent.DecisionLLMResponse{
 			Provider: t.providerName,
 			Response: &llm.CompletionResponse{
 				Content: content,
@@ -185,38 +204,46 @@ func (t *Trader) Execute(ctx context.Context, state *agent.PipelineState) error 
 				Usage:   usage,
 			},
 		},
-	)
-
-	return nil
+	}, nil
 }
 
 // buildUserPrompt constructs the user message from the pipeline state,
 // including the investment plan and analyst reports.
 func buildUserPrompt(state *agent.PipelineState) string {
+	return buildUserPromptFromInput(agent.TradingInput{
+		Ticker:         state.Ticker,
+		InvestmentPlan: state.ResearchDebate.InvestmentPlan,
+		AnalystReports: state.AnalystReports,
+	})
+}
+
+// buildUserPromptFromInput constructs the user message from a TradingInput,
+// including the investment plan and analyst reports.
+func buildUserPromptFromInput(input agent.TradingInput) string {
 	var b strings.Builder
 
 	b.WriteString("Ticker: ")
-	b.WriteString(state.Ticker)
+	b.WriteString(input.Ticker)
 	b.WriteString("\n\nInvestment Plan:\n")
-	if state.ResearchDebate.InvestmentPlan != "" {
-		b.WriteString(state.ResearchDebate.InvestmentPlan)
+	if input.InvestmentPlan != "" {
+		b.WriteString(input.InvestmentPlan)
 	} else {
 		b.WriteString("No investment plan available.")
 	}
 
 	b.WriteString("\n\nAnalyst Reports:\n")
-	if len(state.AnalystReports) == 0 {
+	if len(input.AnalystReports) == 0 {
 		b.WriteString("No analyst reports available.")
 	} else {
-		roles := make([]agent.AgentRole, 0, len(state.AnalystReports))
-		for role := range state.AnalystReports {
+		roles := make([]agent.AgentRole, 0, len(input.AnalystReports))
+		for role := range input.AnalystReports {
 			roles = append(roles, role)
 		}
 		sort.Slice(roles, func(i, j int) bool {
 			return roles[i] < roles[j]
 		})
 		for _, role := range roles {
-			b.WriteString(fmt.Sprintf("%s:\n%s\n\n", role, state.AnalystReports[role]))
+			b.WriteString(fmt.Sprintf("%s:\n%s\n\n", role, input.AnalystReports[role]))
 		}
 	}
 

@@ -32,6 +32,9 @@ type AggressiveRisk struct {
 	providerName string
 }
 
+// Compile-time check: *AggressiveRisk implements agent.DebaterNode.
+var _ agent.DebaterNode = (*AggressiveRisk)(nil)
+
 // NewAggressiveRisk returns an AggressiveRisk wired to the given LLM provider
 // and model. providerName (e.g. "openai") is recorded in decision metadata.
 // A nil logger is replaced with the default logger.
@@ -63,4 +66,10 @@ func (a *AggressiveRisk) Phase() agent.Phase { return agent.PhaseRiskDebate }
 // persistence.
 func (a *AggressiveRisk) Execute(ctx context.Context, state *agent.PipelineState) error {
 	return executeRiskDebate(ctx, state, a.BaseDebater, agent.AgentRoleAggressiveAnalyst, AggressiveRiskSystemPrompt, a.providerName)
+}
+
+// Debate implements the DebaterNode interface. It calls the LLM with the
+// aggressive risk system prompt and returns the debate contribution.
+func (a *AggressiveRisk) Debate(ctx context.Context, input agent.DebateInput) (agent.DebateOutput, error) {
+	return debateRiskFromInput(ctx, a.BaseDebater, AggressiveRiskSystemPrompt, a.providerName, input)
 }

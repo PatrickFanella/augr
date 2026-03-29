@@ -34,6 +34,9 @@ type ConservativeRisk struct {
 	providerName string
 }
 
+// Compile-time check: *ConservativeRisk implements agent.DebaterNode.
+var _ agent.DebaterNode = (*ConservativeRisk)(nil)
+
 // NewConservativeRisk returns a ConservativeRisk wired to the given LLM
 // provider and model. providerName (e.g. "openai") is recorded in decision
 // metadata. A nil logger is replaced with the default logger.
@@ -65,4 +68,10 @@ func (c *ConservativeRisk) Phase() agent.Phase { return agent.PhaseRiskDebate }
 // persistence.
 func (c *ConservativeRisk) Execute(ctx context.Context, state *agent.PipelineState) error {
 	return executeRiskDebate(ctx, state, c.BaseDebater, agent.AgentRoleConservativeAnalyst, ConservativeRiskSystemPrompt, c.providerName)
+}
+
+// Debate implements the DebaterNode interface. It calls the LLM with the
+// conservative risk system prompt and returns the debate contribution.
+func (c *ConservativeRisk) Debate(ctx context.Context, input agent.DebateInput) (agent.DebateOutput, error) {
+	return debateRiskFromInput(ctx, c.BaseDebater, ConservativeRiskSystemPrompt, c.providerName, input)
 }

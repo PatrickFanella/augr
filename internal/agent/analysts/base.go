@@ -14,6 +14,9 @@ import (
 // Return ("", false) to skip the LLM call (e.g., no fundamentals for crypto).
 type PromptBuilder func(state *agent.PipelineState) (userPrompt string, shouldCall bool)
 
+// Compile-time check: *BaseAnalyst implements agent.AnalystNode.
+var _ agent.AnalystNode = (*BaseAnalyst)(nil)
+
 // BaseAnalystConfig holds all the parameters needed to construct a BaseAnalyst.
 type BaseAnalystConfig struct {
 	Provider     llm.Provider
@@ -74,18 +77,50 @@ func (b *BaseAnalyst) Phase() agent.Phase { return agent.PhaseAnalysis }
 // in the pipeline state. When the PromptBuilder returns shouldCall=false the
 // LLM is skipped and the configured SkipMessage is stored instead.
 func (b *BaseAnalyst) Execute(ctx context.Context, state *agent.PipelineState) error {
-	userPrompt, shouldCall := b.buildPrompt(state)
+	input := agent.AnalysisInput{
+		Ticker:       state.Ticker,
+		Market:       state.Market,
+		News:         state.News,
+		Fundamentals: state.Fundamentals,
+		Social:       state.Social,
+	}
+	output, err := b.Analyze(ctx, input)
+	if err != nil {
+		return err
+	}
+	state.SetAnalystReport(b.role, output.Report)
+	if output.LLMResponse != nil {
+		state.RecordDecision(b.role, b.Phase(), nil, output.Report, output.LLMResponse)
+	}
+	return nil
+}
+
+// Analyze implements the AnalystNode interface. It builds the prompt from the
+// typed input, calls the LLM, and returns the analysis report. When the
+// PromptBuilder returns shouldCall=false the LLM is skipped and the configured
+// SkipMessage is returned instead.
+func (b *BaseAnalyst) Analyze(ctx context.Context, input agent.AnalysisInput) (agent.AnalysisOutput, error) {
+	// Build a minimal PipelineState from the typed input so the existing
+	// PromptBuilder closures continue to work without signature changes.
+	// TODO: refactor PromptBuilder to accept AnalysisInput directly,
+	// eliminating this transitional shim.
+	syntheticState := &agent.PipelineState{
+		Ticker:       input.Ticker,
+		Market:       input.Market,
+		News:         input.News,
+		Fundamentals: input.Fundamentals,
+		Social:       input.Social,
+	}
+
+	userPrompt, shouldCall := b.buildPrompt(syntheticState)
 	if !shouldCall {
 		msg := b.skipMessage
-		// Use the name with underscores replaced by spaces for the log message.
 		b.logger.InfoContext(ctx, strings.ReplaceAll(b.name, "_", " ")+" skipped")
-		state.SetAnalystReport(b.role, msg)
-		state.RecordDecision(b.role, b.Phase(), nil, msg, nil)
-		return nil
+		return agent.AnalysisOutput{Report: msg}, nil
 	}
 
 	if b.provider == nil {
-		return fmt.Errorf("%s: provider is nil", b.name)
+		return agent.AnalysisOutput{}, fmt.Errorf("%s: provider is nil", b.name)
 	}
 
 	resp, err := b.provider.Complete(ctx, llm.CompletionRequest{
@@ -96,7 +131,7 @@ func (b *BaseAnalyst) Execute(ctx context.Context, state *agent.PipelineState) e
 		},
 	})
 	if err != nil {
-		return fmt.Errorf("%s: llm completion failed: %w", b.name, err)
+		return agent.AnalysisOutput{}, fmt.Errorf("%s: llm completion failed: %w", b.name, err)
 	}
 
 	b.logger.InfoContext(ctx, strings.ReplaceAll(b.name, "_", " ")+" report generated",
@@ -104,11 +139,11 @@ func (b *BaseAnalyst) Execute(ctx context.Context, state *agent.PipelineState) e
 		slog.Int("completion_tokens", resp.Usage.CompletionTokens),
 	)
 
-	state.SetAnalystReport(b.role, resp.Content)
-	state.RecordDecision(b.role, b.Phase(), nil, resp.Content, &agent.DecisionLLMResponse{
-		Provider: b.providerName,
-		Response: resp,
-	})
-
-	return nil
+	return agent.AnalysisOutput{
+		Report: resp.Content,
+		LLMResponse: &agent.DecisionLLMResponse{
+			Provider: b.providerName,
+			Response: resp,
+		},
+	}, nil
 }

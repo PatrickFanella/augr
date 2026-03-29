@@ -265,8 +265,17 @@ func (p *Pipeline) executeTradingPhase(ctx context.Context, state *PipelineState
 		return fmt.Errorf("agent/pipeline: trading phase requires a %s node", AgentRoleTrader)
 	}
 
-	if err := traderNode.Execute(phaseCtx, state); err != nil {
-		return err
+	if tn, ok := traderNode.(TraderNode); ok {
+		input := tradingInputFromState(state)
+		result, err := tn.Trade(phaseCtx, input)
+		if err != nil {
+			return err
+		}
+		applyTradingOutput(state, result)
+	} else {
+		if err := traderNode.Execute(phaseCtx, state); err != nil {
+			return err
+		}
 	}
 	output, llmResponse, err := p.decisionPayload(state, traderNode, nil)
 	if err != nil {

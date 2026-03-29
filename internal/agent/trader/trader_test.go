@@ -652,5 +652,107 @@ func TestParseTradingPlanAllActions(t *testing.T) {
 	})
 }
 
-// Verify Trader satisfies the agent.Node interface at compile time.
-var _ agent.Node = (*Trader)(nil)
+// Verify Trader satisfies the agent.TraderNode interface at compile time.
+var _ agent.TraderNode = (*Trader)(nil)
+
+func TestTraderTrade(t *testing.T) {
+	validJSON := `{
+  "action": "buy",
+  "ticker": "MSFT",
+  "entry_type": "market",
+  "entry_price": 420.00,
+  "position_size": 10000.00,
+  "stop_loss": 400.00,
+  "take_profit": 460.00,
+  "time_horizon": "swing",
+  "confidence": 0.80,
+  "rationale": "Cloud revenue growth justifies a long position.",
+  "risk_reward": 2.0
+}`
+
+	mock := &mockProvider{
+		response: &llm.CompletionResponse{
+			Content: validJSON,
+			Model:   "test-model",
+			Usage: llm.CompletionUsage{
+				PromptTokens:     250,
+				CompletionTokens: 80,
+			},
+		},
+	}
+
+	tr := NewTrader(mock, "test-provider", "test-model", slog.Default())
+
+	input := agent.TradingInput{
+		Ticker:         "MSFT",
+		InvestmentPlan: `{"direction":"buy","conviction":8}`,
+		AnalystReports: map[agent.AgentRole]string{
+			agent.AgentRoleMarketAnalyst: "Bullish trend.",
+		},
+	}
+
+	output, err := tr.Trade(context.Background(), input)
+	if err != nil {
+		t.Fatalf("Trade() error = %v, want nil", err)
+	}
+
+	// Verify parsed plan fields.
+	if output.Plan.Action != agent.PipelineSignalBuy {
+		t.Fatalf("Plan.Action = %q, want %q", output.Plan.Action, agent.PipelineSignalBuy)
+	}
+	if output.Plan.Ticker != "MSFT" {
+		t.Fatalf("Plan.Ticker = %q, want %q", output.Plan.Ticker, "MSFT")
+	}
+	if output.Plan.EntryType != "market" {
+		t.Fatalf("Plan.EntryType = %q, want %q", output.Plan.EntryType, "market")
+	}
+	if output.Plan.EntryPrice != 420.00 {
+		t.Fatalf("Plan.EntryPrice = %v, want 420.00", output.Plan.EntryPrice)
+	}
+	if output.Plan.PositionSize != 10000.00 {
+		t.Fatalf("Plan.PositionSize = %v, want 10000.00", output.Plan.PositionSize)
+	}
+	if output.Plan.StopLoss != 400.00 {
+		t.Fatalf("Plan.StopLoss = %v, want 400.00", output.Plan.StopLoss)
+	}
+	if output.Plan.TakeProfit != 460.00 {
+		t.Fatalf("Plan.TakeProfit = %v, want 460.00", output.Plan.TakeProfit)
+	}
+	if output.Plan.Confidence != 0.80 {
+		t.Fatalf("Plan.Confidence = %v, want 0.80", output.Plan.Confidence)
+	}
+	if output.Plan.RiskReward != 2.0 {
+		t.Fatalf("Plan.RiskReward = %v, want 2.0", output.Plan.RiskReward)
+	}
+
+	// Verify StoredOutput is normalized JSON (not raw content).
+	if output.StoredOutput == validJSON {
+		t.Fatal("StoredOutput should be normalized JSON, not raw content")
+	}
+	if !strings.Contains(output.StoredOutput, `"action":"buy"`) {
+		t.Fatalf("StoredOutput should contain normalized action, got: %q", output.StoredOutput)
+	}
+
+	// Verify LLMResponse metadata.
+	if output.LLMResponse == nil {
+		t.Fatal("LLMResponse is nil")
+	}
+	if output.LLMResponse.Provider != "test-provider" {
+		t.Fatalf("Provider = %q, want %q", output.LLMResponse.Provider, "test-provider")
+	}
+	if output.LLMResponse.Response == nil {
+		t.Fatal("LLMResponse.Response is nil")
+	}
+	if output.LLMResponse.Response.Usage.PromptTokens != 250 {
+		t.Fatalf("PromptTokens = %d, want 250", output.LLMResponse.Response.Usage.PromptTokens)
+	}
+	if output.LLMResponse.Response.Usage.CompletionTokens != 80 {
+		t.Fatalf("CompletionTokens = %d, want 80", output.LLMResponse.Response.Usage.CompletionTokens)
+	}
+
+	// Verify the user prompt includes the ticker from input.
+	userMsg := mock.lastReq.Messages[1].Content
+	if !strings.Contains(userMsg, "MSFT") {
+		t.Errorf("user prompt should reference input ticker MSFT, got: %q", userMsg)
+	}
+}

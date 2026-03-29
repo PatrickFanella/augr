@@ -2,8 +2,6 @@ package risk
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/agent"
 	"github.com/PatrickFanella/get-rich-quick/internal/agent/debate"
@@ -22,54 +20,50 @@ func executeRiskDebate(
 	systemPrompt string,
 	providerName string,
 ) error {
-	rounds := state.RiskDebate.Rounds
-
-	// Build a context map that includes the trading plan so the LLM can
-	// reference concrete position sizes, stop-losses, and take-profit levels.
-	tradingPlanJSON, err := json.Marshal(state.TradingPlan)
-	if err != nil {
-		prefix := fmt.Sprintf("%s (%s)", role, agent.PhaseRiskDebate)
-		return fmt.Errorf("%s: marshal trading plan: %w", prefix, err)
+	input := agent.DebateInput{
+		Ticker: state.Ticker,
+		Rounds: state.RiskDebate.Rounds,
+		ContextReports: map[agent.AgentRole]string{
+			agent.AgentRoleTrader: agent.MarshalTradingPlanSafe(state.TradingPlan),
+		},
 	}
-	contextReports := map[agent.AgentRole]string{
-		agent.AgentRoleTrader: string(tradingPlanJSON),
-	}
-
-	content, usage, err := debater.CallWithContext(
-		ctx,
-		systemPrompt,
-		rounds,
-		contextReports,
-	)
+	output, err := debateRiskFromInput(ctx, debater, systemPrompt, providerName, input)
 	if err != nil {
 		return err
 	}
+	agent.ApplyDebateOutput(state, role, agent.PhaseRiskDebate, state.RiskDebate.Rounds, output)
+	return nil
+}
 
-	// Store the contribution in the current (last) debate round and record
-	// the decision so the pipeline can persist it with LLM metadata.
-	if len(rounds) > 0 {
-		current := &state.RiskDebate.Rounds[len(rounds)-1]
-		if current.Contributions == nil {
-			current.Contributions = make(map[agent.AgentRole]string)
-		}
-		current.Contributions[role] = content
-
-		roundNumber := current.Number
-		state.RecordDecision(
-			role,
-			agent.PhaseRiskDebate,
-			&roundNumber,
-			content,
-			&agent.DecisionLLMResponse{
-				Provider: providerName,
-				Response: &llm.CompletionResponse{
-					Content: content,
-					Model:   debater.Model(),
-					Usage:   usage,
-				},
-			},
-		)
+// debateRiskFromInput contains the core Debate logic shared by all risk debate
+// agents. It calls the LLM with the given system prompt, debate rounds, and
+// context reports and returns a DebateOutput.
+func debateRiskFromInput(
+	ctx context.Context,
+	debater debate.BaseDebater,
+	systemPrompt string,
+	providerName string,
+	input agent.DebateInput,
+) (agent.DebateOutput, error) {
+	content, usage, err := debater.CallWithContext(
+		ctx,
+		systemPrompt,
+		input.Rounds,
+		input.ContextReports,
+	)
+	if err != nil {
+		return agent.DebateOutput{}, err
 	}
 
-	return nil
+	return agent.DebateOutput{
+		Contribution: content,
+		LLMResponse: &agent.DecisionLLMResponse{
+			Provider: providerName,
+			Response: &llm.CompletionResponse{
+				Content: content,
+				Model:   debater.Model(),
+				Usage:   usage,
+			},
+		},
+	}, nil
 }

@@ -64,8 +64,21 @@ func (d *DebateExecutor) Execute(ctx context.Context, state *PipelineState) erro
 
 		// Execute each debater sequentially.
 		for _, debater := range d.config.Debaters {
-			if err := debater.Execute(phaseCtx, state); err != nil {
-				return err
+			if dn, ok := debater.(DebaterNode); ok {
+				input := DebateInput{
+					Ticker:         state.Ticker,
+					Rounds:         d.debateRounds(state),
+					ContextReports: d.contextReports(state),
+				}
+				result, err := dn.Debate(phaseCtx, input)
+				if err != nil {
+					return err
+				}
+				ApplyDebateOutput(state, debater.Role(), d.config.Phase, d.debateRounds(state), result)
+			} else {
+				if err := debater.Execute(phaseCtx, state); err != nil {
+					return err
+				}
 			}
 			roundNumber := i
 			output, llmResponse, err := d.pipeline.decisionPayload(state, debater, &roundNumber)
@@ -103,8 +116,21 @@ func (d *DebateExecutor) Execute(ctx context.Context, state *PipelineState) erro
 	}
 
 	// Execute the judge node.
-	if err := d.config.Judge.Execute(phaseCtx, state); err != nil {
-		return err
+	if rj, ok := d.config.Judge.(RiskJudgeNode); ok {
+		input := RiskJudgeInput{
+			Ticker:      state.Ticker,
+			Rounds:      d.debateRounds(state),
+			TradingPlan: state.TradingPlan,
+		}
+		result, err := rj.JudgeRisk(phaseCtx, input)
+		if err != nil {
+			return err
+		}
+		applyRiskJudgeOutput(state, result)
+	} else {
+		if err := d.config.Judge.Execute(phaseCtx, state); err != nil {
+			return err
+		}
 	}
 	output, llmResponse, err := d.pipeline.decisionPayload(state, d.config.Judge, nil)
 	if err != nil {
@@ -115,4 +141,32 @@ func (d *DebateExecutor) Execute(ctx context.Context, state *PipelineState) erro
 	}
 
 	return nil
+}
+
+// debateRounds returns the current debate rounds from the pipeline state based
+// on the configured phase.
+func (d *DebateExecutor) debateRounds(state *PipelineState) []DebateRound {
+	switch d.config.Phase {
+	case PhaseResearchDebate:
+		return state.ResearchDebate.Rounds
+	case PhaseRiskDebate:
+		return state.RiskDebate.Rounds
+	default:
+		return nil
+	}
+}
+
+// contextReports returns the context reports for the debaters based on the
+// configured phase.
+func (d *DebateExecutor) contextReports(state *PipelineState) map[AgentRole]string {
+	switch d.config.Phase {
+	case PhaseResearchDebate:
+		return state.AnalystReports
+	case PhaseRiskDebate:
+		return map[AgentRole]string{
+			AgentRoleTrader: MarshalTradingPlanSafe(state.TradingPlan),
+		}
+	default:
+		return nil
+	}
 }

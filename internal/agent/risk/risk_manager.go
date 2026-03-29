@@ -63,6 +63,9 @@ type RiskManager struct {
 	logger       *slog.Logger
 }
 
+// Compile-time check: *RiskManager implements agent.RiskJudgeNode.
+var _ agent.RiskJudgeNode = (*RiskManager)(nil)
+
 // NewRiskManager returns a RiskManager wired to the given LLM provider and
 // model. providerName (e.g. "openai") is recorded in decision metadata.
 // A nil logger is replaced with the default logger.
@@ -99,14 +102,33 @@ func (r *RiskManager) Phase() agent.Phase { return agent.PhaseRiskDebate }
 // For BUY/SELL actions, TradingPlan position size and stop-loss are updated
 // with the risk-adjusted values. For HOLD, no position adjustments are made.
 func (r *RiskManager) Execute(ctx context.Context, state *agent.PipelineState) error {
-	rounds := state.RiskDebate.Rounds
+	input := agent.RiskJudgeInput{
+		Ticker:      state.Ticker,
+		Rounds:      state.RiskDebate.Rounds,
+		TradingPlan: state.TradingPlan,
+	}
+	output, err := r.JudgeRisk(ctx, input)
+	if err != nil {
+		return err
+	}
+	state.FinalSignal = output.FinalSignal
+	state.TradingPlan = output.TradingPlan
+	state.RiskDebate.FinalSignal = output.StoredSignal
+	state.RecordDecision(agent.AgentRoleRiskManager, agent.PhaseRiskDebate, nil, output.StoredSignal, output.LLMResponse)
+	return nil
+}
 
+// JudgeRisk implements the RiskJudgeNode interface. It calls the LLM with the
+// risk manager system prompt, the current trading plan, and all risk debate
+// rounds and returns a typed RiskJudgeOutput with the final signal and
+// potentially risk-adjusted trading plan.
+func (r *RiskManager) JudgeRisk(ctx context.Context, input agent.RiskJudgeInput) (agent.RiskJudgeOutput, error) {
 	// Build a context map that includes the trading plan so the LLM can
 	// reference concrete position sizes, stop-losses, and take-profit levels.
-	tradingPlanJSON, err := json.Marshal(state.TradingPlan)
+	tradingPlanJSON, err := json.Marshal(input.TradingPlan)
 	if err != nil {
 		prefix := fmt.Sprintf("%s (%s)", agent.AgentRoleRiskManager, agent.PhaseRiskDebate)
-		return fmt.Errorf("%s: marshal trading plan: %w", prefix, err)
+		return agent.RiskJudgeOutput{}, fmt.Errorf("%s: marshal trading plan: %w", prefix, err)
 	}
 	contextReports := map[agent.AgentRole]string{
 		agent.AgentRoleTrader: string(tradingPlanJSON),
@@ -115,12 +137,15 @@ func (r *RiskManager) Execute(ctx context.Context, state *agent.PipelineState) e
 	content, usage, err := r.CallWithContext(
 		ctx,
 		RiskManagerSystemPrompt,
-		rounds,
+		input.Rounds,
 		contextReports,
 	)
 	if err != nil {
-		return err
+		return agent.RiskJudgeOutput{}, err
 	}
+
+	var finalSignal agent.FinalSignal
+	tradingPlan := input.TradingPlan
 
 	// Attempt to parse the structured output. When parsing succeeds we
 	// store a clean, re-marshaled JSON string and update the pipeline
@@ -144,36 +169,31 @@ func (r *RiskManager) Execute(ctx context.Context, state *agent.PipelineState) e
 		// Map the parsed action to the pipeline signal.
 		switch strings.ToUpper(signal.Action) {
 		case "BUY":
-			state.FinalSignal.Signal = agent.PipelineSignalBuy
+			finalSignal.Signal = agent.PipelineSignalBuy
 		case "SELL":
-			state.FinalSignal.Signal = agent.PipelineSignalSell
+			finalSignal.Signal = agent.PipelineSignalSell
 		default:
-			state.FinalSignal.Signal = agent.PipelineSignalHold
+			finalSignal.Signal = agent.PipelineSignalHold
 		}
-		state.FinalSignal.Confidence = float64(signal.Confidence) / 10.0
+		finalSignal.Confidence = float64(signal.Confidence) / 10.0
 
 		// Update TradingPlan with risk-adjusted values for actionable signals.
 		// HOLD signals intentionally leave the TradingPlan unchanged.
 		if strings.ToUpper(signal.Action) != "HOLD" {
 			if signal.AdjustedPositionSize > 0 {
-				state.TradingPlan.PositionSize = signal.AdjustedPositionSize
+				tradingPlan.PositionSize = signal.AdjustedPositionSize
 			}
 			if signal.AdjustedStopLoss > 0 {
-				state.TradingPlan.StopLoss = signal.AdjustedStopLoss
+				tradingPlan.StopLoss = signal.AdjustedStopLoss
 			}
 		}
 	}
 
-	// Store the final signal in the risk debate state.
-	state.RiskDebate.FinalSignal = storedSignal
-
-	// Record the decision so the pipeline can persist it with LLM metadata.
-	state.RecordDecision(
-		agent.AgentRoleRiskManager,
-		agent.PhaseRiskDebate,
-		nil,
-		storedSignal,
-		&agent.DecisionLLMResponse{
+	return agent.RiskJudgeOutput{
+		FinalSignal:  finalSignal,
+		StoredSignal: storedSignal,
+		TradingPlan:  tradingPlan,
+		LLMResponse: &agent.DecisionLLMResponse{
 			Provider: r.providerName,
 			Response: &llm.CompletionResponse{
 				Content: content,
@@ -181,9 +201,7 @@ func (r *RiskManager) Execute(ctx context.Context, state *agent.PipelineState) e
 				Usage:   usage,
 			},
 		},
-	)
-
-	return nil
+	}, nil
 }
 
 // ParseFinalSignal attempts to parse the LLM response content into a
