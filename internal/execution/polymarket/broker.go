@@ -38,9 +38,6 @@ type submitOrderRequest struct {
 	Size        string `json:"size"`
 	Side        string `json:"side"`
 	TimeInForce string `json:"timeInForce"`
-	FeeRateBps  string `json:"feeRateBps,omitempty"`
-	Nonce       string `json:"nonce,omitempty"`
-	Expiration  string `json:"expiration,omitempty"`
 }
 
 type submitOrderResponse struct {
