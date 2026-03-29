@@ -45,7 +45,7 @@ describe('TradeHistory', () => {
     expect(screen.getByText('20')).toBeInTheDocument()
     expect(screen.getByText('$400.00')).toBeInTheDocument()
     expect(screen.getByText('$1.50')).toBeInTheDocument()
-    expect(screen.getByText('$8,000.00')).toBeInTheDocument()
+    expect(screen.getByText('$7,998.50')).toBeInTheDocument()
   })
 
   it('shows empty state when no trades', async () => {

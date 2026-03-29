@@ -6,19 +6,10 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { apiClient } from '@/lib/api/client'
 import type { Position } from '@/lib/api/types'
+import { formatCurrency } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import { PositionDetail } from '@/components/portfolio/position-detail'
-
-const currencyFormatter = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-  minimumFractionDigits: 2,
-})
-
-function formatCurrency(value: number): string {
-  return currencyFormatter.format(value)
-}
 
 export function PositionsTable() {
   const [selectedPosition, setSelectedPosition] = useState<Position | null>(null)
@@ -86,7 +77,15 @@ export function PositionsTable() {
                   <tr
                     key={position.id}
                     className="border-b last:border-0 transition-colors hover:bg-secondary/40 cursor-pointer"
+                    tabIndex={0}
+                    role="button"
                     onClick={() => setSelectedPosition(position)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        setSelectedPosition(position)
+                      }
+                    }}
                   >
                     <td className="py-2 font-medium">{position.ticker}</td>
                     <td className="py-2">

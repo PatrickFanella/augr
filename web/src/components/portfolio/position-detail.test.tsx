@@ -1,6 +1,6 @@
-import { render, screen } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { PositionDetail } from '@/components/portfolio/position-detail'
 import type { Position } from '@/lib/api/types'
@@ -21,6 +21,10 @@ const mockPosition: Position = {
 }
 
 describe('PositionDetail', () => {
+  afterEach(() => {
+    cleanup()
+  })
+
   it('renders position details', () => {
     render(<PositionDetail position={mockPosition} onClose={vi.fn()} />)
 
@@ -43,8 +47,7 @@ describe('PositionDetail', () => {
 
     render(<PositionDetail position={mockPosition} onClose={onClose} />)
 
-    const buttons = screen.getAllByRole('button')
-    const closeButton = buttons[buttons.length - 1]
+    const closeButton = screen.getByRole('button', { name: 'Close position details' })
     await user.click(closeButton)
 
     expect(onClose).toHaveBeenCalledOnce()

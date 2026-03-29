@@ -4,16 +4,7 @@ import { Receipt } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { apiClient } from '@/lib/api/client'
-
-const currencyFormatter = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-  minimumFractionDigits: 2,
-})
-
-function formatCurrency(value: number): string {
-  return currencyFormatter.format(value)
-}
+import { formatCurrency } from '@/lib/format'
 
 export function TradeHistory() {
   const { data, isLoading, isError } = useQuery({
@@ -60,7 +51,7 @@ export function TradeHistory() {
                   <th className="pb-2 font-medium text-right">Qty</th>
                   <th className="pb-2 font-medium text-right">Price</th>
                   <th className="pb-2 font-medium text-right">Fee</th>
-                  <th className="pb-2 font-medium text-right">Total</th>
+                  <th className="pb-2 font-medium text-right">Net Total</th>
                 </tr>
               </thead>
               <tbody>
@@ -83,7 +74,7 @@ export function TradeHistory() {
                     <td className="py-2 text-right">{formatCurrency(trade.price)}</td>
                     <td className="py-2 text-right">{formatCurrency(trade.fee)}</td>
                     <td className="py-2 text-right font-medium">
-                      {formatCurrency(trade.price * trade.quantity)}
+                      {formatCurrency(trade.price * trade.quantity - trade.fee)}
                     </td>
                   </tr>
                 ))}

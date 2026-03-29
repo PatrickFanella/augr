@@ -5,12 +5,7 @@ import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YA
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { apiClient } from '@/lib/api/client'
-
-const currencyFormatter = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-  minimumFractionDigits: 2,
-})
+import { formatCurrency } from '@/lib/format'
 
 interface EquityPoint {
   date: string
@@ -69,10 +64,10 @@ export function PortfolioChart() {
               <YAxis
                 className="text-xs"
                 tick={{ fontSize: 12 }}
-                tickFormatter={(value: number) => currencyFormatter.format(value)}
+                tickFormatter={(value: number) => formatCurrency(value)}
               />
               <Tooltip
-                formatter={(value) => [currencyFormatter.format(Number(value)), 'P&L']}
+                formatter={(value) => [formatCurrency(Number(value)), 'P&L']}
                 contentStyle={{ borderRadius: '0.5rem', fontSize: '0.875rem' }}
               />
               <Area

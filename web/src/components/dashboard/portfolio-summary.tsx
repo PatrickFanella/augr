@@ -3,17 +3,8 @@ import { DollarSign, TrendingDown, TrendingUp, Wallet } from 'lucide-react'
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { apiClient } from '@/lib/api/client'
+import { formatCurrency } from '@/lib/format'
 import { cn } from '@/lib/utils'
-
-const currencyFormatter = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-  minimumFractionDigits: 2,
-})
-
-function formatCurrency(value: number): string {
-  return currencyFormatter.format(value)
-}
 
 export function PortfolioSummary() {
   const { data, isLoading, isError } = useQuery({

@@ -4,17 +4,8 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import type { Position } from '@/lib/api/types'
+import { formatCurrency } from '@/lib/format'
 import { cn } from '@/lib/utils'
-
-const currencyFormatter = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-  minimumFractionDigits: 2,
-})
-
-function formatCurrency(value: number): string {
-  return currencyFormatter.format(value)
-}
 
 interface PositionDetailProps {
   position: Position
@@ -31,7 +22,7 @@ export function PositionDetail({ position, onClose }: PositionDetailProps) {
             {position.side}
           </Badge>
         </div>
-        <Button variant="ghost" size="sm" onClick={onClose}>
+        <Button variant="ghost" size="sm" onClick={onClose} aria-label="Close position details">
           <X className="size-4" />
         </Button>
       </CardHeader>
