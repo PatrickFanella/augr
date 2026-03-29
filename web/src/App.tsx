@@ -4,6 +4,7 @@ import { AppShell } from '@/components/layout/app-shell'
 import { AppProviders } from '@/lib/providers'
 import { DashboardPage } from '@/pages/dashboard-page'
 import { PipelineRunPage } from '@/pages/pipeline-run-page'
+import { MemoriesPage } from '@/pages/memories-page'
 import { PlaceholderPage } from '@/pages/placeholder-page'
 import { StrategiesPage } from '@/pages/strategies-page'
 import { StrategyDetailPage } from '@/pages/strategy-detail-page'
@@ -33,6 +34,7 @@ function App() {
             />
             <Route path="runs/:id" element={<PipelineRunPage />} />
             <Route path="portfolio" element={<PortfolioPage />} />
+            <Route path="memories" element={<MemoriesPage />} />
             <Route
               path="risk"
               element={
