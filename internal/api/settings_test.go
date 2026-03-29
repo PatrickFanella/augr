@@ -224,3 +224,46 @@ func TestUpdateSettingsValidatesPayload(t *testing.T) {
 		t.Fatalf("status = %d, want %d", rr.Code, http.StatusBadRequest)
 	}
 }
+
+func TestUpdateSettingsRejectsUnknownDefaultProvider(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServer(t)
+
+	payload := SettingsUpdateRequest{
+		LLM: LLMSettingsUpdateRequest{
+			DefaultProvider: "unsupported-provider",
+			DeepThinkModel:  "gpt-5.2",
+			QuickThinkModel: "gpt-5-mini",
+			Providers: LLMProvidersUpdateRequest{
+				OpenAI:     LLMProviderUpdateRequest{Model: "gpt-5-mini"},
+				Anthropic:  LLMProviderUpdateRequest{Model: "claude-3-7-sonnet-latest"},
+				Google:     LLMProviderUpdateRequest{Model: "gemini-2.5-flash"},
+				OpenRouter: LLMProviderUpdateRequest{Model: "openai/gpt-4.1-mini"},
+				XAI:        LLMProviderUpdateRequest{Model: "grok-3-mini"},
+				Ollama:     OllamaSettings{Model: "llama3.2"},
+			},
+		},
+		Risk: RiskSettings{
+			MaxPositionSizePct:         10,
+			MaxDailyLossPct:            2,
+			MaxDrawdownPct:             10,
+			MaxOpenPositions:           5,
+			MaxTotalExposurePct:        80,
+			MaxPerMarketExposurePct:    40,
+			CircuitBreakerThresholdPct: 5,
+			CircuitBreakerCooldownMin:  15,
+		},
+	}
+
+	rr := doRequest(t, srv, http.MethodPut, "/api/v1/settings", payload)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusBadRequest)
+	}
+
+	body := decodeJSON[ErrorResponse](t, rr)
+	if body.Error != "invalid default provider: unsupported-provider" {
+		t.Fatalf("error = %q, want %q", body.Error, "invalid default provider: unsupported-provider")
+	}
+}

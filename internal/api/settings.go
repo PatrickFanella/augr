@@ -249,6 +249,10 @@ func (s *MemorySettingsService) Get(context.Context) (SettingsResponse, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
+	return s.getLocked(), nil
+}
+
+func (s *MemorySettingsService) getLocked() SettingsResponse {
 	return SettingsResponse{
 		LLM: LLMSettingsResponse{
 			DefaultProvider: s.llm.DefaultProvider,
@@ -270,11 +274,11 @@ func (s *MemorySettingsService) Get(context.Context) (SettingsResponse, error) {
 			UptimeSeconds:    int64(time.Since(s.started).Seconds()),
 			ConnectedBrokers: append([]BrokerConnection(nil), s.system.ConnectedBrokers...),
 		},
-	}, nil
+	}
 }
 
 // Update replaces editable settings while preserving existing secrets unless a new one is supplied.
-func (s *MemorySettingsService) Update(ctx context.Context, req SettingsUpdateRequest) (SettingsResponse, error) {
+func (s *MemorySettingsService) Update(_ context.Context, req SettingsUpdateRequest) (SettingsResponse, error) {
 	if err := validateSettingsUpdate(req); err != nil {
 		return SettingsResponse{}, err
 	}
@@ -293,9 +297,10 @@ func (s *MemorySettingsService) Update(ctx context.Context, req SettingsUpdateRe
 		Model:   strings.TrimSpace(req.LLM.Providers.Ollama.Model),
 	}
 	s.risk = req.Risk
+	response := s.getLocked()
 	s.mu.Unlock()
 
-	return s.Get(ctx)
+	return response, nil
 }
 
 func applyProviderUpdate(target *providerState, update LLMProviderUpdateRequest) {
@@ -327,8 +332,14 @@ func last4(value string) string {
 }
 
 func validateSettingsUpdate(req SettingsUpdateRequest) error {
-	if strings.TrimSpace(req.LLM.DefaultProvider) == "" {
+	provider := strings.TrimSpace(req.LLM.DefaultProvider)
+	if provider == "" {
 		return fmt.Errorf("default provider is required")
+	}
+	switch provider {
+	case "openai", "anthropic", "google", "openrouter", "xai", "ollama":
+	default:
+		return fmt.Errorf("invalid default provider: %s", provider)
 	}
 	if strings.TrimSpace(req.LLM.DeepThinkModel) == "" {
 		return fmt.Errorf("deep think model is required")

@@ -161,6 +161,12 @@ export function SettingsPage() {
     }
   }, [settingsQuery.data])
 
+  function updateFormState(updater: (current: SettingsFormState) => SettingsFormState) {
+    setFormState((current) => (current ? updater(current) : current))
+    setSaveMessage(null)
+    setSaveError(null)
+  }
+
   const saveMutation = useMutation({
     mutationFn: (payload: SettingsUpdateRequest) => apiClient.updateSettings(payload),
     onSuccess: (updatedSettings) => {
@@ -186,6 +192,17 @@ export function SettingsPage() {
     },
   })
 
+  if (settingsQuery.isError || (!settingsQuery.isLoading && !settingsQuery.data)) {
+    return (
+      <Card data-testid="settings-page-error">
+        <CardHeader>
+          <CardTitle>Settings</CardTitle>
+          <CardDescription>Unable to load the current system configuration.</CardDescription>
+        </CardHeader>
+      </Card>
+    )
+  }
+
   if (settingsQuery.isLoading || !formState) {
     return (
       <div className="space-y-6" data-testid="settings-page-loading">
@@ -198,41 +215,24 @@ export function SettingsPage() {
     )
   }
 
-  if (settingsQuery.isError || !settingsQuery.data) {
-    return (
-      <Card data-testid="settings-page-error">
-        <CardHeader>
-          <CardTitle>Settings</CardTitle>
-          <CardDescription>Unable to load the current system configuration.</CardDescription>
-        </CardHeader>
-      </Card>
-    )
-  }
-
   function handleProviderChange<K extends ProviderKey>(
     providerKey: K,
     field: keyof EditableProviderState,
     value: string,
   ) {
-    setFormState((current) =>
-      current
-        ? {
-            ...current,
-            llm: {
-              ...current.llm,
-              providers: {
-                ...current.llm.providers,
-                [providerKey]: {
-                  ...current.llm.providers[providerKey],
-                  [field]: value,
-                },
-              },
-            },
-          }
-        : current,
-    )
-    setSaveMessage(null)
-    setSaveError(null)
+    updateFormState((current) => ({
+      ...current,
+      llm: {
+        ...current.llm,
+        providers: {
+          ...current.llm.providers,
+          [providerKey]: {
+            ...current.llm.providers[providerKey],
+            [field]: value,
+          },
+        },
+      },
+    }))
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -306,14 +306,10 @@ export function SettingsPage() {
                     id="default-provider"
                     value={formState.llm.default_provider}
                     onChange={(event) =>
-                      setFormState((current) =>
-                        current
-                          ? {
-                              ...current,
-                              llm: { ...current.llm, default_provider: event.target.value },
-                            }
-                          : current,
-                      )
+                      updateFormState((current) => ({
+                        ...current,
+                        llm: { ...current.llm, default_provider: event.target.value },
+                      }))
                     }
                     className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                   >
@@ -332,14 +328,10 @@ export function SettingsPage() {
                     id="deep-think-model"
                     value={formState.llm.deep_think_model}
                     onChange={(event) =>
-                      setFormState((current) =>
-                        current
-                          ? {
-                              ...current,
-                              llm: { ...current.llm, deep_think_model: event.target.value },
-                            }
-                          : current,
-                      )
+                      updateFormState((current) => ({
+                        ...current,
+                        llm: { ...current.llm, deep_think_model: event.target.value },
+                      }))
                     }
                   />
                 </div>
@@ -350,14 +342,10 @@ export function SettingsPage() {
                     id="quick-think-model"
                     value={formState.llm.quick_think_model}
                     onChange={(event) =>
-                      setFormState((current) =>
-                        current
-                          ? {
-                              ...current,
-                              llm: { ...current.llm, quick_think_model: event.target.value },
-                            }
-                          : current,
-                      )
+                      updateFormState((current) => ({
+                        ...current,
+                        llm: { ...current.llm, quick_think_model: event.target.value },
+                      }))
                     }
                   />
                 </div>
@@ -367,10 +355,13 @@ export function SettingsPage() {
                 {providerDefinitions.map(({ key, label, supportsBaseUrl }) => {
                   const provider = formState.llm.providers[key]
                   const savedProvider = settingsQuery.data.llm.providers[key]
+                  const hasSavedLast4 = Boolean(savedProvider.api_key_last4)
                   const keyStatus = provider.api_key.trim()
                     ? 'New key ready'
                     : savedProvider.api_key_configured
-                      ? `Configured ••••${savedProvider.api_key_last4 ?? ''}`
+                      ? hasSavedLast4
+                        ? `Configured ••••${savedProvider.api_key_last4}`
+                        : 'Configured'
                       : 'Not set'
 
                   return (
@@ -439,23 +430,19 @@ export function SettingsPage() {
                         id="ollama-base-url"
                         value={formState.llm.providers.ollama.base_url}
                         onChange={(event) =>
-                          setFormState((current) =>
-                            current
-                              ? {
-                                  ...current,
-                                  llm: {
-                                    ...current.llm,
-                                    providers: {
-                                      ...current.llm.providers,
-                                      ollama: {
-                                        ...current.llm.providers.ollama,
-                                        base_url: event.target.value,
-                                      },
-                                    },
-                                  },
-                                }
-                              : current,
-                          )
+                          updateFormState((current) => ({
+                            ...current,
+                            llm: {
+                              ...current.llm,
+                              providers: {
+                                ...current.llm.providers,
+                                ollama: {
+                                  ...current.llm.providers.ollama,
+                                  base_url: event.target.value,
+                                },
+                              },
+                            },
+                          }))
                         }
                       />
                     </div>
@@ -466,23 +453,19 @@ export function SettingsPage() {
                         id="ollama-model"
                         value={formState.llm.providers.ollama.model}
                         onChange={(event) =>
-                          setFormState((current) =>
-                            current
-                              ? {
-                                  ...current,
-                                  llm: {
-                                    ...current.llm,
-                                    providers: {
-                                      ...current.llm.providers,
-                                      ollama: {
-                                        ...current.llm.providers.ollama,
-                                        model: event.target.value,
-                                      },
-                                    },
-                                  },
-                                }
-                              : current,
-                          )
+                          updateFormState((current) => ({
+                            ...current,
+                            llm: {
+                              ...current.llm,
+                              providers: {
+                                ...current.llm.providers,
+                                ollama: {
+                                  ...current.llm.providers.ollama,
+                                  model: event.target.value,
+                                },
+                              },
+                            },
+                          }))
                         }
                       />
                     </div>
@@ -568,20 +551,16 @@ export function SettingsPage() {
                       step={step}
                       value={value}
                       onChange={(event) =>
-                        setFormState((current) =>
-                          current
-                            ? {
-                                ...current,
-                                risk: {
-                                  ...current.risk,
-                                  [field]:
-                                    field === 'max_open_positions' || field === 'circuit_breaker_cooldown_min'
-                                      ? Number.parseInt(event.target.value || '0', 10)
-                                      : Number.parseFloat(event.target.value || '0'),
-                                },
-                              }
-                            : current,
-                        )
+                        updateFormState((current) => ({
+                          ...current,
+                          risk: {
+                            ...current.risk,
+                            [field]:
+                              field === 'max_open_positions' || field === 'circuit_breaker_cooldown_min'
+                                ? Number.parseInt(event.target.value || '0', 10)
+                                : Number.parseFloat(event.target.value || '0'),
+                          },
+                        }))
                       }
                     />
                   </div>

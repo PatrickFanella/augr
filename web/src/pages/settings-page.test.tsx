@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -92,6 +92,27 @@ afterEach(() => {
 })
 
 describe('SettingsPage', () => {
+  it('shows the error state when settings fetch fails', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString()
+
+      if (url.includes('/api/v1/settings')) {
+        return Promise.reject(new Error('Network error'))
+      }
+
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => riskStatusResponse,
+      })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<SettingsPage />, { wrapper: Wrapper })
+
+    expect(await screen.findByTestId('settings-page-error')).toBeInTheDocument()
+  })
+
   it('renders provider, risk, kill switch, and system info sections', async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.toString()
@@ -202,6 +223,64 @@ describe('SettingsPage', () => {
       risk: {
         max_open_positions: 12,
       },
+    })
+  })
+
+  it('clears stale save messaging when fields change and falls back to Configured without last4', async () => {
+    const user = userEvent.setup()
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input.toString()
+
+      if (url.includes('/api/v1/settings') && init?.method === 'PUT') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => settingsResponse,
+        }
+      }
+
+      if (url.includes('/api/v1/settings')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            ...settingsResponse,
+            llm: {
+              ...settingsResponse.llm,
+              providers: {
+                ...settingsResponse.llm.providers,
+                openai: {
+                  ...settingsResponse.llm.providers.openai,
+                  api_key_last4: '',
+                },
+              },
+            },
+          }),
+        }
+      }
+
+      return {
+        ok: true,
+        status: 200,
+        json: async () => riskStatusResponse,
+      }
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<SettingsPage />, { wrapper: Wrapper })
+
+    await screen.findByTestId('settings-page')
+    const openAIProvider = screen.getByTestId('provider-openai')
+    expect(within(openAIProvider).getByText('Configured')).toBeInTheDocument()
+    expect(within(openAIProvider).queryByText('Configured ••••')).not.toBeInTheDocument()
+
+    await user.click(screen.getByTestId('settings-save-button'))
+    expect(await screen.findByText('Settings saved.')).toBeInTheDocument()
+
+    await user.selectOptions(screen.getByLabelText('Default provider'), 'anthropic')
+
+    await waitFor(() => {
+      expect(screen.queryByText('Settings saved.')).not.toBeInTheDocument()
     })
   })
 
