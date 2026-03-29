@@ -390,6 +390,84 @@ func TestCheckPositionLimits_InvalidInputs(t *testing.T) {
 	}
 }
 
+func TestCheckPositionLimits_Boundaries(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		ticker    string
+		quantity  float64
+		portfolio Portfolio
+		wantOK    bool
+	}{
+		{
+			name:     "accepts exact per-position and total boundaries",
+			ticker:   "AAPL",
+			quantity: 0.10,
+			portfolio: Portfolio{
+				TotalExposurePct:    0.90,
+				ConcurrentPositions: 3,
+				PositionExposureBySymbol: map[string]float64{
+					"AAPL": 0.10,
+				},
+				MarketExposurePct: map[domain.MarketType]float64{
+					domain.MarketTypeStock: 0.50,
+				},
+			},
+			wantOK: true,
+		},
+		{
+			name:     "accepts exact polymarket boundary",
+			ticker:   "POLY-ELECTION",
+			quantity: 0.01,
+			portfolio: Portfolio{
+				TotalExposurePct:    0.05,
+				ConcurrentPositions: 1,
+				PositionExposureBySymbol: map[string]float64{
+					"POLY-ELECTION": 0.04,
+				},
+				MarketExposurePct: map[domain.MarketType]float64{
+					domain.MarketTypePolymarket: 0.05,
+				},
+			},
+			wantOK: true,
+		},
+		{
+			name:     "rejects exact concurrent limit for new position",
+			ticker:   "IBM",
+			quantity: 0.05,
+			portfolio: Portfolio{
+				TotalExposurePct:    0.50,
+				ConcurrentPositions: 10,
+				PositionExposureBySymbol: map[string]float64{
+					"AAPL": 0.05, "GOOG": 0.05, "MSFT": 0.05, "AMZN": 0.05, "META": 0.05,
+					"TSLA": 0.05, "NVDA": 0.05, "AMD": 0.05, "INTC": 0.05, "ORCL": 0.05,
+				},
+				MarketExposurePct: map[domain.MarketType]float64{
+					domain.MarketTypeStock: 0.50,
+				},
+			},
+			wantOK: false,
+		},
+	}
+
+	engine := newTestEngine()
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			approved, reason, err := engine.CheckPositionLimits(context.Background(), tc.ticker, tc.quantity, tc.portfolio)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if approved != tc.wantOK {
+				t.Fatalf("approved = %t, want %t (reason=%q)", approved, tc.wantOK, reason)
+			}
+			if !tc.wantOK && reason == "" {
+				t.Fatal("expected rejection reason")
+			}
+		})
+	}
+}
+
 func TestGetStatus_Normal(t *testing.T) {
 	t.Parallel()
 
@@ -627,6 +705,64 @@ func TestUpdateMetrics_DoesNotTripWhenAlreadyTripped(t *testing.T) {
 	status, _ := engine.GetStatus(ctx)
 	if status.CircuitBreaker.Reason != "manual" {
 		t.Fatalf("expected original reason 'manual', got %q", status.CircuitBreaker.Reason)
+	}
+}
+
+func TestUpdateMetrics_ThresholdBoundariesAndPriority(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name              string
+		dailyPnL          float64
+		totalDrawdown     float64
+		consecutiveLosses int
+		wantState         CircuitBreakerPhase
+		wantReason        string
+	}{
+		{
+			name:              "exact thresholds do not trip",
+			dailyPnL:          -0.03,
+			totalDrawdown:     0.10,
+			consecutiveLosses: 5,
+			wantState:         CircuitBreakerPhaseOpen,
+		},
+		{
+			name:              "daily loss takes priority over other breaches",
+			dailyPnL:          -0.04,
+			totalDrawdown:     0.12,
+			consecutiveLosses: 6,
+			wantState:         CircuitBreakerPhaseTripped,
+			wantReason:        "daily loss 4.00% exceeds max 3.00%",
+		},
+		{
+			name:              "drawdown takes priority when daily loss within threshold",
+			dailyPnL:          -0.02,
+			totalDrawdown:     0.12,
+			consecutiveLosses: 6,
+			wantState:         CircuitBreakerPhaseTripped,
+			wantReason:        "drawdown 12.00% exceeds max 10.00%",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			engine := newTestEngine()
+			err := engine.UpdateMetrics(context.Background(), tc.dailyPnL, tc.totalDrawdown, tc.consecutiveLosses)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			status, err := engine.GetStatus(context.Background())
+			if err != nil {
+				t.Fatalf("GetStatus() error = %v", err)
+			}
+			if status.CircuitBreaker.State != tc.wantState {
+				t.Fatalf("CircuitBreaker.State = %q, want %q", status.CircuitBreaker.State, tc.wantState)
+			}
+			if tc.wantReason != "" && status.CircuitBreaker.Reason != tc.wantReason {
+				t.Fatalf("CircuitBreaker.Reason = %q, want %q", status.CircuitBreaker.Reason, tc.wantReason)
+			}
+		})
 	}
 }
 
