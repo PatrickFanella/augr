@@ -512,6 +512,60 @@ func TestComputeAllIndicatorsWithInsufficientDataPreservesContract(t *testing.T)
 	}
 }
 
+func TestIndicatorEdgeCasesWithFlatAndZeroVolumeData(t *testing.T) {
+	tests := []struct {
+		name   string
+		assert func(t *testing.T, bars []domain.OHLCV)
+	}{
+		{
+			name: "RSI returns neutral values for flat closes",
+			assert: func(t *testing.T, bars []domain.OHLCV) {
+				assertClose(t, data.RSI(bars, 14), repeatFloat(50, len(bars)-14), 1e-6)
+			},
+		},
+		{
+			name: "MFI returns neutral values for flat typical prices",
+			assert: func(t *testing.T, bars []domain.OHLCV) {
+				assertClose(t, data.MFI(bars, 14), repeatFloat(50, len(bars)-14), 1e-6)
+			},
+		},
+		{
+			name: "Stochastic returns zero when window range is flat",
+			assert: func(t *testing.T, bars []domain.OHLCV) {
+				k, d := data.Stochastic(bars, 14, 3, 3)
+				assertClose(t, k, repeatFloat(0, len(k)), 1e-6)
+				assertClose(t, d, repeatFloat(0, len(d)), 1e-6)
+			},
+		},
+		{
+			name: "WilliamsR returns zero when window range is flat",
+			assert: func(t *testing.T, bars []domain.OHLCV) {
+				assertClose(t, data.WilliamsR(bars, 14), repeatFloat(0, len(bars)-13), 1e-6)
+			},
+		},
+		{
+			name: "CCI returns zero when mean deviation is zero",
+			assert: func(t *testing.T, bars []domain.OHLCV) {
+				assertClose(t, data.CCI(bars, 20), repeatFloat(0, len(bars)-19), 1e-6)
+			},
+		},
+		{
+			name: "VWMA returns zero when every window volume is zero",
+			assert: func(t *testing.T, _ []domain.OHLCV) {
+				zeroVolumeBars := flatIndicatorTestBars(25, 100, 0)
+				assertClose(t, data.VWMA(zeroVolumeBars, 20), repeatFloat(0, 6), 1e-6)
+			},
+		},
+	}
+
+	bars := flatIndicatorTestBars(25, 100, 1_000)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.assert(t, bars)
+		})
+	}
+}
+
 func BenchmarkComputeAllIndicators(b *testing.B) {
 	bars := indicatorTestBars(500)
 	b.ReportAllocs()
@@ -522,18 +576,44 @@ func BenchmarkComputeAllIndicators(b *testing.B) {
 	}
 }
 
+func flatIndicatorTestBars(count int, price, volume float64) []domain.OHLCV {
+	bars := make([]domain.OHLCV, count)
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	for i := range bars {
+		bars[i] = domain.OHLCV{
+			Timestamp: start.Add(time.Duration(i) * time.Minute),
+			Open:      price,
+			High:      price,
+			Low:       price,
+			Close:     price,
+			Volume:    volume,
+		}
+	}
+
+	return bars
+}
+
+func repeatFloat(value float64, count int) []float64 {
+	values := make([]float64, count)
+	for i := range values {
+		values[i] = value
+	}
+
+	return values
+}
+
 func indicatorTestBars(count int) []domain.OHLCV {
 	bars := make([]domain.OHLCV, count)
 	start := time.Unix(0, 0).UTC()
 
 	for i := range count {
-		close := round6(100 + float64(i)*0.35 + math.Sin(float64(i)/7.0)*4.2 + float64((i%5)-2)*0.8 - float64((i%3)-1)*0.45)
+		closePrice := round6(100 + float64(i)*0.35 + math.Sin(float64(i)/7.0)*4.2 + float64((i%5)-2)*0.8 - float64((i%3)-1)*0.45)
 		bars[i] = domain.OHLCV{
 			Timestamp: start.Add(time.Duration(i) * time.Hour),
-			Open:      close - 0.5,
-			High:      close + 1,
-			Low:       close - 1,
-			Close:     close,
+			Open:      closePrice - 0.5,
+			High:      closePrice + 1,
+			Low:       closePrice - 1,
+			Close:     closePrice,
 			Volume:    1000 + float64(i),
 		}
 	}

@@ -123,3 +123,15 @@ func TestRegistryZeroValueIsUsable(t *testing.T) {
 		t.Fatalf("Resolve() broker = %#v, want %#v", got, broker)
 	}
 }
+
+func TestRegistryNilReceiverBehaviors(t *testing.T) {
+	var registry *execution.Registry
+
+	if err := registry.Register(domain.MarketTypeStock, &stubBroker{id: "stock"}); err == nil || err.Error() != "execution registry is nil" {
+		t.Fatalf("Register() error = %v, want execution registry is nil", err)
+	}
+
+	if got, ok := registry.Get(domain.MarketTypeStock); ok || got != nil {
+		t.Fatalf("Get() = (%v, %t), want (nil, false)", got, ok)
+	}
+}

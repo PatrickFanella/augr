@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -22,10 +23,10 @@ import (
 
 // mockBroker implements execution.Broker.
 type mockBroker struct {
-	submitOrderFn      func(ctx context.Context, order *domain.Order) (string, error)
-	cancelOrderFn      func(ctx context.Context, externalID string) error
-	getOrderStatusFn   func(ctx context.Context, externalID string) (domain.OrderStatus, error)
-	getPositionsFn     func(ctx context.Context) ([]domain.Position, error)
+	submitOrderFn       func(ctx context.Context, order *domain.Order) (string, error)
+	cancelOrderFn       func(ctx context.Context, externalID string) error
+	getOrderStatusFn    func(ctx context.Context, externalID string) (domain.OrderStatus, error)
+	getPositionsFn      func(ctx context.Context) ([]domain.Position, error)
 	getAccountBalanceFn func(ctx context.Context) (execution.Balance, error)
 }
 
@@ -160,13 +161,13 @@ type mockOrderRepo struct {
 	orders  []*domain.Order
 	updates []*domain.Order
 
-	createFn      func(ctx context.Context, order *domain.Order) error
-	getFn         func(ctx context.Context, id uuid.UUID) (*domain.Order, error)
-	listFn        func(ctx context.Context, filter repository.OrderFilter, limit, offset int) ([]domain.Order, error)
-	updateFn      func(ctx context.Context, order *domain.Order) error
-	deleteFn      func(ctx context.Context, id uuid.UUID) error
+	createFn        func(ctx context.Context, order *domain.Order) error
+	getFn           func(ctx context.Context, id uuid.UUID) (*domain.Order, error)
+	listFn          func(ctx context.Context, filter repository.OrderFilter, limit, offset int) ([]domain.Order, error)
+	updateFn        func(ctx context.Context, order *domain.Order) error
+	deleteFn        func(ctx context.Context, id uuid.UUID) error
 	getByStrategyFn func(ctx context.Context, strategyID uuid.UUID, filter repository.OrderFilter, limit, offset int) ([]domain.Order, error)
-	getByRunFn    func(ctx context.Context, runID uuid.UUID, filter repository.OrderFilter, limit, offset int) ([]domain.Order, error)
+	getByRunFn      func(ctx context.Context, runID uuid.UUID, filter repository.OrderFilter, limit, offset int) ([]domain.Order, error)
 }
 
 func (r *mockOrderRepo) Create(ctx context.Context, order *domain.Order) error {
@@ -242,12 +243,12 @@ type mockPositionRepo struct {
 	mu        sync.Mutex
 	positions []*domain.Position
 
-	createFn      func(ctx context.Context, position *domain.Position) error
-	getFn         func(ctx context.Context, id uuid.UUID) (*domain.Position, error)
-	listFn        func(ctx context.Context, filter repository.PositionFilter, limit, offset int) ([]domain.Position, error)
-	updateFn      func(ctx context.Context, position *domain.Position) error
-	deleteFn      func(ctx context.Context, id uuid.UUID) error
-	getOpenFn     func(ctx context.Context, filter repository.PositionFilter, limit, offset int) ([]domain.Position, error)
+	createFn        func(ctx context.Context, position *domain.Position) error
+	getFn           func(ctx context.Context, id uuid.UUID) (*domain.Position, error)
+	listFn          func(ctx context.Context, filter repository.PositionFilter, limit, offset int) ([]domain.Position, error)
+	updateFn        func(ctx context.Context, position *domain.Position) error
+	deleteFn        func(ctx context.Context, id uuid.UUID) error
+	getOpenFn       func(ctx context.Context, filter repository.PositionFilter, limit, offset int) ([]domain.Position, error)
 	getByStrategyFn func(ctx context.Context, strategyID uuid.UUID, filter repository.PositionFilter, limit, offset int) ([]domain.Position, error)
 }
 
@@ -538,7 +539,7 @@ func TestProcessSignal_HappyPath(t *testing.T) {
 func TestProcessSignal_KillSwitchActive(t *testing.T) {
 	broker := &mockBroker{}
 	riskEng := &mockRiskEngine{
-		isKillSwitchActiveFn: func(ctx context.Context) (bool, error) {
+		isKillSwitchActiveFn: func(_ context.Context) (bool, error) {
 			return true, nil
 		},
 	}
@@ -578,7 +579,7 @@ func TestProcessSignal_KillSwitchActive(t *testing.T) {
 func TestProcessSignal_RiskCheckRejection(t *testing.T) {
 	broker := &mockBroker{}
 	riskEng := &mockRiskEngine{
-		checkPositionLimitsFn: func(ctx context.Context, ticker string, quantity float64, portfolio risk.Portfolio) (bool, string, error) {
+		checkPositionLimitsFn: func(_ context.Context, _ string, _ float64, _ risk.Portfolio) (bool, string, error) {
 			return false, "exceeds max position size", nil
 		},
 	}
@@ -628,7 +629,7 @@ func TestProcessSignal_RiskCheckRejection(t *testing.T) {
 func TestProcessSignal_PreTradeRejection(t *testing.T) {
 	broker := &mockBroker{}
 	riskEng := &mockRiskEngine{
-		checkPreTradeFn: func(ctx context.Context, order *domain.Order, portfolio risk.Portfolio) (bool, string, error) {
+		checkPreTradeFn: func(_ context.Context, _ *domain.Order, _ risk.Portfolio) (bool, string, error) {
 			return false, "circuit breaker tripped", nil
 		},
 	}
@@ -944,5 +945,121 @@ func TestNewOrderManager_NilLogger(t *testing.T) {
 
 	if mgr == nil {
 		t.Fatal("expected non-nil OrderManager")
+	}
+}
+
+func TestProcessSignal_UsesInjectedClockForLifecycleTimestamps(t *testing.T) {
+	broker := &mockBroker{}
+	riskEng := &mockRiskEngine{}
+	orderRepo := &mockOrderRepo{}
+	positionRepo := &mockPositionRepo{}
+	tradeRepo := &mockTradeRepo{}
+	auditRepo := &mockAuditLogRepo{}
+
+	mgr := newTestOrderManager(broker, riskEng, orderRepo, positionRepo, tradeRepo, auditRepo)
+	now := time.Date(2026, 3, 25, 14, 45, 0, 0, time.UTC)
+	mgr.SetNowFunc(func() time.Time { return now })
+
+	err := mgr.ProcessSignal(
+		context.Background(),
+		defaultSignal(),
+		defaultPlan(),
+		uuid.New(),
+		uuid.New(),
+	)
+	if err != nil {
+		t.Fatalf("ProcessSignal() unexpected error: %v", err)
+	}
+
+	if len(orderRepo.orders) != 1 {
+		t.Fatalf("expected 1 created order, got %d", len(orderRepo.orders))
+	}
+	if got := orderRepo.orders[0].CreatedAt; !got.Equal(now) {
+		t.Fatalf("order.CreatedAt = %s, want %s", got, now)
+	}
+
+	if len(orderRepo.updates) == 0 {
+		t.Fatal("expected at least 1 order update")
+	}
+	lastUpdate := orderRepo.updates[len(orderRepo.updates)-1]
+	if lastUpdate.SubmittedAt == nil || !lastUpdate.SubmittedAt.Equal(now) {
+		t.Fatalf("order.SubmittedAt = %v, want %s", lastUpdate.SubmittedAt, now)
+	}
+	if lastUpdate.FilledAt == nil || !lastUpdate.FilledAt.Equal(now) {
+		t.Fatalf("order.FilledAt = %v, want %s", lastUpdate.FilledAt, now)
+	}
+
+	if len(tradeRepo.trades) != 1 {
+		t.Fatalf("expected 1 created trade, got %d", len(tradeRepo.trades))
+	}
+	if got := tradeRepo.trades[0].ExecutedAt; !got.Equal(now) {
+		t.Fatalf("trade.ExecutedAt = %s, want %s", got, now)
+	}
+	if got := tradeRepo.trades[0].CreatedAt; !got.Equal(now) {
+		t.Fatalf("trade.CreatedAt = %s, want %s", got, now)
+	}
+
+	if len(positionRepo.positions) != 1 {
+		t.Fatalf("expected 1 created position, got %d", len(positionRepo.positions))
+	}
+	if got := positionRepo.positions[0].OpenedAt; !got.Equal(now) {
+		t.Fatalf("position.OpenedAt = %s, want %s", got, now)
+	}
+
+	if len(auditRepo.entries) == 0 {
+		t.Fatal("expected at least 1 audit entry")
+	}
+	for i, entry := range auditRepo.entries {
+		if !entry.CreatedAt.Equal(now) {
+			t.Fatalf("audit[%d].CreatedAt = %s, want %s", i, entry.CreatedAt, now)
+		}
+	}
+}
+
+func TestProcessSignal_EntryTypeVariants(t *testing.T) {
+	tests := []struct {
+		name      string
+		entryType string
+		wantType  domain.OrderType
+	}{
+		{name: "stop entry becomes stop order", entryType: "stop", wantType: domain.OrderTypeStop},
+		{name: "stop limit entry becomes stop limit order", entryType: "stop_limit", wantType: domain.OrderTypeStopLimit},
+		{name: "unknown entry type defaults to market", entryType: "surprise", wantType: domain.OrderTypeMarket},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			broker := &mockBroker{
+				getOrderStatusFn: func(ctx context.Context, externalID string) (domain.OrderStatus, error) {
+					return domain.OrderStatusSubmitted, nil
+				},
+			}
+			riskEng := &mockRiskEngine{}
+			orderRepo := &mockOrderRepo{}
+			positionRepo := &mockPositionRepo{}
+			tradeRepo := &mockTradeRepo{}
+			auditRepo := &mockAuditLogRepo{}
+
+			mgr := newTestOrderManager(broker, riskEng, orderRepo, positionRepo, tradeRepo, auditRepo)
+			plan := defaultPlan()
+			plan.EntryType = tc.entryType
+
+			err := mgr.ProcessSignal(
+				context.Background(),
+				defaultSignal(),
+				plan,
+				uuid.New(),
+				uuid.New(),
+			)
+			if err != nil {
+				t.Fatalf("ProcessSignal() unexpected error: %v", err)
+			}
+			if len(orderRepo.orders) != 1 {
+				t.Fatalf("expected 1 order, got %d", len(orderRepo.orders))
+			}
+			if got := orderRepo.orders[0].OrderType; got != tc.wantType {
+				t.Fatalf("order type = %s, want %s", got, tc.wantType)
+			}
+		})
 	}
 }

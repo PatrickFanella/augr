@@ -473,7 +473,7 @@ func (p *Pipeline) emitCacheStats(state *PipelineState, collector *llm.CacheStat
 		StrategyID:    strategyID,
 		Ticker:        ticker,
 		Payload:       payload,
-		OccurredAt:    time.Now().UTC(),
+		OccurredAt:    p.currentTime().UTC(),
 	})
 }
 
