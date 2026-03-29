@@ -6,7 +6,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { apiClient } from '@/lib/api/client'
 import type { PipelineRun, PipelineStatus, UUID } from '@/lib/api/types'
 
-const statusConfig: Record<PipelineStatus, { icon: typeof CheckCircle2; label: string; variant: 'default' | 'secondary' | 'success' | 'destructive' | 'warning' }> = {
+type BadgeVariant = 'default' | 'secondary' | 'success' | 'destructive' | 'warning'
+
+interface StatusInfo {
+  icon: typeof CheckCircle2
+  label: string
+  variant: BadgeVariant
+}
+
+const statusConfig: Record<PipelineStatus, StatusInfo> = {
   completed: { icon: CheckCircle2, label: 'Completed', variant: 'success' },
   running: { icon: Loader2, label: 'Running', variant: 'default' },
   failed: { icon: XCircle, label: 'Failed', variant: 'destructive' },
