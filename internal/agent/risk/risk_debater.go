@@ -2,7 +2,6 @@ package risk
 
 import (
 	"context"
-	"encoding/json"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/agent"
 	"github.com/PatrickFanella/get-rich-quick/internal/agent/debate"
@@ -25,7 +24,7 @@ func executeRiskDebate(
 		Ticker: state.Ticker,
 		Rounds: state.RiskDebate.Rounds,
 		ContextReports: map[agent.AgentRole]string{
-			agent.AgentRoleTrader: marshalTradingPlanSafe(state.TradingPlan),
+			agent.AgentRoleTrader: agent.MarshalTradingPlanSafe(state.TradingPlan),
 		},
 	}
 	output, err := debateRiskFromInput(ctx, debater, systemPrompt, providerName, input)
@@ -67,12 +66,4 @@ func debateRiskFromInput(
 			},
 		},
 	}, nil
-}
-
-func marshalTradingPlanSafe(plan agent.TradingPlan) string {
-	data, err := json.Marshal(plan)
-	if err != nil {
-		return "{}"
-	}
-	return string(data)
 }

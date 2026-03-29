@@ -100,6 +100,8 @@ func (b *BaseAnalyst) Execute(ctx context.Context, state *agent.PipelineState) e
 func (b *BaseAnalyst) Analyze(ctx context.Context, input agent.AnalysisInput) (agent.AnalysisOutput, error) {
 	// Build a minimal PipelineState from the typed input so the existing
 	// PromptBuilder closures continue to work without signature changes.
+	// TODO: refactor PromptBuilder to accept AnalysisInput directly,
+	// eliminating this transitional shim.
 	syntheticState := &agent.PipelineState{
 		Ticker:       input.Ticker,
 		Market:       input.Market,

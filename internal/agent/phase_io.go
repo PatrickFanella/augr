@@ -99,7 +99,7 @@ func riskDebateInputFromState(state *PipelineState) DebateInput {
 		Ticker: state.Ticker,
 		Rounds: state.RiskDebate.Rounds,
 		ContextReports: map[AgentRole]string{
-			AgentRoleTrader: marshalTradingPlanSafe(state.TradingPlan),
+			AgentRoleTrader: MarshalTradingPlanSafe(state.TradingPlan),
 		},
 	}
 }
@@ -163,9 +163,9 @@ func applyRiskJudgeOutput(state *PipelineState, output RiskJudgeOutput) {
 	state.RecordDecision(AgentRoleRiskManager, PhaseRiskDebate, nil, output.StoredSignal, output.LLMResponse)
 }
 
-// marshalTradingPlanSafe marshals the trading plan to JSON, returning an empty
+// MarshalTradingPlanSafe marshals the trading plan to JSON, returning an empty
 // object on error.
-func marshalTradingPlanSafe(plan TradingPlan) string {
+func MarshalTradingPlanSafe(plan TradingPlan) string {
 	data, err := json.Marshal(plan)
 	if err != nil {
 		return "{}"

@@ -164,7 +164,7 @@ func (d *DebateExecutor) contextReports(state *PipelineState) map[AgentRole]stri
 		return state.AnalystReports
 	case PhaseRiskDebate:
 		return map[AgentRole]string{
-			AgentRoleTrader: marshalTradingPlanSafe(state.TradingPlan),
+			AgentRoleTrader: MarshalTradingPlanSafe(state.TradingPlan),
 		}
 	default:
 		return nil
