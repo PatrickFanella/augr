@@ -2,11 +2,9 @@ package main
 
 import (
 	"context"
-	"errors"
 	"log"
 	"log/slog"
 	"net/http"
-	"time"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/cli"
 	"github.com/PatrickFanella/get-rich-quick/internal/config"
@@ -25,35 +23,6 @@ func main() {
 	}); err != nil {
 		log.Fatalf("tradingagent: %v", err)
 	}
-}
-
-func run(ctx context.Context, serve func() error, shutdown func(context.Context) error) error {
-	serverErr := make(chan error, 1)
-	go func() {
-		serverErr <- serve()
-	}()
-
-	select {
-	case err := <-serverErr:
-		if errors.Is(err, http.ErrServerClosed) {
-			return nil
-		}
-		return err
-	case <-ctx.Done():
-	}
-
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	if err := shutdown(shutdownCtx); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		return err
-	}
-
-	err := <-serverErr
-	if errors.Is(err, http.ErrServerClosed) {
-		return nil
-	}
-	return err
 }
 
 func newHTTPHandler(logger *slog.Logger) http.Handler {

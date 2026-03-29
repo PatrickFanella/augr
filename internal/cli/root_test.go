@@ -18,6 +18,8 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/risk"
 )
 
+type rootCommandTestContextKey struct{}
+
 func TestCommandHelp(t *testing.T) {
 	t.Parallel()
 
@@ -109,12 +111,12 @@ func TestCLICommands(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/strategies/":
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/strategies":
 			_ = json.NewEncoder(w).Encode(listResponse[domain.Strategy]{
 				Data:  []domain.Strategy{strategy},
 				Limit: 100,
 			})
-		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/strategies/":
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/strategies":
 			var created domain.Strategy
 			if err := json.NewDecoder(r.Body).Decode(&created); err != nil {
 				recordHandlerError(err)
@@ -305,6 +307,49 @@ func TestAPIClientIncludesNonJSONErrorDetails(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "text/plain") {
 		t.Fatalf("error = %q, want content type", err)
+	}
+}
+
+func TestNewRootCommandUsesProvidedContext(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.WithValue(context.Background(), rootCommandTestContextKey{}, "value")
+	cmd := NewRootCommand(ctx, Dependencies{})
+	if cmd.Context() != ctx {
+		t.Fatalf("command context = %v, want provided context", cmd.Context())
+	}
+}
+
+func TestCommandsRejectUnexpectedArgs(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name string
+		args []string
+	}{
+		{name: "strategies", args: []string{"strategies", "extra"}},
+		{name: "strategies list", args: []string{"strategies", "list", "extra"}},
+		{name: "strategies create", args: []string{"strategies", "create", "--name", "AAPL Trend", "--ticker", "AAPL", "--market-type", "stock", "extra"}},
+		{name: "portfolio", args: []string{"portfolio", "extra"}},
+		{name: "risk", args: []string{"risk", "extra"}},
+		{name: "risk status", args: []string{"risk", "status", "extra"}},
+		{name: "risk kill", args: []string{"risk", "kill", "extra"}},
+		{name: "memories", args: []string{"memories", "extra"}},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, _, err := executeCLI(t, nil, tc.args...)
+			if err == nil {
+				t.Fatal("Execute() error = nil, want error")
+			}
+			if !strings.Contains(err.Error(), "unknown command") && !strings.Contains(err.Error(), "accepts 0 arg(s), received 1") {
+				t.Fatalf("error = %q, want arg validation error", err)
+			}
+		})
 	}
 }
 

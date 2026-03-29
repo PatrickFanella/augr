@@ -67,7 +67,11 @@ func Execute(ctx context.Context, deps Dependencies) error {
 	return NewRootCommand(ctx, deps).ExecuteContext(ctx)
 }
 
-func NewRootCommand(_ context.Context, deps Dependencies) *cobra.Command {
+func NewRootCommand(ctx context.Context, deps Dependencies) *cobra.Command {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	state := &rootState{
 		stdout:       deps.Stdout,
 		stderr:       deps.Stderr,
@@ -96,6 +100,7 @@ func NewRootCommand(_ context.Context, deps Dependencies) *cobra.Command {
 			return cmd.Help()
 		},
 	}
+	rootCmd.SetContext(ctx)
 	rootCmd.SetOut(state.stdout)
 	rootCmd.SetErr(state.stderr)
 	rootCmd.PersistentFlags().StringVar(&state.apiURL, "api-url", state.apiURL, "Base URL for the local trading agent API")
@@ -118,6 +123,7 @@ func (s *rootState) newServeCommand() *cobra.Command {
 		Use:   "serve",
 		Short: "Start the HTTP and WebSocket API server",
 		Long:  "Start the local trading agent API server using environment-based application configuration.",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if s.newAPIServer == nil {
 				return errors.New("api server is not configured")
@@ -199,6 +205,7 @@ func (s *rootState) newStrategiesCommand() *cobra.Command {
 		Use:   "strategies",
 		Short: "List and create trading strategies",
 		Long:  "Manage strategy records through the local trading agent API.",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return cmd.Help()
 		},
@@ -208,6 +215,7 @@ func (s *rootState) newStrategiesCommand() *cobra.Command {
 		Use:   "list",
 		Short: "List strategies",
 		Long:  "List strategies from the local API.",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			client, err := s.client()
 			if err != nil {
@@ -215,7 +223,7 @@ func (s *rootState) newStrategiesCommand() *cobra.Command {
 			}
 
 			var response listResponse[domain.Strategy]
-			if err := client.get(cmd.Context(), "/api/v1/strategies/", nil, &response); err != nil {
+			if err := client.get(cmd.Context(), "/api/v1/strategies", nil, &response); err != nil {
 				return err
 			}
 
@@ -231,6 +239,7 @@ func (s *rootState) newStrategiesCommand() *cobra.Command {
 		Use:   "create",
 		Short: "Create a strategy",
 		Long:  "Create a strategy through the local API using flag-provided fields.",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			client, err := s.client()
 			if err != nil {
@@ -243,7 +252,7 @@ func (s *rootState) newStrategiesCommand() *cobra.Command {
 			}
 
 			var created domain.Strategy
-			if err := client.post(cmd.Context(), "/api/v1/strategies/", nil, strategy, &created); err != nil {
+			if err := client.post(cmd.Context(), "/api/v1/strategies", nil, strategy, &created); err != nil {
 				return err
 			}
 
@@ -274,6 +283,7 @@ func (s *rootState) newPortfolioCommand() *cobra.Command {
 		Use:   "portfolio",
 		Short: "Show open positions and portfolio summary",
 		Long:  "Fetch portfolio summary information and current open positions from the local API.",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			client, err := s.client()
 			if err != nil {
@@ -307,6 +317,7 @@ func (s *rootState) newRiskCommand() *cobra.Command {
 		Use:   "risk",
 		Short: "Inspect or change risk controls",
 		Long:  "Inspect current risk state or activate the kill switch through the local API.",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return cmd.Help()
 		},
@@ -316,6 +327,7 @@ func (s *rootState) newRiskCommand() *cobra.Command {
 		Use:   "status",
 		Short: "Show risk state",
 		Long:  "Show the current risk engine status, circuit breaker, and kill switch state.",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			client, err := s.client()
 			if err != nil {
@@ -339,6 +351,7 @@ func (s *rootState) newRiskCommand() *cobra.Command {
 		Use:   "kill",
 		Short: "Activate the risk kill switch",
 		Long:  "Activate the local API risk kill switch. Provide a reason for auditability.",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			client, err := s.client()
 			if err != nil {
@@ -373,6 +386,7 @@ func (s *rootState) newMemoriesCommand() *cobra.Command {
 		Use:   "memories",
 		Short: "Search stored agent memories",
 		Long:  "Search the agent memory index through the local API.",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return cmd.Help()
 		},
@@ -423,7 +437,7 @@ func (s *rootState) resolveStrategyForTicker(ctx context.Context, client *apiCli
 	query := url.Values{}
 	query.Set("ticker", ticker)
 	query.Set("limit", "100")
-	if err := client.get(ctx, "/api/v1/strategies/", query, &response); err != nil {
+	if err := client.get(ctx, "/api/v1/strategies", query, &response); err != nil {
 		return nil, err
 	}
 
@@ -501,6 +515,11 @@ func runServerLifecycle(ctx context.Context, serve func() error, shutdown func(c
 		return nil
 	}
 	return err
+}
+
+// RunServerLifecycle starts a server and shuts it down when the context is canceled.
+func RunServerLifecycle(ctx context.Context, serve func() error, shutdown func(context.Context) error) error {
+	return runServerLifecycle(ctx, serve, shutdown)
 }
 
 func firstNonEmpty(values ...string) string {
