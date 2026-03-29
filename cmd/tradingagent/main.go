@@ -3,17 +3,12 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log"
 	"log/slog"
-	"net"
 	"net/http"
-	"os"
-	"os/signal"
-	"strconv"
-	"syscall"
 	"time"
 
+	"github.com/PatrickFanella/get-rich-quick/internal/cli"
 	"github.com/PatrickFanella/get-rich-quick/internal/config"
 	_ "github.com/PatrickFanella/get-rich-quick/internal/data/alphavantage"
 	_ "github.com/PatrickFanella/get-rich-quick/internal/data/binance"
@@ -21,40 +16,15 @@ import (
 	_ "github.com/PatrickFanella/get-rich-quick/internal/data/yahoo"
 )
 
+var version = "dev"
+
 func main() {
-	cfg, err := config.Load()
-	if err != nil {
-		log.Fatalf("load config: %v", err)
+	if err := cli.Execute(context.Background(), cli.Dependencies{
+		Version:      version,
+		NewAPIServer: newAPIServer,
+	}); err != nil {
+		log.Fatalf("tradingagent: %v", err)
 	}
-
-	level := os.Getenv("LOG_LEVEL")
-	if level == "" {
-		level = "info"
-	}
-
-	logger := config.SetDefaultLogger(cfg.Environment, level)
-	logger.Info("starting trading agent",
-		slog.String("env", cfg.Environment),
-		slog.String("log_level", level),
-	)
-
-	addr := net.JoinHostPort(cfg.Server.Host, strconv.Itoa(cfg.Server.Port))
-	fmt.Printf("Trading Agent configured for %s on %s\n", cfg.Environment, addr)
-
-	server, cleanup, err := newAPIServer(context.Background(), cfg, logger)
-	if err != nil {
-		log.Fatalf("build api server: %v", err)
-	}
-	defer cleanup()
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
-	if err := run(ctx, server.Start, server.Shutdown); err != nil {
-		log.Fatalf("serve http: %v", err)
-	}
-
-	logger.Info("trading agent stopped")
 }
 
 func run(ctx context.Context, serve func() error, shutdown func(context.Context) error) error {
