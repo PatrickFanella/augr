@@ -177,8 +177,10 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 	}
 
 	// Global middleware
+	r.Use(SecurityHeaders)
 	r.Use(RequestLogger(logger))
 	r.Use(CORS(cfg.CORSConfig))
+	r.Use(MaxRequestBody(maxRequestBodyBytes))
 	if cfg.RateLimit > 0 {
 		rl := NewRateLimiter(cfg.RateLimit, cfg.RateWindow)
 		rl.trustedProxies = trustedNets
@@ -257,6 +259,7 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 		Addr:              addr,
 		Handler:           r,
 		ReadHeaderTimeout: 10 * time.Second,
+		MaxHeaderBytes:    1 << 20, // 1 MiB
 	}
 
 	return s, nil

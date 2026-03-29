@@ -12,6 +12,31 @@ import (
 	"time"
 )
 
+// maxRequestBodyBytes is the default limit applied to incoming request bodies.
+const maxRequestBodyBytes = 1 << 20 // 1 MiB
+
+// SecurityHeaders returns middleware that sets common protective HTTP headers
+// on every response. These headers defend against content-type sniffing,
+// click-jacking, and encourage transport-layer security.
+func SecurityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		next.ServeHTTP(w, r)
+	})
+}
+
+// MaxRequestBody returns middleware that limits request body sizes.
+// Bodies exceeding limit bytes will cause http.MaxBytesReader to return an error.
+func MaxRequestBody(limit int64) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			r.Body = http.MaxBytesReader(w, r.Body, limit)
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 // CORSConfig holds settings for the CORS middleware.
 type CORSConfig struct {
 	AllowedOrigins []string
