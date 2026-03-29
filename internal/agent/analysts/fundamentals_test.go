@@ -243,3 +243,38 @@ func TestFundamentalsAnalystImplementsNode(t *testing.T) {
 	// Compile-time check that *FundamentalsAnalyst satisfies agent.Node.
 	var _ agent.Node = (*FundamentalsAnalyst)(nil)
 }
+
+func TestFundamentalsAnalystAnalyzeSkipsWhenNilFundamentals(t *testing.T) {
+	mock := &mockProvider{
+		response: &llm.CompletionResponse{
+			Content: "should not be called",
+		},
+	}
+
+	fa := NewFundamentalsAnalyst(mock, "openai", "gpt-4", nil)
+
+	input := agent.AnalysisInput{
+		Ticker:       "BTC-USD",
+		Fundamentals: nil,
+	}
+
+	output, err := fa.Analyze(context.Background(), input)
+	if err != nil {
+		t.Fatalf("Analyze() error = %v, want nil", err)
+	}
+
+	// Verify LLM was NOT called.
+	if got := mock.calls.Load(); got != 0 {
+		t.Errorf("LLM called %d times, want 0 when fundamentals are nil", got)
+	}
+
+	// Verify the skip message is returned as the report.
+	if !strings.Contains(output.Report, "No fundamentals available") {
+		t.Errorf("Report = %q, want message about no fundamentals available", output.Report)
+	}
+
+	// Verify LLMResponse is nil when skipped.
+	if output.LLMResponse != nil {
+		t.Errorf("LLMResponse should be nil when skipped, got %+v", output.LLMResponse)
+	}
+}

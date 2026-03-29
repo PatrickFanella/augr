@@ -210,5 +210,68 @@ func TestAggressiveRiskExecuteNoRounds(t *testing.T) {
 	}
 }
 
-// Verify AggressiveRisk satisfies the agent.Node interface at compile time.
-var _ agent.Node = (*AggressiveRisk)(nil)
+// Verify AggressiveRisk satisfies the agent.DebaterNode interface at compile time.
+var _ agent.DebaterNode = (*AggressiveRisk)(nil)
+
+func TestAggressiveRiskDebate(t *testing.T) {
+	mock := &mockProvider{
+		response: &llm.CompletionResponse{
+			Content: "Aggressive view: double the position for maximum upside.",
+			Usage: llm.CompletionUsage{
+				PromptTokens:     140,
+				CompletionTokens: 55,
+			},
+		},
+	}
+
+	a := NewAggressiveRisk(mock, "test-provider", "test-model", slog.Default())
+
+	input := agent.DebateInput{
+		Ticker: "TSLA",
+		Rounds: []agent.DebateRound{
+			{
+				Number:        1,
+				Contributions: make(map[agent.AgentRole]string),
+			},
+		},
+		ContextReports: map[agent.AgentRole]string{
+			agent.AgentRoleTrader: `{"action":"buy","ticker":"TSLA"}`,
+		},
+	}
+
+	output, err := a.Debate(context.Background(), input)
+	if err != nil {
+		t.Fatalf("Debate() error = %v, want nil", err)
+	}
+
+	// Verify contribution content.
+	want := "Aggressive view: double the position for maximum upside."
+	if output.Contribution != want {
+		t.Fatalf("Contribution = %q, want %q", output.Contribution, want)
+	}
+
+	// Verify LLMResponse metadata.
+	if output.LLMResponse == nil {
+		t.Fatal("LLMResponse is nil")
+	}
+	if output.LLMResponse.Provider != "test-provider" {
+		t.Fatalf("Provider = %q, want %q", output.LLMResponse.Provider, "test-provider")
+	}
+	if output.LLMResponse.Response == nil {
+		t.Fatal("LLMResponse.Response is nil")
+	}
+	if output.LLMResponse.Response.Model != "test-model" {
+		t.Fatalf("Model = %q, want %q", output.LLMResponse.Response.Model, "test-model")
+	}
+	if output.LLMResponse.Response.Usage.PromptTokens != 140 {
+		t.Fatalf("PromptTokens = %d, want 140", output.LLMResponse.Response.Usage.PromptTokens)
+	}
+	if output.LLMResponse.Response.Usage.CompletionTokens != 55 {
+		t.Fatalf("CompletionTokens = %d, want 55", output.LLMResponse.Response.Usage.CompletionTokens)
+	}
+
+	// Verify the system prompt was the aggressive risk prompt.
+	if mock.lastReq.Messages[0].Content != AggressiveRiskSystemPrompt {
+		t.Fatalf("system prompt mismatch")
+	}
+}

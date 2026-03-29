@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -1993,5 +1994,99 @@ func TestDebateContribution_HappyPath(t *testing.T) {
 				t.Errorf("debateContribution() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+// typedTraderNode implements both Node and TraderNode for testing typed
+// dispatch in executeTradingPhase.
+type typedTraderNode struct {
+	name string
+	role AgentRole
+	fn   func(ctx context.Context, input TradingInput) (TradingOutput, error)
+}
+
+func (n *typedTraderNode) Name() string    { return n.name }
+func (n *typedTraderNode) Role() AgentRole { return n.role }
+func (n *typedTraderNode) Phase() Phase    { return PhaseTrading }
+func (n *typedTraderNode) Execute(_ context.Context, _ *PipelineState) error {
+	panic("Execute should not be called on a typed TraderNode; use Trade() instead")
+}
+func (n *typedTraderNode) Trade(ctx context.Context, input TradingInput) (TradingOutput, error) {
+	return n.fn(ctx, input)
+}
+
+func TestExecuteTradingPhase_TypedTraderNodeDispatch(t *testing.T) {
+	runID := uuid.New()
+	stratID := uuid.New()
+
+	node := &typedTraderNode{
+		name: "typed_trader",
+		role: AgentRoleTrader,
+		fn: func(_ context.Context, input TradingInput) (TradingOutput, error) {
+			if input.Ticker != "META" {
+				t.Errorf("input.Ticker = %q, want %q", input.Ticker, "META")
+			}
+			if input.InvestmentPlan != "buy META" {
+				t.Errorf("input.InvestmentPlan = %q, want %q", input.InvestmentPlan, "buy META")
+			}
+			return TradingOutput{
+				Plan: TradingPlan{
+					Action:       PipelineSignalBuy,
+					Ticker:       "META",
+					EntryPrice:   500.00,
+					PositionSize: 8000,
+				},
+				StoredOutput: `{"action":"buy","ticker":"META"}`,
+				LLMResponse:  &DecisionLLMResponse{Provider: "test-provider"},
+			}, nil
+		},
+	}
+
+	events := make(chan PipelineEvent, 10)
+	pipeline := NewPipeline(
+		PipelineConfig{},
+		NoopPersister{}, events, slog.Default(),
+	)
+	pipeline.RegisterNode(node)
+
+	state := &PipelineState{
+		PipelineRunID: runID,
+		StrategyID:    stratID,
+		Ticker:        "META",
+		ResearchDebate: ResearchDebateState{
+			InvestmentPlan: "buy META",
+		},
+		AnalystReports: map[AgentRole]string{
+			AgentRoleMarketAnalyst: "Bullish trend.",
+		},
+		mu: &sync.Mutex{},
+	}
+
+	err := pipeline.executeTradingPhase(context.Background(), state)
+	if err != nil {
+		t.Fatalf("executeTradingPhase() error = %v, want nil", err)
+	}
+
+	// Verify TradingPlan was set via applyTradingOutput.
+	if state.TradingPlan.Action != PipelineSignalBuy {
+		t.Errorf("TradingPlan.Action = %q, want %q", state.TradingPlan.Action, PipelineSignalBuy)
+	}
+	if state.TradingPlan.Ticker != "META" {
+		t.Errorf("TradingPlan.Ticker = %q, want %q", state.TradingPlan.Ticker, "META")
+	}
+	if state.TradingPlan.EntryPrice != 500.00 {
+		t.Errorf("TradingPlan.EntryPrice = %v, want 500", state.TradingPlan.EntryPrice)
+	}
+	if state.TradingPlan.PositionSize != 8000 {
+		t.Errorf("TradingPlan.PositionSize = %v, want 8000", state.TradingPlan.PositionSize)
+	}
+
+	// Verify the decision was recorded.
+	d, ok := state.Decision(AgentRoleTrader, PhaseTrading, nil)
+	if !ok {
+		t.Fatal("decision not found after TraderNode execution")
+	}
+	if d.OutputText != `{"action":"buy","ticker":"META"}` {
+		t.Errorf("OutputText = %q, want stored JSON", d.OutputText)
 	}
 }

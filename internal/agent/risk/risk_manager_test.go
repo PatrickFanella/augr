@@ -696,5 +696,103 @@ func TestParseFinalSignalHoldNonZeroStopLoss(t *testing.T) {
 	}
 }
 
-// Verify RiskManager satisfies the agent.Node interface at compile time.
-var _ agent.Node = (*RiskManager)(nil)
+// Verify RiskManager satisfies the agent.RiskJudgeNode interface at compile time.
+var _ agent.RiskJudgeNode = (*RiskManager)(nil)
+
+func TestRiskManagerJudgeRisk(t *testing.T) {
+	validJSON := `{
+  "action": "BUY",
+  "confidence": 7,
+  "adjusted_position_size": 80,
+  "adjusted_stop_loss": 238.00,
+  "reasoning": "Risk is manageable; reducing position slightly as a precaution."
+}`
+
+	mock := &mockProvider{
+		response: &llm.CompletionResponse{
+			Content: validJSON,
+			Usage: llm.CompletionUsage{
+				PromptTokens:     280,
+				CompletionTokens: 85,
+			},
+		},
+	}
+
+	rm := NewRiskManager(mock, "test-provider", "test-model", slog.Default())
+
+	input := agent.RiskJudgeInput{
+		Ticker: "TSLA",
+		Rounds: []agent.DebateRound{
+			{
+				Number: 1,
+				Contributions: map[agent.AgentRole]string{
+					agent.AgentRoleAggressiveAnalyst:   "Increase position.",
+					agent.AgentRoleConservativeAnalyst: "Reduce exposure.",
+					agent.AgentRoleNeutralAnalyst:      "Moderate position.",
+				},
+			},
+		},
+		TradingPlan: agent.TradingPlan{
+			Action:       agent.PipelineSignalBuy,
+			Ticker:       "TSLA",
+			EntryPrice:   250.00,
+			PositionSize: 100,
+			StopLoss:     240.00,
+			TakeProfit:   280.00,
+			Confidence:   0.8,
+			RiskReward:   3.0,
+			Rationale:    "Strong momentum.",
+		},
+	}
+
+	output, err := rm.JudgeRisk(context.Background(), input)
+	if err != nil {
+		t.Fatalf("JudgeRisk() error = %v, want nil", err)
+	}
+
+	// Verify FinalSignal.
+	if output.FinalSignal.Signal != agent.PipelineSignalBuy {
+		t.Fatalf("FinalSignal.Signal = %q, want %q", output.FinalSignal.Signal, agent.PipelineSignalBuy)
+	}
+	if output.FinalSignal.Confidence != 0.7 {
+		t.Fatalf("FinalSignal.Confidence = %v, want 0.7", output.FinalSignal.Confidence)
+	}
+
+	// Verify TradingPlan was risk-adjusted.
+	if output.TradingPlan.PositionSize != 80 {
+		t.Fatalf("TradingPlan.PositionSize = %v, want 80", output.TradingPlan.PositionSize)
+	}
+	if output.TradingPlan.StopLoss != 238.00 {
+		t.Fatalf("TradingPlan.StopLoss = %v, want 238", output.TradingPlan.StopLoss)
+	}
+
+	// Verify other TradingPlan fields are preserved.
+	if output.TradingPlan.EntryPrice != 250.00 {
+		t.Fatalf("TradingPlan.EntryPrice = %v, want 250", output.TradingPlan.EntryPrice)
+	}
+	if output.TradingPlan.TakeProfit != 280.00 {
+		t.Fatalf("TradingPlan.TakeProfit = %v, want 280", output.TradingPlan.TakeProfit)
+	}
+
+	// Verify StoredSignal is normalized JSON.
+	if !strings.Contains(output.StoredSignal, `"action":"BUY"`) {
+		t.Fatalf("StoredSignal should contain normalized action, got: %q", output.StoredSignal)
+	}
+
+	// Verify LLMResponse metadata.
+	if output.LLMResponse == nil {
+		t.Fatal("LLMResponse is nil")
+	}
+	if output.LLMResponse.Provider != "test-provider" {
+		t.Fatalf("Provider = %q, want %q", output.LLMResponse.Provider, "test-provider")
+	}
+	if output.LLMResponse.Response == nil {
+		t.Fatal("LLMResponse.Response is nil")
+	}
+	if output.LLMResponse.Response.Usage.PromptTokens != 280 {
+		t.Fatalf("PromptTokens = %d, want 280", output.LLMResponse.Response.Usage.PromptTokens)
+	}
+	if output.LLMResponse.Response.Usage.CompletionTokens != 85 {
+		t.Fatalf("CompletionTokens = %d, want 85", output.LLMResponse.Response.Usage.CompletionTokens)
+	}
+}

@@ -179,3 +179,73 @@ func TestMarketAnalystImplementsNode(t *testing.T) {
 	// Compile-time check that *MarketAnalyst satisfies agent.Node.
 	var _ agent.Node = (*MarketAnalyst)(nil)
 }
+
+func TestMarketAnalystAnalyze(t *testing.T) {
+	wantContent := "## Technical Summary\nBullish momentum with rising RSI."
+	mock := &mockProvider{
+		response: &llm.CompletionResponse{
+			Content: wantContent,
+			Usage: llm.CompletionUsage{
+				PromptTokens:     100,
+				CompletionTokens: 50,
+			},
+			Model: "gpt-4",
+		},
+	}
+
+	ma := NewMarketAnalyst(mock, "test-provider", "gpt-4", nil)
+
+	ts := time.Date(2025, 3, 20, 0, 0, 0, 0, time.UTC)
+	input := agent.AnalysisInput{
+		Ticker: "MSFT",
+		Market: &agent.MarketData{
+			Bars: []domain.OHLCV{
+				{Timestamp: ts, Open: 400.00, High: 410.00, Low: 395.00, Close: 408.00, Volume: 2000000},
+			},
+			Indicators: []domain.Indicator{
+				{Name: "RSI_14", Value: 62.5, Timestamp: ts},
+			},
+		},
+	}
+
+	output, err := ma.Analyze(context.Background(), input)
+	if err != nil {
+		t.Fatalf("Analyze() error = %v, want nil", err)
+	}
+
+	// Verify report content.
+	if output.Report != wantContent {
+		t.Fatalf("Report = %q, want %q", output.Report, wantContent)
+	}
+
+	// Verify LLMResponse metadata.
+	if output.LLMResponse == nil {
+		t.Fatal("LLMResponse is nil")
+	}
+	if output.LLMResponse.Provider != "test-provider" {
+		t.Fatalf("Provider = %q, want %q", output.LLMResponse.Provider, "test-provider")
+	}
+	if output.LLMResponse.Response == nil {
+		t.Fatal("LLMResponse.Response is nil")
+	}
+	if output.LLMResponse.Response.Usage.PromptTokens != 100 {
+		t.Fatalf("PromptTokens = %d, want 100", output.LLMResponse.Response.Usage.PromptTokens)
+	}
+	if output.LLMResponse.Response.Usage.CompletionTokens != 50 {
+		t.Fatalf("CompletionTokens = %d, want 50", output.LLMResponse.Response.Usage.CompletionTokens)
+	}
+
+	// Verify that Analyze uses the input ticker, not PipelineState.
+	userMsg := mock.lastReq.Messages[1].Content
+	if !strings.Contains(userMsg, "MSFT") {
+		t.Errorf("user prompt should reference input ticker MSFT, got: %q", userMsg)
+	}
+	if !strings.Contains(userMsg, "400.00") {
+		t.Errorf("user prompt should reference input OHLCV data, got: %q", userMsg)
+	}
+
+	// Verify LLM was called exactly once.
+	if got := mock.calls.Load(); got != 1 {
+		t.Errorf("LLM called %d times, want 1", got)
+	}
+}
