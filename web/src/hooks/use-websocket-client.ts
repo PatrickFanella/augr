@@ -32,6 +32,7 @@ export function useWebSocketClient({
 }: UseWebSocketClientOptions = {}) {
   const socketRef = useRef<WebSocket | null>(null)
   const reconnectTimerRef = useRef<number | null>(null)
+  const shouldReconnectRef = useRef(enabled && reconnect)
   const [status, setStatus] = useState<WebSocketConnectionStatus>('idle')
   const [lastMessage, setLastMessage] = useState<WebSocketServerMessage | null>(null)
   const endpoint = useMemo(() => url ?? getWebSocketUrl(), [url])
@@ -44,6 +45,7 @@ export function useWebSocketClient({
   }, [])
 
   const disconnect = useCallback(() => {
+    shouldReconnectRef.current = false
     clearReconnectTimer()
     const socket = socketRef.current
     socketRef.current = null
@@ -60,6 +62,7 @@ export function useWebSocketClient({
     }
 
     clearReconnectTimer()
+    shouldReconnectRef.current = reconnect
     setStatus('connecting')
 
     const socket = new WebSocket(endpoint)
@@ -84,8 +87,15 @@ export function useWebSocketClient({
     }
 
     socket.onclose = () => {
-      socketRef.current = null
+      const isCurrentSocket = socketRef.current === socket
+
+      if (isCurrentSocket) {
+        socketRef.current = null
+      }
       setStatus('closed')
+      if ((!isCurrentSocket && socketRef.current !== null) || !shouldReconnectRef.current) {
+        return
+      }
       if (enabled && reconnect) {
         reconnectTimerRef.current = window.setTimeout(() => {
           connect()
@@ -120,6 +130,7 @@ export function useWebSocketClient({
   const unsubscribeAll = useCallback(() => sendCommand({ action: 'unsubscribe_all' }), [sendCommand])
 
   useEffect(() => {
+    shouldReconnectRef.current = enabled && reconnect
     if (!enabled) {
       disconnect()
       return undefined
@@ -129,7 +140,7 @@ export function useWebSocketClient({
     return () => {
       disconnect()
     }
-  }, [connect, disconnect, enabled])
+  }, [connect, disconnect, enabled, reconnect])
 
   return {
     status,
