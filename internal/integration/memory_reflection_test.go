@@ -22,10 +22,32 @@ func TestIntegration_MemoryReflection_EndToEnd(t *testing.T) {
 	r := newRepos(db)
 	ctx := context.Background()
 
-	// 1. Create a strategy and a completed pipeline run.
+	// 1. Create a strategy.
 	strategy := createStrategy(t, ctx, r.Strategy, "Reflect Test", "AAPL")
+
+	// 2. Create the position first so its DB opened_at (NOW()) naturally
+	//    precedes the pipeline run's started_at.
+	pos := createPosition(t, ctx, r.Position, strategy.ID, "AAPL", domain.PositionSideLong, 10, 180.00)
+
+	// Reload the position to get the DB-assigned opened_at.
+	pos, err := r.Position.Get(ctx, pos.ID)
+	if err != nil {
+		t.Fatalf("Get() position: %v", err)
+	}
+
+	// 3. Create a completed pipeline run whose started_at is after the
+	//    position's opened_at so findPipelineRun can locate it.
 	tradeDate := time.Date(2026, 3, 20, 0, 0, 0, 0, time.UTC)
-	run := createPipelineRun(t, ctx, r.PipelineRun, strategy.ID, "AAPL", tradeDate)
+	run := &domain.PipelineRun{
+		StrategyID: strategy.ID,
+		Ticker:     "AAPL",
+		TradeDate:  tradeDate,
+		Status:     domain.PipelineStatusRunning,
+		StartedAt:  pos.OpenedAt.Add(1 * time.Second),
+	}
+	if err := r.PipelineRun.Create(ctx, run); err != nil {
+		t.Fatalf("PipelineRun.Create(): %v", err)
+	}
 
 	// Mark the pipeline run as completed.
 	completedAt := run.StartedAt.Add(30 * time.Minute)
@@ -38,7 +60,7 @@ func TestIntegration_MemoryReflection_EndToEnd(t *testing.T) {
 		t.Fatalf("UpdateStatus(): %v", err)
 	}
 
-	// 2. Create agent decisions for this run (the 5 reflection roles).
+	// 4. Create agent decisions for this run (the 5 reflection roles).
 	reflectionRoles := []domain.AgentRole{
 		domain.AgentRoleBullResearcher,
 		domain.AgentRoleBearResearcher,
@@ -59,9 +81,8 @@ func TestIntegration_MemoryReflection_EndToEnd(t *testing.T) {
 		}
 	}
 
-	// 3. Create a closed position that links to this strategy.
-	pos := createPosition(t, ctx, r.Position, strategy.ID, "AAPL", domain.PositionSideLong, 10, 180.00)
-	pos.OpenedAt = run.StartedAt.Add(-1 * time.Hour) // opened before the run
+	// 5. Close the position (Update persists closed_at and realized_pnl
+	//    but not opened_at, which stays at the DB-assigned value).
 	closedAt := completedAt.Add(24 * time.Hour)
 	pos.RealizedPnL = 75.0
 	pos.ClosedAt = &closedAt
@@ -69,7 +90,7 @@ func TestIntegration_MemoryReflection_EndToEnd(t *testing.T) {
 		t.Fatalf("Update() position: %v", err)
 	}
 
-	// 4. Run the reflector with a mock LLM.
+	// 6. Run the reflector with a mock LLM.
 	mockLLM := &mockLLMProvider{
 		response: &llm.CompletionResponse{
 			Content: "Always verify bullish signals with volume confirmation before entering a trade.",
@@ -85,12 +106,12 @@ func TestIntegration_MemoryReflection_EndToEnd(t *testing.T) {
 		t.Fatalf("Reflect(): %v", err)
 	}
 
-	// 5. Verify LLM was called 5 times (once per reflection role).
+	// 7. Verify LLM was called 5 times (once per reflection role).
 	if mockLLM.calls != 5 {
 		t.Fatalf("expected 5 LLM calls, got %d", mockLLM.calls)
 	}
 
-	// 6. Verify memories were stored in the database.
+	// 8. Verify memories were stored in the database.
 	allMemories, err := r.Memory.Search(ctx, "", repository.MemorySearchFilter{}, 20, 0)
 	if err != nil {
 		t.Fatalf("Search() all memories: %v", err)
@@ -99,7 +120,7 @@ func TestIntegration_MemoryReflection_EndToEnd(t *testing.T) {
 		t.Fatalf("expected 5 stored memories, got %d", len(allMemories))
 	}
 
-	// 7. Verify each role has a memory.
+	// 9. Verify each role has a memory.
 	seenRoles := make(map[domain.AgentRole]bool)
 	for _, m := range allMemories {
 		seenRoles[m.AgentRole] = true
@@ -124,14 +145,16 @@ func TestIntegration_MemoryReflection_EndToEnd(t *testing.T) {
 		}
 	}
 
-	// 8. Verify FTS retrieval works on stored memories.
-	ftsResults, err := r.Memory.Search(ctx, "bullish", repository.MemorySearchFilter{}, 10, 0)
+	// 10. Verify FTS retrieval works on stored memories.
+	// Reflector stores Situation as "Ticker: AAPL, Side: long, ..." so
+	// search for a term that actually appears in the situation_tsv column.
+	ftsResults, err := r.Memory.Search(ctx, "AAPL", repository.MemorySearchFilter{}, 10, 0)
 	if err != nil {
 		t.Fatalf("Search() FTS: %v", err)
 	}
-	// All 5 memories have "bullish" in their situation text.
+	// All 5 memories have "AAPL" in their situation text.
 	if len(ftsResults) < 1 {
-		t.Fatal("expected at least 1 FTS result for 'bullish'")
+		t.Fatal("expected at least 1 FTS result for 'AAPL'")
 	}
 }
 

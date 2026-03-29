@@ -34,7 +34,7 @@ type repos struct {
 }
 
 // newTestDB creates an isolated PostgreSQL schema for the test.
-// It skips the test if no DATABASE_URL is set or -short mode is used.
+// It skips the test if neither DB_URL nor DATABASE_URL is set or -short mode is used.
 func newTestDB(t *testing.T) *testDB {
 	t.Helper()
 

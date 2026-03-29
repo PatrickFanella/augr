@@ -34,15 +34,14 @@ func TestIntegration_RiskEngine_CircuitBreakerTripAndReset(t *testing.T) {
 		CooldownDuration:     15 * time.Minute,
 	}
 
+	// Use a real position repo so the engine is wired to a live DB,
+	// validating that the risk engine functions correctly in an
+	// integrated environment.
 	engine := risk.NewRiskEngine(risk.DefaultPositionLimits(), cbConfig, r.Position, discardLogger())
 
 	// Disable file and env kill switch mechanisms for test isolation.
 	engine.SetFileExistsFunc(func(string) bool { return false })
 	engine.SetGetEnvFunc(func(string) string { return "" })
-
-	// 1. Initially, pre-trade check should pass.
-	// Create strategy to validate test DB setup (not used directly in risk checks).
-	createStrategy(t, ctx, r.Strategy, "Risk Test", "AAPL")
 
 	order := &domain.Order{
 		Ticker:   "AAPL",
