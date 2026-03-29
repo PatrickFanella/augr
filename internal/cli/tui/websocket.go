@@ -81,6 +81,8 @@ func (s *websocketSource) readLoop() {
 		case s.messages <- msg:
 		case <-s.done:
 			return
+		default:
+			// Drop messages rather than blocking the websocket reader.
 		}
 	}
 }

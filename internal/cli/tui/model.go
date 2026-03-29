@@ -365,12 +365,13 @@ func (m Model) renderPortfolioCard(width int) string {
 }
 
 func (m Model) renderRiskCard(width int) string {
-	riskLabel := successStyle.Render(strings.ToUpper(m.snapshot.Risk.RiskStatus.String()))
-	if strings.EqualFold(m.snapshot.Risk.RiskStatus.String(), "warning") {
-		riskLabel = warningStyle.Render(strings.ToUpper(m.snapshot.Risk.RiskStatus.String()))
+	status := m.snapshot.Risk.RiskStatus
+	riskLabel := successStyle.Render(strings.ToUpper(status.String()))
+	if status == domain.RiskStatusWarning {
+		riskLabel = warningStyle.Render(strings.ToUpper(status.String()))
 	}
-	if strings.EqualFold(m.snapshot.Risk.RiskStatus.String(), "halted") {
-		riskLabel = dangerStyle.Render(strings.ToUpper(m.snapshot.Risk.RiskStatus.String()))
+	if status == domain.RiskStatusBreached {
+		riskLabel = dangerStyle.Render(strings.ToUpper(status.String()))
 	}
 
 	ratio := clampPercent(m.snapshot.Risk.PositionLimits.MaxTotalPct)
