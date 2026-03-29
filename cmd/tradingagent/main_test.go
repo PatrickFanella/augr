@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/PatrickFanella/get-rich-quick/internal/cli"
 	"github.com/PatrickFanella/get-rich-quick/internal/config"
 )
 
@@ -43,7 +44,7 @@ func TestRun_ReturnsStartupErrorWithoutBlocking(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- run(context.Background(), server.ListenAndServe, server.Shutdown)
+		done <- cli.RunServerLifecycle(context.Background(), server.ListenAndServe, server.Shutdown)
 	}()
 
 	select {
