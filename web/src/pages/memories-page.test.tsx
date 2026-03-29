@@ -81,7 +81,7 @@ describe('MemoriesPage', () => {
   it('supports deleting a memory and moving to the next page', async () => {
     const pageOne = Array.from({ length: 10 }, (_, index) => ({
       ...baseMemory,
-      id: `00000000-0000-0000-0000-0000000000${index + 1}`,
+      id: `00000000-0000-0000-0000-0000000000${String(index + 1).padStart(2, '0')}`,
       situation: `Situation ${index + 1}`,
       recommendation: `Recommendation ${index + 1}`,
     }))
@@ -122,7 +122,7 @@ describe('MemoriesPage', () => {
 
     expect(await screen.findByText('Situation 1')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByTestId('delete-memory-00000000-0000-0000-0000-00000000001'))
+    fireEvent.click(screen.getByTestId('delete-memory-00000000-0000-0000-0000-000000000001'))
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3))
 
     const deleteCall = fetchMock.mock.calls[1]
