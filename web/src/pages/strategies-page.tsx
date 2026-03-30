@@ -73,11 +73,9 @@ export function StrategiesPage() {
         <CardHeader>
           <CardTitle>All strategies</CardTitle>
           <CardDescription>
-            {data?.total !== undefined
-              ? `${data.total} strategies`
-              : (data?.data ?? []).length !== undefined
-                ? `${(data?.data ?? []).length} strategies`
-                : 'Loading…'}
+            {data != null
+              ? `${data.total ?? data.data?.length ?? 0} strategies`
+              : 'Loading…'}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -94,7 +92,7 @@ export function StrategiesPage() {
             <p className="text-sm text-muted-foreground" data-testid="strategies-error">
               Unable to load strategies. Start the API server to see live data.
             </p>
-          ) : !(data?.data ?? []).length ? (
+          ) : !data?.data.length ? (
             <div
               className="flex flex-col items-center gap-2 py-8 text-center"
               data-testid="strategies-empty"
@@ -106,7 +104,7 @@ export function StrategiesPage() {
             </div>
           ) : (
             <ul className="space-y-2" data-testid="strategies-list">
-              {(data?.data ?? []).map((strategy) => (
+              {data.data.map((strategy) => (
                 <li key={strategy.id}>
                   <div className="flex items-center gap-3 rounded-lg border p-3 transition-colors hover:bg-secondary/40">
                     <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">

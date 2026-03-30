@@ -96,14 +96,14 @@ export function StrategyRunHistory({ strategyId }: StrategyRunHistoryProps) {
           <p className="text-sm text-muted-foreground" data-testid="run-history-error">
             Unable to load run history.
           </p>
-        ) : !(data?.data ?? []).length ? (
+        ) : !data?.data.length ? (
           <div className="flex flex-col items-center gap-2 py-8 text-center" data-testid="run-history-empty">
             <Clock className="size-8 text-muted-foreground" />
             <p className="text-sm text-muted-foreground">No runs yet</p>
           </div>
         ) : (
           <ul className="space-y-2" data-testid="run-history-list">
-            {(data?.data ?? []).map((run) => (
+            {data.data.map((run) => (
               <RunRow key={run.id} run={run} />
             ))}
           </ul>
