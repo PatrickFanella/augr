@@ -211,5 +211,3 @@ func validateRiskConfig(c *StrategyRiskConfig) error {
 	}
 	return nil
 }
-
-
