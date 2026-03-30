@@ -256,11 +256,13 @@ export class ApiClient {
 export const apiClient = new ApiClient()
 
 function normalizeListResponse<T>(response: NullableListResponse<T>): ListResponse<T> {
-  if (response.data == null) {
-    return { ...response, data: [] }
+  const { data, ...rest } = response
+
+  if (data == null) {
+    return { ...rest, data: [] }
   }
 
-  return { ...response, data: response.data }
+  return { ...rest, data }
 }
 
 function toQueryParams(params: object): QueryParams {
