@@ -40,4 +40,47 @@ describe('ApiClient', () => {
       new ApiClientError('unauthorized', 401, 'ERR_UNAUTHORIZED'),
     )
   })
+
+  it('normalizes null list data to an empty array', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: null, limit: 25, offset: 0 }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const client = new ApiClient({ baseUrl: 'http://localhost:8080' })
+
+    await expect(client.listStrategies()).resolves.toEqual({ data: [], limit: 25, offset: 0 })
+  })
+
+  it('preserves populated list data responses', async () => {
+    const payload = {
+      data: [
+        {
+          id: 'strategy-1',
+          name: 'Momentum',
+          ticker: 'AAPL',
+          market_type: 'stock',
+          config: {},
+          is_active: true,
+          is_paper: true,
+          created_at: '2026-03-30T00:00:00Z',
+          updated_at: '2026-03-30T00:00:00Z',
+        },
+      ],
+      limit: 25,
+      offset: 0,
+    }
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => payload,
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const client = new ApiClient({ baseUrl: 'http://localhost:8080' })
+
+    await expect(client.listStrategies()).resolves.toEqual(payload)
+  })
 })
