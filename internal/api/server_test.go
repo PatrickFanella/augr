@@ -463,6 +463,17 @@ func TestListTrades(t *testing.T) {
 	}
 }
 
+func TestListTradesInvalidSide(t *testing.T) {
+	t.Parallel()
+	srv := newTestServer(t)
+
+	rr := doRequest(t, srv, http.MethodGet, "/api/v1/trades?side=invalid", nil)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusBadRequest)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Memories
 // ---------------------------------------------------------------------------

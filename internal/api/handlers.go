@@ -436,6 +436,10 @@ func (s *Server) handleListTrades(w http.ResponseWriter, r *http.Request) {
 	}
 	if side := q.Get("side"); side != "" {
 		orderSide := domain.OrderSide(side)
+		if !orderSide.IsValid() {
+			respondError(w, http.StatusBadRequest, "invalid side", ErrCodeBadRequest)
+			return
+		}
 		filter.Side = &orderSide
 	}
 	if startDateStr := q.Get("start_date"); startDateStr != "" {
