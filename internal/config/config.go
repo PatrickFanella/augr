@@ -20,6 +20,7 @@ type Config struct {
 	DataProviders DataProviderConfigs
 	Brokers       BrokerConfigs
 	Risk          RiskConfig
+	Notifications NotificationConfig
 	Features      FeatureFlags
 }
 
@@ -108,6 +109,71 @@ type RiskConfig struct {
 	MaxOpenPositions        int
 	CircuitBreakerThreshold float64
 	CircuitBreakerCooldown  time.Duration
+}
+
+// NotificationConfig contains outbound notifier credentials and alert rule thresholds.
+type NotificationConfig struct {
+	Telegram  TelegramNotificationConfig
+	Email     EmailNotificationConfig
+	Webhook   WebhookNotificationConfig
+	PagerDuty WebhookNotificationConfig
+	Alerts    AlertRulesConfig
+}
+
+// TelegramNotificationConfig contains Telegram bot delivery settings.
+type TelegramNotificationConfig struct {
+	BotToken string
+	ChatID   string
+}
+
+// EmailNotificationConfig contains SMTP delivery settings.
+type EmailNotificationConfig struct {
+	SMTPHost string
+	SMTPPort int
+	Username string
+	Password string
+	From     string
+	To       []string
+}
+
+// WebhookNotificationConfig contains generic webhook delivery settings.
+type WebhookNotificationConfig struct {
+	URL    string
+	Secret string
+}
+
+// AlertRulesConfig contains alert thresholds and channel routing.
+type AlertRulesConfig struct {
+	PipelineFailure PipelineFailureAlertRuleConfig
+	CircuitBreaker  ImmediateAlertRuleConfig
+	LLMProviderDown LLMProviderDownAlertRuleConfig
+	HighLatency     HighLatencyAlertRuleConfig
+	KillSwitch      ImmediateAlertRuleConfig
+	DBConnection    ImmediateAlertRuleConfig
+}
+
+// PipelineFailureAlertRuleConfig contains configuration for consecutive pipeline failures.
+type PipelineFailureAlertRuleConfig struct {
+	Threshold int
+	Channels  []string
+}
+
+// ImmediateAlertRuleConfig contains routing for immediate alerts.
+type ImmediateAlertRuleConfig struct {
+	Channels []string
+}
+
+// LLMProviderDownAlertRuleConfig contains rolling-window LLM provider health thresholds.
+type LLMProviderDownAlertRuleConfig struct {
+	ErrorRateThreshold float64
+	Window             time.Duration
+	Channels           []string
+}
+
+// HighLatencyAlertRuleConfig contains pipeline latency thresholds.
+type HighLatencyAlertRuleConfig struct {
+	Threshold time.Duration
+	Channels  []string
 }
 
 // FeatureFlags contains boolean feature toggles.
@@ -215,6 +281,31 @@ func loadFromEnvironment() (Config, error) {
 		return Config{}, err
 	}
 
+	smtpPort, err := getEnvInt("NOTIFY_SMTP_PORT", 587)
+	if err != nil {
+		return Config{}, err
+	}
+
+	pipelineFailureThreshold, err := getEnvInt("ALERT_PIPELINE_FAILURE_THRESHOLD", 3)
+	if err != nil {
+		return Config{}, err
+	}
+
+	llmProviderDownErrorRateThreshold, err := getEnvFloat64("ALERT_LLM_PROVIDER_DOWN_ERROR_RATE_THRESHOLD", 0.5)
+	if err != nil {
+		return Config{}, err
+	}
+
+	llmProviderDownWindow, err := getEnvDuration("ALERT_LLM_PROVIDER_DOWN_WINDOW", 5*time.Minute)
+	if err != nil {
+		return Config{}, err
+	}
+
+	highLatencyThreshold, err := getEnvDuration("ALERT_HIGH_LATENCY_THRESHOLD", 120*time.Second)
+	if err != nil {
+		return Config{}, err
+	}
+
 	enableScheduler, err := getEnvBool("ENABLE_SCHEDULER", false)
 	if err != nil {
 		return Config{}, err
@@ -318,6 +409,52 @@ func loadFromEnvironment() (Config, error) {
 			CircuitBreakerThreshold: circuitBreakerThreshold,
 			CircuitBreakerCooldown:  circuitBreakerCooldown,
 		},
+		Notifications: NotificationConfig{
+			Telegram: TelegramNotificationConfig{
+				BotToken: os.Getenv("NOTIFY_TELEGRAM_BOT_TOKEN"),
+				ChatID:   os.Getenv("NOTIFY_TELEGRAM_CHAT_ID"),
+			},
+			Email: EmailNotificationConfig{
+				SMTPHost: os.Getenv("NOTIFY_SMTP_HOST"),
+				SMTPPort: smtpPort,
+				Username: os.Getenv("NOTIFY_SMTP_USERNAME"),
+				Password: os.Getenv("NOTIFY_SMTP_PASSWORD"),
+				From:     os.Getenv("NOTIFY_EMAIL_FROM"),
+				To:       getEnvCSV("NOTIFY_EMAIL_TO"),
+			},
+			Webhook: WebhookNotificationConfig{
+				URL:    os.Getenv("NOTIFY_WEBHOOK_URL"),
+				Secret: os.Getenv("NOTIFY_WEBHOOK_SECRET"),
+			},
+			PagerDuty: WebhookNotificationConfig{
+				URL:    os.Getenv("NOTIFY_PAGERDUTY_WEBHOOK_URL"),
+				Secret: os.Getenv("NOTIFY_PAGERDUTY_WEBHOOK_SECRET"),
+			},
+			Alerts: AlertRulesConfig{
+				PipelineFailure: PipelineFailureAlertRuleConfig{
+					Threshold: pipelineFailureThreshold,
+					Channels:  getEnvCSVWithDefault("ALERT_PIPELINE_FAILURE_CHANNELS", []string{"telegram", "email"}),
+				},
+				CircuitBreaker: ImmediateAlertRuleConfig{
+					Channels: getEnvCSVWithDefault("ALERT_CIRCUIT_BREAKER_CHANNELS", []string{"telegram"}),
+				},
+				LLMProviderDown: LLMProviderDownAlertRuleConfig{
+					ErrorRateThreshold: llmProviderDownErrorRateThreshold,
+					Window:             llmProviderDownWindow,
+					Channels:           getEnvCSVWithDefault("ALERT_LLM_PROVIDER_DOWN_CHANNELS", []string{"telegram"}),
+				},
+				HighLatency: HighLatencyAlertRuleConfig{
+					Threshold: highLatencyThreshold,
+					Channels:  getEnvCSVWithDefault("ALERT_HIGH_LATENCY_CHANNELS", []string{"email"}),
+				},
+				KillSwitch: ImmediateAlertRuleConfig{
+					Channels: getEnvCSVWithDefault("ALERT_KILL_SWITCH_CHANNELS", []string{"telegram"}),
+				},
+				DBConnection: ImmediateAlertRuleConfig{
+					Channels: getEnvCSVWithDefault("ALERT_DB_CONNECTION_CHANNELS", []string{"email", "pagerduty"}),
+				},
+			},
+		},
 		Features: FeatureFlags{
 			EnableScheduler:   enableScheduler,
 			EnableRedisCache:  enableRedisCache,
@@ -387,6 +524,27 @@ func getEnvDuration(key string, defaultValue time.Duration) (time.Duration, erro
 	}
 
 	return parsed, nil
+}
+
+func getEnvCSV(key string) []string {
+	return getEnvCSVWithDefault(key, nil)
+}
+
+func getEnvCSVWithDefault(key string, defaultValue []string) []string {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return append([]string(nil), defaultValue...)
+	}
+
+	parts := strings.Split(value, ",")
+	items := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			items = append(items, part)
+		}
+	}
+	return items
 }
 
 func firstNonEmpty(value, fallback string) string {

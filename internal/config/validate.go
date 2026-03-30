@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"net/url"
+	"slices"
 	"strings"
 )
 
@@ -68,6 +69,8 @@ func Validate(cfg Config) error {
 	if cfg.Risk.CircuitBreakerCooldown <= 0 {
 		errs = append(errs, "RISK_CIRCUIT_BREAKER_COOLDOWN must be greater than 0")
 	}
+
+	validateNotificationConfig(&errs, cfg.Notifications)
 
 	if cfg.LLM.DeepThinkModel != "" && strings.TrimSpace(cfg.LLM.DeepThinkModel) == "" {
 		errs = append(errs, "LLM_DEEP_THINK_MODEL must not be whitespace-only when set")
@@ -161,4 +164,85 @@ func validateBrokerCredentials(errs *[]string, keyName, keyValue, secretName, se
 	}
 
 	*errs = append(*errs, fmt.Sprintf("%s and %s must both be set when configuring broker credentials", keyName, secretName))
+}
+
+func validateNotificationConfig(errs *[]string, cfg NotificationConfig) {
+	if hasAnyNotificationEmailField(cfg.Email) {
+		if strings.TrimSpace(cfg.Email.SMTPHost) == "" {
+			*errs = append(*errs, "NOTIFY_SMTP_HOST is required when email notifications are configured")
+		}
+		if cfg.Email.SMTPPort <= 0 {
+			*errs = append(*errs, "NOTIFY_SMTP_PORT must be greater than 0 when email notifications are configured")
+		}
+		if strings.TrimSpace(cfg.Email.From) == "" {
+			*errs = append(*errs, "NOTIFY_EMAIL_FROM is required when email notifications are configured")
+		}
+		if len(cfg.Email.To) == 0 {
+			*errs = append(*errs, "NOTIFY_EMAIL_TO must include at least one recipient when email notifications are configured")
+		}
+	}
+
+	if hasAnyTelegramField(cfg.Telegram) {
+		if strings.TrimSpace(cfg.Telegram.BotToken) == "" {
+			*errs = append(*errs, "NOTIFY_TELEGRAM_BOT_TOKEN is required when Telegram notifications are configured")
+		}
+		if strings.TrimSpace(cfg.Telegram.ChatID) == "" {
+			*errs = append(*errs, "NOTIFY_TELEGRAM_CHAT_ID is required when Telegram notifications are configured")
+		}
+	}
+
+	validateWebhookNotification(errs, cfg.Webhook, "NOTIFY_WEBHOOK_URL")
+	validateWebhookNotification(errs, cfg.PagerDuty, "NOTIFY_PAGERDUTY_WEBHOOK_URL")
+	validateAlertRules(errs, cfg.Alerts)
+}
+
+func hasAnyNotificationEmailField(cfg EmailNotificationConfig) bool {
+	return strings.TrimSpace(cfg.SMTPHost) != "" ||
+		strings.TrimSpace(cfg.Username) != "" ||
+		strings.TrimSpace(cfg.Password) != "" ||
+		strings.TrimSpace(cfg.From) != "" ||
+		len(cfg.To) > 0
+}
+
+func hasAnyTelegramField(cfg TelegramNotificationConfig) bool {
+	return strings.TrimSpace(cfg.BotToken) != "" || strings.TrimSpace(cfg.ChatID) != ""
+}
+
+func validateWebhookNotification(errs *[]string, cfg WebhookNotificationConfig, envName string) {
+	if strings.TrimSpace(cfg.URL) == "" {
+		return
+	}
+	if _, err := url.ParseRequestURI(cfg.URL); err != nil {
+		*errs = append(*errs, fmt.Sprintf("%s must be a valid URL: %v", envName, err))
+	}
+}
+
+func validateAlertRules(errs *[]string, cfg AlertRulesConfig) {
+	if cfg.PipelineFailure.Threshold <= 0 {
+		*errs = append(*errs, "ALERT_PIPELINE_FAILURE_THRESHOLD must be greater than 0")
+	}
+	if cfg.LLMProviderDown.ErrorRateThreshold <= 0 || cfg.LLMProviderDown.ErrorRateThreshold > 1 {
+		*errs = append(*errs, "ALERT_LLM_PROVIDER_DOWN_ERROR_RATE_THRESHOLD must be between 0 and 1")
+	}
+	if cfg.LLMProviderDown.Window <= 0 {
+		*errs = append(*errs, "ALERT_LLM_PROVIDER_DOWN_WINDOW must be greater than 0")
+	}
+	if cfg.HighLatency.Threshold <= 0 {
+		*errs = append(*errs, "ALERT_HIGH_LATENCY_THRESHOLD must be greater than 0")
+	}
+
+	for envName, channels := range map[string][]string{
+		"ALERT_PIPELINE_FAILURE_CHANNELS":  cfg.PipelineFailure.Channels,
+		"ALERT_CIRCUIT_BREAKER_CHANNELS":   cfg.CircuitBreaker.Channels,
+		"ALERT_LLM_PROVIDER_DOWN_CHANNELS": cfg.LLMProviderDown.Channels,
+		"ALERT_HIGH_LATENCY_CHANNELS":      cfg.HighLatency.Channels,
+		"ALERT_KILL_SWITCH_CHANNELS":       cfg.KillSwitch.Channels,
+		"ALERT_DB_CONNECTION_CHANNELS":     cfg.DBConnection.Channels,
+	} {
+		for _, channel := range channels {
+			if !slices.Contains([]string{"telegram", "email", "webhook", "pagerduty"}, strings.ToLower(strings.TrimSpace(channel))) {
+				*errs = append(*errs, fmt.Sprintf("%s contains unsupported channel %q", envName, channel))
+			}
+		}
+	}
 }
