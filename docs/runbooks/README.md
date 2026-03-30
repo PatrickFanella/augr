@@ -12,7 +12,7 @@ Use these runbooks for the operational scenarios that recur during incidents, de
 ## Before you start
 
 - Export `TRADINGAGENT_API_URL` if the API is not on `http://127.0.0.1:8080`.
-- For authenticated CLI commands, export `TRADINGAGENT_TOKEN` or `TRADINGAGENT_API_KEY`. For authenticated `curl` examples below, export `TRADINGAGENT_API_KEY` unless a step explicitly shows an `Authorization: Bearer ...` header.
+- For authenticated CLI commands, export `TRADINGAGENT_TOKEN` or `TRADINGAGENT_API_KEY`. For authenticated `curl` examples below, export `TRADINGAGENT_API_KEY`; if a step expects a bearer token instead, that `curl` snippet will show the `Authorization: Bearer ...` header explicitly.
 - Run commands from the repository root unless a step says otherwise.
 - Save the current state before making changes during an incident so rollback is mechanical.
 

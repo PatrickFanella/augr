@@ -56,10 +56,10 @@ Use this runbook before risky schema work, before restoring production-like data
      --no-owner < "$BACKUP_FILE"
    ```
 
-7. Re-apply migrations so the schema matches the current application build. When running `migrate` from the operator workstation, use a host-resolvable connection string instead of the container hostname in `.env`:
+7. Re-apply migrations so the schema matches the current application build. When running `migrate` from the operator workstation, use a host-resolvable connection string instead of the container hostname in `.env`, and substitute the real database credentials for your environment:
 
    ```bash
-   export LOCAL_DATABASE_URL="${LOCAL_DATABASE_URL:-postgres://postgres:postgres@localhost:${POSTGRES_PORT:-5432}/tradingagent?sslmode=disable}"
+   export LOCAL_DATABASE_URL="postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-tradingagent}?sslmode=disable"
    migrate -path migrations -database "$LOCAL_DATABASE_URL" up
    ```
 
