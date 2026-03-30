@@ -1,6 +1,9 @@
 package agent
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // knownLLMModels is the unexported set of model identifiers that
 // ValidateStrategyConfig accepts. Use isKnownLLMModel to query it.
@@ -29,12 +32,40 @@ func isKnownLLMModel(model string) bool {
 // knownLLMProviders is the set of provider identifiers that
 // ValidateStrategyConfig accepts for StrategyLLMConfig.Provider.
 var knownLLMProviders = map[string]bool{
-	"openai":    true,
-	"anthropic": true,
-	"google":    true,
+	"openai":     true,
+	"anthropic":  true,
+	"google":     true,
 	"openrouter": true,
-	"xai":       true,
-	"ollama":    true,
+	"xai":        true,
+	"ollama":     true,
+}
+
+// providerModelAllowlist maps provider names to their accepted model identifiers.
+// Providers omitted from this map (openrouter, xai, ollama) are unconstrained and
+// may route to many underlying models; their model names are not further validated.
+var providerModelAllowlist = map[string]map[string]bool{
+	"openai": {
+		"gpt-5-mini":          true,
+		"gpt-5.2":             true,
+		"gpt-5.4":             true,
+		"gpt-4.1-mini":        true,
+		"openai/gpt-4.1-mini": true,
+	},
+	"anthropic": {
+		"claude-3-7-sonnet-latest": true,
+	},
+	"google": {
+		"gemini-2.5-flash": true,
+	},
+}
+
+// isModelValidForProvider reports whether model is valid for the given provider.
+// For providers without an explicit allowlist (openrouter, xai, ollama) it returns true.
+func isModelValidForProvider(provider, model string) bool {
+	if models, ok := providerModelAllowlist[provider]; ok {
+		return models[model]
+	}
+	return true
 }
 
 // StrategyLLMConfig holds per-tier model overrides for a strategy.
@@ -118,17 +149,30 @@ func validateLLMConfig(c *StrategyLLMConfig) error {
 	if c == nil {
 		return nil
 	}
+	var provider string
 	if c.Provider != nil {
-		p := *c.Provider
-		if !knownLLMProviders[p] {
-			return fmt.Errorf("llm_config.provider: unknown provider %q (valid: openai, anthropic, google, openrouter, xai, ollama)", p)
+		provider = strings.ToLower(strings.TrimSpace(*c.Provider))
+		if !knownLLMProviders[provider] {
+			return fmt.Errorf("llm_config.provider: unknown provider %q (valid: openai, anthropic, google, openrouter, xai, ollama)", provider)
 		}
 	}
-	if c.DeepThinkModel != nil && !isKnownLLMModel(*c.DeepThinkModel) {
-		return fmt.Errorf("llm_config.deep_think_model: unknown model %q", *c.DeepThinkModel)
+	if c.DeepThinkModel != nil {
+		model := strings.TrimSpace(*c.DeepThinkModel)
+		if !isKnownLLMModel(model) {
+			return fmt.Errorf("llm_config.deep_think_model: unknown model %q", model)
+		}
+		if provider != "" && !isModelValidForProvider(provider, model) {
+			return fmt.Errorf("llm_config.deep_think_model: model %q is not valid for provider %q", model, provider)
+		}
 	}
-	if c.QuickThinkModel != nil && !isKnownLLMModel(*c.QuickThinkModel) {
-		return fmt.Errorf("llm_config.quick_think_model: unknown model %q", *c.QuickThinkModel)
+	if c.QuickThinkModel != nil {
+		model := strings.TrimSpace(*c.QuickThinkModel)
+		if !isKnownLLMModel(model) {
+			return fmt.Errorf("llm_config.quick_think_model: unknown model %q", model)
+		}
+		if provider != "" && !isModelValidForProvider(provider, model) {
+			return fmt.Errorf("llm_config.quick_think_model: model %q is not valid for provider %q", model, provider)
+		}
 	}
 	return nil
 }

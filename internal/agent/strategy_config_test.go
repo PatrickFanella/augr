@@ -223,6 +223,54 @@ func TestValidateStrategyConfig_GPT54ModelAccepted(t *testing.T) {
 	}
 }
 
+func TestValidateStrategyConfig_ProviderNormalized(t *testing.T) {
+	cfg := validStrategyConfig()
+	cfg.LLMConfig.Provider = strPtr("  OpenAI  ") // uppercase + whitespace
+
+	if err := agent.ValidateStrategyConfig(cfg); err != nil {
+		t.Fatalf("expected provider 'OpenAI' to be accepted after normalization, got: %v", err)
+	}
+}
+
+func TestValidateStrategyConfig_ModelTrimmed(t *testing.T) {
+	cfg := validStrategyConfig()
+	cfg.LLMConfig.DeepThinkModel = strPtr("  gpt-5.4  ") // leading/trailing whitespace
+
+	if err := agent.ValidateStrategyConfig(cfg); err != nil {
+		t.Fatalf("expected model with whitespace to be accepted after trimming, got: %v", err)
+	}
+}
+
+func TestValidateStrategyConfig_ModelProviderMismatch(t *testing.T) {
+	cfg := validStrategyConfig()
+	cfg.LLMConfig.Provider = strPtr("anthropic")
+	cfg.LLMConfig.DeepThinkModel = strPtr("gpt-5.4") // openai model used with anthropic
+
+	err := agent.ValidateStrategyConfig(cfg)
+	if err == nil {
+		t.Fatal("expected error for openai model with anthropic provider, got nil")
+	}
+	if !strings.Contains(err.Error(), "deep_think_model") {
+		t.Fatalf("error should mention 'deep_think_model', got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "anthropic") {
+		t.Fatalf("error should mention the provider 'anthropic', got: %v", err)
+	}
+}
+
+func TestValidateStrategyConfig_OpenRouterModelUnconstrained(t *testing.T) {
+	cfg := validStrategyConfig()
+	cfg.LLMConfig.Provider = strPtr("openrouter")
+	// openrouter can route to any model; use one from the global allowlist but
+	// outside any provider-specific allowlist to confirm it's not rejected.
+	cfg.LLMConfig.DeepThinkModel = strPtr("gpt-5.4")
+	cfg.LLMConfig.QuickThinkModel = strPtr("claude-3-7-sonnet-latest")
+
+	if err := agent.ValidateStrategyConfig(cfg); err != nil {
+		t.Fatalf("expected openrouter to accept any known model, got: %v", err)
+	}
+}
+
 // helper pointer constructors used only in tests.
 func strPtr(s string) *string      { return &s }
 func intPtr(n int) *int             { return &n }
