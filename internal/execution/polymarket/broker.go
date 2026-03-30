@@ -13,19 +13,7 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/execution"
 )
 
-// OrderTimeInForce represents the time-in-force for a Polymarket order.
-type OrderTimeInForce string
-
-const (
-	// TimeInForceGTC is a good-til-cancelled order.
-	TimeInForceGTC OrderTimeInForce = "GTC"
-	// TimeInForceFOK is a fill-or-kill order.
-	TimeInForceFOK OrderTimeInForce = "FOK"
-	// TimeInForceGTD is a good-til-date order.
-	TimeInForceGTD OrderTimeInForce = "GTD"
-
-	defaultTimeInForce = TimeInForceGTC
-)
+const defaultTimeInForce = "GTC"
 
 // Broker implements the execution.Broker interface for Polymarket CLOB.
 type Broker struct {
@@ -242,7 +230,7 @@ func mapSubmitOrderRequest(order *domain.Order) (submitOrderRequest, error) {
 		Price:       formatFloat(*order.LimitPrice),
 		Size:        formatFloat(order.Quantity),
 		Side:        side,
-		TimeInForce: string(defaultTimeInForce),
+		TimeInForce: defaultTimeInForce,
 	}, nil
 }
 
