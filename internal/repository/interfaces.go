@@ -63,6 +63,12 @@ type AgentDecisionFilter struct {
 	RoundNumber *int
 }
 
+// ConversationFilter defines supported filters when listing conversations.
+type ConversationFilter struct {
+	PipelineRunID *uuid.UUID
+	AgentRole     domain.AgentRole
+}
+
 // OrderFilter defines supported filters when listing or querying orders.
 type OrderFilter struct {
 	Ticker          string
@@ -185,6 +191,15 @@ type PipelineRunRepository interface {
 type AgentDecisionRepository interface {
 	Create(ctx context.Context, decision *domain.AgentDecision) error
 	GetByRun(ctx context.Context, runID uuid.UUID, filter AgentDecisionFilter, limit, offset int) ([]domain.AgentDecision, error)
+}
+
+// ConversationRepository provides access to conversations and their messages.
+type ConversationRepository interface {
+	CreateConversation(ctx context.Context, conv *domain.Conversation) error
+	GetConversation(ctx context.Context, id uuid.UUID) (*domain.Conversation, error)
+	ListConversations(ctx context.Context, filter ConversationFilter, limit, offset int) ([]domain.Conversation, error)
+	AddMessage(ctx context.Context, convID uuid.UUID, msg *domain.ConversationMessage) error
+	GetMessages(ctx context.Context, convID uuid.UUID, limit, offset int) ([]domain.ConversationMessage, error)
 }
 
 // OrderRepository provides CRUD operations for orders.
