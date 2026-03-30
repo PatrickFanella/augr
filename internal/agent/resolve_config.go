@@ -173,26 +173,48 @@ func resolveFloat64Ptr(strategy, global *float64, defaultVal float64) float64 {
 	return defaultVal
 }
 
-// resolveAgentRoles returns the strategy slice if non-nil, then the global slice if
-// non-nil, otherwise nil (meaning all analysts are enabled).
+// cloneAgentRoles returns a shallow copy of src, or nil if src is nil.
+func cloneAgentRoles(src []AgentRole) []AgentRole {
+	if src == nil {
+		return nil
+	}
+	dst := make([]AgentRole, len(src))
+	copy(dst, src)
+	return dst
+}
+
+// resolveAgentRoles returns a copy of the strategy slice if non-nil, then a copy of
+// the global slice if non-nil, otherwise nil (meaning all analysts are enabled).
 func resolveAgentRoles(strategy, global []AgentRole) []AgentRole {
 	if strategy != nil {
-		return strategy
+		return cloneAgentRoles(strategy)
 	}
 	if global != nil {
-		return global
+		return cloneAgentRoles(global)
 	}
 	return nil
 }
 
-// resolvePromptOverrides returns the strategy map if non-nil, then the global map if
-// non-nil, otherwise nil (meaning no prompt overrides are applied).
+// clonePromptOverrides returns a shallow copy of src, or nil if src is nil.
+func clonePromptOverrides(src map[AgentRole]string) map[AgentRole]string {
+	if src == nil {
+		return nil
+	}
+	dst := make(map[AgentRole]string, len(src))
+	for k, v := range src {
+		dst[k] = v
+	}
+	return dst
+}
+
+// resolvePromptOverrides returns a copy of the strategy map if non-nil, then a copy of
+// the global map if non-nil, otherwise nil (meaning no prompt overrides are applied).
 func resolvePromptOverrides(strategy, global map[AgentRole]string) map[AgentRole]string {
 	if strategy != nil {
-		return strategy
+		return clonePromptOverrides(strategy)
 	}
 	if global != nil {
-		return global
+		return clonePromptOverrides(global)
 	}
 	return nil
 }

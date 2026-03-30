@@ -479,3 +479,43 @@ func TestResolveConfig_PartialStrategyOverride(t *testing.T) {
 		t.Errorf("QuickThinkModel = %q, want %q (hardcoded default)", got.LLMConfig.QuickThinkModel, "gpt-5-mini")
 	}
 }
+
+// TestResolveConfig_AnalystSelectionIsCopied verifies that mutating the
+// AnalystSelection slice in the returned ResolvedConfig does not affect the
+// original StrategyConfig input.
+func TestResolveConfig_AnalystSelectionIsCopied(t *testing.T) {
+	strategy := agent.StrategyConfig{
+		AnalystSelection: []agent.AgentRole{agent.AgentRoleMarketAnalyst, agent.AgentRoleFundamentalsAnalyst},
+	}
+	got := agent.ResolveConfig(&strategy, agent.GlobalSettings{})
+
+	// Mutate the returned slice.
+	got.AnalystSelection[0] = agent.AgentRoleTrader
+
+	// Original must be unchanged.
+	if strategy.AnalystSelection[0] != agent.AgentRoleMarketAnalyst {
+		t.Errorf("original AnalystSelection[0] was mutated; got %q, want %q",
+			strategy.AnalystSelection[0], agent.AgentRoleMarketAnalyst)
+	}
+}
+
+// TestResolveConfig_PromptOverridesIsCopied verifies that mutating the
+// PromptOverrides map in the returned ResolvedConfig does not affect the
+// original StrategyConfig input.
+func TestResolveConfig_PromptOverridesIsCopied(t *testing.T) {
+	strategy := agent.StrategyConfig{
+		PromptOverrides: map[agent.AgentRole]string{
+			agent.AgentRoleTrader: "original prompt",
+		},
+	}
+	got := agent.ResolveConfig(&strategy, agent.GlobalSettings{})
+
+	// Mutate the returned map.
+	got.PromptOverrides[agent.AgentRoleTrader] = "mutated prompt"
+
+	// Original must be unchanged.
+	if strategy.PromptOverrides[agent.AgentRoleTrader] != "original prompt" {
+		t.Errorf("original PromptOverrides was mutated; got %q, want %q",
+			strategy.PromptOverrides[agent.AgentRoleTrader], "original prompt")
+	}
+}
