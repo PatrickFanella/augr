@@ -30,7 +30,7 @@ WORKDIR /app
 COPY --from=builder /out/tradingagent ./tradingagent
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt ./ca-certificates.crt
 COPY --chown=app:app migrations ./migrations
-RUN chmod 644 ./ca-certificates.crt
+RUN chmod 444 ./ca-certificates.crt
 
 ENV APP_ENV=production
 ENV SSL_CERT_FILE=/app/ca-certificates.crt

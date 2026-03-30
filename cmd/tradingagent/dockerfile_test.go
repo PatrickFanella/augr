@@ -24,7 +24,7 @@ func TestProductionDockerfileContainsRequiredStages(t *testing.T) {
 		"COPY --from=builder /out/tradingagent ./tradingagent",
 		"COPY --from=builder /etc/ssl/certs/ca-certificates.crt ./ca-certificates.crt",
 		"COPY --chown=app:app migrations ./migrations",
-		"RUN chmod 644 ./ca-certificates.crt",
+		"RUN chmod 444 ./ca-certificates.crt",
 		"ENV SSL_CERT_FILE=/app/ca-certificates.crt",
 		"EXPOSE 8080",
 		"ENTRYPOINT [\"./tradingagent\", \"serve\"]",
