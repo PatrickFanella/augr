@@ -119,6 +119,10 @@ To make blocked work visible at a glance:
 - Confirm changes are scoped to the issue
 - Ensure documentation is updated when behavior or process changes
 
+## Operational procedures
+
+Consult the runbooks in [`docs/runbooks/`](docs/runbooks/README.md) for incident response and routine operational tasks such as kill switch activation, circuit breaker investigation, database recovery, provider outages, and strategy investigations. When a code or process change alters one of those workflows, update the corresponding runbook in the same PR.
+
 ## Definition of Done
 
 A piece of work is **Done** when **all** of the following criteria are met.

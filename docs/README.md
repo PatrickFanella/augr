@@ -6,6 +6,7 @@
 | ------------------------------------------------- | --------------------------------------------------------------- |
 | [Design](design/index.md)                         | Production system architecture, agents, API, database, roadmap  |
 | [ADRs](adr/README.md)                             | Architecture Decision Records                                   |
+| [Runbooks](runbooks/README.md)                    | Operational procedures for incidents and routine interventions  |
 | [Reference](reference/index.md)                   | TradingAgents Python framework (the system we're evolving from) |
 | [Research](research/index.md)                     | Trading strategies, LLM patterns, risk management               |
 | [Paper Tracker](paper-tracker.md)                 | Index of 52 academic papers in `research/papers/`               |
@@ -61,6 +62,7 @@ The production system spec for our Go/TypeScript/PostgreSQL trading agent.
 ### Infrastructure
 
 - [Deployment & Operations](design/infrastructure/deployment-and-operations.md) — Docker, monitoring, CI/CD
+- [Runbooks](runbooks/README.md) — Incident response and operational procedures
 
 ---
 
