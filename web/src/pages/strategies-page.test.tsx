@@ -77,6 +77,19 @@ describe('StrategiesPage', () => {
     expect(await screen.findByTestId('strategies-empty')).toBeInTheDocument()
   })
 
+  it('shows empty state when API returns null data array', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: null, total: 0, limit: 100, offset: 0 }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<StrategiesPage />, { wrapper: Wrapper })
+
+    expect(await screen.findByTestId('strategies-empty')).toBeInTheDocument()
+  })
+
   it('shows error state when fetch fails', async () => {
     const fetchMock = vi.fn().mockRejectedValue(new Error('Network error'))
     vi.stubGlobal('fetch', fetchMock)

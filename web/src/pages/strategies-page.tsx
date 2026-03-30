@@ -73,11 +73,9 @@ export function StrategiesPage() {
         <CardHeader>
           <CardTitle>All strategies</CardTitle>
           <CardDescription>
-            {data?.total !== undefined
-              ? `${data.total} strategies`
-              : data?.data.length !== undefined
-                ? `${data.data.length} strategies`
-                : 'Loading…'}
+            {data != null
+              ? `${data.total ?? data.data?.length ?? 0} strategies`
+              : 'Loading…'}
           </CardDescription>
         </CardHeader>
         <CardContent>
