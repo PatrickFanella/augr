@@ -1,8 +1,21 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { PortfolioChart } from '@/components/portfolio/portfolio-chart'
+
+vi.mock('recharts', async () => {
+  const React = await import('react')
+  const actual = await vi.importActual<typeof import('recharts')>('recharts')
+
+  return {
+    ...actual,
+    ResponsiveContainer: ({ children }: { children: React.ReactNode }) =>
+      React.isValidElement(children)
+        ? React.cloneElement(children, { width: 400, height: 256 })
+        : children,
+  }
+})
 
 function Wrapper({ children }: { children: React.ReactNode }) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -14,6 +27,39 @@ afterEach(() => {
 })
 
 describe('PortfolioChart', () => {
+  it('renders the chart when closed positions are returned', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        data: [
+          {
+            id: 'pos-1',
+            ticker: 'AAPL',
+            side: 'long',
+            quantity: 10,
+            avg_entry: 150.0,
+            realized_pnl: 50,
+            opened_at: '2025-01-15T10:00:00Z',
+            closed_at: '2025-01-16T10:00:00Z',
+          },
+        ],
+        total: 1,
+        limit: 100,
+        offset: 0,
+      }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<PortfolioChart />, { wrapper: Wrapper })
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('portfolio-chart-empty')).not.toBeInTheDocument()
+      const chartContainer = screen.getByTestId('portfolio-chart')
+      expect(chartContainer.querySelector('svg,canvas')).not.toBeNull()
+    })
+  })
+
   it('shows empty state when no closed positions', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
@@ -34,6 +80,19 @@ describe('PortfolioChart', () => {
         limit: 100,
         offset: 0,
       }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<PortfolioChart />, { wrapper: Wrapper })
+
+    expect(await screen.findByTestId('portfolio-chart-empty')).toBeInTheDocument()
+  })
+
+  it('shows empty state when the API returns null data', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: null, total: 0, limit: 100, offset: 0 }),
     })
     vi.stubGlobal('fetch', fetchMock)
 

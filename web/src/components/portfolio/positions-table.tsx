@@ -19,6 +19,7 @@ export function PositionsTable() {
     queryFn: () => apiClient.getOpenPositions({ limit: 50 }),
     refetchInterval: 15_000,
   })
+  const positions = data?.data ?? []
 
   if (selectedPosition) {
     return (
@@ -52,7 +53,7 @@ export function PositionsTable() {
           <p className="text-sm text-muted-foreground" data-testid="positions-table-error">
             Unable to load positions. Start the API server to see live data.
           </p>
-        ) : !data?.data.length ? (
+        ) : !positions.length ? (
           <div className="flex flex-col items-center gap-2 py-8 text-center" data-testid="positions-table-empty">
             <BarChart3 className="size-8 text-muted-foreground" />
             <p className="text-sm text-muted-foreground">No open positions</p>
@@ -73,7 +74,7 @@ export function PositionsTable() {
                 </tr>
               </thead>
               <tbody>
-                {data.data.map((position) => (
+                {positions.map((position) => (
                   <tr
                     key={position.id}
                     className="border-b last:border-0 transition-colors hover:bg-secondary/40 cursor-pointer"

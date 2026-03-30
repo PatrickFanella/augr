@@ -12,6 +12,7 @@ export function TradeHistory() {
     queryFn: () => apiClient.listTrades({ limit: 50 }),
     refetchInterval: 30_000,
   })
+  const trades = data?.data ?? []
 
   return (
     <Card data-testid="trade-history">
@@ -35,7 +36,7 @@ export function TradeHistory() {
           <p className="text-sm text-muted-foreground" data-testid="trade-history-error">
             Unable to load trades. Start the API server to see live data.
           </p>
-        ) : !data?.data.length ? (
+        ) : !trades.length ? (
           <div className="flex flex-col items-center gap-2 py-8 text-center" data-testid="trade-history-empty">
             <Receipt className="size-8 text-muted-foreground" />
             <p className="text-sm text-muted-foreground">No trades yet</p>
@@ -55,7 +56,7 @@ export function TradeHistory() {
                 </tr>
               </thead>
               <tbody>
-                {data.data.map((trade) => (
+                {trades.map((trade) => (
                   <tr
                     key={trade.id}
                     className="border-b last:border-0 transition-colors hover:bg-secondary/40"
