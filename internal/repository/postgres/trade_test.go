@@ -18,10 +18,10 @@ func TestBuildTradeScopedListQuery_AllFilters(t *testing.T) {
 	executedBefore := time.Date(2026, 3, 21, 12, 0, 0, 0, time.UTC)
 
 	query, args := buildTradeScopedListQuery("order_id", orderID, repository.TradeFilter{
-		Ticker:         "AAPL",
-		Side:           domain.OrderSideBuy,
-		ExecutedAfter:  &executedAfter,
-		ExecutedBefore: &executedBefore,
+		Ticker:    stringPtr("AAPL"),
+		Side:      orderSidePtr(domain.OrderSideBuy),
+		StartDate: &executedAfter,
+		EndDate:   &executedBefore,
 	}, 20, 40)
 
 	if len(args) != 7 {
@@ -38,7 +38,32 @@ func TestBuildTradeScopedListQuery_AllFilters(t *testing.T) {
 	assertContains(t, query, "ORDER BY executed_at DESC, created_at DESC, id DESC")
 }
 
-func TestTradeRepoIntegration_CreateGetByOrderAndPosition(t *testing.T) {
+func TestBuildTradeListQuery_EmptyFilter(t *testing.T) {
+	query, args := buildTradeListQuery(repository.TradeFilter{}, 25, 10)
+
+	if len(args) != 2 {
+		t.Fatalf("expected 2 args, got %d: %v", len(args), args)
+	}
+
+	assertContains(t, query, "FROM trades")
+	assertNotContains(t, query, " WHERE ")
+	assertContains(t, query, "ORDER BY executed_at DESC, created_at DESC, id DESC")
+	assertContains(t, query, "LIMIT $1 OFFSET $2")
+}
+
+func TestBuildTradeScopedListQuery_UnsupportedScopePanics(t *testing.T) {
+	t.Parallel()
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("expected panic for unsupported scope column")
+		}
+	}()
+
+	buildTradeScopedListQuery("unsupported", uuid.New(), repository.TradeFilter{}, 10, 0)
+}
+
+func TestTradeRepoIntegration_CreateListGetByOrderAndPosition(t *testing.T) {
 	t.Helper()
 
 	ctx := context.Background()
@@ -97,8 +122,8 @@ func TestTradeRepoIntegration_CreateGetByOrderAndPosition(t *testing.T) {
 	}
 
 	byOrder, err := tradeRepo.GetByOrder(ctx, orderID, repository.TradeFilter{
-		Ticker: "AAPL",
-		Side:   domain.OrderSideBuy,
+		Ticker: stringPtr("AAPL"),
+		Side:   orderSidePtr(domain.OrderSideBuy),
 	}, 10, 0)
 	if err != nil {
 		t.Fatalf("GetByOrder() error = %v", err)
@@ -111,7 +136,7 @@ func TestTradeRepoIntegration_CreateGetByOrderAndPosition(t *testing.T) {
 	}
 
 	byPosition, err := tradeRepo.GetByPosition(ctx, positionID, repository.TradeFilter{
-		ExecutedAfter: timePtr(baseTime.Add(1 * time.Minute)),
+		StartDate: timePtr(baseTime.Add(1 * time.Minute)),
 	}, 10, 0)
 	if err != nil {
 		t.Fatalf("GetByPosition() error = %v", err)
@@ -129,6 +154,56 @@ func TestTradeRepoIntegration_CreateGetByOrderAndPosition(t *testing.T) {
 	}
 	if len(page) != 1 {
 		t.Fatalf("expected 1 trade on paged result, got %d", len(page))
+	}
+
+	allTrades, err := tradeRepo.List(ctx, repository.TradeFilter{}, 10, 0)
+	if err != nil {
+		t.Fatalf("List() all error = %v", err)
+	}
+	if len(allTrades) != 3 {
+		t.Fatalf("expected 3 trades from List(), got %d", len(allTrades))
+	}
+	if allTrades[0].ID != tradeC.ID || allTrades[1].ID != tradeB.ID || allTrades[2].ID != tradeA.ID {
+		t.Fatalf("expected trades ordered by executed_at desc, got IDs %s, %s, %s", allTrades[0].ID, allTrades[1].ID, allTrades[2].ID)
+	}
+
+	byTicker, err := tradeRepo.List(ctx, repository.TradeFilter{
+		Ticker: stringPtr("MSFT"),
+	}, 10, 0)
+	if err != nil {
+		t.Fatalf("List() by ticker error = %v", err)
+	}
+	if len(byTicker) != 1 || byTicker[0].ID != tradeC.ID {
+		t.Fatalf("expected only tradeC from ticker filter, got %+v", byTicker)
+	}
+
+	byDateRange, err := tradeRepo.List(ctx, repository.TradeFilter{
+		StartDate: timePtr(baseTime.Add(4 * time.Minute)),
+		EndDate:   timePtr(baseTime.Add(6 * time.Minute)),
+	}, 10, 0)
+	if err != nil {
+		t.Fatalf("List() by date range error = %v", err)
+	}
+	if len(byDateRange) != 1 || byDateRange[0].ID != tradeB.ID {
+		t.Fatalf("expected only tradeB from date range, got %+v", byDateRange)
+	}
+
+	pagedTrades, err := tradeRepo.List(ctx, repository.TradeFilter{}, 1, 1)
+	if err != nil {
+		t.Fatalf("List() pagination error = %v", err)
+	}
+	if len(pagedTrades) != 1 || pagedTrades[0].ID != tradeB.ID {
+		t.Fatalf("expected only tradeB from pagination, got %+v", pagedTrades)
+	}
+
+	noTrades, err := tradeRepo.List(ctx, repository.TradeFilter{
+		Ticker: stringPtr("NVDA"),
+	}, 10, 0)
+	if err != nil {
+		t.Fatalf("List() empty result error = %v", err)
+	}
+	if len(noTrades) != 0 {
+		t.Fatalf("expected empty result set, got %d trades", len(noTrades))
 	}
 }
 
@@ -170,4 +245,12 @@ func createTestPosition(t *testing.T, ctx context.Context, pool *pgxpool.Pool, s
 	}
 
 	return id
+}
+
+func stringPtr(v string) *string {
+	return &v
+}
+
+func orderSidePtr(v domain.OrderSide) *domain.OrderSide {
+	return &v
 }

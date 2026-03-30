@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -408,49 +409,62 @@ func (s *Server) handleListTrades(w http.ResponseWriter, r *http.Request) {
 	limit, offset := parsePagination(r)
 	q := r.URL.Query()
 
-	filter := repository.TradeFilter{
-		Ticker: q.Get("ticker"),
-		Side:   domain.OrderSide(q.Get("side")),
-	}
+	filter := repository.TradeFilter{}
 
-	// TradeRepository doesn't have a general List; use GetByOrder with empty ID
-	// which won't match anything. Instead we return trades by checking for an
-	// order_id query param, or return an empty list.
 	orderIDStr := q.Get("order_id")
-	positionIDStr := q.Get("position_id")
-
 	if orderIDStr != "" {
 		orderID, err := uuid.Parse(orderIDStr)
 		if err != nil {
 			respondError(w, http.StatusBadRequest, "invalid order_id", ErrCodeBadRequest)
 			return
 		}
-		trades, err := s.trades.GetByOrder(r.Context(), orderID, filter, limit, offset)
-		if err != nil {
-			respondError(w, http.StatusInternalServerError, "failed to list trades", ErrCodeInternal)
-			return
-		}
-		respondList(w, trades, limit, offset)
-		return
+		filter.OrderID = &orderID
 	}
 
+	positionIDStr := q.Get("position_id")
 	if positionIDStr != "" {
 		positionID, err := uuid.Parse(positionIDStr)
 		if err != nil {
 			respondError(w, http.StatusBadRequest, "invalid position_id", ErrCodeBadRequest)
 			return
 		}
-		trades, err := s.trades.GetByPosition(r.Context(), positionID, filter, limit, offset)
-		if err != nil {
-			respondError(w, http.StatusInternalServerError, "failed to list trades", ErrCodeInternal)
-			return
-		}
-		respondList(w, trades, limit, offset)
-		return
+		filter.PositionID = &positionID
 	}
 
-	// No filter: return empty list as the interface has no general List method.
-	respondList(w, []domain.Trade{}, limit, offset)
+	if ticker := q.Get("ticker"); ticker != "" {
+		filter.Ticker = &ticker
+	}
+	if side := q.Get("side"); side != "" {
+		orderSide := domain.OrderSide(side)
+		if !orderSide.IsValid() {
+			respondError(w, http.StatusBadRequest, "invalid side", ErrCodeBadRequest)
+			return
+		}
+		filter.Side = &orderSide
+	}
+	if startDateStr := q.Get("start_date"); startDateStr != "" {
+		startDate, err := time.Parse(time.RFC3339, startDateStr)
+		if err != nil {
+			respondError(w, http.StatusBadRequest, "invalid start_date", ErrCodeBadRequest)
+			return
+		}
+		filter.StartDate = &startDate
+	}
+	if endDateStr := q.Get("end_date"); endDateStr != "" {
+		endDate, err := time.Parse(time.RFC3339, endDateStr)
+		if err != nil {
+			respondError(w, http.StatusBadRequest, "invalid end_date", ErrCodeBadRequest)
+			return
+		}
+		filter.EndDate = &endDate
+	}
+
+	trades, err := s.trades.List(r.Context(), filter, limit, offset)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to list trades", ErrCodeInternal)
+		return
+	}
+	respondList(w, trades, limit, offset)
 }
 
 // --- Memory handlers ---

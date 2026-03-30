@@ -463,6 +463,17 @@ func TestListTrades(t *testing.T) {
 	}
 }
 
+func TestListTradesInvalidSide(t *testing.T) {
+	t.Parallel()
+	srv := newTestServer(t)
+
+	rr := doRequest(t, srv, http.MethodGet, "/api/v1/trades?side=invalid", nil)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusBadRequest)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Memories
 // ---------------------------------------------------------------------------
@@ -969,6 +980,9 @@ func (stubPositionRepo) GetByStrategy(context.Context, uuid.UUID, repository.Pos
 type stubTradeRepo struct{}
 
 func (stubTradeRepo) Create(context.Context, *domain.Trade) error { return nil }
+func (stubTradeRepo) List(context.Context, repository.TradeFilter, int, int) ([]domain.Trade, error) {
+	return nil, nil
+}
 func (stubTradeRepo) GetByOrder(context.Context, uuid.UUID, repository.TradeFilter, int, int) ([]domain.Trade, error) {
 	return nil, nil
 }

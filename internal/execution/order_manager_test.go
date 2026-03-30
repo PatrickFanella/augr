@@ -320,6 +320,7 @@ type mockTradeRepo struct {
 	trades []*domain.Trade
 
 	createFn        func(ctx context.Context, trade *domain.Trade) error
+	listFn          func(ctx context.Context, filter repository.TradeFilter, limit, offset int) ([]domain.Trade, error)
 	getByOrderFn    func(ctx context.Context, orderID uuid.UUID, filter repository.TradeFilter, limit, offset int) ([]domain.Trade, error)
 	getByPositionFn func(ctx context.Context, positionID uuid.UUID, filter repository.TradeFilter, limit, offset int) ([]domain.Trade, error)
 }
@@ -336,6 +337,14 @@ func (r *mockTradeRepo) Create(ctx context.Context, trade *domain.Trade) error {
 	r.trades = append(r.trades, &cp)
 
 	return nil
+}
+
+func (r *mockTradeRepo) List(ctx context.Context, filter repository.TradeFilter, limit, offset int) ([]domain.Trade, error) {
+	if r.listFn != nil {
+		return r.listFn(ctx, filter, limit, offset)
+	}
+
+	return nil, nil
 }
 
 func (r *mockTradeRepo) GetByOrder(ctx context.Context, orderID uuid.UUID, filter repository.TradeFilter, limit, offset int) ([]domain.Trade, error) {

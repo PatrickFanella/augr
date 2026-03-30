@@ -84,10 +84,12 @@ type PositionFilter struct {
 
 // TradeFilter defines supported filters when retrieving trades.
 type TradeFilter struct {
-	Ticker         string
-	Side           domain.OrderSide
-	ExecutedAfter  *time.Time
-	ExecutedBefore *time.Time
+	OrderID    *uuid.UUID
+	PositionID *uuid.UUID
+	Ticker     *string
+	Side       *domain.OrderSide
+	StartDate  *time.Time
+	EndDate    *time.Time
 }
 
 // MemorySearchFilter defines supported filters when searching agent memories.
@@ -210,6 +212,7 @@ type PositionRepository interface {
 // TradeRepository provides access to executed trades.
 type TradeRepository interface {
 	Create(ctx context.Context, trade *domain.Trade) error
+	List(ctx context.Context, filter TradeFilter, limit, offset int) ([]domain.Trade, error)
 	GetByOrder(ctx context.Context, orderID uuid.UUID, filter TradeFilter, limit, offset int) ([]domain.Trade, error)
 	GetByPosition(ctx context.Context, positionID uuid.UUID, filter TradeFilter, limit, offset int) ([]domain.Trade, error)
 }
