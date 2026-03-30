@@ -19,7 +19,7 @@ func TestBuildTradeScopedListQuery_AllFilters(t *testing.T) {
 
 	query, args := buildTradeScopedListQuery("order_id", orderID, repository.TradeFilter{
 		Ticker:    stringPtr("AAPL"),
-		Side:      stringPtr(string(domain.OrderSideBuy)),
+		Side:      orderSidePtr(domain.OrderSideBuy),
 		StartDate: &executedAfter,
 		EndDate:   &executedBefore,
 	}, 20, 40)
@@ -49,6 +49,18 @@ func TestBuildTradeListQuery_EmptyFilter(t *testing.T) {
 	assertNotContains(t, query, " WHERE ")
 	assertContains(t, query, "ORDER BY executed_at DESC, created_at DESC, id DESC")
 	assertContains(t, query, "LIMIT $1 OFFSET $2")
+}
+
+func TestBuildTradeScopedListQuery_UnsupportedScopePanics(t *testing.T) {
+	t.Parallel()
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("expected panic for unsupported scope column")
+		}
+	}()
+
+	buildTradeScopedListQuery("unsupported", uuid.New(), repository.TradeFilter{}, 10, 0)
 }
 
 func TestTradeRepoIntegration_CreateListGetByOrderAndPosition(t *testing.T) {
@@ -111,7 +123,7 @@ func TestTradeRepoIntegration_CreateListGetByOrderAndPosition(t *testing.T) {
 
 	byOrder, err := tradeRepo.GetByOrder(ctx, orderID, repository.TradeFilter{
 		Ticker: stringPtr("AAPL"),
-		Side:   stringPtr(string(domain.OrderSideBuy)),
+		Side:   orderSidePtr(domain.OrderSideBuy),
 	}, 10, 0)
 	if err != nil {
 		t.Fatalf("GetByOrder() error = %v", err)
@@ -236,5 +248,9 @@ func createTestPosition(t *testing.T, ctx context.Context, pool *pgxpool.Pool, s
 }
 
 func stringPtr(v string) *string {
+	return &v
+}
+
+func orderSidePtr(v domain.OrderSide) *domain.OrderSide {
 	return &v
 }

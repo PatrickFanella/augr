@@ -435,7 +435,8 @@ func (s *Server) handleListTrades(w http.ResponseWriter, r *http.Request) {
 		filter.Ticker = &ticker
 	}
 	if side := q.Get("side"); side != "" {
-		filter.Side = &side
+		orderSide := domain.OrderSide(side)
+		filter.Side = &orderSide
 	}
 	if startDateStr := q.Get("start_date"); startDateStr != "" {
 		startDate, err := time.Parse(time.RFC3339, startDateStr)

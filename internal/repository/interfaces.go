@@ -87,7 +87,7 @@ type TradeFilter struct {
 	OrderID    *uuid.UUID
 	PositionID *uuid.UUID
 	Ticker     *string
-	Side       *string
+	Side       *domain.OrderSide
 	StartDate  *time.Time
 	EndDate    *time.Time
 }

@@ -60,15 +60,15 @@ func (r *TradeRepo) List(ctx context.Context, filter repository.TradeFilter, lim
 // GetByOrder returns trades for the given order with optional filtering and
 // pagination.
 func (r *TradeRepo) GetByOrder(ctx context.Context, orderID uuid.UUID, filter repository.TradeFilter, limit, offset int) ([]domain.Trade, error) {
-	filter.OrderID = &orderID
-	return r.List(ctx, filter, limit, offset)
+	query, args := buildTradeScopedListQuery("order_id", orderID, filter, limit, offset)
+	return r.list(ctx, query, args, "get trades by order")
 }
 
 // GetByPosition returns trades for the given position with optional filtering
 // and pagination.
 func (r *TradeRepo) GetByPosition(ctx context.Context, positionID uuid.UUID, filter repository.TradeFilter, limit, offset int) ([]domain.Trade, error) {
-	filter.PositionID = &positionID
-	return r.List(ctx, filter, limit, offset)
+	query, args := buildTradeScopedListQuery("position_id", positionID, filter, limit, offset)
+	return r.list(ctx, query, args, "get trades by position")
 }
 
 const tradeSelectSQL = `SELECT id, order_id, position_id, ticker, side,
@@ -188,6 +188,8 @@ func buildTradeScopedListQuery(scopeColumn string, scopeValue uuid.UUID, filter 
 		filter.OrderID = &scopeValue
 	case "position_id":
 		filter.PositionID = &scopeValue
+	default:
+		panic(fmt.Sprintf("unsupported scope column %q in buildTradeScopedListQuery", scopeColumn))
 	}
 
 	return buildTradeListQuery(filter, limit, offset)
