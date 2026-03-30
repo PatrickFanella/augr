@@ -67,8 +67,10 @@ curl http://localhost:8080/healthz
 
 Migrations are managed with [golang-migrate](https://github.com/golang-migrate/migrate). With Docker Compose running:
 
+The Taskfile default `DB_URL` uses `tradingagent:tradingagent` credentials, but Docker Compose defaults the PostgreSQL user/password to `postgres`/`postgres`. Override `DB_URL` to match:
+
 ```bash
-task migrate:up
+DB_URL="postgres://postgres:postgres@localhost:5432/tradingagent?sslmode=disable" task migrate:up
 ```
 
 ### 1.5 Useful Docker Compose Commands
@@ -82,8 +84,8 @@ task dev:logs               # shortcut
 docker compose restart app
 task dev:restart            # shortcut
 
-# Open a psql shell
-task dev:psql
+# Open a psql shell (default Compose user is postgres)
+docker compose exec postgres psql -U postgres -d tradingagent
 
 # Stop services
 docker compose down
@@ -153,8 +155,10 @@ REDIS_URL=redis://localhost:6379/0
 
 ### 2.6 Run Migrations
 
+Ensure `DB_URL` matches your database credentials (it defaults to `tradingagent:tradingagent` in the Taskfile):
+
 ```bash
-task migrate:up
+DB_URL="postgres://postgres:postgres@localhost:5432/tradingagent?sslmode=disable" task migrate:up
 ```
 
 To create a new migration:
@@ -176,10 +180,10 @@ task build                # → ./bin/tradingagent
 ./bin/tradingagent serve  # Start the API server
 ```
 
-Or build and run in one step:
+Or, if you've already built the binary, you can start the server directly:
 
 ```bash
-task run
+./bin/tradingagent serve
 ```
 
 ---
@@ -258,7 +262,7 @@ npm install
 npm run dev               # Starts Vite dev server
 ```
 
-The Vite dev server proxies API requests to `http://localhost:8080`.
+During development, the backend API is available at `http://localhost:8080`. Frontend code can call this URL directly, or you can configure a dev proxy in `web/vite.config.ts` (for example, under `server.proxy`) if you prefer to use relative API paths.
 
 ---
 

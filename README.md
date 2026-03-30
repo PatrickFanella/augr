@@ -97,11 +97,11 @@ task dev
 docker compose logs -f        # all services
 task dev:logs                  # shortcut
 
-# Run database migrations
-task migrate:up
+# Run database migrations (set DB_URL to match Docker Compose credentials)
+DB_URL="postgres://postgres:postgres@localhost:5432/tradingagent?sslmode=disable" task migrate:up
 
-# Open a PostgreSQL shell
-task dev:psql
+# Open a PostgreSQL shell (default Compose user is postgres)
+docker compose exec postgres psql -U postgres -d tradingagent
 
 # Stop services
 docker compose down
@@ -163,11 +163,13 @@ See [`.env.example`](.env.example) for the full list of variables including all 
 
 ## API Overview
 
-The REST API is served under `/api/v1` and requires JWT authentication. A WebSocket endpoint provides real-time event streaming.
+The REST API is served under `/api/v1` and requires JWT authentication. A WebSocket endpoint provides real-time event streaming. The table below lists the primary endpoints; additional monitoring routes (`GET /health`, `GET /metrics`) are also available.
 
 | Method   | Endpoint                            | Description                     |
 |----------|-------------------------------------|---------------------------------|
 | `GET`    | `/healthz`                          | Health check                    |
+| `GET`    | `/health`                           | Liveness probe (monitoring)     |
+| `GET`    | `/metrics`                          | Metrics endpoint (monitoring)   |
 | `GET`    | `/ws`                               | WebSocket event stream          |
 | **Strategies** |                               |                                 |
 | `GET`    | `/api/v1/strategies`                | List strategies                 |
@@ -204,13 +206,13 @@ The REST API is served under `/api/v1` and requires JWT authentication. A WebSoc
 Connect to `/ws` and send JSON commands:
 
 ```jsonc
-{ "command": "subscribe",   "topic": "pipeline.AAPL" }
-{ "command": "unsubscribe", "topic": "pipeline.AAPL" }
-{ "command": "subscribe_all" }
-{ "command": "unsubscribe_all" }
+{ "action": "subscribe",   "strategy_ids": ["strategy-uuid-1"], "run_ids": ["run-uuid-1"] }
+{ "action": "unsubscribe", "strategy_ids": ["strategy-uuid-1"], "run_ids": ["run-uuid-1"] }
+{ "action": "subscribe_all" }
+{ "action": "unsubscribe_all" }
 ```
 
-The server streams `WSMessage` envelopes with topic, event type, and payload.
+The server streams `WSMessage` envelopes with the following fields: `type`, `strategy_id`, `run_id`, `data`, and `timestamp`.
 
 ## CLI
 
@@ -223,6 +225,7 @@ tradingagent strategies   # Manage strategies
 tradingagent portfolio    # View portfolio & positions
 tradingagent risk         # Inspect risk engine status
 tradingagent memories     # Browse agent memories
+tradingagent dashboard    # Interactive terminal dashboard (Bubble Tea TUI)
 ```
 
 Run `tradingagent --help` for full usage details.
