@@ -20,9 +20,11 @@ export function PortfolioChart() {
   })
 
   const chartData = useMemo<EquityPoint[]>(() => {
-    if (!data?.data.length) return []
+    const positions = data?.data ?? []
 
-    const closedPositions = data.data
+    if (!positions.length) return []
+
+    const closedPositions = positions
       .filter((p) => p.closed_at)
       .sort((a, b) => new Date(a.closed_at!).getTime() - new Date(b.closed_at!).getTime())
 

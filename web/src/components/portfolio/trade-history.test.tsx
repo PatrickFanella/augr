@@ -61,6 +61,19 @@ describe('TradeHistory', () => {
     expect(await screen.findByTestId('trade-history-empty')).toBeInTheDocument()
   })
 
+  it('shows empty state when the API returns null data', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: null, total: 0, limit: 50, offset: 0 }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<TradeHistory />, { wrapper: Wrapper })
+
+    expect(await screen.findByTestId('trade-history-empty')).toBeInTheDocument()
+  })
+
   it('shows error state when fetch fails', async () => {
     const fetchMock = vi.fn().mockRejectedValue(new Error('Network error'))
     vi.stubGlobal('fetch', fetchMock)
