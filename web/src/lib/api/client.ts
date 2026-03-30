@@ -46,6 +46,10 @@ interface RequestOptions extends Omit<RequestInit, 'body' | 'headers'> {
   query?: QueryParams
 }
 
+type NullableListResponse<T> = Omit<ListResponse<T>, 'data'> & {
+  data?: T[] | null
+}
+
 export class ApiClientError extends Error {
   readonly status: number
   readonly code?: string
@@ -76,7 +80,7 @@ export class ApiClient {
   }
 
   async listStrategies(params: StrategyListParams & PaginationParams = {}) {
-    return this.request<ListResponse<Strategy>>('/api/v1/strategies', { query: toQueryParams(params) })
+    return this.requestList<Strategy>('/api/v1/strategies', { query: toQueryParams(params) })
   }
 
   async getStrategy(id: UUID) {
@@ -100,7 +104,7 @@ export class ApiClient {
   }
 
   async listRuns(params: RunListParams & PaginationParams = {}) {
-    return this.request<ListResponse<PipelineRun>>('/api/v1/runs', { query: toQueryParams(params) })
+    return this.requestList<PipelineRun>('/api/v1/runs', { query: toQueryParams(params) })
   }
 
   async getRun(id: UUID) {
@@ -108,7 +112,7 @@ export class ApiClient {
   }
 
   async getRunDecisions(id: UUID, params: PaginationParams = {}) {
-    return this.request<ListResponse<AgentDecision>>(`/api/v1/runs/${id}/decisions`, {
+    return this.requestList<AgentDecision>(`/api/v1/runs/${id}/decisions`, {
       query: toQueryParams(params),
     })
   }
@@ -118,13 +122,13 @@ export class ApiClient {
   }
 
   async listPositions(params: PositionListParams & PaginationParams = {}) {
-    return this.request<ListResponse<Position>>('/api/v1/portfolio/positions', {
+    return this.requestList<Position>('/api/v1/portfolio/positions', {
       query: toQueryParams(params),
     })
   }
 
   async getOpenPositions(params: PaginationParams = {}) {
-    return this.request<ListResponse<Position>>('/api/v1/portfolio/positions/open', {
+    return this.requestList<Position>('/api/v1/portfolio/positions/open', {
       query: toQueryParams(params),
     })
   }
@@ -134,7 +138,7 @@ export class ApiClient {
   }
 
   async listOrders(params: OrderListParams & PaginationParams = {}) {
-    return this.request<ListResponse<Order>>('/api/v1/orders', { query: toQueryParams(params) })
+    return this.requestList<Order>('/api/v1/orders', { query: toQueryParams(params) })
   }
 
   async getOrder(id: UUID) {
@@ -142,17 +146,17 @@ export class ApiClient {
   }
 
   async listTrades(params: TradeListParams & PaginationParams = {}) {
-    return this.request<ListResponse<Trade>>('/api/v1/trades', { query: toQueryParams(params) })
+    return this.requestList<Trade>('/api/v1/trades', { query: toQueryParams(params) })
   }
 
   async listMemories(params: MemoryListParams & PaginationParams = {}) {
-    return this.request<ListResponse<AgentMemory>>('/api/v1/memories', {
+    return this.requestList<AgentMemory>('/api/v1/memories', {
       query: toQueryParams(params),
     })
   }
 
   async searchMemories(query: string, params: PaginationParams = {}) {
-    return this.request<ListResponse<AgentMemory>>('/api/v1/memories/search', {
+    return this.requestList<AgentMemory>('/api/v1/memories/search', {
       method: 'POST',
       body: { query },
       query: toQueryParams(params),
@@ -190,6 +194,10 @@ export class ApiClient {
 
     const response = await this.fetch(url, options)
     return (await response.json()) as T
+  }
+
+  private async requestList<T>(path: string, options: RequestOptions = {}) {
+    return normalizeListResponse(await this.request<NullableListResponse<T>>(path, options))
   }
 
   private async requestNoContent(path: string, options: RequestOptions = {}) {
@@ -246,6 +254,16 @@ export class ApiClient {
 }
 
 export const apiClient = new ApiClient()
+
+function normalizeListResponse<T>(response: NullableListResponse<T>): ListResponse<T> {
+  const { data, ...rest } = response
+
+  if (data == null) {
+    return { ...rest, data: [] }
+  }
+
+  return { ...rest, data }
+}
 
 function toQueryParams(params: object): QueryParams {
   const queryParams: QueryParams = {}
