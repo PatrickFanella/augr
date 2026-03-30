@@ -26,6 +26,23 @@ func TestLoadParsesEnvironmentValues(t *testing.T) {
 	t.Setenv("ALPHA_VANTAGE_RATE_LIMIT_PER_MINUTE", "7")
 	t.Setenv("FINNHUB_RATE_LIMIT_PER_MINUTE", "20")
 	t.Setenv("ALPACA_PAPER_MODE", "false")
+	t.Setenv("NOTIFY_TELEGRAM_BOT_TOKEN", "telegram-token")
+	t.Setenv("NOTIFY_TELEGRAM_CHAT_ID", "12345")
+	t.Setenv("NOTIFY_SMTP_HOST", "smtp.example.com")
+	t.Setenv("NOTIFY_SMTP_PORT", "2525")
+	t.Setenv("NOTIFY_SMTP_USERNAME", "smtp-user")
+	t.Setenv("NOTIFY_SMTP_PASSWORD", "smtp-pass")
+	t.Setenv("NOTIFY_EMAIL_FROM", "alerts@example.com")
+	t.Setenv("NOTIFY_EMAIL_TO", "ops@example.com,dev@example.com")
+	t.Setenv("NOTIFY_WEBHOOK_URL", "https://hooks.example.com/alerts")
+	t.Setenv("NOTIFY_WEBHOOK_SECRET", "webhook-secret")
+	t.Setenv("NOTIFY_PAGERDUTY_WEBHOOK_URL", "https://events.pagerduty.com/v2/enqueue")
+	t.Setenv("ALERT_PIPELINE_FAILURE_THRESHOLD", "4")
+	t.Setenv("ALERT_PIPELINE_FAILURE_CHANNELS", "telegram,email")
+	t.Setenv("ALERT_LLM_PROVIDER_DOWN_ERROR_RATE_THRESHOLD", "0.75")
+	t.Setenv("ALERT_LLM_PROVIDER_DOWN_WINDOW", "10m")
+	t.Setenv("ALERT_HIGH_LATENCY_THRESHOLD", "2m30s")
+	t.Setenv("ALERT_DB_CONNECTION_CHANNELS", "email,pagerduty")
 	t.Setenv("ENABLE_SCHEDULER", "true")
 	t.Setenv("ENABLE_REDIS_CACHE", "false")
 
@@ -84,6 +101,34 @@ func TestLoadParsesEnvironmentValues(t *testing.T) {
 
 	if cfg.Brokers.Alpaca.PaperMode {
 		t.Fatal("cfg.Brokers.Alpaca.PaperMode = true, want false")
+	}
+
+	if cfg.Notifications.Telegram.BotToken != "telegram-token" {
+		t.Fatalf("cfg.Notifications.Telegram.BotToken = %q, want %q", cfg.Notifications.Telegram.BotToken, "telegram-token")
+	}
+
+	if cfg.Notifications.Email.SMTPPort != 2525 {
+		t.Fatalf("cfg.Notifications.Email.SMTPPort = %d, want %d", cfg.Notifications.Email.SMTPPort, 2525)
+	}
+
+	if len(cfg.Notifications.Email.To) != 2 {
+		t.Fatalf("len(cfg.Notifications.Email.To) = %d, want %d", len(cfg.Notifications.Email.To), 2)
+	}
+
+	if cfg.Notifications.Alerts.PipelineFailure.Threshold != 4 {
+		t.Fatalf("cfg.Notifications.Alerts.PipelineFailure.Threshold = %d, want %d", cfg.Notifications.Alerts.PipelineFailure.Threshold, 4)
+	}
+
+	if cfg.Notifications.Alerts.LLMProviderDown.ErrorRateThreshold != 0.75 {
+		t.Fatalf("cfg.Notifications.Alerts.LLMProviderDown.ErrorRateThreshold = %f, want %f", cfg.Notifications.Alerts.LLMProviderDown.ErrorRateThreshold, 0.75)
+	}
+
+	if cfg.Notifications.Alerts.LLMProviderDown.Window != 10*time.Minute {
+		t.Fatalf("cfg.Notifications.Alerts.LLMProviderDown.Window = %s, want %s", cfg.Notifications.Alerts.LLMProviderDown.Window, 10*time.Minute)
+	}
+
+	if cfg.Notifications.Alerts.HighLatency.Threshold != 150*time.Second {
+		t.Fatalf("cfg.Notifications.Alerts.HighLatency.Threshold = %s, want %s", cfg.Notifications.Alerts.HighLatency.Threshold, 150*time.Second)
 	}
 
 	if !cfg.Features.EnableScheduler {
@@ -308,6 +353,32 @@ func validConfig() Config {
 			CircuitBreakerThreshold: 0.05,
 			CircuitBreakerCooldown:  15 * time.Minute,
 		},
+		Notifications: NotificationConfig{
+			Alerts: AlertRulesConfig{
+				PipelineFailure: PipelineFailureAlertRuleConfig{
+					Threshold: 3,
+					Channels:  []string{"telegram", "email"},
+				},
+				CircuitBreaker: ImmediateAlertRuleConfig{
+					Channels: []string{"telegram"},
+				},
+				LLMProviderDown: LLMProviderDownAlertRuleConfig{
+					ErrorRateThreshold: 0.5,
+					Window:             5 * time.Minute,
+					Channels:           []string{"telegram"},
+				},
+				HighLatency: HighLatencyAlertRuleConfig{
+					Threshold: 120 * time.Second,
+					Channels:  []string{"email"},
+				},
+				KillSwitch: ImmediateAlertRuleConfig{
+					Channels: []string{"telegram"},
+				},
+				DBConnection: ImmediateAlertRuleConfig{
+					Channels: []string{"email", "pagerduty"},
+				},
+			},
+		},
 	}
 }
 
@@ -358,6 +429,32 @@ func TestValidateEmptyDeepThinkModelAllowed(t *testing.T) {
 	}
 }
 
+func TestValidateRequiresTelegramChatIDWhenTelegramConfigured(t *testing.T) {
+	cfg := validConfig()
+	cfg.Notifications.Telegram.BotToken = "telegram-token"
+
+	err := Validate(cfg)
+	if err == nil {
+		t.Fatal("Validate() error = nil, want error")
+	}
+	if !strings.Contains(err.Error(), "NOTIFY_TELEGRAM_CHAT_ID is required") {
+		t.Fatalf("Validate() error = %q, want Telegram chat id message", err)
+	}
+}
+
+func TestValidateRejectsUnsupportedNotificationChannel(t *testing.T) {
+	cfg := validConfig()
+	cfg.Notifications.Alerts.PipelineFailure.Channels = []string{"sms"}
+
+	err := Validate(cfg)
+	if err == nil {
+		t.Fatal("Validate() error = nil, want error")
+	}
+	if !strings.Contains(err.Error(), "ALERT_PIPELINE_FAILURE_CHANNELS contains unsupported channel") {
+		t.Fatalf("Validate() error = %q, want unsupported channel message", err)
+	}
+}
+
 func clearConfigEnv(t *testing.T) {
 	t.Helper()
 
@@ -405,6 +502,28 @@ func clearConfigEnv(t *testing.T) {
 		"RISK_MAX_OPEN_POSITIONS",
 		"RISK_CIRCUIT_BREAKER_THRESHOLD",
 		"RISK_CIRCUIT_BREAKER_COOLDOWN",
+		"NOTIFY_TELEGRAM_BOT_TOKEN",
+		"NOTIFY_TELEGRAM_CHAT_ID",
+		"NOTIFY_SMTP_HOST",
+		"NOTIFY_SMTP_PORT",
+		"NOTIFY_SMTP_USERNAME",
+		"NOTIFY_SMTP_PASSWORD",
+		"NOTIFY_EMAIL_FROM",
+		"NOTIFY_EMAIL_TO",
+		"NOTIFY_WEBHOOK_URL",
+		"NOTIFY_WEBHOOK_SECRET",
+		"NOTIFY_PAGERDUTY_WEBHOOK_URL",
+		"NOTIFY_PAGERDUTY_WEBHOOK_SECRET",
+		"ALERT_PIPELINE_FAILURE_THRESHOLD",
+		"ALERT_PIPELINE_FAILURE_CHANNELS",
+		"ALERT_CIRCUIT_BREAKER_CHANNELS",
+		"ALERT_LLM_PROVIDER_DOWN_ERROR_RATE_THRESHOLD",
+		"ALERT_LLM_PROVIDER_DOWN_WINDOW",
+		"ALERT_LLM_PROVIDER_DOWN_CHANNELS",
+		"ALERT_HIGH_LATENCY_THRESHOLD",
+		"ALERT_HIGH_LATENCY_CHANNELS",
+		"ALERT_KILL_SWITCH_CHANNELS",
+		"ALERT_DB_CONNECTION_CHANNELS",
 		"ENABLE_SCHEDULER",
 		"ENABLE_REDIS_CACHE",
 		"ENABLE_AGENT_MEMORY",
