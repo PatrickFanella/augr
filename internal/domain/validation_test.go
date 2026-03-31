@@ -120,7 +120,7 @@ func TestAgentDecisionJSONOmitsPromptText(t *testing.T) {
 	if string(payload) == "" {
 		t.Fatal("expected non-empty JSON payload")
 	}
-	if json.Valid(payload) == false {
+	if !json.Valid(payload) {
 		t.Fatalf("expected valid JSON, got %q", string(payload))
 	}
 
