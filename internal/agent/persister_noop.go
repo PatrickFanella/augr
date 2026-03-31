@@ -18,6 +18,10 @@ func (NoopPersister) RecordRunComplete(context.Context, uuid.UUID, time.Time, do
 	return nil
 }
 
+func (NoopPersister) SupportsSnapshots() bool { return false }
+
+func (NoopPersister) PersistSnapshot(context.Context, *domain.PipelineRunSnapshot) error { return nil }
+
 func (NoopPersister) PersistDecision(context.Context, uuid.UUID, Node, *int, string, *DecisionLLMResponse) error {
 	return nil
 }

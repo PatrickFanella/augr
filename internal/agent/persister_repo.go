@@ -17,6 +17,7 @@ const statusUpdateTimeout = 10 * time.Second
 // RepoPersister implements DecisionPersister using repository interfaces.
 type RepoPersister struct {
 	pipelineRunRepo   repository.PipelineRunRepository
+	snapshotRepo      repository.PipelineRunSnapshotRepository
 	agentDecisionRepo repository.AgentDecisionRepository
 	agentEventRepo    repository.AgentEventRepository
 	logger            *slog.Logger
@@ -25,6 +26,7 @@ type RepoPersister struct {
 // NewRepoPersister creates a RepoPersister with the given repositories.
 func NewRepoPersister(
 	pipelineRunRepo repository.PipelineRunRepository,
+	snapshotRepo repository.PipelineRunSnapshotRepository,
 	agentDecisionRepo repository.AgentDecisionRepository,
 	agentEventRepo repository.AgentEventRepository,
 	logger *slog.Logger,
@@ -34,6 +36,7 @@ func NewRepoPersister(
 	}
 	return &RepoPersister{
 		pipelineRunRepo:   pipelineRunRepo,
+		snapshotRepo:      snapshotRepo,
 		agentDecisionRepo: agentDecisionRepo,
 		agentEventRepo:    agentEventRepo,
 		logger:            logger,
@@ -70,6 +73,21 @@ func (p *RepoPersister) RecordRunComplete(_ context.Context, runID uuid.UUID, tr
 			slog.Any("error", err),
 		)
 	}
+	return nil
+}
+
+func (p *RepoPersister) SupportsSnapshots() bool {
+	return p.snapshotRepo != nil
+}
+
+func (p *RepoPersister) PersistSnapshot(ctx context.Context, snapshot *domain.PipelineRunSnapshot) error {
+	if p.snapshotRepo == nil {
+		return nil
+	}
+	if err := p.snapshotRepo.Create(ctx, snapshot); err != nil {
+		return fmt.Errorf("agent/pipeline: persist snapshot %s: %w", snapshot.DataType, err)
+	}
+
 	return nil
 }
 
