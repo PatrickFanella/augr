@@ -35,11 +35,28 @@ func TestPipelineRunSnapshotsUpMigrationDefinesExpectedSchema(t *testing.T) {
 	}
 }
 
+func TestPipelineRunSnapshotsOrderingIndexUpMigrationDefinesExpectedSchema(t *testing.T) {
+	upSQL := normalizeSQL(t, readMigrationFile(t, "000011_pipeline_run_snapshots_ordering_index.up.sql"))
+
+	expectedFragment := "create index idx_pipeline_run_snapshots_pipeline_run_id_created_at_id on pipeline_run_snapshots (pipeline_run_id, created_at, id)"
+	if !strings.Contains(upSQL, expectedFragment) {
+		t.Fatalf("expected up migration to contain %q, got:\n%s", expectedFragment, upSQL)
+	}
+}
+
 func TestPipelineRunSnapshotsDownMigrationDropsPipelineRunSnapshotsTable(t *testing.T) {
 	downSQL := normalizeSQL(t, readMigrationFile(t, "000010_pipeline_run_snapshots.down.sql"))
 
 	if !strings.Contains(downSQL, "drop table if exists pipeline_run_snapshots cascade;") {
 		t.Fatalf("expected down migration to drop pipeline_run_snapshots table, got:\n%s", downSQL)
+	}
+}
+
+func TestPipelineRunSnapshotsOrderingIndexDownMigrationDropsCompositeIndex(t *testing.T) {
+	downSQL := normalizeSQL(t, readMigrationFile(t, "000011_pipeline_run_snapshots_ordering_index.down.sql"))
+
+	if !strings.Contains(downSQL, "drop index if exists idx_pipeline_run_snapshots_pipeline_run_id_created_at_id;") {
+		t.Fatalf("expected down migration to drop composite pipeline_run_snapshots index, got:\n%s", downSQL)
 	}
 }
 
@@ -92,7 +109,7 @@ func TestPipelineRunSnapshotsMigrationAppliesAgainstExistingSchema(t *testing.T)
 	}
 	t.Cleanup(pool.Close)
 
-	for _, filename := range sortedUpMigrationsThrough(t, "000010_pipeline_run_snapshots.up.sql") {
+	for _, filename := range sortedUpMigrationsThrough(t, "000011_pipeline_run_snapshots_ordering_index.up.sql") {
 		if _, err := pool.Exec(ctx, readMigrationFile(t, filename)); err != nil {
 			t.Fatalf("failed to apply %s: %v", filename, err)
 		}
@@ -124,6 +141,7 @@ func TestPipelineRunSnapshotsMigrationAppliesAgainstExistingSchema(t *testing.T)
 	})
 
 	assertIndexExists(t, ctx, pool, "pipeline_run_snapshots", "idx_pipeline_run_snapshots_pipeline_run_id")
+	assertIndexExists(t, ctx, pool, "pipeline_run_snapshots", "idx_pipeline_run_snapshots_pipeline_run_id_created_at_id")
 
 	strategyID := uuid.New()
 	pipelineRunID := uuid.New()
@@ -174,6 +192,10 @@ VALUES ($1, $2, $3::jsonb)
 		!strings.Contains(err.Error(), "check constraint") &&
 		(!errors.As(err, &dataTypeErr) || dataTypeErr.Code != "23514") {
 		t.Fatalf("expected invalid data_type insert to fail with check constraint, got: %v", err)
+	}
+
+	if _, err := pool.Exec(ctx, readMigrationFile(t, "000011_pipeline_run_snapshots_ordering_index.down.sql")); err != nil {
+		t.Fatalf("failed to apply 000011_pipeline_run_snapshots_ordering_index.down.sql: %v", err)
 	}
 
 	if _, err := pool.Exec(ctx, readMigrationFile(t, "000010_pipeline_run_snapshots.down.sql")); err != nil {

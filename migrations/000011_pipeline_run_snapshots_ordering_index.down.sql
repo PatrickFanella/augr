@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS idx_pipeline_run_snapshots_pipeline_run_id_created_at_id;
