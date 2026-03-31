@@ -29,7 +29,7 @@ func newHTTPHandler(logger *slog.Logger) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ok"))
+		_, _ = w.Write([]byte("all-ok"))
 	})
 
 	return config.HTTPRequestLogger(logger)(mux)

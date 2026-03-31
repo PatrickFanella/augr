@@ -38,7 +38,7 @@ Use this runbook for config changes, routine deploys, or process-level recovery 
 
 ## Verification
 
-- `curl -sS "${TRADINGAGENT_API_URL:-http://127.0.0.1:8080}/healthz"` returns `ok`.
+- `curl -sS "${TRADINGAGENT_API_URL:-http://127.0.0.1:8080}/healthz"` returns `{"status":"all-ok"}`.
 - `risk status` responds successfully and shows the expected kill switch and circuit breaker state.
 - Logs contain a clean shutdown/startup sequence and no repeated crash loop.
 

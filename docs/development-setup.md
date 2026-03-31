@@ -60,7 +60,7 @@ This starts three containers:
 
 ```bash
 curl http://localhost:8080/healthz
-# → ok
+# → {"status":"all-ok"}
 ```
 
 ### 1.4 Run Migrations

@@ -73,7 +73,7 @@ Use this runbook before risky schema work, before restoring production-like data
 
 - `pg_restore -l "$BACKUP_FILE"` succeeds for the backup you intend to use.
 - `docker compose exec postgres psql -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-tradingagent}" -c '\dt'` lists the expected tables after restore.
-- `curl -sS "${TRADINGAGENT_API_URL:-http://127.0.0.1:8080}/healthz"` returns `ok` after the app is back up.
+- `curl -sS "${TRADINGAGENT_API_URL:-http://127.0.0.1:8080}/healthz"` returns `{"status":"all-ok"}` after the app is back up.
 - An authenticated read-only API call such as `GET /api/v1/strategies` succeeds.
 
 ## Rollback

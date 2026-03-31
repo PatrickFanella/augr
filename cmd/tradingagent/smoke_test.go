@@ -37,7 +37,7 @@ func TestSmokeEndToEnd(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), smokeTestTimeout)
 	defer cancel()
 
-	waitForSmokeHealth(t, ctx, baseURL+"/health")
+	waitForSmokeHealth(t, ctx, baseURL+"/healthz")
 
 	authManager, err := apiserver.NewAuthManager(apiserver.AuthConfig{
 		JWTSecret:       jwtSecret,
@@ -189,8 +189,10 @@ func waitForSmokeHealth(t *testing.T, ctx context.Context, healthURL string) {
 		}
 		resp, err := client.Do(req)
 		if err == nil {
+			var health map[string]string
+			decodeErr := json.NewDecoder(resp.Body).Decode(&health)
 			_ = resp.Body.Close()
-			if resp.StatusCode == http.StatusOK {
+			if resp.StatusCode == http.StatusOK && decodeErr == nil && health["status"] == "all-ok" {
 				return
 			}
 		}
@@ -198,7 +200,7 @@ func waitForSmokeHealth(t *testing.T, ctx context.Context, healthURL string) {
 		select {
 		case <-time.After(500 * time.Millisecond):
 		case <-ctx.Done():
-			t.Fatalf("timed out waiting for health endpoint %s", healthURL)
+			t.Fatalf("timed out waiting for health endpoint %s to return status %q", healthURL, "all-ok")
 		}
 	}
 }
