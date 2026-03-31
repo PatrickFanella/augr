@@ -76,7 +76,8 @@ Four analyst nodes run concurrently using an `errgroup`:
 
 Each analyst receives market data from `PipelineState` and writes its report
 back into `PipelineState.AnalystReports`. Partial failures are tolerated; the
-pipeline continues if at least one analyst succeeds.
+pipeline always continues, even if all analysts fail, though later phases may
+see empty or missing entries in `PipelineState.AnalystReports`.
 
 ### Phase 2 — Research Debate
 
@@ -88,17 +89,20 @@ the arguments and produces an investment plan stored in
 ### Phase 3 — Trading
 
 A single **Trader** agent receives the investment plan from Phase 2 and
-produces a `TradingPlan` containing position size, entry price, exit price, and
-stop-loss level. The plan is validated against the `RiskEngine` before being
-written to `PipelineState.TradingPlan`.
+produces a `TradingPlan` containing position size, entry price, take-profit,
+stop-loss, and related execution parameters. The resulting plan is written to
+`PipelineState.TradingPlan`; hard risk checks using `risk.RiskEngine` are
+applied later in the execution layer (for example, by `internal/execution`
+components such as the `OrderManager`).
 
 ### Phase 4 — Risk Debate
 
 Three risk agents — **AggressiveRisk**, **ConservativeRisk**, and
 **NeutralRisk** — debate the proposed trading plan. A **RiskManager** judge
 evaluates the debate and produces the `FinalSignal` (buy, sell, or hold with a
-confidence score). Hard risk controls such as circuit breakers and the kill
-switch are enforced at this stage.
+confidence score). This debate stage governs the recommended action; hard risk
+controls such as circuit breakers, the kill switch, and pre-trade checks are
+enforced later during order execution (for example by `internal/execution/OrderManager`).
 
 ### Pipeline Executor
 
@@ -108,7 +112,7 @@ The `Pipeline.Execute` method in `internal/agent` drives the flow:
 2. Initialises `PipelineState` with a mutex for thread-safe access.
 3. Runs each phase sequentially; a phase failure stops the pipeline.
 4. Records completion or failure via `RecordRunComplete`.
-5. Emits `PipelineCompleted` or `PipelineFailed` events over the event channel.
+5. Emits `PipelineCompleted` or `PipelineError` events over the event channel.
 
 Phase and pipeline timeouts are configured through `PipelineConfig`.
 
