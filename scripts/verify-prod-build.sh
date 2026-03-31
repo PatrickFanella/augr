@@ -5,16 +5,18 @@ ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_FILE="${ROOT_DIR}/docker-compose.prod.yml"
 ENV_FILE="${ROOT_DIR}/.env"
 BACKUP_ENV=""
+WAIT_TIMEOUT_SECONDS="${WAIT_TIMEOUT_SECONDS:-120}"
+PROJECT_NAME="${VERIFY_PROD_PROJECT_NAME:-tradingagent-prod-verify-$$}"
 
 POSTGRES_USER="${SMOKE_POSTGRES_USER:-postgres}"
 POSTGRES_PASSWORD="${SMOKE_POSTGRES_PASSWORD:-postgres}"
 POSTGRES_DB="${SMOKE_POSTGRES_DB:-tradingagent}"
-JWT_SECRET="${SMOKE_JWT_SECRET:-smoke-jwt-secret}"
+JWT_SECRET="${SMOKE_JWT_SECRET:-}"
 CONTAINER_DATABASE_URL="postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable"
 
 cleanup() {
 	local exit_code=$?
-	docker compose -f "$COMPOSE_FILE" down -v >/dev/null 2>&1 || true
+	compose down -v >/dev/null 2>&1 || true
 	if [[ -n "$BACKUP_ENV" && -f "$BACKUP_ENV" ]]; then
 		mv "$BACKUP_ENV" "$ENV_FILE"
 	else
@@ -32,8 +34,48 @@ require_command() {
 	fi
 }
 
+compose() {
+	docker compose --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" "$@"
+}
+
+random_token_hex() {
+	python3 - <<'PY'
+import secrets
+print(secrets.token_hex(32))
+PY
+}
+
+wait_for_postgres() {
+	local deadline=$((SECONDS + WAIT_TIMEOUT_SECONDS))
+	while (( SECONDS < deadline )); do
+		if compose exec -T postgres pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB" >/dev/null 2>&1; then
+			return 0
+		fi
+		sleep 2
+	done
+	echo "timed out waiting for postgres readiness" >&2
+	return 1
+}
+
+wait_for_app_health() {
+	local deadline=$((SECONDS + WAIT_TIMEOUT_SECONDS))
+	while (( SECONDS < deadline )); do
+		local health_response
+		if health_response="$(compose exec -T app wget -qO- http://127.0.0.1:8080/healthz 2>/dev/null)"; then
+			python3 -c 'import json, sys; body = json.loads(sys.stdin.read()); raise SystemExit(0 if body.get("status") == "all-ok" else 1)' <<<"$health_response" && return 0
+		fi
+		sleep 2
+	done
+	echo "timed out waiting for app health endpoint" >&2
+	return 1
+}
+
 require_command docker
 require_command python3
+
+if [[ -z "$JWT_SECRET" ]]; then
+	JWT_SECRET="$(random_token_hex)"
+fi
 
 if [[ -f "$ENV_FILE" ]]; then
 	BACKUP_ENV="$(mktemp /tmp/tradingagent-prod-env.XXXXXX)"
@@ -75,26 +117,24 @@ EOF
 
 cd "$ROOT_DIR"
 
-docker compose -f "$COMPOSE_FILE" build
-docker compose -f "$COMPOSE_FILE" up -d
+compose build
+compose up -d
+wait_for_postgres
+wait_for_app_health
 
-for migration in \
-	000001_initial_schema.up.sql \
-	000002_historical_ohlcv.up.sql \
-	000003_backtest_configs.up.sql \
-	000004_backtest_runs.up.sql \
-	000005_backtest_config_schedule.up.sql \
-	000006_api_keys.up.sql \
-	000007_users.up.sql \
-	000008_agent_decisions_prompt_cost.up.sql \
-	000009_agent_events.up.sql \
-	000009_conversations.up.sql; do
-	docker compose -f "$COMPOSE_FILE" exec -T postgres \
+mapfile -t migration_files < <(find "${ROOT_DIR}/migrations" -maxdepth 1 -type f -name '*.up.sql' -printf '%f\n' | sort)
+if [[ "${#migration_files[@]}" -eq 0 ]]; then
+	echo "no up migrations found in ${ROOT_DIR}/migrations" >&2
+	exit 1
+fi
+
+for migration in "${migration_files[@]}"; do
+	compose exec -T postgres \
 		psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 \
 		< "${ROOT_DIR}/migrations/${migration}"
 done
 
-HEALTH_RESPONSE="$(docker compose -f "$COMPOSE_FILE" exec -T app wget -qO- http://127.0.0.1:8080/healthz)"
+HEALTH_RESPONSE="$(compose exec -T app wget -qO- http://127.0.0.1:8080/healthz)"
 python3 -c 'import json, sys; body = json.loads(sys.stdin.read()); assert body.get("status") == "all-ok", body' <<<"$HEALTH_RESPONSE"
 
 AUTH_TOKEN="$(
@@ -129,7 +169,7 @@ PY
 )"
 
 STRATEGIES_RESPONSE="$(
-	docker compose -f "$COMPOSE_FILE" exec -T -e AUTH_TOKEN="$AUTH_TOKEN" app \
+	compose exec -T -e AUTH_TOKEN="$AUTH_TOKEN" app \
 		sh -lc 'wget -qO- --header="Authorization: Bearer ${AUTH_TOKEN}" http://127.0.0.1:8080/api/v1/strategies'
 )"
 python3 -c 'import json, sys; body = json.loads(sys.stdin.read()); assert "data" in body and body.get("limit") == 50 and body.get("offset") == 0, body' <<<"$STRATEGIES_RESPONSE"

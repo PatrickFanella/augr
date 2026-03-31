@@ -16,9 +16,13 @@ func TestProductionBuildVerificationScriptContainsExpectedSteps(t *testing.T) {
 
 	script := string(contents)
 	for _, want := range []string{
-		`docker compose -f "$COMPOSE_FILE" build`,
-		`docker compose -f "$COMPOSE_FILE" up -d`,
-		`docker compose -f "$COMPOSE_FILE" exec -T postgres`,
+		`docker compose --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" "$@"`,
+		`compose build`,
+		`compose up -d`,
+		`wait_for_postgres`,
+		`wait_for_app_health`,
+		`find "${ROOT_DIR}/migrations" -maxdepth 1 -type f -name '*.up.sql' -printf '%f\n' | sort`,
+		`compose exec -T postgres`,
 		`wget -qO- http://127.0.0.1:8080/healthz`,
 		`"status") == "all-ok"`,
 		`Authorization: Bearer ${AUTH_TOKEN}`,
@@ -26,6 +30,15 @@ func TestProductionBuildVerificationScriptContainsExpectedSteps(t *testing.T) {
 	} {
 		if !strings.Contains(script, want) {
 			t.Fatalf("verify-prod-build.sh missing required content %q", want)
+		}
+	}
+
+	for _, unwanted := range []string{
+		`smoke-jwt-secret`,
+		`docker compose -f "$COMPOSE_FILE" down -v`,
+	} {
+		if strings.Contains(script, unwanted) {
+			t.Fatalf("verify-prod-build.sh unexpectedly contains %q", unwanted)
 		}
 	}
 }

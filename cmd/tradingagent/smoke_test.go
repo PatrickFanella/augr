@@ -32,7 +32,10 @@ func TestSmokeEndToEnd(t *testing.T) {
 
 	baseURL := firstNonEmpty(os.Getenv("SMOKE_BASE_URL"), "http://127.0.0.1:8080")
 	dbURL := firstNonEmpty(os.Getenv("SMOKE_DATABASE_URL"), "postgres://postgres:postgres@127.0.0.1:5432/tradingagent?sslmode=disable")
-	jwtSecret := firstNonEmpty(os.Getenv("SMOKE_JWT_SECRET"), "smoke-jwt-secret")
+	jwtSecret := strings.TrimSpace(os.Getenv("SMOKE_JWT_SECRET"))
+	if jwtSecret == "" {
+		t.Fatal("SMOKE_JWT_SECRET must be set when RUN_SMOKE_TEST=1")
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), smokeTestTimeout)
 	defer cancel()
