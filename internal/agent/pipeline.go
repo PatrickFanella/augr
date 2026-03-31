@@ -276,10 +276,14 @@ func (p *Pipeline) executeAnalysisPhase(ctx context.Context, state *PipelineStat
 		return err
 	}
 
-	return p.persistAnalysisSnapshots(ctx, state)
+	return p.persistAnalysisSnapshots(phaseCtx, state)
 }
 
 func (p *Pipeline) persistAnalysisSnapshots(ctx context.Context, state *PipelineState) error {
+	if !p.persister.SupportsSnapshots() {
+		return nil
+	}
+
 	snapshots := []struct {
 		dataType string
 		payload  any

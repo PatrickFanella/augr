@@ -76,6 +76,10 @@ func (p *RepoPersister) RecordRunComplete(_ context.Context, runID uuid.UUID, tr
 	return nil
 }
 
+func (p *RepoPersister) SupportsSnapshots() bool {
+	return p.snapshotRepo != nil
+}
+
 func (p *RepoPersister) PersistSnapshot(ctx context.Context, snapshot *domain.PipelineRunSnapshot) error {
 	if p.snapshotRepo == nil {
 		return nil

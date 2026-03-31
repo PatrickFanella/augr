@@ -16,6 +16,8 @@ type DecisionPersister interface {
 	// RecordRunComplete updates the pipeline run status on completion or failure.
 	// It uses its own timeout to avoid being blocked by the caller's context.
 	RecordRunComplete(ctx context.Context, runID uuid.UUID, tradeDate time.Time, status domain.PipelineStatus, completedAt time.Time, errMsg string) error
+	// SupportsSnapshots reports whether snapshot persistence is enabled.
+	SupportsSnapshots() bool
 	// PersistSnapshot persists a single pipeline input snapshot.
 	PersistSnapshot(ctx context.Context, snapshot *domain.PipelineRunSnapshot) error
 	// PersistDecision persists a single agent decision with optional LLM metadata.

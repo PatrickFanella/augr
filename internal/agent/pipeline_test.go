@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"slices"
 	"strings"
 	"sync"
@@ -41,6 +42,8 @@ func (p *capturePersister) RecordRunComplete(_ context.Context, _ uuid.UUID, _ t
 	p.completedAt = completedAt
 	return nil
 }
+
+func (*capturePersister) SupportsSnapshots() bool { return false }
 
 func (*capturePersister) PersistDecision(context.Context, uuid.UUID, Node, *int, string, *DecisionLLMResponse) error {
 	return nil
@@ -229,6 +232,82 @@ func TestExecuteAnalysisPhase(t *testing.T) {
 		if e.OccurredAt.IsZero() {
 			t.Error("event OccurredAt is zero")
 		}
+	}
+}
+
+func TestExecuteAnalysisPhase_SnapshotPersistenceUsesPhaseTimeout(t *testing.T) {
+	runID := uuid.New()
+	stratID := uuid.New()
+	persister := &blockingSnapshotPersister{}
+	const phaseTimeout = 50 * time.Millisecond
+
+	pipeline := NewPipeline(
+		PipelineConfig{PhaseTimeout: phaseTimeout},
+		persister,
+		nil,
+		slog.Default(),
+	)
+	pipeline.RegisterNode(&mockAnalystNode{
+		name: "market_analyst",
+		role: AgentRoleMarketAnalyst,
+		execute: func(_ context.Context, state *PipelineState) error {
+			state.SetAnalystReport(AgentRoleMarketAnalyst, "ready")
+			return nil
+		},
+	})
+
+	state := &PipelineState{
+		PipelineRunID: runID,
+		StrategyID:    stratID,
+		Ticker:        "AAPL",
+	}
+
+	start := time.Now()
+	err := pipeline.executeAnalysisPhase(context.Background(), state)
+	elapsed := time.Since(start)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("executeAnalysisPhase() error = %v, want %v", err, context.DeadlineExceeded)
+	}
+	if got := persister.calls.Load(); got != 1 {
+		t.Fatalf("PersistSnapshot() call count = %d, want 1", got)
+	}
+	const maxElapsed = phaseTimeout * 5
+	if elapsed > maxElapsed {
+		t.Fatalf("executeAnalysisPhase() took %v, want <= %v", elapsed, maxElapsed)
+	}
+}
+
+func TestExecuteAnalysisPhase_SkipsSnapshotMarshalingWhenDisabled(t *testing.T) {
+	pipeline := NewPipeline(
+		PipelineConfig{},
+		NoopPersister{},
+		nil,
+		slog.Default(),
+	)
+	pipeline.RegisterNode(&mockAnalystNode{
+		name: "market_analyst",
+		role: AgentRoleMarketAnalyst,
+		execute: func(_ context.Context, state *PipelineState) error {
+			state.Market = &MarketData{
+				Indicators: []domain.Indicator{{
+					Name:      "rsi",
+					Value:     math.NaN(),
+					Timestamp: time.Now().UTC(),
+				}},
+			}
+			state.SetAnalystReport(AgentRoleMarketAnalyst, "skip snapshots")
+			return nil
+		},
+	})
+
+	state := &PipelineState{
+		PipelineRunID: uuid.New(),
+		StrategyID:    uuid.New(),
+		Ticker:        "AAPL",
+	}
+
+	if err := pipeline.executeAnalysisPhase(context.Background(), state); err != nil {
+		t.Fatalf("executeAnalysisPhase() error = %v, want nil", err)
 	}
 }
 
@@ -1141,6 +1220,10 @@ type mockPipelineRunSnapshotRepo struct {
 	createErr error
 }
 
+type blockingSnapshotPersister struct {
+	calls atomic.Int32
+}
+
 func (m *mockAgentDecisionRepo) Create(_ context.Context, decision *domain.AgentDecision) error {
 	if m.createErr != nil {
 		return m.createErr
@@ -1208,6 +1291,28 @@ func mustMarshalJSON(t *testing.T, value any) string {
 
 	return string(payload)
 }
+
+func (*blockingSnapshotPersister) RecordRunStart(context.Context, *domain.PipelineRun) error {
+	return nil
+}
+
+func (*blockingSnapshotPersister) RecordRunComplete(context.Context, uuid.UUID, time.Time, domain.PipelineStatus, time.Time, string) error {
+	return nil
+}
+
+func (*blockingSnapshotPersister) SupportsSnapshots() bool { return true }
+
+func (p *blockingSnapshotPersister) PersistSnapshot(ctx context.Context, _ *domain.PipelineRunSnapshot) error {
+	p.calls.Add(1)
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+func (*blockingSnapshotPersister) PersistDecision(context.Context, uuid.UUID, Node, *int, string, *DecisionLLMResponse) error {
+	return nil
+}
+
+func (*blockingSnapshotPersister) PersistEvent(context.Context, *domain.AgentEvent) error { return nil }
 
 func (m *mockPipelineRunRepo) Create(ctx context.Context, run *domain.PipelineRun) error {
 	if m.createFn != nil {
