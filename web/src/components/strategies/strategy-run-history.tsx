@@ -1,46 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
-import { AlertCircle, CheckCircle2, Clock, Loader2, XCircle } from 'lucide-react'
+import { Clock } from 'lucide-react'
 
-import { Badge } from '@/components/ui/badge'
+import { RunSignalBadge, RunStatusBadge } from '@/components/runs/run-badges'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { apiClient } from '@/lib/api/client'
-import type { PipelineRun, PipelineStatus, UUID } from '@/lib/api/types'
-
-type BadgeVariant = 'default' | 'secondary' | 'success' | 'destructive' | 'warning'
-
-interface StatusInfo {
-  icon: typeof CheckCircle2
-  label: string
-  variant: BadgeVariant
-}
-
-const statusConfig: Record<PipelineStatus, StatusInfo> = {
-  completed: { icon: CheckCircle2, label: 'Completed', variant: 'success' },
-  running: { icon: Loader2, label: 'Running', variant: 'default' },
-  failed: { icon: XCircle, label: 'Failed', variant: 'destructive' },
-  cancelled: { icon: AlertCircle, label: 'Cancelled', variant: 'warning' },
-}
-
-function RunStatusBadge({ status }: { status: PipelineStatus }) {
-  const config = statusConfig[status]
-  const Icon = config.icon
-
-  return (
-    <Badge variant={config.variant} className="gap-1">
-      <Icon className={`size-3 ${status === 'running' ? 'animate-spin' : ''}`} />
-      {config.label}
-    </Badge>
-  )
-}
-
-function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
+import type { PipelineRun, UUID } from '@/lib/api/types'
+import { formatRunDate } from '@/lib/run-format'
 
 function RunRow({ run }: { run: PipelineRun }) {
   return (
@@ -48,16 +13,12 @@ function RunRow({ run }: { run: PipelineRun }) {
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <p className="truncate text-sm font-medium">{run.ticker}</p>
-          {run.signal ? (
-            <Badge variant={run.signal === 'buy' ? 'success' : run.signal === 'sell' ? 'destructive' : 'secondary'}>
-              {run.signal}
-            </Badge>
-          ) : null}
+          {run.signal ? <RunSignalBadge signal={run.signal} /> : null}
         </div>
         <p className="flex items-center gap-1 text-xs text-muted-foreground">
           <Clock className="size-3" />
-          {formatDate(run.started_at)}
-          {run.completed_at ? ` — ${formatDate(run.completed_at)}` : ''}
+          {formatRunDate(run.started_at)}
+          {run.completed_at ? ` — ${formatRunDate(run.completed_at)}` : ''}
         </p>
       </div>
       <RunStatusBadge status={run.status} />

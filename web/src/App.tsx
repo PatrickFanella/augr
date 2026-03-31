@@ -8,6 +8,7 @@ import { LoginPage } from '@/pages/login-page'
 import { PipelineRunPage } from '@/pages/pipeline-run-page'
 import { MemoriesPage } from '@/pages/memories-page'
 import { PlaceholderPage } from '@/pages/placeholder-page'
+import { RunsPage } from '@/pages/runs-page'
 import { SettingsPage } from '@/pages/settings-page'
 import { StrategiesPage } from '@/pages/strategies-page'
 import { StrategyDetailPage } from '@/pages/strategy-detail-page'
@@ -25,19 +26,7 @@ export function AppRoutes() {
           <Route index element={<DashboardPage />} />
           <Route path="strategies" element={<StrategiesPage />} />
           <Route path="strategies/:id" element={<StrategyDetailPage />} />
-          <Route
-            path="runs"
-            element={
-              <PlaceholderPage
-                title="Pipeline runs"
-                description="Run history, decisions, and cancellation controls are scaffolded behind the shared API client."
-                bullets={[
-                  'Run detail and decision-list client methods already match the backend response envelopes.',
-                  'WebSocket subscriptions can target individual strategy and run IDs for realtime updates.',
-                ]}
-              />
-            }
-          />
+          <Route path="runs" element={<RunsPage />} />
           <Route path="runs/:id" element={<PipelineRunPage />} />
           <Route path="portfolio" element={<PortfolioPage />} />
           <Route path="memories" element={<MemoriesPage />} />
