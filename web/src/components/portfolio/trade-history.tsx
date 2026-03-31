@@ -6,6 +6,36 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { apiClient } from '@/lib/api/client'
 import { formatCurrency } from '@/lib/format'
 
+function formatExecutedAt(value?: string | null) {
+  if (!value) {
+    return '—'
+  }
+
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return '—'
+  }
+
+  return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`
+}
+
+function formatOptionalCurrency(value?: number | null) {
+  if (typeof value !== 'number') {
+    return '—'
+  }
+
+  return formatCurrency(value)
+}
+
+function formatNetTotal(price?: number | null, quantity?: number | null, fee?: number | null) {
+  if (typeof price !== 'number' || typeof quantity !== 'number' || typeof fee !== 'number') {
+    return '—'
+  }
+
+  return formatCurrency(price * quantity - fee)
+}
+
 export function TradeHistory() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['portfolio', 'trades'],
@@ -56,29 +86,35 @@ export function TradeHistory() {
                 </tr>
               </thead>
               <tbody>
-                {trades.map((trade) => (
-                  <tr
-                    key={trade.id}
-                    className="border-b last:border-0 transition-colors hover:bg-secondary/40"
-                  >
-                    <td className="py-2 text-muted-foreground">
-                      {new Date(trade.executed_at).toLocaleDateString()}{' '}
-                      {new Date(trade.executed_at).toLocaleTimeString()}
-                    </td>
-                    <td className="py-2 font-medium">{trade.ticker}</td>
-                    <td className="py-2">
-                      <Badge variant={trade.side === 'buy' ? 'success' : 'destructive'}>
-                        {trade.side}
-                      </Badge>
-                    </td>
-                    <td className="py-2 text-right">{trade.quantity}</td>
-                    <td className="py-2 text-right">{formatCurrency(trade.price)}</td>
-                    <td className="py-2 text-right">{formatCurrency(trade.fee)}</td>
-                    <td className="py-2 text-right font-medium">
-                      {formatCurrency(trade.price * trade.quantity - trade.fee)}
-                    </td>
-                  </tr>
-                ))}
+                {trades.map((trade, index) => {
+                  const sideVariant =
+                    trade.side === 'buy'
+                      ? 'success'
+                      : trade.side === 'sell'
+                        ? 'destructive'
+                        : 'secondary'
+
+                  return (
+                    <tr
+                      key={trade.id ? `trade-id-${trade.id}` : `trade-index-${index}`}
+                      className="border-b last:border-0 transition-colors hover:bg-secondary/40"
+                    >
+                      <td className="py-2 text-muted-foreground">
+                        {formatExecutedAt(trade.executed_at)}
+                      </td>
+                      <td className="py-2 font-medium">{trade.ticker ?? '—'}</td>
+                      <td className="py-2">
+                        <Badge variant={sideVariant}>{trade.side ?? '—'}</Badge>
+                      </td>
+                      <td className="py-2 text-right">{trade.quantity ?? '—'}</td>
+                      <td className="py-2 text-right">{formatOptionalCurrency(trade.price)}</td>
+                      <td className="py-2 text-right">{formatOptionalCurrency(trade.fee)}</td>
+                      <td className="py-2 text-right font-medium">
+                        {formatNetTotal(trade.price, trade.quantity, trade.fee)}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
