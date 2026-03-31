@@ -19,7 +19,8 @@ const (
 )
 
 // NewLogger creates a configured *slog.Logger based on the environment.
-// When env is "production", it uses a JSON handler; otherwise it uses a text handler.
+// When env is not "development", it uses a JSON handler; otherwise it uses a
+// text handler.
 // The level string maps to slog levels: "debug", "info", "warn", "error".
 // Output is written to the provided writer (use os.Stdout / os.Stderr in production).
 func NewLogger(env, level string, w io.Writer) *slog.Logger {
@@ -27,10 +28,10 @@ func NewLogger(env, level string, w io.Writer) *slog.Logger {
 	opts := &slog.HandlerOptions{Level: lvl}
 
 	var handler slog.Handler
-	if strings.EqualFold(env, "production") {
-		handler = slog.NewJSONHandler(w, opts)
-	} else {
+	if strings.EqualFold(env, "development") {
 		handler = slog.NewTextHandler(w, opts)
+	} else {
+		handler = slog.NewJSONHandler(w, opts)
 	}
 
 	return slog.New(handler)
@@ -57,7 +58,12 @@ func ParseLevel(s string) slog.Level {
 // SetDefaultLogger is a convenience that creates a logger and sets it as the
 // slog default so that callers can use slog.Info / slog.Debug / etc. directly.
 func SetDefaultLogger(env, level string) *slog.Logger {
-	logger := NewLogger(env, level, os.Stdout)
+	writer := os.Stderr
+	if strings.EqualFold(env, "development") {
+		writer = os.Stdout
+	}
+
+	logger := NewLogger(env, level, writer)
 	slog.SetDefault(logger)
 	return logger
 }
