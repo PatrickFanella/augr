@@ -19,6 +19,7 @@ func TestStrategiesStatusUpMigrationDefinesExpectedSchema(t *testing.T) {
 		"update strategies set status = 'inactive' where is_active = false;",
 		"create or replace function sync_strategy_status_with_is_active() returns trigger as $$",
 		"if new.status in ('active', 'inactive') then",
+		"elsif new.is_active is not distinct from old.is_active and new.status is distinct from old.status and new.status in ('active', 'inactive') then",
 		"create trigger trg_strategies_sync_status_with_is_active before insert or update of is_active, status on strategies for each row execute function sync_strategy_status_with_is_active();",
 		"comment on column strategies.is_active is 'deprecated: use status instead.';",
 	}
@@ -286,6 +287,26 @@ WHERE id = $1
 		t.Fatalf("expected legacy update to synchronize status to %q, got %q", "inactive", updatedLegacyStatus)
 	}
 
+	if _, err := pool.Exec(ctx, `
+UPDATE strategies
+SET status = 'active'
+WHERE id = $1
+`, legacyInactiveStrategyID); err != nil {
+		t.Fatalf("failed to update legacy inactive strategy status after migration: %v", err)
+	}
+
+	var updatedLegacyIsActive bool
+	if err := pool.QueryRow(ctx, `
+SELECT is_active
+FROM strategies
+WHERE id = $1
+`, legacyInactiveStrategyID).Scan(&updatedLegacyIsActive); err != nil {
+		t.Fatalf("failed to query updated legacy strategy is_active: %v", err)
+	}
+	if !updatedLegacyIsActive {
+		t.Fatal("expected status update to synchronize is_active to true")
+	}
+
 	var strategyColumnCount int
 	if err := pool.QueryRow(ctx, `
 		SELECT COUNT(*)
@@ -334,7 +355,7 @@ WHERE id = $1
 
 	var strategySyncFunction *string
 	if err := pool.QueryRow(ctx, `
-SELECT to_regprocedure(current_schema() || '.sync_strategy_status_with_is_active()')::text
+SELECT to_regprocedure(format('%I.sync_strategy_status_with_is_active()', current_schema()))::text
 `).Scan(&strategySyncFunction); err != nil {
 		t.Fatalf("failed to verify strategy sync function removal: %v", err)
 	}

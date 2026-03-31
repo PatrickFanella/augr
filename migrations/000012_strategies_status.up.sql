@@ -25,6 +25,8 @@ BEGIN
             WHEN NEW.is_active THEN 'active'
             ELSE 'inactive'
         END;
+    ELSIF NEW.is_active IS NOT DISTINCT FROM OLD.is_active AND NEW.status IS DISTINCT FROM OLD.status AND NEW.status IN ('active', 'inactive') THEN
+        NEW.is_active := (NEW.status = 'active');
     END IF;
 
     RETURN NEW;
