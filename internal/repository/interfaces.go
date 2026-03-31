@@ -293,3 +293,10 @@ type APIKeyRepository interface {
 	Revoke(ctx context.Context, id uuid.UUID, revokedAt time.Time) error
 	TouchLastUsed(ctx context.Context, id uuid.UUID, lastUsedAt time.Time) error
 }
+
+// UserRepository provides storage for application users used by auth flows.
+type UserRepository interface {
+	Create(ctx context.Context, user *domain.User) error
+	GetByUsername(ctx context.Context, username string) (*domain.User, error)
+	GetByID(ctx context.Context, id uuid.UUID) (*domain.User, error)
+}
