@@ -29,8 +29,8 @@ These persistent flags are available on every command.
 | Flag | Default | Description |
 | --- | --- | --- |
 | `--api-url string` | `http://127.0.0.1:8080` | Base URL for the local trading agent API |
-| `--token string` | empty | Bearer token for authenticated API requests (or set `TRADINGAGENT_TOKEN`) |
-| `--api-key string` | empty | API key for authenticated API requests (or set `TRADINGAGENT_API_KEY`) |
+| `--token string` | from `TRADINGAGENT_TOKEN` / empty | Bearer token for authenticated API requests (or set `TRADINGAGENT_TOKEN`) |
+| `--api-key string` | from `TRADINGAGENT_API_KEY` / empty | API key for authenticated API requests (or set `TRADINGAGENT_API_KEY`) |
 | `--format string` | `table` | Output format: `table` or `json` |
 | `-v, --version` | n/a | Print the CLI version |
 | `-h, --help` | n/a | Print command help |
@@ -168,8 +168,11 @@ above.
 
 ### `tradingagent run TICKER`
 
-Resolves the first strategy matching the given ticker, then requests a manual
-pipeline run through the local API.
+Resolves a strategy for the given ticker by first requiring a unique exact
+match. If multiple exact matches exist, the CLI falls back to requiring a
+single active match. If neither condition is met, the command returns an error.
+Once a strategy is resolved, it requests a manual pipeline run through the
+local API.
 
 **Usage**
 
