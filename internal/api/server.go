@@ -345,7 +345,7 @@ func (s *Server) broadcastRunResult(result *StrategyRunResult) {
 
 // handleHealth returns 200 OK with a simple status payload.
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
-	respondJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	respondJSON(w, http.StatusOK, map[string]string{"status": "all-ok"})
 }
 
 // handleMetrics returns a placeholder Prometheus-compatible metrics payload.

@@ -126,14 +126,16 @@ func TestHealthEndpoint(t *testing.T) {
 	t.Parallel()
 	srv := newTestServer(t)
 
-	rr := doRequest(t, srv, http.MethodGet, "/health", nil)
+	for _, path := range []string{"/health", "/healthz"} {
+		rr := doRequest(t, srv, http.MethodGet, path, nil)
 
-	if rr.Code != http.StatusOK {
-		t.Fatalf("health status = %d, want %d", rr.Code, http.StatusOK)
-	}
-	body := decodeJSON[map[string]string](t, rr)
-	if body["status"] != "ok" {
-		t.Fatalf("health status = %q, want %q", body["status"], "ok")
+		if rr.Code != http.StatusOK {
+			t.Fatalf("%s status = %d, want %d", path, rr.Code, http.StatusOK)
+		}
+		body := decodeJSON[map[string]string](t, rr)
+		if body["status"] != "all-ok" {
+			t.Fatalf("%s status = %q, want %q", path, body["status"], "all-ok")
+		}
 	}
 }
 

@@ -28,8 +28,9 @@ func main() {
 func newHTTPHandler(logger *slog.Logger) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ok"))
+		_, _ = w.Write([]byte(`{"status":"all-ok"}`))
 	})
 
 	return config.HTTPRequestLogger(logger)(mux)

@@ -118,8 +118,10 @@ jobs:
 
       - name: Run migrations
         run: |
-          go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
-          migrate -path migrations -database "$DATABASE_URL" up
+          timeout 90 bash -c 'until pg_isready -d "$DATABASE_URL" >/dev/null 2>&1; do sleep 2; done'
+          find migrations -maxdepth 1 -type f -name '*.up.sql' -print | sort | while read -r migration; do
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"
+          done
 
       - name: Run integration tests
         run: go test -race -count=1 -run Integration -coverprofile=coverage-integration.out ./...
@@ -149,7 +151,7 @@ jobs:
           name: coverage
           path: coverage.out
 
-  smoke-tests:
+      smoke-tests:
     name: Smoke tests
     runs-on: ubuntu-latest
     needs:
@@ -164,13 +166,16 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Generate smoke JWT secret
+        run: echo "SMOKE_JWT_SECRET=$(python3 -c 'import secrets; print(secrets.token_hex(32))')" >> "$GITHUB_ENV"
+
       - name: Configure smoke environment
         run: |
-          cat > .env <<'EOF'
+          cat > .env <<EOF
           APP_ENV=smoke
           APP_HOST=0.0.0.0
           APP_PORT=8080
-          JWT_SECRET=smoke-jwt-secret
+          JWT_SECRET=${SMOKE_JWT_SECRET}
           DATABASE_URL=postgres://postgres:postgres@postgres:5432/tradingagent?sslmode=disable
           DATABASE_POOL_SIZE=10
           DATABASE_SSL_MODE=disable
@@ -204,19 +209,22 @@ jobs:
 
       - name: Run migrations
         run: |
-          go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
-          "$(go env GOPATH)/bin/migrate" -path migrations -database "postgres://postgres:postgres@localhost:5432/tradingagent?sslmode=disable" up
+          DATABASE_URL=postgres://postgres:postgres@localhost:5432/tradingagent?sslmode=disable
+          timeout 90 bash -c 'until pg_isready -d "$0" >/dev/null 2>&1; do sleep 2; done' "$DATABASE_URL"
+          find migrations -maxdepth 1 -type f -name '*.up.sql' -print | sort | while read -r migration; do
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"
+          done
 
       - name: Wait for API
         run: |
-          timeout 90 bash -c 'until curl -fsS http://127.0.0.1:8080/health >/dev/null; do sleep 2; done'
+          timeout 90 bash -c 'until curl -fsS http://127.0.0.1:8080/healthz >/dev/null; do sleep 2; done'
 
       - name: Run smoke test
         env:
           RUN_SMOKE_TEST: "1"
           SMOKE_BASE_URL: http://127.0.0.1:8080
           SMOKE_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/tradingagent?sslmode=disable
-          SMOKE_JWT_SECRET: smoke-jwt-secret
+          SMOKE_JWT_SECRET: ${{ env.SMOKE_JWT_SECRET }}
         run: go test -count=1 -run Smoke ./cmd/tradingagent
 
       - name: Show compose logs on failure

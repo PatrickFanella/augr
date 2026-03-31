@@ -25,8 +25,8 @@ func TestNewHTTPHandlerHealthz(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("ServeHTTP() status = %d, want %d", rec.Code, http.StatusOK)
 	}
-	if body := rec.Body.String(); body != "ok" {
-		t.Fatalf("ServeHTTP() body = %q, want %q", body, "ok")
+	if body := rec.Body.String(); body != `{"status":"all-ok"}` {
+		t.Fatalf("ServeHTTP() body = %q, want %q", body, `{"status":"all-ok"}`)
 	}
 }
 

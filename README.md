@@ -110,6 +110,16 @@ docker compose down
 docker compose down -v
 ```
 
+### Production Compose Verification
+
+To verify the production image and `docker-compose.prod.yml` end-to-end, run:
+
+```bash
+./scripts/verify-prod-build.sh
+```
+
+The script builds the production image, starts `docker-compose.prod.yml`, applies migrations, verifies `GET /healthz` returns `{"status":"all-ok"}`, and checks an authenticated `GET /api/v1/strategies` request against the running stack.
+
 ### Build, Test & Lint
 
 The project uses [Task](https://taskfile.dev) as its task runner. Install Task, then:
