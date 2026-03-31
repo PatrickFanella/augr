@@ -29,7 +29,9 @@ const (
 	refreshTokenType       = "refresh"
 	defaultRefreshTokenTTL = 24 * time.Hour
 	defaultAPIKeyPrefix    = "grq"
-	dummyPasswordHash      = "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy"
+	// dummyPasswordHash is a valid bcrypt hash used to equalize login timing
+	// when a username is not found.
+	dummyPasswordHash = "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy"
 )
 
 var (
@@ -420,6 +422,8 @@ func verifyPassword(passwordHash, password string) error {
 	return bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(password))
 }
 
+// verifyPasswordAgainstDummyHash performs a bcrypt comparison on a fixed hash
+// so missing users take a similar amount of time as wrong-password checks.
 func verifyPasswordAgainstDummyHash(password string) {
 	_ = verifyPassword(dummyPasswordHash, password)
 }
