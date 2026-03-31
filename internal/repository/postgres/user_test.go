@@ -15,8 +15,6 @@ import (
 )
 
 func TestUserRepoIntegration_CreateAndGet(t *testing.T) {
-	t.Helper()
-
 	ctx := context.Background()
 	pool, cleanup := newUserIntegrationPool(t, ctx)
 	defer cleanup()
@@ -73,8 +71,6 @@ func TestUserRepoIntegration_CreateAndGet(t *testing.T) {
 }
 
 func TestUserRepoIntegration_CreateDuplicateUsername(t *testing.T) {
-	t.Helper()
-
 	ctx := context.Background()
 	pool, cleanup := newUserIntegrationPool(t, ctx)
 	defer cleanup()
@@ -100,8 +96,6 @@ func TestUserRepoIntegration_CreateDuplicateUsername(t *testing.T) {
 }
 
 func TestUserRepoIntegration_NotFound(t *testing.T) {
-	t.Helper()
-
 	ctx := context.Background()
 	pool, cleanup := newUserIntegrationPool(t, ctx)
 	defer cleanup()
