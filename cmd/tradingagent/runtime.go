@@ -31,6 +31,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 	strategyRepo := pgrepo.NewStrategyRepo(db.Pool)
 	runRepo := pgrepo.NewPipelineRunRepo(db.Pool)
 	decisionRepo := pgrepo.NewAgentDecisionRepo(db.Pool)
+	eventRepo := pgrepo.NewAgentEventRepo(db.Pool)
 	orderRepo := pgrepo.NewOrderRepo(db.Pool)
 	positionRepo := pgrepo.NewPositionRepo(db.Pool)
 	tradeRepo := pgrepo.NewTradeRepo(db.Pool)
@@ -69,7 +70,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 	}
 
 	if strings.EqualFold(cfg.Environment, "smoke") {
-		deps.Runner = newSmokeStrategyRunner(runRepo, decisionRepo, orderRepo, positionRepo, tradeRepo, auditLogRepo, riskEngine, logger)
+		deps.Runner = newSmokeStrategyRunner(runRepo, decisionRepo, eventRepo, orderRepo, positionRepo, tradeRepo, auditLogRepo, riskEngine, logger)
 	}
 
 	apiCfg := api.DefaultServerConfig()
@@ -98,6 +99,7 @@ type smokeStrategyRunner struct {
 func newSmokeStrategyRunner(
 	runRepo repository.PipelineRunRepository,
 	decisionRepo repository.AgentDecisionRepository,
+	eventRepo repository.AgentEventRepository,
 	orderRepo repository.OrderRepository,
 	positionRepo repository.PositionRepository,
 	tradeRepo repository.TradeRepository,
@@ -105,7 +107,7 @@ func newSmokeStrategyRunner(
 	riskEngine risk.RiskEngine,
 	logger *slog.Logger,
 ) api.StrategyRunner {
-	pipeline := newSmokePipeline(runRepo, decisionRepo, logger)
+	pipeline := newSmokePipeline(runRepo, decisionRepo, eventRepo, logger)
 	orderManager := execution.NewOrderManager(
 		paper.NewPaperBroker(100_000, 0, 0),
 		"paper",
@@ -236,6 +238,7 @@ func (r *smokeStrategyRunner) findRun(ctx context.Context, runID uuid.UUID) (*do
 func newSmokePipeline(
 	runRepo repository.PipelineRunRepository,
 	decisionRepo repository.AgentDecisionRepository,
+	eventRepo repository.AgentEventRepository,
 	logger *slog.Logger,
 ) *agent.Pipeline {
 	pipeline := agent.NewPipeline(
@@ -243,7 +246,7 @@ func newSmokePipeline(
 			ResearchDebateRounds: 1,
 			RiskDebateRounds:     1,
 		},
-		agent.NewRepoPersister(runRepo, decisionRepo, logger),
+		agent.NewRepoPersister(runRepo, decisionRepo, eventRepo, logger),
 		nil,
 		logger,
 	)

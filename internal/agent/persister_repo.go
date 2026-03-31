@@ -18,6 +18,7 @@ const statusUpdateTimeout = 10 * time.Second
 type RepoPersister struct {
 	pipelineRunRepo   repository.PipelineRunRepository
 	agentDecisionRepo repository.AgentDecisionRepository
+	agentEventRepo    repository.AgentEventRepository
 	logger            *slog.Logger
 }
 
@@ -25,6 +26,7 @@ type RepoPersister struct {
 func NewRepoPersister(
 	pipelineRunRepo repository.PipelineRunRepository,
 	agentDecisionRepo repository.AgentDecisionRepository,
+	agentEventRepo repository.AgentEventRepository,
 	logger *slog.Logger,
 ) *RepoPersister {
 	if logger == nil {
@@ -33,6 +35,7 @@ func NewRepoPersister(
 	return &RepoPersister{
 		pipelineRunRepo:   pipelineRunRepo,
 		agentDecisionRepo: agentDecisionRepo,
+		agentEventRepo:    agentEventRepo,
 		logger:            logger,
 	}
 }
@@ -101,6 +104,17 @@ func (p *RepoPersister) PersistDecision(
 
 	if err := p.agentDecisionRepo.Create(ctx, decision); err != nil {
 		return fmt.Errorf("agent/pipeline: persist decision for %s: %w", node.Name(), err)
+	}
+
+	return nil
+}
+
+func (p *RepoPersister) PersistEvent(ctx context.Context, event *domain.AgentEvent) error {
+	if p.agentEventRepo == nil {
+		return nil
+	}
+	if err := p.agentEventRepo.Create(ctx, event); err != nil {
+		return fmt.Errorf("agent/pipeline: persist event %s: %w", event.EventKind, err)
 	}
 
 	return nil

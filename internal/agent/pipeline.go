@@ -190,6 +190,20 @@ func (p *Pipeline) executeAnalysisPhase(ctx context.Context, state *PipelineStat
 	for _, n := range p.nodes[PhaseAnalysis] {
 		node := n
 		g.Go(func() error {
+			p.persistStructuredEvent(gCtx, p.newStructuredEvent(
+				state.PipelineRunID,
+				state.StrategyID,
+				AgentEventKindAgentStarted,
+				node.Role(),
+				"Agent started",
+				"",
+				map[string]any{
+					"phase":      PhaseAnalysis.String(),
+					"agent_role": node.Role().String(),
+				},
+				[]string{"agent", PhaseAnalysis.String()},
+			))
+
 			if an, ok := node.(AnalystNode); ok {
 				result, err := an.Analyze(gCtx, analysisInputFromState(state))
 				if err != nil {
@@ -216,6 +230,19 @@ func (p *Pipeline) executeAnalysisPhase(ctx context.Context, state *PipelineStat
 			if err := p.persister.PersistDecision(gCtx, state.PipelineRunID, node, nil, output, llmResponse); err != nil {
 				return err
 			}
+			p.persistStructuredEvent(gCtx, p.newStructuredEvent(
+				state.PipelineRunID,
+				state.StrategyID,
+				AgentEventKindAgentCompleted,
+				node.Role(),
+				"Agent completed",
+				"",
+				map[string]any{
+					"phase":      PhaseAnalysis.String(),
+					"agent_role": node.Role().String(),
+				},
+				[]string{"agent", PhaseAnalysis.String()},
+			))
 
 			if p.events != nil {
 				event := PipelineEvent{
@@ -264,6 +291,19 @@ func (p *Pipeline) executeTradingPhase(ctx context.Context, state *PipelineState
 	if traderNode == nil {
 		return fmt.Errorf("agent/pipeline: trading phase requires a %s node", AgentRoleTrader)
 	}
+	p.persistStructuredEvent(phaseCtx, p.newStructuredEvent(
+		state.PipelineRunID,
+		state.StrategyID,
+		AgentEventKindAgentStarted,
+		traderNode.Role(),
+		"Agent started",
+		"",
+		map[string]any{
+			"phase":      PhaseTrading.String(),
+			"agent_role": traderNode.Role().String(),
+		},
+		[]string{"agent", PhaseTrading.String()},
+	))
 
 	if tn, ok := traderNode.(TraderNode); ok {
 		input := tradingInputFromState(state)
@@ -284,6 +324,33 @@ func (p *Pipeline) executeTradingPhase(ctx context.Context, state *PipelineState
 	if err := p.persister.PersistDecision(phaseCtx, state.PipelineRunID, traderNode, nil, output, llmResponse); err != nil {
 		return err
 	}
+	p.persistStructuredEvent(phaseCtx, p.newStructuredEvent(
+		state.PipelineRunID,
+		state.StrategyID,
+		AgentEventKindAgentCompleted,
+		traderNode.Role(),
+		"Agent completed",
+		"",
+		map[string]any{
+			"phase":      PhaseTrading.String(),
+			"agent_role": traderNode.Role().String(),
+		},
+		[]string{"agent", PhaseTrading.String()},
+	))
+	p.persistStructuredEvent(phaseCtx, p.newStructuredEvent(
+		state.PipelineRunID,
+		state.StrategyID,
+		AgentEventKindSignalProduced,
+		traderNode.Role(),
+		"Signal produced",
+		"",
+		map[string]any{
+			"phase":        PhaseTrading.String(),
+			"agent_role":   traderNode.Role().String(),
+			"signal_value": state.TradingPlan.Action.String(),
+		},
+		[]string{"signal", PhaseTrading.String()},
+	))
 
 	if p.events != nil {
 		event := PipelineEvent{
@@ -371,6 +438,16 @@ func (p *Pipeline) Execute(ctx context.Context, strategyID uuid.UUID, ticker str
 	}
 
 	// Emit PipelineStarted event.
+	p.persistStructuredEvent(ctx, p.newStructuredEvent(
+		run.ID,
+		strategyID,
+		AgentEventKindPipelineStarted,
+		"",
+		"Pipeline started",
+		"",
+		nil,
+		[]string{"pipeline"},
+	))
 	p.emitEvent(PipelineEvent{
 		Type:          PipelineStarted,
 		PipelineRunID: run.ID,
@@ -391,6 +468,18 @@ func (p *Pipeline) Execute(ctx context.Context, strategyID uuid.UUID, ticker str
 	}
 
 	for _, phase := range phases {
+		p.persistStructuredEvent(ctx, p.newStructuredEvent(
+			run.ID,
+			strategyID,
+			AgentEventKindPhaseStarted,
+			"",
+			"Phase started",
+			"",
+			map[string]any{
+				"phase": phase.name,
+			},
+			[]string{"phase", phase.name},
+		))
 		if err := phase.fn(ctx, state); err != nil {
 			p.logger.Error("agent/pipeline: phase failed",
 				slog.String("phase", phase.name),
@@ -400,6 +489,19 @@ func (p *Pipeline) Execute(ctx context.Context, strategyID uuid.UUID, ticker str
 			completedAt := p.currentTime().UTC()
 			_ = p.persister.RecordRunComplete(ctx, run.ID, run.TradeDate, domain.PipelineStatusFailed, completedAt, err.Error())
 			p.emitCacheStats(state, cacheStatsCollector, run.ID, strategyID, ticker)
+			p.persistStructuredTerminalEvent(p.newStructuredEvent(
+				run.ID,
+				strategyID,
+				AgentEventKindPipelineFailed,
+				"",
+				"Pipeline failed",
+				err.Error(),
+				map[string]any{
+					"phase":         phase.name,
+					"error_message": err.Error(),
+				},
+				[]string{"pipeline", "failed"},
+			))
 
 			p.emitEvent(PipelineEvent{
 				Type:          PipelineError,
@@ -412,12 +514,34 @@ func (p *Pipeline) Execute(ctx context.Context, strategyID uuid.UUID, ticker str
 
 			return state, err
 		}
+		p.persistStructuredEvent(ctx, p.newStructuredEvent(
+			run.ID,
+			strategyID,
+			AgentEventKindPhaseCompleted,
+			"",
+			"Phase completed",
+			"",
+			map[string]any{
+				"phase": phase.name,
+			},
+			[]string{"phase", phase.name},
+		))
 	}
 
 	// All phases succeeded – mark the run as completed.
 	completedAt := p.currentTime().UTC()
 	_ = p.persister.RecordRunComplete(ctx, run.ID, run.TradeDate, domain.PipelineStatusCompleted, completedAt, "")
 	p.emitCacheStats(state, cacheStatsCollector, run.ID, strategyID, ticker)
+	p.persistStructuredTerminalEvent(p.newStructuredEvent(
+		run.ID,
+		strategyID,
+		AgentEventKindPipelineCompleted,
+		"",
+		"Pipeline completed",
+		"",
+		nil,
+		[]string{"pipeline", "completed"},
+	))
 
 	p.emitEvent(PipelineEvent{
 		Type:          PipelineCompleted,
@@ -445,6 +569,67 @@ func (p *Pipeline) emitEvent(event PipelineEvent) {
 			slog.String("type", string(event.Type)),
 		)
 	}
+}
+
+func (p *Pipeline) persistStructuredEvent(ctx context.Context, event *domain.AgentEvent) {
+	if event == nil {
+		return
+	}
+	if err := p.persister.PersistEvent(ctx, event); err != nil {
+		p.logger.Warn("agent/pipeline: failed to persist structured event",
+			slog.String("event_kind", event.EventKind),
+			slog.Any("error", err),
+		)
+	}
+}
+
+func (p *Pipeline) persistStructuredTerminalEvent(event *domain.AgentEvent) {
+	dbCtx, cancel := context.WithTimeout(context.Background(), statusUpdateTimeout)
+	defer cancel()
+
+	p.persistStructuredEvent(dbCtx, event)
+}
+
+func (p *Pipeline) newStructuredEvent(
+	runID uuid.UUID,
+	strategyID uuid.UUID,
+	kind AgentEventKind,
+	agentRole AgentRole,
+	title string,
+	summary string,
+	metadata map[string]any,
+	tags []string,
+) *domain.AgentEvent {
+	event := &domain.AgentEvent{
+		PipelineRunID: &runID,
+		StrategyID:    &strategyID,
+		EventKind:     kind.String(),
+		Title:         title,
+		Summary:       summary,
+		Tags:          append([]string(nil), tags...),
+		Metadata:      p.marshalStructuredEventMetadata(metadata),
+	}
+	if agentRole != "" {
+		event.AgentRole = agentRole
+	}
+
+	return event
+}
+
+func (p *Pipeline) marshalStructuredEventMetadata(metadata map[string]any) json.RawMessage {
+	if len(metadata) == 0 {
+		return nil
+	}
+
+	payload, err := json.Marshal(metadata)
+	if err != nil {
+		p.logger.Warn("agent/pipeline: failed to marshal structured event metadata",
+			slog.Any("error", err),
+		)
+		return nil
+	}
+
+	return payload
 }
 
 func (p *Pipeline) currentTime() time.Time {

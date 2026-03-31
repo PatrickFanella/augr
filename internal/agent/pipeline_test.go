@@ -45,6 +45,10 @@ func (*capturePersister) PersistDecision(context.Context, uuid.UUID, Node, *int,
 	return nil
 }
 
+func (*capturePersister) PersistEvent(context.Context, *domain.AgentEvent) error {
+	return nil
+}
+
 // mockAnalystNode is a test double for a PhaseAnalysis Node.
 type mockAnalystNode struct {
 	name    string
@@ -1122,6 +1126,11 @@ type mockAgentDecisionRepo struct {
 	createErr error
 }
 
+type mockAgentEventRepo struct {
+	created   []*domain.AgentEvent
+	createErr error
+}
+
 func (m *mockAgentDecisionRepo) Create(_ context.Context, decision *domain.AgentDecision) error {
 	if m.createErr != nil {
 		return m.createErr
@@ -1135,6 +1144,32 @@ func (m *mockAgentDecisionRepo) Create(_ context.Context, decision *domain.Agent
 }
 
 func (m *mockAgentDecisionRepo) GetByRun(_ context.Context, _ uuid.UUID, _ repository.AgentDecisionFilter, _, _ int) ([]domain.AgentDecision, error) {
+	return nil, nil
+}
+
+func (m *mockAgentEventRepo) Create(_ context.Context, event *domain.AgentEvent) error {
+	if m.createErr != nil {
+		return m.createErr
+	}
+
+	cloned := *event
+	if event.PipelineRunID != nil {
+		runID := *event.PipelineRunID
+		cloned.PipelineRunID = &runID
+	}
+	if event.StrategyID != nil {
+		strategyID := *event.StrategyID
+		cloned.StrategyID = &strategyID
+	}
+	if event.Metadata != nil {
+		cloned.Metadata = append([]byte(nil), event.Metadata...)
+	}
+	cloned.Tags = append([]string(nil), event.Tags...)
+	m.created = append(m.created, &cloned)
+	return nil
+}
+
+func (m *mockAgentEventRepo) List(_ context.Context, _ repository.AgentEventFilter, _, _ int) ([]domain.AgentEvent, error) {
 	return nil, nil
 }
 
@@ -1306,7 +1341,7 @@ func TestExecute_HappyPath(t *testing.T) {
 	var phaseLog []string
 	pipeline := NewPipeline(
 		PipelineConfig{ResearchDebateRounds: 1, RiskDebateRounds: 1},
-		NewRepoPersister(repo, nil, nil), events, slog.Default(),
+		NewRepoPersister(repo, nil, nil, nil), events, slog.Default(),
 	)
 	registerAllPhaseNodes(pipeline, &phaseLog, nil)
 
@@ -1382,13 +1417,83 @@ func TestExecute_HappyPath(t *testing.T) {
 	}
 }
 
+func TestExecute_PersistsStructuredEventsInOrder(t *testing.T) {
+	stratID := uuid.New()
+	eventRepo := &mockAgentEventRepo{}
+
+	pipeline := NewPipeline(
+		PipelineConfig{ResearchDebateRounds: 1, RiskDebateRounds: 1},
+		NewRepoPersister(&mockPipelineRunRepo{}, nil, eventRepo, nil),
+		nil,
+		slog.Default(),
+	)
+	registerAllPhaseNodes(pipeline, nil, nil)
+
+	if _, err := pipeline.Execute(context.Background(), stratID, "AAPL"); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	gotKinds := make([]string, 0, len(eventRepo.created))
+	for _, event := range eventRepo.created {
+		gotKinds = append(gotKinds, event.EventKind)
+	}
+
+	wantKinds := []string{
+		AgentEventKindPipelineStarted.String(),
+		AgentEventKindPhaseStarted.String(),
+		AgentEventKindAgentStarted.String(),
+		AgentEventKindAgentCompleted.String(),
+		AgentEventKindPhaseCompleted.String(),
+		AgentEventKindPhaseStarted.String(),
+		AgentEventKindAgentStarted.String(),
+		AgentEventKindAgentCompleted.String(),
+		AgentEventKindAgentStarted.String(),
+		AgentEventKindAgentCompleted.String(),
+		AgentEventKindDebateRoundCompleted.String(),
+		AgentEventKindAgentStarted.String(),
+		AgentEventKindAgentCompleted.String(),
+		AgentEventKindPhaseCompleted.String(),
+		AgentEventKindPhaseStarted.String(),
+		AgentEventKindAgentStarted.String(),
+		AgentEventKindAgentCompleted.String(),
+		AgentEventKindSignalProduced.String(),
+		AgentEventKindPhaseCompleted.String(),
+		AgentEventKindPhaseStarted.String(),
+		AgentEventKindAgentStarted.String(),
+		AgentEventKindAgentCompleted.String(),
+		AgentEventKindAgentStarted.String(),
+		AgentEventKindAgentCompleted.String(),
+		AgentEventKindAgentStarted.String(),
+		AgentEventKindAgentCompleted.String(),
+		AgentEventKindDebateRoundCompleted.String(),
+		AgentEventKindAgentStarted.String(),
+		AgentEventKindAgentCompleted.String(),
+		AgentEventKindSignalProduced.String(),
+		AgentEventKindPhaseCompleted.String(),
+		AgentEventKindPipelineCompleted.String(),
+	}
+	if !slices.Equal(gotKinds, wantKinds) {
+		t.Fatalf("structured event kinds = %v, want %v", gotKinds, wantKinds)
+	}
+
+	assertStructuredEventMetadata(t, eventRepo.created[1], "phase", "analysis")
+	assertStructuredEventMetadata(t, eventRepo.created[2], "agent_role", AgentRoleMarketAnalyst.String())
+	assertStructuredEventMetadata(t, eventRepo.created[2], "phase", "analysis")
+	assertStructuredEventMetadata(t, eventRepo.created[10], "round_number", float64(1))
+	assertStructuredEventMetadata(t, eventRepo.created[10], "phase", PhaseResearchDebate.String())
+	assertStructuredEventMetadata(t, eventRepo.created[17], "signal_value", PipelineSignalBuy.String())
+	assertStructuredEventMetadata(t, eventRepo.created[17], "phase", PhaseTrading.String())
+	assertStructuredEventMetadata(t, eventRepo.created[29], "signal_value", "approved")
+	assertStructuredEventMetadata(t, eventRepo.created[29], "phase", PhaseRiskDebate.String())
+}
+
 func TestExecute_PersistsAgentDecisions(t *testing.T) {
 	stratID := uuid.New()
 	decisionRepo := &mockAgentDecisionRepo{}
 
 	pipeline := NewPipeline(
 		PipelineConfig{ResearchDebateRounds: 1, RiskDebateRounds: 1},
-		NewRepoPersister(&mockPipelineRunRepo{}, decisionRepo, nil),
+		NewRepoPersister(&mockPipelineRunRepo{}, decisionRepo, nil, nil),
 		nil,
 		slog.Default(),
 	)
@@ -1520,6 +1625,42 @@ func TestExecute_PersistsAgentDecisions(t *testing.T) {
 	}
 }
 
+func TestExecute_PersistsPipelineFailedStructuredEvent(t *testing.T) {
+	stratID := uuid.New()
+	eventRepo := &mockAgentEventRepo{}
+	tradeErr := errors.New("simulated trading failure")
+
+	pipeline := NewPipeline(
+		PipelineConfig{ResearchDebateRounds: 1, RiskDebateRounds: 1},
+		NewRepoPersister(&mockPipelineRunRepo{}, nil, eventRepo, nil),
+		nil,
+		slog.Default(),
+	)
+	registerAllPhaseNodes(pipeline, nil, map[AgentRole]func(context.Context, *PipelineState) error{
+		AgentRoleTrader: func(_ context.Context, _ *PipelineState) error {
+			return tradeErr
+		},
+	})
+
+	if _, err := pipeline.Execute(context.Background(), stratID, "AAPL"); !errors.Is(err, tradeErr) {
+		t.Fatalf("Execute() error = %v, want %v", err, tradeErr)
+	}
+
+	if len(eventRepo.created) == 0 {
+		t.Fatal("expected structured events to be persisted")
+	}
+
+	lastEvent := eventRepo.created[len(eventRepo.created)-1]
+	if lastEvent.EventKind != AgentEventKindPipelineFailed.String() {
+		t.Fatalf("last event kind = %q, want %q", lastEvent.EventKind, AgentEventKindPipelineFailed.String())
+	}
+	assertStructuredEventMetadata(t, lastEvent, "phase", PhaseTrading.String())
+	assertStructuredEventMetadata(t, lastEvent, "error_message", tradeErr.Error())
+	if !strings.Contains(lastEvent.Summary, tradeErr.Error()) {
+		t.Fatalf("last event summary = %q, want substring %q", lastEvent.Summary, tradeErr.Error())
+	}
+}
+
 func TestExecute_ReportsLLMCacheStatsPerRun(t *testing.T) {
 	stratID := uuid.New()
 	baseProvider := &countingProvider{
@@ -1537,7 +1678,7 @@ func TestExecute_ReportsLLMCacheStatsPerRun(t *testing.T) {
 	events := make(chan PipelineEvent, 50)
 	pipeline := NewPipeline(
 		PipelineConfig{ResearchDebateRounds: 1, RiskDebateRounds: 1},
-		NewRepoPersister(&mockPipelineRunRepo{}, nil, nil),
+		NewRepoPersister(&mockPipelineRunRepo{}, nil, nil, nil),
 		events,
 		slog.Default(),
 	)
@@ -1627,7 +1768,7 @@ func TestExecute_PhaseFailureUpdatesRunStatus(t *testing.T) {
 	events := make(chan PipelineEvent, 50)
 	pipeline := NewPipeline(
 		PipelineConfig{ResearchDebateRounds: 1, RiskDebateRounds: 1},
-		NewRepoPersister(repo, nil, nil), events, slog.Default(),
+		NewRepoPersister(repo, nil, nil, nil), events, slog.Default(),
 	)
 
 	tradeErr := errors.New("simulated trading failure")
@@ -1697,6 +1838,27 @@ func sameRoundNumber(got, want *int) bool {
 	return *got == *want
 }
 
+func assertStructuredEventMetadata(t *testing.T, event *domain.AgentEvent, key string, want any) {
+	t.Helper()
+
+	if len(event.Metadata) == 0 {
+		t.Fatalf("event %q metadata is empty", event.EventKind)
+	}
+
+	var metadata map[string]any
+	if err := json.Unmarshal(event.Metadata, &metadata); err != nil {
+		t.Fatalf("json.Unmarshal(event metadata) error = %v", err)
+	}
+
+	got, ok := metadata[key]
+	if !ok {
+		t.Fatalf("event %q missing metadata key %q", event.EventKind, key)
+	}
+	if got != want {
+		t.Fatalf("event %q metadata[%q] = %v, want %v", event.EventKind, key, got, want)
+	}
+}
+
 // TestExecute_ContextCancellationStopsExecution verifies that cancelling the
 // parent context stops pipeline execution and updates the run status to failed.
 func TestExecute_ContextCancellationStopsExecution(t *testing.T) {
@@ -1714,7 +1876,7 @@ func TestExecute_ContextCancellationStopsExecution(t *testing.T) {
 	events := make(chan PipelineEvent, 50)
 	pipeline := NewPipeline(
 		PipelineConfig{ResearchDebateRounds: 1, RiskDebateRounds: 1},
-		NewRepoPersister(repo, nil, nil), events, slog.Default(),
+		NewRepoPersister(repo, nil, nil, nil), events, slog.Default(),
 	)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -1759,7 +1921,7 @@ func TestExecute_PipelineTimeoutTriggersCancellation(t *testing.T) {
 			ResearchDebateRounds: 1,
 			RiskDebateRounds:     1,
 		},
-		NewRepoPersister(repo, nil, nil), events, slog.Default(),
+		NewRepoPersister(repo, nil, nil, nil), events, slog.Default(),
 	)
 
 	// The analysis phase will block until the pipeline timeout fires.

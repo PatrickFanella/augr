@@ -25,6 +25,26 @@ func (t PipelineEventType) String() string {
 	return string(t)
 }
 
+// AgentEventKind identifies a structured event persisted for pipeline execution.
+type AgentEventKind string
+
+const (
+	AgentEventKindPhaseStarted         AgentEventKind = "phase_started"
+	AgentEventKindPhaseCompleted       AgentEventKind = "phase_completed"
+	AgentEventKindAgentStarted         AgentEventKind = "agent_started"
+	AgentEventKindAgentCompleted       AgentEventKind = "agent_completed"
+	AgentEventKindDebateRoundCompleted AgentEventKind = "debate_round_completed"
+	AgentEventKindSignalProduced       AgentEventKind = "signal_produced"
+	AgentEventKindPipelineStarted      AgentEventKind = "pipeline_started"
+	AgentEventKindPipelineCompleted    AgentEventKind = "pipeline_completed"
+	AgentEventKindPipelineFailed       AgentEventKind = "pipeline_failed"
+)
+
+// String returns the string representation of an AgentEventKind.
+func (k AgentEventKind) String() string {
+	return string(k)
+}
+
 // PipelineEvent is emitted for user-visible pipeline state changes.
 type PipelineEvent struct {
 	Type          PipelineEventType `json:"type"`

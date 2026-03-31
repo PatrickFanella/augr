@@ -18,4 +18,6 @@ type DecisionPersister interface {
 	RecordRunComplete(ctx context.Context, runID uuid.UUID, tradeDate time.Time, status domain.PipelineStatus, completedAt time.Time, errMsg string) error
 	// PersistDecision persists a single agent decision with optional LLM metadata.
 	PersistDecision(ctx context.Context, runID uuid.UUID, node Node, roundNumber *int, output string, llmResponse *DecisionLLMResponse) error
+	// PersistEvent persists a structured pipeline or agent event.
+	PersistEvent(ctx context.Context, event *domain.AgentEvent) error
 }

@@ -149,6 +149,33 @@ func TestPipelineEventTypesCoverUserVisibleTransitions(t *testing.T) {
 	if got := agent.PipelineError.String(); got != "pipeline_error" {
 		t.Fatalf("PipelineError.String() = %q, want %q", got, "pipeline_error")
 	}
+	if got := agent.AgentEventKindPhaseStarted.String(); got != "phase_started" {
+		t.Fatalf("AgentEventKindPhaseStarted.String() = %q, want %q", got, "phase_started")
+	}
+	if got := agent.AgentEventKindPhaseCompleted.String(); got != "phase_completed" {
+		t.Fatalf("AgentEventKindPhaseCompleted.String() = %q, want %q", got, "phase_completed")
+	}
+	if got := agent.AgentEventKindAgentStarted.String(); got != "agent_started" {
+		t.Fatalf("AgentEventKindAgentStarted.String() = %q, want %q", got, "agent_started")
+	}
+	if got := agent.AgentEventKindAgentCompleted.String(); got != "agent_completed" {
+		t.Fatalf("AgentEventKindAgentCompleted.String() = %q, want %q", got, "agent_completed")
+	}
+	if got := agent.AgentEventKindDebateRoundCompleted.String(); got != "debate_round_completed" {
+		t.Fatalf("AgentEventKindDebateRoundCompleted.String() = %q, want %q", got, "debate_round_completed")
+	}
+	if got := agent.AgentEventKindSignalProduced.String(); got != "signal_produced" {
+		t.Fatalf("AgentEventKindSignalProduced.String() = %q, want %q", got, "signal_produced")
+	}
+	if got := agent.AgentEventKindPipelineStarted.String(); got != "pipeline_started" {
+		t.Fatalf("AgentEventKindPipelineStarted.String() = %q, want %q", got, "pipeline_started")
+	}
+	if got := agent.AgentEventKindPipelineCompleted.String(); got != "pipeline_completed" {
+		t.Fatalf("AgentEventKindPipelineCompleted.String() = %q, want %q", got, "pipeline_completed")
+	}
+	if got := agent.AgentEventKindPipelineFailed.String(); got != "pipeline_failed" {
+		t.Fatalf("AgentEventKindPipelineFailed.String() = %q, want %q", got, "pipeline_failed")
+	}
 
 	if string(event.Payload) != string(finalSignalPayload) {
 		t.Fatalf("Payload = %s, want %s", event.Payload, finalSignalPayload)

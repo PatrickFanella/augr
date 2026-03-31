@@ -21,3 +21,5 @@ func (NoopPersister) RecordRunComplete(context.Context, uuid.UUID, time.Time, do
 func (NoopPersister) PersistDecision(context.Context, uuid.UUID, Node, *int, string, *DecisionLLMResponse) error {
 	return nil
 }
+
+func (NoopPersister) PersistEvent(context.Context, *domain.AgentEvent) error { return nil }
