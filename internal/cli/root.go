@@ -84,12 +84,12 @@ type shutdownGuard struct {
 	timeout  time.Duration
 	exitFunc func(int)
 
-	mu        sync.Mutex
-	onceStart sync.Once
-	onceDone  sync.Once
-	timer     stopTimer
-	done      bool
-	afterFunc func(time.Duration, func()) stopTimer
+	mu            sync.Mutex
+	onceStart     sync.Once
+	onceDone      sync.Once
+	shutdownTimer stopTimer
+	done          bool
+	afterFunc     func(time.Duration, func()) stopTimer
 }
 
 type stopTimer interface {
@@ -131,7 +131,7 @@ func (g *shutdownGuard) Begin(sig os.Signal, inFlightCount int) {
 			slog.Int(inFlightPipelineRunsKey, inFlightCount),
 		)
 
-		g.timer = g.afterFunc(g.timeout, func() {
+		g.shutdownTimer = g.afterFunc(g.timeout, func() {
 			g.forceExit(inFlightCount)
 		})
 	})
@@ -141,7 +141,7 @@ func (g *shutdownGuard) Finish() {
 	g.onceDone.Do(func() {
 		g.mu.Lock()
 		g.done = true
-		timer := g.timer
+		timer := g.shutdownTimer
 		g.mu.Unlock()
 		if timer != nil {
 			timer.Stop()

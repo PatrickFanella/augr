@@ -352,13 +352,13 @@ type fakeStopTimer struct {
 	stopped  atomic.Bool
 }
 
-func (t *fakeStopTimer) Stop() bool {
-	return !t.stopped.Swap(true)
+func (ft *fakeStopTimer) Stop() bool {
+	return !ft.stopped.Swap(true)
 }
 
-func (t *fakeStopTimer) Fire() {
-	if t.callback != nil {
-		t.callback()
+func (ft *fakeStopTimer) Fire() {
+	if ft.callback != nil {
+		ft.callback()
 	}
 }
 
