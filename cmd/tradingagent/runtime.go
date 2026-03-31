@@ -75,7 +75,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 	var sched *scheduler.Scheduler
 	if strings.EqualFold(cfg.Environment, "smoke") {
 		pipeline := newSmokePipeline(runRepo, snapshotRepo, decisionRepo, eventRepo, logger)
-		deps.Runner = newSmokeStrategyRunner(runRepo, snapshotRepo, decisionRepo, eventRepo, orderRepo, positionRepo, tradeRepo, auditLogRepo, riskEngine, logger)
+		deps.Runner = newSmokeStrategyRunner(pipeline, runRepo, orderRepo, positionRepo, tradeRepo, auditLogRepo, riskEngine, logger)
 		sched = scheduler.NewScheduler(strategyRepo, pipeline, riskEngine, logger)
 	}
 
@@ -110,10 +110,8 @@ type smokeStrategyRunner struct {
 }
 
 func newSmokeStrategyRunner(
+	pipeline *agent.Pipeline,
 	runRepo repository.PipelineRunRepository,
-	snapshotRepo repository.PipelineRunSnapshotRepository,
-	decisionRepo repository.AgentDecisionRepository,
-	eventRepo repository.AgentEventRepository,
 	orderRepo repository.OrderRepository,
 	positionRepo repository.PositionRepository,
 	tradeRepo repository.TradeRepository,
@@ -121,7 +119,6 @@ func newSmokeStrategyRunner(
 	riskEngine risk.RiskEngine,
 	logger *slog.Logger,
 ) api.StrategyRunner {
-	pipeline := newSmokePipeline(runRepo, snapshotRepo, decisionRepo, eventRepo, logger)
 	orderManager := execution.NewOrderManager(
 		paper.NewPaperBroker(100_000, 0, 0),
 		"paper",

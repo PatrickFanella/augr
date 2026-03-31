@@ -208,8 +208,9 @@ func TestRunServerLifecycle_HonorsShutdownTimeout(t *testing.T) {
 
 // runServeLifecycle mirrors the deferred ordering in the serve command RunE:
 //
-//	defer cleanup()
-//	defer sched.Stop()  (only if sched != nil)
+//	defer cleanup()             // registered first → runs last
+//	// signal context registered before scheduler start (not modelled here)
+//	defer sched.Stop()          // registered after cleanup → runs before cleanup()
 //	runServerLifecycle(...)
 //
 // It executes the same sequence so that tests can verify the ordering without

@@ -163,6 +163,13 @@ func (s *rootState) newServeCommand() *cobra.Command {
 			// status before the pool is closed.
 			defer cleanup()
 
+			// Register signal handling BEFORE starting the scheduler so that
+			// a SIGTERM arriving during startup is captured (suppressing the
+			// default OS-level termination) rather than killing the process
+			// mid-startup and skipping all defers.
+			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+			defer stop()
+
 			// Start the scheduler (if provided) before accepting HTTP traffic.
 			// It is stopped in the deferred call below, which runs before
 			// cleanup() because defers execute in LIFO order.
@@ -175,9 +182,6 @@ func (s *rootState) newServeCommand() *cobra.Command {
 				// the DB pool is still open.
 				defer sched.Stop()
 			}
-
-			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
-			defer stop()
 
 			if err := runServerLifecycle(ctx, apiServer.Start, apiServer.Shutdown); err != nil {
 				return fmt.Errorf("serve http: %w", err)

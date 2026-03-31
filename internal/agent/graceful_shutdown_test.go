@@ -98,7 +98,13 @@ func (r *captureUpdateRunRepo) List(_ context.Context, _ repository.PipelineRunF
 	return nil, nil
 }
 
-func (r *captureUpdateRunRepo) UpdateStatus(_ context.Context, _ uuid.UUID, _ time.Time, update repository.PipelineRunStatusUpdate) error {
+func (r *captureUpdateRunRepo) UpdateStatus(ctx context.Context, _ uuid.UUID, _ time.Time, update repository.PipelineRunStatusUpdate) error {
+	// Return an error if the context is already cancelled so that the test
+	// fails if RecordRunComplete forwards the caller's context instead of
+	// using an independent context.Background() for the DB write.
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
 	r.updateCalled.Store(true)
 	r.lastStatus = update.Status
 	return nil
