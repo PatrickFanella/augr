@@ -198,6 +198,12 @@ type PipelineRunRepository interface {
 	UpdateStatus(ctx context.Context, id uuid.UUID, tradeDate time.Time, update PipelineRunStatusUpdate) error
 }
 
+// PipelineRunSnapshotRepository provides access to snapshots captured during a run.
+type PipelineRunSnapshotRepository interface {
+	Create(ctx context.Context, snapshot *domain.PipelineRunSnapshot) error
+	GetByRun(ctx context.Context, runID uuid.UUID) ([]domain.PipelineRunSnapshot, error)
+}
+
 // AgentDecisionRepository provides access to agent decisions created during a run.
 type AgentDecisionRepository interface {
 	Create(ctx context.Context, decision *domain.AgentDecision) error
