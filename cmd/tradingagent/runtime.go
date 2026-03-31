@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	redis "github.com/redis/go-redis/v9"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/agent"
 	"github.com/PatrickFanella/get-rich-quick/internal/api"
@@ -29,6 +30,8 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 	if err != nil {
 		return nil, nil, nil, err
 	}
+
+	redisHealth, closeRedis := newRedisHealthCheck(cfg)
 
 	strategyRepo := pgrepo.NewStrategyRepo(db.Pool)
 	runRepo := pgrepo.NewPipelineRunRepo(db.Pool)
@@ -60,16 +63,18 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 	)
 
 	deps := api.Deps{
-		Strategies: strategyRepo,
-		Runs:       runRepo,
-		Decisions:  decisionRepo,
-		Orders:     orderRepo,
-		Positions:  positionRepo,
-		Trades:     tradeRepo,
-		Memories:   memoryRepo,
-		APIKeys:    apiKeyRepo,
-		Risk:       riskEngine,
-		Settings:   api.NewMemorySettingsServiceFromConfig(cfg),
+		Strategies:  strategyRepo,
+		Runs:        runRepo,
+		Decisions:   decisionRepo,
+		Orders:      orderRepo,
+		Positions:   positionRepo,
+		Trades:      tradeRepo,
+		Memories:    memoryRepo,
+		APIKeys:     apiKeyRepo,
+		Risk:        riskEngine,
+		Settings:    api.NewMemorySettingsServiceFromConfig(cfg),
+		DBHealth:    api.HealthCheckFunc(db.Pool.Ping),
+		RedisHealth: redisHealth,
 	}
 
 	var sched *scheduler.Scheduler
@@ -87,6 +92,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 
 	server, err := api.NewServer(apiCfg, deps, logger)
 	if err != nil {
+		closeRedis()
 		db.Close()
 		return nil, nil, nil, err
 	}
@@ -98,7 +104,35 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 		schedLifecycle = sched
 	}
 
-	return server, schedLifecycle, db.Close, nil
+	return server, schedLifecycle, func() {
+		closeRedis()
+		db.Close()
+	}, nil
+}
+
+func newRedisHealthCheck(cfg config.Config) (api.HealthCheck, func()) {
+	if !cfg.Features.EnableRedisCache {
+		return api.HealthCheckFunc(func(context.Context) error { return nil }), func() {}
+	}
+
+	redisURL := strings.TrimSpace(cfg.Redis.URL)
+	if redisURL == "" {
+		return api.HealthCheckFunc(func(context.Context) error { return errors.New("redis url is not configured") }), func() {}
+	}
+
+	opts, err := redis.ParseURL(redisURL)
+	if err != nil {
+		return api.HealthCheckFunc(func(context.Context) error {
+			return fmt.Errorf("parse redis url: %w", err)
+		}), func() {}
+	}
+
+	client := redis.NewClient(opts)
+	return api.HealthCheckFunc(func(ctx context.Context) error {
+			return client.Ping(ctx).Err()
+		}), func() {
+			_ = client.Close()
+		}
 }
 
 type smokeStrategyRunner struct {

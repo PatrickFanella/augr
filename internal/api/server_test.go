@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -29,12 +31,16 @@ func newTestServer(t *testing.T) *Server {
 }
 
 func newTestServerWithDeps(t *testing.T, deps Deps) *Server {
+	return newTestServerWithDepsAndLogger(t, deps, slog.Default())
+}
+
+func newTestServerWithDepsAndLogger(t *testing.T, deps Deps, logger *slog.Logger) *Server {
 	t.Helper()
 
 	cfg := DefaultServerConfig()
 	cfg.JWTSecret = "test-jwt-secret"
 
-	srv, err := NewServer(cfg, deps, slog.Default())
+	srv, err := NewServer(cfg, deps, logger)
 	if err != nil {
 		t.Fatalf("NewServer() error = %v", err)
 	}
@@ -49,14 +55,16 @@ func testDeps() Deps {
 				stratB.ID: stratB,
 			},
 		},
-		Runs:      &stubRunRepo{},
-		Decisions: &stubDecisionRepo{},
-		Orders:    &stubOrderRepo{},
-		Positions: &stubPositionRepo{},
-		Trades:    &stubTradeRepo{},
-		Memories:  &stubMemoryRepo{},
-		APIKeys:   newStubAPIKeyRepo(),
-		Risk:      &stubRiskEngine{},
+		Runs:        &stubRunRepo{},
+		Decisions:   &stubDecisionRepo{},
+		Orders:      &stubOrderRepo{},
+		Positions:   &stubPositionRepo{},
+		Trades:      &stubTradeRepo{},
+		Memories:    &stubMemoryRepo{},
+		APIKeys:     newStubAPIKeyRepo(),
+		Risk:        &stubRiskEngine{},
+		DBHealth:    &stubHealthCheck{},
+		RedisHealth: &stubHealthCheck{},
 	}
 }
 
@@ -124,7 +132,12 @@ func decodeJSON[T any](t *testing.T, rr *httptest.ResponseRecorder) T {
 
 func TestHealthEndpoint(t *testing.T) {
 	t.Parallel()
-	srv := newTestServer(t)
+	deps := testDeps()
+	dbHealth := &stubHealthCheck{}
+	redisHealth := &stubHealthCheck{}
+	deps.DBHealth = dbHealth
+	deps.RedisHealth = redisHealth
+	srv := newTestServerWithDeps(t, deps)
 
 	for _, path := range []string{"/health", "/healthz"} {
 		rr := doRequest(t, srv, http.MethodGet, path, nil)
@@ -133,9 +146,156 @@ func TestHealthEndpoint(t *testing.T) {
 			t.Fatalf("%s status = %d, want %d", path, rr.Code, http.StatusOK)
 		}
 		body := decodeJSON[map[string]string](t, rr)
-		if body["status"] != "all-ok" {
-			t.Fatalf("%s status = %q, want %q", path, body["status"], "all-ok")
+		if body["status"] != "ok" {
+			t.Fatalf("%s status = %q, want %q", path, body["status"], "ok")
 		}
+		if body["db"] != "ok" {
+			t.Fatalf("%s db = %q, want %q", path, body["db"], "ok")
+		}
+		if body["redis"] != "ok" {
+			t.Fatalf("%s redis = %q, want %q", path, body["redis"], "ok")
+		}
+	}
+
+	if dbHealth.calls.Load() != 2 {
+		t.Fatalf("db health calls = %d, want 2", dbHealth.calls.Load())
+	}
+	if redisHealth.calls.Load() != 2 {
+		t.Fatalf("redis health calls = %d, want 2", redisHealth.calls.Load())
+	}
+}
+
+func TestHealthEndpointDBDown(t *testing.T) {
+	t.Parallel()
+
+	deps := testDeps()
+	dbHealth := &stubHealthCheck{err: errors.New("db unavailable")}
+	redisHealth := &stubHealthCheck{}
+	deps.DBHealth = dbHealth
+	deps.RedisHealth = redisHealth
+	srv := newTestServerWithDeps(t, deps)
+
+	rr := doRequest(t, srv, http.MethodGet, "/healthz", nil)
+
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusServiceUnavailable)
+	}
+	body := decodeJSON[map[string]string](t, rr)
+	if body["status"] != "degraded" {
+		t.Fatalf("status = %q, want %q", body["status"], "degraded")
+	}
+	if body["db"] != "error" {
+		t.Fatalf("db = %q, want %q", body["db"], "error")
+	}
+	if body["redis"] != "ok" {
+		t.Fatalf("redis = %q, want %q", body["redis"], "ok")
+	}
+	if dbHealth.calls.Load() != 1 {
+		t.Fatalf("db health calls = %d, want 1", dbHealth.calls.Load())
+	}
+	if redisHealth.calls.Load() != 1 {
+		t.Fatalf("redis health calls = %d, want 1", redisHealth.calls.Load())
+	}
+}
+
+func TestHealthEndpointRedisDown(t *testing.T) {
+	t.Parallel()
+
+	deps := testDeps()
+	dbHealth := &stubHealthCheck{}
+	redisHealth := &stubHealthCheck{err: errors.New("redis unavailable")}
+	deps.DBHealth = dbHealth
+	deps.RedisHealth = redisHealth
+	srv := newTestServerWithDeps(t, deps)
+
+	rr := doRequest(t, srv, http.MethodGet, "/healthz", nil)
+
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusServiceUnavailable)
+	}
+	body := decodeJSON[map[string]string](t, rr)
+	if body["status"] != "degraded" {
+		t.Fatalf("status = %q, want %q", body["status"], "degraded")
+	}
+	if body["db"] != "ok" {
+		t.Fatalf("db = %q, want %q", body["db"], "ok")
+	}
+	if body["redis"] != "error" {
+		t.Fatalf("redis = %q, want %q", body["redis"], "error")
+	}
+	if dbHealth.calls.Load() != 1 {
+		t.Fatalf("db health calls = %d, want 1", dbHealth.calls.Load())
+	}
+	if redisHealth.calls.Load() != 1 {
+		t.Fatalf("redis health calls = %d, want 1", redisHealth.calls.Load())
+	}
+}
+
+func TestHealthEndpointUsesSharedTimeout(t *testing.T) {
+	const maxExpectedElapsed = 175 * time.Millisecond
+
+	originalTimeout := healthCheckTimeout
+	healthCheckTimeout = 100 * time.Millisecond
+	defer func() {
+		healthCheckTimeout = originalTimeout
+	}()
+
+	deps := testDeps()
+	dbHealth := &blockingHealthCheck{}
+	redisHealth := &blockingHealthCheck{}
+	deps.DBHealth = dbHealth
+	deps.RedisHealth = redisHealth
+	srv := newTestServerWithDeps(t, deps)
+
+	start := time.Now()
+	rr := doRequest(t, srv, http.MethodGet, "/healthz", nil)
+	elapsed := time.Since(start)
+
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusServiceUnavailable)
+	}
+	body := decodeJSON[map[string]string](t, rr)
+	if body["status"] != "degraded" {
+		t.Fatalf("status = %q, want %q", body["status"], "degraded")
+	}
+	if body["db"] != "error" {
+		t.Fatalf("db = %q, want %q", body["db"], "error")
+	}
+	if body["redis"] != "error" {
+		t.Fatalf("redis = %q, want %q", body["redis"], "error")
+	}
+	if elapsed >= maxExpectedElapsed {
+		t.Fatalf("elapsed = %v, want < %v", elapsed, maxExpectedElapsed)
+	}
+	if dbHealth.calls.Load() != 1 {
+		t.Fatalf("db health calls = %d, want 1", dbHealth.calls.Load())
+	}
+	if redisHealth.calls.Load() != 1 {
+		t.Fatalf("redis health calls = %d, want 1", redisHealth.calls.Load())
+	}
+}
+
+func TestHealthEndpointLogsFailuresAtInfo(t *testing.T) {
+	t.Parallel()
+
+	var logOutput bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logOutput, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	deps := testDeps()
+	deps.DBHealth = &stubHealthCheck{err: errors.New("db unavailable")}
+	deps.RedisHealth = &stubHealthCheck{}
+	srv := newTestServerWithDepsAndLogger(t, deps, logger)
+
+	rr := doRequest(t, srv, http.MethodGet, "/healthz", nil)
+
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusServiceUnavailable)
+	}
+	if !strings.Contains(logOutput.String(), "level=INFO") {
+		t.Fatalf("log output = %q, want INFO level entry", logOutput.String())
+	}
+	if strings.Contains(logOutput.String(), "level=WARN") {
+		t.Fatalf("log output = %q, want no WARN entries", logOutput.String())
 	}
 }
 
@@ -1144,11 +1304,12 @@ type stubRunRepo struct {
 }
 
 func (*stubRunRepo) Create(context.Context, *domain.PipelineRun) error { return nil }
+
 func (*stubRunRepo) Get(_ context.Context, _ uuid.UUID, _ time.Time) (*domain.PipelineRun, error) {
 	return nil, fmt.Errorf("run: %w", repository.ErrNotFound)
 }
 
-func (s *stubRunRepo) List(_ context.Context, filter repository.PipelineRunFilter, _ int, _ int) ([]domain.PipelineRun, error) {
+func (s *stubRunRepo) List(_ context.Context, filter repository.PipelineRunFilter, _, _ int) ([]domain.PipelineRun, error) {
 	s.lastFilter = filter
 	return nil, nil
 }
@@ -1301,8 +1462,29 @@ func (stubRiskEngine) GetStatus(context.Context) (risk.EngineStatus, error) {
 		UpdatedAt:  time.Now(),
 	}, nil
 }
-func (stubRiskEngine) TripCircuitBreaker(context.Context, string) error           { return nil }
-func (stubRiskEngine) ResetCircuitBreaker(context.Context) error                  { return nil }
+func (stubRiskEngine) TripCircuitBreaker(context.Context, string) error { return nil }
+func (stubRiskEngine) ResetCircuitBreaker(context.Context) error        { return nil }
+
+type stubHealthCheck struct {
+	err   error
+	calls atomic.Int32
+}
+
+func (s *stubHealthCheck) Check(context.Context) error {
+	s.calls.Add(1)
+	return s.err
+}
+
+type blockingHealthCheck struct {
+	calls atomic.Int32
+}
+
+func (b *blockingHealthCheck) Check(ctx context.Context) error {
+	b.calls.Add(1)
+	<-ctx.Done()
+	return ctx.Err()
+}
+
 func (stubRiskEngine) IsKillSwitchActive(context.Context) (bool, error)           { return false, nil }
 func (stubRiskEngine) ActivateKillSwitch(context.Context, string) error           { return nil }
 func (stubRiskEngine) DeactivateKillSwitch(context.Context) error                 { return nil }
