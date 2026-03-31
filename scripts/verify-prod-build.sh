@@ -36,7 +36,7 @@ require_command docker
 require_command python3
 
 if [[ -f "$ENV_FILE" ]]; then
-	BACKUP_ENV="$(mktemp /tmp/get-rich-quick-prod-env.XXXXXX)"
+	BACKUP_ENV="$(mktemp /tmp/tradingagent-prod-env.XXXXXX)"
 	cp "$ENV_FILE" "$BACKUP_ENV"
 fi
 
