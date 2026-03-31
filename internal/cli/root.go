@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -25,9 +26,15 @@ import (
 )
 
 const (
-	defaultAPIURL = "http://127.0.0.1:8080"
-	formatTable   = "table"
-	formatJSON    = "json"
+	defaultAPIURL           = "http://127.0.0.1:8080"
+	formatTable             = "table"
+	formatJSON              = "json"
+	serverShutdownTimeout   = 10 * time.Second
+	forcedShutdownTimeout   = 30 * time.Second
+	forcedShutdownExitCode  = 1
+	inFlightPipelineRunsKey = "in_flight_pipeline_runs"
+	shutdownSignalKey       = "signal"
+	shutdownTimeoutKey      = "timeout"
 )
 
 // SchedulerLifecycle is an optional hook for a background job scheduler that
@@ -39,6 +46,8 @@ type SchedulerLifecycle interface {
 	// Stop cancels in-flight job contexts, waits for all running jobs to
 	// complete, and prevents new jobs from being dispatched.
 	Stop()
+	// InFlightCount returns the current number of in-flight pipeline runs.
+	InFlightCount() int
 }
 
 type Dependencies struct {
@@ -68,6 +77,108 @@ type createStrategyOptions struct {
 	Config       string
 	Active       bool
 	Paper        bool
+}
+
+type shutdownGuard struct {
+	logger   *slog.Logger
+	timeout  time.Duration
+	exitFunc func(int)
+
+	onceStart sync.Once
+	onceDone  sync.Once
+	timer     *time.Timer
+}
+
+func newShutdownGuard(logger *slog.Logger, timeout time.Duration, exitFunc func(int)) *shutdownGuard {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	if exitFunc == nil {
+		exitFunc = os.Exit
+	}
+	return &shutdownGuard{
+		logger:   logger,
+		timeout:  timeout,
+		exitFunc: exitFunc,
+	}
+}
+
+func (g *shutdownGuard) Begin(sig os.Signal, inFlightCount int) {
+	g.onceStart.Do(func() {
+		attrs := []slog.Attr{
+			slog.Int(inFlightPipelineRunsKey, inFlightCount),
+			slog.Duration(shutdownTimeoutKey, g.timeout),
+		}
+		if sig != nil {
+			attrs = append(attrs, slog.String(shutdownSignalKey, sig.String()))
+		}
+
+		g.logger.LogAttrs(context.Background(), slog.LevelInfo, "shutdown initiated", attrs...)
+		g.logger.LogAttrs(
+			context.Background(),
+			slog.LevelInfo,
+			"waiting for in-flight pipeline runs",
+			slog.Int(inFlightPipelineRunsKey, inFlightCount),
+		)
+
+		g.timer = time.AfterFunc(g.timeout, func() {
+			g.logger.LogAttrs(context.Background(), slog.LevelError, "shutdown timed out; forcing exit",
+				slog.Int(inFlightPipelineRunsKey, inFlightCount),
+				slog.Duration(shutdownTimeoutKey, g.timeout),
+			)
+			g.exitFunc(forcedShutdownExitCode)
+		})
+	})
+}
+
+func (g *shutdownGuard) Finish() {
+	g.onceDone.Do(func() {
+		if g.timer == nil {
+			return
+		}
+		g.timer.Stop()
+		g.logger.Info("shutdown complete")
+	})
+}
+
+func newSignalContext(parent context.Context, signals ...os.Signal) (context.Context, func(), func() os.Signal) {
+	ctx, cancel := context.WithCancel(parent)
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, signals...)
+
+	var (
+		mu          sync.Mutex
+		receivedSig os.Signal
+	)
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+		select {
+		case sig := <-sigCh:
+			mu.Lock()
+			receivedSig = sig
+			mu.Unlock()
+			cancel()
+		case <-parent.Done():
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+
+	stop := func() {
+		signal.Stop(sigCh)
+		cancel()
+		<-done
+	}
+
+	currentSignal := func() os.Signal {
+		mu.Lock()
+		defer mu.Unlock()
+		return receivedSig
+	}
+
+	return ctx, stop, currentSignal
 }
 
 func Execute(ctx context.Context, deps Dependencies) error {
@@ -158,6 +269,8 @@ func (s *rootState) newServeCommand() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("build api server: %w", err)
 			}
+			shutdown := newShutdownGuard(logger, forcedShutdownTimeout, nil)
+			defer shutdown.Finish()
 			// cleanup closes the DB pool; it must run after the scheduler has
 			// drained so in-flight pipeline runs can still write their final
 			// status before the pool is closed.
@@ -167,7 +280,7 @@ func (s *rootState) newServeCommand() *cobra.Command {
 			// a SIGTERM arriving during startup is captured (suppressing the
 			// default OS-level termination) rather than killing the process
 			// mid-startup and skipping all defers.
-			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+			ctx, stop, currentSignal := newSignalContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
 
 			// Start the scheduler (if provided) before accepting HTTP traffic.
@@ -183,7 +296,13 @@ func (s *rootState) newServeCommand() *cobra.Command {
 				defer sched.Stop()
 			}
 
-			if err := runServerLifecycle(ctx, apiServer.Start, apiServer.Shutdown); err != nil {
+			if err := runServerLifecycleWithHook(ctx, apiServer.Start, apiServer.Shutdown, func() {
+				inFlightCount := 0
+				if sched != nil {
+					inFlightCount = sched.InFlightCount()
+				}
+				shutdown.Begin(currentSignal(), inFlightCount)
+			}); err != nil {
 				return fmt.Errorf("serve http: %w", err)
 			}
 
@@ -585,7 +704,12 @@ func (o createStrategyOptions) strategy() (domain.Strategy, error) {
 	return strategy, nil
 }
 
-func runServerLifecycle(ctx context.Context, serve func() error, shutdown func(context.Context) error) error {
+func runServerLifecycleWithHook(
+	ctx context.Context,
+	serve func() error,
+	shutdown func(context.Context) error,
+	onShutdownInitiated func(),
+) error {
 	serverErr := make(chan error, 1)
 	go func() {
 		serverErr <- serve()
@@ -598,9 +722,12 @@ func runServerLifecycle(ctx context.Context, serve func() error, shutdown func(c
 		}
 		return err
 	case <-ctx.Done():
+		if onShutdownInitiated != nil {
+			onShutdownInitiated()
+		}
 	}
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), serverShutdownTimeout)
 	defer cancel()
 
 	if err := shutdown(shutdownCtx); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -612,6 +739,10 @@ func runServerLifecycle(ctx context.Context, serve func() error, shutdown func(c
 		return nil
 	}
 	return err
+}
+
+func runServerLifecycle(ctx context.Context, serve func() error, shutdown func(context.Context) error) error {
+	return runServerLifecycleWithHook(ctx, serve, shutdown, nil)
 }
 
 // RunServerLifecycle starts a server and shuts it down when the context is canceled.

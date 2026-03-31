@@ -241,6 +241,11 @@ func (s *Scheduler) Stop() {
 	s.logger.Info("scheduler: stopped")
 }
 
+// InFlightCount returns the number of in-flight scheduled pipeline runs.
+func (s *Scheduler) InFlightCount() int {
+	return s.dedup.Count()
+}
+
 func (s *Scheduler) loadActiveStrategies(ctx context.Context) ([]domain.Strategy, error) {
 	active := true
 	filter := repository.StrategyFilter{IsActive: &active}

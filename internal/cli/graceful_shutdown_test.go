@@ -1,13 +1,17 @@
 package cli
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -24,6 +28,7 @@ type mockScheduler struct {
 	startErr     error
 	started      atomic.Bool
 	stopped      atomic.Bool
+	inFlight     atomic.Int32
 	stopBlockCh  chan struct{} // if non-nil Stop() blocks until this is closed
 	stopCalledCh chan struct{} // closed once Stop() is entered; always set
 	onceStop     sync.Once
@@ -44,6 +49,10 @@ func (m *mockScheduler) Stop() {
 		<-m.stopBlockCh
 	}
 	m.stopped.Store(true)
+}
+
+func (m *mockScheduler) InFlightCount() int {
+	return int(m.inFlight.Load())
 }
 
 // callRecorder records names of functions in the order they are invoked.
@@ -79,6 +88,10 @@ func (s *recordingScheduler) Stop() {
 		s.onStop()
 	}
 	s.inner.Stop()
+}
+
+func (s *recordingScheduler) InFlightCount() int {
+	return s.inner.InFlightCount()
 }
 
 // --------------------------------------------------------------------------
@@ -200,6 +213,99 @@ func TestRunServerLifecycle_HonorsShutdownTimeout(t *testing.T) {
 	if _, ok := shutdownCtx.Deadline(); !ok {
 		t.Fatal("shutdown context has no deadline; expected a graceful-shutdown timeout")
 	}
+}
+
+func TestRunServerLifecycle_CallsShutdownHookOnContextCancel(t *testing.T) {
+	t.Parallel()
+
+	bs := newBlockingServe()
+	hookCalled := make(chan struct{}, 1)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- runServerLifecycleWithHook(ctx, bs.serve, bs.shutdown, func() {
+			hookCalled <- struct{}{}
+		})
+	}()
+
+	select {
+	case <-bs.started:
+	case <-time.After(3 * time.Second):
+		t.Fatal("serve() was not entered within 3 s")
+	}
+
+	cancel()
+
+	select {
+	case <-hookCalled:
+	case <-time.After(3 * time.Second):
+		t.Fatal("shutdown hook was not called after context cancellation")
+	}
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("runServerLifecycleWithHook returned %v, want nil", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for runServerLifecycleWithHook to return")
+	}
+}
+
+func TestShutdownGuard_LogsStructuredLifecycleMessages(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+	guard := newShutdownGuard(logger, time.Minute, func(int) {})
+
+	guard.Begin(syscall.SIGTERM, 3)
+	guard.Finish()
+
+	entries := parseLogEntries(t, buf.String())
+	if len(entries) != 3 {
+		t.Fatalf("expected 3 log entries, got %d", len(entries))
+	}
+
+	assertLogEntry(t, entries[0], "INFO", "shutdown initiated", map[string]any{
+		inFlightPipelineRunsKey: float64(3),
+		shutdownSignalKey:       syscall.SIGTERM.String(),
+	})
+	assertLogEntry(t, entries[1], "INFO", "waiting for in-flight pipeline runs", map[string]any{
+		inFlightPipelineRunsKey: float64(3),
+	})
+	assertLogEntry(t, entries[2], "INFO", "shutdown complete", nil)
+}
+
+func TestShutdownGuard_ForcesExitAfterTimeout(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+	exitCalled := make(chan int, 1)
+	guard := newShutdownGuard(logger, 20*time.Millisecond, func(code int) {
+		exitCalled <- code
+	})
+
+	guard.Begin(nil, 2)
+
+	select {
+	case code := <-exitCalled:
+		if code != forcedShutdownExitCode {
+			t.Fatalf("exit code = %d, want %d", code, forcedShutdownExitCode)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("forced shutdown exit was not triggered")
+	}
+
+	entries := parseLogEntries(t, buf.String())
+	if len(entries) < 3 {
+		t.Fatalf("expected at least 3 log entries, got %d", len(entries))
+	}
+	assertLogEntry(t, entries[len(entries)-1], "ERROR", "shutdown timed out; forcing exit", map[string]any{
+		inFlightPipelineRunsKey: float64(2),
+	})
 }
 
 // --------------------------------------------------------------------------
@@ -430,6 +536,40 @@ func TestGracefulShutdown_SchedulerStartErrorPreventsServe(t *testing.T) {
 	}
 	if serveCalled {
 		t.Fatal("serve was called even though scheduler Start() failed")
+	}
+}
+
+func parseLogEntries(t *testing.T, logs string) []map[string]any {
+	t.Helper()
+
+	lines := strings.Split(strings.TrimSpace(logs), "\n")
+	entries := make([]map[string]any, 0, len(lines))
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		var entry map[string]any
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			t.Fatalf("unmarshal log entry %q: %v", line, err)
+		}
+		entries = append(entries, entry)
+	}
+	return entries
+}
+
+func assertLogEntry(t *testing.T, entry map[string]any, level, msg string, wantFields map[string]any) {
+	t.Helper()
+
+	if got := entry["level"]; got != level {
+		t.Fatalf("log level = %v, want %s", got, level)
+	}
+	if got := entry["msg"]; got != msg {
+		t.Fatalf("log msg = %v, want %s", got, msg)
+	}
+	for key, want := range wantFields {
+		if got := entry[key]; got != want {
+			t.Fatalf("log field %q = %v, want %v", key, got, want)
+		}
 	}
 }
 

@@ -22,3 +22,13 @@ func (d *strategyDedup) TryAcquire(strategyID uuid.UUID) bool {
 func (d *strategyDedup) Release(strategyID uuid.UUID) {
 	d.inFlight.Delete(strategyID)
 }
+
+// Count returns the number of in-flight strategies.
+func (d *strategyDedup) Count() int {
+	count := 0
+	d.inFlight.Range(func(_, _ any) bool {
+		count++
+		return true
+	})
+	return count
+}
