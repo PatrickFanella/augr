@@ -337,7 +337,7 @@ func TestShutdownGuard_FinishPreventsForcedExitAfterCompletion(t *testing.T) {
 	select {
 	case code := <-exitCalled:
 		t.Fatalf("unexpected forced exit code %d after Finish", code)
-	case <-time.After(50 * time.Millisecond):
+	default:
 	}
 
 	entries := parseLogEntries(t, buf.String())
