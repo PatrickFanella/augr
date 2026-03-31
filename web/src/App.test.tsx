@@ -13,6 +13,10 @@ vi.mock('@/pages/dashboard-page', () => ({
   DashboardPage: () => <div>Dashboard page</div>,
 }))
 
+vi.mock('@/pages/runs-page', () => ({
+  RunsPage: () => <div>Runs page</div>,
+}))
+
 describe('AppRoutes auth guards', () => {
   beforeEach(() => {
     vi.mocked(isAuthenticated).mockReset()
@@ -46,5 +50,17 @@ describe('AppRoutes auth guards', () => {
 
     expect(screen.getByText('Dashboard page')).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Login' })).not.toBeInTheDocument()
+  })
+
+  it('renders the runs page at /runs for authenticated users', () => {
+    vi.mocked(isAuthenticated).mockReturnValue(true)
+
+    render(
+      <MemoryRouter initialEntries={['/runs']}>
+        <AppRoutes />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByText('Runs page')).toBeInTheDocument()
   })
 })
