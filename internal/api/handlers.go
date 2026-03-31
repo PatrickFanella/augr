@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/PatrickFanella/get-rich-quick/internal/agent"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 )
@@ -139,6 +140,10 @@ func (s *Server) handleCreateStrategy(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, err.Error(), ErrCodeValidation)
 		return
 	}
+	if err := validateStrategyConfigPayload(strategy.Config); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error(), ErrCodeValidation)
+		return
+	}
 	strategy.ID = uuid.New()
 	if err := s.strategies.Create(r.Context(), &strategy); err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to create strategy", ErrCodeInternal)
@@ -163,6 +168,10 @@ func (s *Server) handleUpdateStrategy(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, err.Error(), ErrCodeValidation)
 		return
 	}
+	if err := validateStrategyConfigPayload(strategy.Config); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error(), ErrCodeValidation)
+		return
+	}
 	if err := s.strategies.Update(r.Context(), &strategy); err != nil {
 		if isNotFound(err) {
 			respondError(w, http.StatusNotFound, "strategy not found", ErrCodeNotFound)
@@ -172,6 +181,19 @@ func (s *Server) handleUpdateStrategy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respondJSON(w, http.StatusOK, strategy)
+}
+
+func validateStrategyConfigPayload(raw domain.StrategyConfig) error {
+	if len(raw) == 0 {
+		return nil
+	}
+
+	var cfg agent.StrategyConfig
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		return errors.New("invalid config: " + err.Error())
+	}
+
+	return agent.ValidateStrategyConfig(cfg)
 }
 
 func (s *Server) handleDeleteStrategy(w http.ResponseWriter, r *http.Request) {

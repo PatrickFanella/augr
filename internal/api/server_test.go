@@ -17,6 +17,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/PatrickFanella/get-rich-quick/internal/agent"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 	"github.com/PatrickFanella/get-rich-quick/internal/risk"
@@ -124,6 +125,23 @@ func decodeJSON[T any](t *testing.T, rr *httptest.ResponseRecorder) T {
 		t.Fatalf("decode response: %v\nbody: %s", err, rr.Body.String())
 	}
 	return v
+}
+
+func assertValidationError(t *testing.T, rr *httptest.ResponseRecorder, wantSubstrings ...string) {
+	t.Helper()
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d\nbody: %s", rr.Code, http.StatusBadRequest, rr.Body.String())
+	}
+
+	body := decodeJSON[ErrorResponse](t, rr)
+	if body.Code != ErrCodeValidation {
+		t.Fatalf("code = %q, want %q", body.Code, ErrCodeValidation)
+	}
+	for _, want := range wantSubstrings {
+		if !strings.Contains(body.Error, want) {
+			t.Fatalf("error = %q, want substring %q", body.Error, want)
+		}
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -392,6 +410,93 @@ func TestCreateStrategy(t *testing.T) {
 	}
 }
 
+func TestCreateStrategyConfigValidation(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		payload        map[string]any
+		wantStatus     int
+		wantErrSubstrs []string
+		wantModel      string
+	}{
+		{
+			name: "valid partial config",
+			payload: map[string]any{
+				"name":        "Gamma",
+				"ticker":      "TSLA",
+				"market_type": "stock",
+				"config": map[string]any{
+					"llm_config": map[string]any{
+						"deep_think_model": "gpt-5.4",
+					},
+				},
+			},
+			wantStatus: http.StatusCreated,
+			wantModel:  "gpt-5.4",
+		},
+		{
+			name: "invalid model",
+			payload: map[string]any{
+				"name":        "Gamma",
+				"ticker":      "TSLA",
+				"market_type": "stock",
+				"config": map[string]any{
+					"llm_config": map[string]any{
+						"deep_think_model": "unknown-model",
+					},
+				},
+			},
+			wantStatus:     http.StatusBadRequest,
+			wantErrSubstrs: []string{"llm_config.deep_think_model", "unknown-model"},
+		},
+		{
+			name: "out of range risk parameter",
+			payload: map[string]any{
+				"name":        "Gamma",
+				"ticker":      "TSLA",
+				"market_type": "stock",
+				"config": map[string]any{
+					"risk_config": map[string]any{
+						"position_size_pct": 101.0,
+					},
+				},
+			},
+			wantStatus:     http.StatusBadRequest,
+			wantErrSubstrs: []string{"risk_config.position_size_pct", "101"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := newTestServer(t)
+
+			rr := doRequest(t, srv, http.MethodPost, "/api/v1/strategies", tt.payload)
+
+			if tt.wantStatus == http.StatusCreated {
+				if rr.Code != http.StatusCreated {
+					t.Fatalf("status = %d, want %d\nbody: %s", rr.Code, http.StatusCreated, rr.Body.String())
+				}
+
+				body := decodeJSON[domain.Strategy](t, rr)
+				var cfg agent.StrategyConfig
+				if err := json.Unmarshal(body.Config, &cfg); err != nil {
+					t.Fatalf("json.Unmarshal(config) error = %v", err)
+				}
+				if cfg.LLMConfig == nil || cfg.LLMConfig.DeepThinkModel == nil {
+					t.Fatalf("config = %#v, want deep_think_model to be set", cfg)
+				}
+				if got := *cfg.LLMConfig.DeepThinkModel; got != tt.wantModel {
+					t.Fatalf("deep_think_model = %q, want %q", got, tt.wantModel)
+				}
+				return
+			}
+
+			assertValidationError(t, rr, tt.wantErrSubstrs...)
+		})
+	}
+}
+
 func TestCreateStrategyValidation(t *testing.T) {
 	t.Parallel()
 	srv := newTestServer(t)
@@ -536,6 +641,58 @@ func TestUpdateStrategy(t *testing.T) {
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d\nbody: %s", rr.Code, http.StatusOK, rr.Body.String())
+	}
+}
+
+func TestUpdateStrategyConfigValidation(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		payload        map[string]any
+		wantStatus     int
+		wantErrSubstrs []string
+	}{
+		{
+			name: "valid empty config",
+			payload: map[string]any{
+				"name":        "Alpha Updated",
+				"ticker":      "AAPL",
+				"market_type": "stock",
+				"config":      map[string]any{},
+			},
+			wantStatus: http.StatusOK,
+		},
+		{
+			name: "unknown analyst role",
+			payload: map[string]any{
+				"name":        "Alpha Updated",
+				"ticker":      "AAPL",
+				"market_type": "stock",
+				"config": map[string]any{
+					"analyst_selection": []string{"ghost_role"},
+				},
+			},
+			wantStatus:     http.StatusBadRequest,
+			wantErrSubstrs: []string{"analyst_selection[0]", "ghost_role"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := newTestServer(t)
+
+			rr := doRequest(t, srv, http.MethodPut, "/api/v1/strategies/"+stratA.ID.String(), tt.payload)
+
+			if tt.wantStatus == http.StatusOK {
+				if rr.Code != http.StatusOK {
+					t.Fatalf("status = %d, want %d\nbody: %s", rr.Code, http.StatusOK, rr.Body.String())
+				}
+				return
+			}
+
+			assertValidationError(t, rr, tt.wantErrSubstrs...)
+		})
 	}
 }
 
