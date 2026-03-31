@@ -90,6 +90,15 @@ type PipelineRun struct {
 	ConfigSnapshot json.RawMessage `json:"config_snapshot,omitempty"`
 }
 
+// PipelineRunSnapshot captures market data made available during a pipeline run.
+type PipelineRunSnapshot struct {
+	ID            uuid.UUID       `json:"id"`
+	PipelineRunID uuid.UUID       `json:"pipeline_run_id"`
+	DataType      string          `json:"data_type"`
+	Payload       json.RawMessage `json:"payload"`
+	CreatedAt     time.Time       `json:"created_at"`
+}
+
 // PipelineEvent represents a structured event emitted during a pipeline run.
 type PipelineEvent struct {
 	PipelineRunID uuid.UUID       `json:"pipeline_run_id"`
