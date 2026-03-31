@@ -18,7 +18,7 @@ func TestStrategiesStatusUpMigrationDefinesExpectedSchema(t *testing.T) {
 		"alter table strategies add column status text not null default 'active', add column skip_next_run boolean not null default false;",
 		"update strategies set status = 'inactive' where is_active = false;",
 		"create or replace function sync_strategy_status_with_is_active() returns trigger as $$",
-		"if new.status in ('active', 'inactive') then",
+		"if new.status = 'active' and new.is_active = false then",
 		"elsif new.is_active is not distinct from old.is_active and new.status is distinct from old.status and new.status in ('active', 'inactive') then",
 		"create trigger trg_strategies_sync_status_with_is_active before insert or update of is_active, status on strategies for each row execute function sync_strategy_status_with_is_active();",
 		"comment on column strategies.is_active is 'deprecated: use status instead.';",
@@ -217,6 +217,18 @@ INSERT INTO strategies (id, name, ticker, market_type, status, skip_next_run)
 VALUES ($1, $2, $3, $4, $5, $6)
 `, postMigrationStrategyID, "Paused strategy", "ETHUSD", "crypto", "paused", true); err != nil {
 		t.Fatalf("failed to insert strategy after status migration: %v", err)
+	}
+
+	var postMigrationStatus string
+	if err := pool.QueryRow(ctx, `
+SELECT status
+FROM strategies
+WHERE id = $1
+`, postMigrationStrategyID).Scan(&postMigrationStatus); err != nil {
+		t.Fatalf("failed to query strategy inserted with explicit status after migration: %v", err)
+	}
+	if postMigrationStatus != "paused" {
+		t.Fatalf("expected explicitly inserted strategy status to remain %q, got %q", "paused", postMigrationStatus)
 	}
 
 	legacyActiveStrategyID := uuid.New()
