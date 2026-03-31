@@ -1,47 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
-import { Activity, AlertCircle, CheckCircle2, Loader2, XCircle } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { Activity } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
 
-import { Badge } from '@/components/ui/badge'
+import { RunSignalBadge, RunStatusBadge } from '@/components/runs/run-badges'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { apiClient } from '@/lib/api/client'
-import type { PipelineRun, PipelineStatus } from '@/lib/api/types'
-
-type BadgeVariant = 'default' | 'secondary' | 'success' | 'destructive' | 'warning'
-
-interface StatusInfo {
-  icon: typeof CheckCircle2
-  label: string
-  variant: BadgeVariant
-}
-
-const statusConfig: Record<PipelineStatus, StatusInfo> = {
-  completed: { icon: CheckCircle2, label: 'Completed', variant: 'success' },
-  running: { icon: Loader2, label: 'Running', variant: 'default' },
-  failed: { icon: XCircle, label: 'Failed', variant: 'destructive' },
-  cancelled: { icon: AlertCircle, label: 'Cancelled', variant: 'warning' },
-}
-
-function RunStatusBadge({ status }: { status: PipelineStatus }) {
-  const config = statusConfig[status]
-  const Icon = config.icon
-
-  return (
-    <Badge variant={config.variant} className="gap-1">
-      <Icon className={`size-3 ${status === 'running' ? 'animate-spin' : ''}`} />
-      {config.label}
-    </Badge>
-  )
-}
-
-function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
+import type { PipelineRun } from '@/lib/api/types'
+import { formatRunDate } from '@/lib/run-format'
 
 export function RunsPage() {
   const navigate = useNavigate()
@@ -65,7 +30,11 @@ export function RunsPage() {
         <CardHeader>
           <CardTitle>Recent runs</CardTitle>
           <CardDescription>
-            {data != null ? `${data.total ?? runs.length} runs` : 'Loading…'}
+            {isLoading
+              ? 'Loading…'
+              : isError
+                ? 'Unable to load runs'
+                : `${data?.total ?? runs.length} runs`}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -104,41 +73,33 @@ export function RunsPage() {
                   {runs.map((run: PipelineRun) => (
                     <tr
                       key={run.id}
-                      className="cursor-pointer border-b transition-colors hover:bg-secondary/40 last:border-0"
+                      className="cursor-pointer border-b transition-colors hover:bg-secondary/40 focus-within:bg-secondary/40 last:border-0"
                       data-testid={`run-row-${run.id}`}
-                      role="link"
-                      tabIndex={0}
-                      onClick={() => navigate(`/runs/${run.id}`)}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter' || event.key === ' ') {
-                          event.preventDefault()
-                          navigate(`/runs/${run.id}`)
+                      onClick={(event) => {
+                        if ((event.target as HTMLElement).closest('a')) {
+                          return
                         }
+
+                        navigate(`/runs/${run.id}`)
                       }}
                     >
-                      <td className="py-3 font-medium">{run.ticker}</td>
+                      <td className="py-0 font-medium">
+                        <Link
+                          to={`/runs/${run.id}`}
+                          className="block w-full cursor-pointer py-3 focus-visible:underline"
+                          data-testid={`run-link-${run.id}`}
+                        >
+                          {run.ticker}
+                        </Link>
+                      </td>
                       <td className="py-3">
                         <RunStatusBadge status={run.status} />
                       </td>
                       <td className="py-3">
-                        {run.signal ? (
-                          <Badge
-                            variant={
-                              run.signal === 'buy'
-                                ? 'success'
-                                : run.signal === 'sell'
-                                  ? 'destructive'
-                                  : 'secondary'
-                            }
-                          >
-                            {run.signal}
-                          </Badge>
-                        ) : (
-                          '—'
-                        )}
+                        {run.signal ? <RunSignalBadge signal={run.signal} /> : '—'}
                       </td>
-                      <td className="py-3">{formatDate(run.started_at)}</td>
-                      <td className="py-3">{run.completed_at ? formatDate(run.completed_at) : '—'}</td>
+                      <td className="py-3">{formatRunDate(run.started_at)}</td>
+                      <td className="py-3">{run.completed_at ? formatRunDate(run.completed_at) : '—'}</td>
                     </tr>
                   ))}
                 </tbody>
