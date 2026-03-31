@@ -14,6 +14,7 @@ import (
 
 	"github.com/PatrickFanella/get-rich-quick/internal/agent"
 	"github.com/PatrickFanella/get-rich-quick/internal/api"
+	"github.com/PatrickFanella/get-rich-quick/internal/cli"
 	"github.com/PatrickFanella/get-rich-quick/internal/config"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution"
@@ -21,12 +22,13 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 	pgrepo "github.com/PatrickFanella/get-rich-quick/internal/repository/postgres"
 	"github.com/PatrickFanella/get-rich-quick/internal/risk"
+	"github.com/PatrickFanella/get-rich-quick/internal/scheduler"
 )
 
-func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (*api.Server, func(), error) {
+func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (*api.Server, cli.SchedulerLifecycle, func(), error) {
 	db, err := pgrepo.NewDB(ctx, cfg.Database.URL)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	redisHealth, closeRedis := newRedisHealthCheck(cfg)
@@ -75,8 +77,11 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 		RedisHealth: redisHealth,
 	}
 
+	var sched *scheduler.Scheduler
 	if strings.EqualFold(cfg.Environment, "smoke") {
-		deps.Runner = newSmokeStrategyRunner(runRepo, snapshotRepo, decisionRepo, eventRepo, orderRepo, positionRepo, tradeRepo, auditLogRepo, riskEngine, logger)
+		pipeline := newSmokePipeline(runRepo, snapshotRepo, decisionRepo, eventRepo, logger)
+		deps.Runner = newSmokeStrategyRunner(pipeline, runRepo, orderRepo, positionRepo, tradeRepo, auditLogRepo, riskEngine, logger)
+		sched = scheduler.NewScheduler(strategyRepo, pipeline, riskEngine, logger)
 	}
 
 	apiCfg := api.DefaultServerConfig()
@@ -89,10 +94,17 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 	if err != nil {
 		closeRedis()
 		db.Close()
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
-	return server, func() {
+	// Avoid the Go nil-interface trap: explicitly return a nil interface when
+	// there is no scheduler so that the caller's nil check works correctly.
+	var schedLifecycle cli.SchedulerLifecycle
+	if sched != nil {
+		schedLifecycle = sched
+	}
+
+	return server, schedLifecycle, func() {
 		closeRedis()
 		db.Close()
 	}, nil
@@ -132,10 +144,8 @@ type smokeStrategyRunner struct {
 }
 
 func newSmokeStrategyRunner(
+	pipeline *agent.Pipeline,
 	runRepo repository.PipelineRunRepository,
-	snapshotRepo repository.PipelineRunSnapshotRepository,
-	decisionRepo repository.AgentDecisionRepository,
-	eventRepo repository.AgentEventRepository,
 	orderRepo repository.OrderRepository,
 	positionRepo repository.PositionRepository,
 	tradeRepo repository.TradeRepository,
@@ -143,7 +153,6 @@ func newSmokeStrategyRunner(
 	riskEngine risk.RiskEngine,
 	logger *slog.Logger,
 ) api.StrategyRunner {
-	pipeline := newSmokePipeline(runRepo, snapshotRepo, decisionRepo, eventRepo, logger)
 	orderManager := execution.NewOrderManager(
 		paper.NewPaperBroker(100_000, 0, 0),
 		"paper",

@@ -30,9 +30,20 @@ const (
 	formatJSON    = "json"
 )
 
+// SchedulerLifecycle is an optional hook for a background job scheduler that
+// must be started before the HTTP server begins serving and stopped (gracefully
+// draining in-flight runs) before the database connection pool is closed.
+type SchedulerLifecycle interface {
+	// Start registers cron jobs and begins dispatching them.
+	Start() error
+	// Stop cancels in-flight job contexts, waits for all running jobs to
+	// complete, and prevents new jobs from being dispatched.
+	Stop()
+}
+
 type Dependencies struct {
 	Version      string
-	NewAPIServer func(context.Context, config.Config, *slog.Logger) (*api.Server, func(), error)
+	NewAPIServer func(context.Context, config.Config, *slog.Logger) (*api.Server, SchedulerLifecycle, func(), error)
 	Stdout       io.Writer
 	Stderr       io.Writer
 }
@@ -45,7 +56,7 @@ type rootState struct {
 	apiKey       string
 	format       string
 	version      string
-	newAPIServer func(context.Context, config.Config, *slog.Logger) (*api.Server, func(), error)
+	newAPIServer func(context.Context, config.Config, *slog.Logger) (*api.Server, SchedulerLifecycle, func(), error)
 }
 
 type createStrategyOptions struct {
@@ -143,14 +154,34 @@ func (s *rootState) newServeCommand() *cobra.Command {
 				return err
 			}
 
-			apiServer, cleanup, err := s.newAPIServer(cmd.Context(), cfg, logger)
+			apiServer, sched, cleanup, err := s.newAPIServer(cmd.Context(), cfg, logger)
 			if err != nil {
 				return fmt.Errorf("build api server: %w", err)
 			}
+			// cleanup closes the DB pool; it must run after the scheduler has
+			// drained so in-flight pipeline runs can still write their final
+			// status before the pool is closed.
 			defer cleanup()
 
+			// Register signal handling BEFORE starting the scheduler so that
+			// a SIGTERM arriving during startup is captured (suppressing the
+			// default OS-level termination) rather than killing the process
+			// mid-startup and skipping all defers.
 			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
+
+			// Start the scheduler (if provided) before accepting HTTP traffic.
+			// It is stopped in the deferred call below, which runs before
+			// cleanup() because defers execute in LIFO order.
+			if sched != nil {
+				if err := sched.Start(); err != nil {
+					return fmt.Errorf("start scheduler: %w", err)
+				}
+				// Stop runs BEFORE cleanup() (LIFO order), giving in-flight
+				// pipeline runs time to persist their terminal status while
+				// the DB pool is still open.
+				defer sched.Stop()
+			}
 
 			if err := runServerLifecycle(ctx, apiServer.Start, apiServer.Shutdown); err != nil {
 				return fmt.Errorf("serve http: %w", err)
