@@ -84,9 +84,16 @@ type shutdownGuard struct {
 	timeout  time.Duration
 	exitFunc func(int)
 
+	mu        sync.Mutex
 	onceStart sync.Once
 	onceDone  sync.Once
-	timer     *time.Timer
+	timer     stopTimer
+	done      bool
+	afterFunc func(time.Duration, func()) stopTimer
+}
+
+type stopTimer interface {
+	Stop() bool
 }
 
 func newShutdownGuard(logger *slog.Logger, timeout time.Duration, exitFunc func(int)) *shutdownGuard {
@@ -100,6 +107,9 @@ func newShutdownGuard(logger *slog.Logger, timeout time.Duration, exitFunc func(
 		logger:   logger,
 		timeout:  timeout,
 		exitFunc: exitFunc,
+		afterFunc: func(timeout time.Duration, fn func()) stopTimer {
+			return time.AfterFunc(timeout, fn)
+		},
 	}
 }
 
@@ -121,24 +131,37 @@ func (g *shutdownGuard) Begin(sig os.Signal, inFlightCount int) {
 			slog.Int(inFlightPipelineRunsKey, inFlightCount),
 		)
 
-		g.timer = time.AfterFunc(g.timeout, func() {
-			g.logger.LogAttrs(context.Background(), slog.LevelError, "shutdown timed out; forcing exit",
-				slog.Int(inFlightPipelineRunsKey, inFlightCount),
-				slog.Duration(shutdownTimeoutKey, g.timeout),
-			)
-			g.exitFunc(forcedShutdownExitCode)
+		g.timer = g.afterFunc(g.timeout, func() {
+			g.forceExit(inFlightCount)
 		})
 	})
 }
 
 func (g *shutdownGuard) Finish() {
 	g.onceDone.Do(func() {
-		if g.timer == nil {
-			return
+		g.mu.Lock()
+		g.done = true
+		timer := g.timer
+		g.mu.Unlock()
+		if timer != nil {
+			timer.Stop()
 		}
-		g.timer.Stop()
 		g.logger.Info("shutdown complete")
 	})
+}
+
+func (g *shutdownGuard) forceExit(inFlightCount int) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.done {
+		return
+	}
+
+	g.logger.LogAttrs(context.Background(), slog.LevelError, "shutdown timed out; forcing exit",
+		slog.Int(inFlightPipelineRunsKey, inFlightCount),
+		slog.Duration(shutdownTimeoutKey, g.timeout),
+	)
+	g.exitFunc(forcedShutdownExitCode)
 }
 
 func newSignalContext(parent context.Context, signals ...os.Signal) (context.Context, func(), func() os.Signal) {

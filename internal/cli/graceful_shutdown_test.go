@@ -308,6 +308,55 @@ func TestShutdownGuard_ForcesExitAfterTimeout(t *testing.T) {
 	})
 }
 
+func TestShutdownGuard_FinishPreventsForcedExitAfterCompletion(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+	exitCalled := make(chan int, 1)
+	timer := &fakeStopTimer{}
+
+	guard := newShutdownGuard(logger, time.Hour, func(code int) {
+		exitCalled <- code
+	})
+	guard.afterFunc = func(_ time.Duration, fn func()) stopTimer {
+		timer.callback = fn
+		return timer
+	}
+
+	guard.Begin(nil, 1)
+
+	guard.Finish()
+	timer.Fire()
+
+	select {
+	case code := <-exitCalled:
+		t.Fatalf("unexpected forced exit code %d after Finish", code)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	entries := parseLogEntries(t, buf.String())
+	if len(entries) != 3 {
+		t.Fatalf("expected 3 log entries, got %d", len(entries))
+	}
+	assertLogEntry(t, entries[2], "INFO", "shutdown complete", nil)
+}
+
+type fakeStopTimer struct {
+	callback func()
+	stopped  atomic.Bool
+}
+
+func (t *fakeStopTimer) Stop() bool {
+	return !t.stopped.Swap(true)
+}
+
+func (t *fakeStopTimer) Fire() {
+	if t.callback != nil {
+		t.callback()
+	}
+}
+
 // --------------------------------------------------------------------------
 // Scheduler lifecycle ordering tests
 // --------------------------------------------------------------------------
