@@ -252,11 +252,20 @@ func captureStandardOutput(t *testing.T, fn func()) ([]byte, []byte) {
 		t.Fatalf("os.Pipe() stderr error = %v", err)
 	}
 
+	restored := false
+	restore := func() {
+		if restored {
+			return
+		}
+		os.Stdout = originalStdout
+		os.Stderr = originalStderr
+		restored = true
+	}
+
 	os.Stdout = stdoutWriter
 	os.Stderr = stderrWriter
 	t.Cleanup(func() {
-		os.Stdout = originalStdout
-		os.Stderr = originalStderr
+		restore()
 		_ = stdoutReader.Close()
 		_ = stdoutWriter.Close()
 		_ = stderrReader.Close()
@@ -264,6 +273,7 @@ func captureStandardOutput(t *testing.T, fn func()) ([]byte, []byte) {
 	})
 
 	fn()
+	restore()
 
 	if err := stdoutWriter.Close(); err != nil {
 		t.Fatalf("stdoutWriter.Close() error = %v", err)
