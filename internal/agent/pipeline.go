@@ -272,7 +272,39 @@ func (p *Pipeline) executeAnalysisPhase(ctx context.Context, state *PipelineStat
 		})
 	}
 
-	return g.Wait()
+	if err := g.Wait(); err != nil {
+		return err
+	}
+
+	return p.persistAnalysisSnapshots(ctx, state)
+}
+
+func (p *Pipeline) persistAnalysisSnapshots(ctx context.Context, state *PipelineState) error {
+	snapshots := []struct {
+		dataType string
+		payload  any
+	}{
+		{dataType: "market", payload: state.Market},
+		{dataType: "news", payload: state.News},
+		{dataType: "fundamentals", payload: state.Fundamentals},
+		{dataType: "social", payload: state.Social},
+	}
+
+	for _, snapshotData := range snapshots {
+		payload, err := json.Marshal(snapshotData.payload)
+		if err != nil {
+			return fmt.Errorf("agent/pipeline: marshal %s snapshot: %w", snapshotData.dataType, err)
+		}
+		if err := p.persister.PersistSnapshot(ctx, &domain.PipelineRunSnapshot{
+			PipelineRunID: state.PipelineRunID,
+			DataType:      snapshotData.dataType,
+			Payload:       payload,
+		}); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // executeTradingPhase runs the single registered Trader node. If no Trader

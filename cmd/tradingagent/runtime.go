@@ -30,6 +30,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 
 	strategyRepo := pgrepo.NewStrategyRepo(db.Pool)
 	runRepo := pgrepo.NewPipelineRunRepo(db.Pool)
+	snapshotRepo := pgrepo.NewPipelineRunSnapshotRepo(db.Pool)
 	decisionRepo := pgrepo.NewAgentDecisionRepo(db.Pool)
 	eventRepo := pgrepo.NewAgentEventRepo(db.Pool)
 	orderRepo := pgrepo.NewOrderRepo(db.Pool)
@@ -70,7 +71,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 	}
 
 	if strings.EqualFold(cfg.Environment, "smoke") {
-		deps.Runner = newSmokeStrategyRunner(runRepo, decisionRepo, eventRepo, orderRepo, positionRepo, tradeRepo, auditLogRepo, riskEngine, logger)
+		deps.Runner = newSmokeStrategyRunner(runRepo, snapshotRepo, decisionRepo, eventRepo, orderRepo, positionRepo, tradeRepo, auditLogRepo, riskEngine, logger)
 	}
 
 	apiCfg := api.DefaultServerConfig()
@@ -98,6 +99,7 @@ type smokeStrategyRunner struct {
 
 func newSmokeStrategyRunner(
 	runRepo repository.PipelineRunRepository,
+	snapshotRepo repository.PipelineRunSnapshotRepository,
 	decisionRepo repository.AgentDecisionRepository,
 	eventRepo repository.AgentEventRepository,
 	orderRepo repository.OrderRepository,
@@ -107,7 +109,7 @@ func newSmokeStrategyRunner(
 	riskEngine risk.RiskEngine,
 	logger *slog.Logger,
 ) api.StrategyRunner {
-	pipeline := newSmokePipeline(runRepo, decisionRepo, eventRepo, logger)
+	pipeline := newSmokePipeline(runRepo, snapshotRepo, decisionRepo, eventRepo, logger)
 	orderManager := execution.NewOrderManager(
 		paper.NewPaperBroker(100_000, 0, 0),
 		"paper",
@@ -237,6 +239,7 @@ func (r *smokeStrategyRunner) findRun(ctx context.Context, runID uuid.UUID) (*do
 
 func newSmokePipeline(
 	runRepo repository.PipelineRunRepository,
+	snapshotRepo repository.PipelineRunSnapshotRepository,
 	decisionRepo repository.AgentDecisionRepository,
 	eventRepo repository.AgentEventRepository,
 	logger *slog.Logger,
@@ -246,7 +249,7 @@ func newSmokePipeline(
 			ResearchDebateRounds: 1,
 			RiskDebateRounds:     1,
 		},
-		agent.NewRepoPersister(runRepo, decisionRepo, eventRepo, logger),
+		agent.NewRepoPersister(runRepo, snapshotRepo, decisionRepo, eventRepo, logger),
 		nil,
 		logger,
 	)
