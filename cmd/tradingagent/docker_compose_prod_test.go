@@ -19,7 +19,7 @@ func TestProductionDockerComposeContainsRequiredConfiguration(t *testing.T) {
 		"services:",
 		"image: postgres:17",
 		"postgres_data:/var/lib/postgresql/data",
-		"POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}",
+		"POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}",
 		"pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-tradingagent}",
 		"image: redis:7-alpine",
 		"redis_data:/data",
@@ -42,6 +42,7 @@ func TestProductionDockerComposeContainsRequiredConfiguration(t *testing.T) {
 		"- .:/app",
 		"go_cache",
 		`target: dev`,
+		`POSTGRES_PASSWORD:?`,
 	} {
 		if strings.Contains(compose, unwanted) {
 			t.Fatalf("docker-compose.prod.yml unexpectedly contains %q", unwanted)
