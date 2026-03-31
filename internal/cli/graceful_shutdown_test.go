@@ -352,6 +352,13 @@ type fakeStopTimer struct {
 	stopped  atomic.Bool
 }
 
+func TestFakeStopTimer_FireWithNilCallback(t *testing.T) {
+	t.Parallel()
+
+	timer := &fakeStopTimer{}
+	timer.Fire()
+}
+
 func (ft *fakeStopTimer) Stop() bool {
 	return !ft.stopped.Swap(true)
 }
