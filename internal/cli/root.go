@@ -162,18 +162,18 @@ func (g *shutdownGuard) Stop() {
 }
 
 func (g *shutdownGuard) stop() bool {
-	started := false
+	hadTimer := false
 	g.onceDone.Do(func() {
 		g.mu.Lock()
 		g.done = true
 		timer := g.shutdownTimer
-		started = timer != nil
+		hadTimer = timer != nil
 		g.mu.Unlock()
 		if timer != nil {
 			timer.Stop()
 		}
 	})
-	return started
+	return hadTimer
 }
 
 func newSignalContext(parent context.Context, signals ...os.Signal) (context.Context, func(), func() os.Signal) {
