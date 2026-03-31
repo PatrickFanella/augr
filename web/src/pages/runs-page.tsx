@@ -5,7 +5,6 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  Clock,
   Loader2,
   Search,
   XCircle,
@@ -106,7 +105,7 @@ export function RunsPage() {
       }),
   })
 
-  const strategies = strategiesData?.data ?? []
+  const strategies = useMemo(() => strategiesData?.data ?? [], [strategiesData?.data])
   const strategiesById = useMemo(
     () => new Map(strategies.map((strategy) => [strategy.id, strategy])),
     [strategies],
