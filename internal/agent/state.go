@@ -106,6 +106,7 @@ type DecisionLLMResponse struct {
 }
 
 // NodeDecision stores a node's output text and optional LLM metadata.
+// Static or skipped paths may still record a decision with a nil LLMResponse.
 type NodeDecision struct {
 	OutputText  string               `json:"output_text"`
 	LLMResponse *DecisionLLMResponse `json:"llm_response,omitempty"`
@@ -119,6 +120,7 @@ type decisionKey struct {
 }
 
 // RecordDecision stores a node decision so the pipeline can persist it after execution.
+// The llmResponse argument may be nil for decisions produced without an LLM call.
 func (s *PipelineState) RecordDecision(role AgentRole, phase Phase, roundNumber *int, output string, llmResponse *DecisionLLMResponse) {
 	s.ensureMutex()
 	s.mu.Lock()

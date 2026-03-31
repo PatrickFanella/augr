@@ -34,7 +34,7 @@ func (r *MarketDataCacheRepo) UpsertHistoricalOHLCV(ctx context.Context, bars []
 	return nil
 }
 
-func (r *MarketDataCacheRepo) upsertHistoricalOHLCVBatch(ctx context.Context, bars []domain.HistoricalOHLCV) error {
+func (r *MarketDataCacheRepo) upsertHistoricalOHLCVBatch(ctx context.Context, bars []domain.HistoricalOHLCV) (err error) {
 	var batch pgx.Batch
 	for _, bar := range bars {
 		batch.Queue(
@@ -62,9 +62,10 @@ func (r *MarketDataCacheRepo) upsertHistoricalOHLCVBatch(ctx context.Context, ba
 
 	results := r.pool.SendBatch(ctx, &batch)
 	defer func() {
-		_ = results.Close()
+		if closeErr := results.Close(); err == nil && closeErr != nil {
+			err = fmt.Errorf("postgres: close historical ohlcv batch: %w", closeErr)
+		}
 	}()
-
 	for range bars {
 		if _, err := results.Exec(); err != nil {
 			return fmt.Errorf("postgres: upsert historical ohlcv: %w", err)
