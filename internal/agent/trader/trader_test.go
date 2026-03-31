@@ -140,6 +140,10 @@ func TestTraderExecuteStoresTradingPlanAndDecision(t *testing.T) {
 	if decision.LLMResponse.Response.Model != "test-model" {
 		t.Fatalf("model in response = %q, want %q", decision.LLMResponse.Response.Model, "test-model")
 	}
+	wantPromptText := TraderSystemPrompt + "\n\n" + mock.lastReq.Messages[1].Content
+	if decision.LLMResponse.PromptText != wantPromptText {
+		t.Fatalf("prompt text = %q, want %q", decision.LLMResponse.PromptText, wantPromptText)
+	}
 
 	// Verify the system prompt was the trader prompt.
 	if mock.lastReq.Messages[0].Content != TraderSystemPrompt {

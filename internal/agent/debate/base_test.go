@@ -70,7 +70,7 @@ func TestBaseDebaterCallWithContextSendsCorrectMessages(t *testing.T) {
 		slog.Default(),
 	)
 
-	content, usage, err := debater.CallWithContext(
+	content, promptText, usage, err := debater.CallWithContext(
 		context.Background(),
 		"You are the bull researcher.",
 		[]agent.DebateRound{
@@ -122,6 +122,10 @@ func TestBaseDebaterCallWithContextSendsCorrectMessages(t *testing.T) {
 	if got := mock.lastReq.Messages[1]; got.Role != "user" || got.Content != wantUser {
 		t.Fatalf("user message = %+v, want role=user content=%q", got, wantUser)
 	}
+	wantPromptText := "You are the bull researcher.\n\n" + wantUser
+	if promptText != wantPromptText {
+		t.Fatalf("prompt text = %q, want %q", promptText, wantPromptText)
+	}
 }
 
 func TestBaseDebaterCallWithContextIncludesRoleAndPhaseInErrors(t *testing.T) {
@@ -137,7 +141,7 @@ func TestBaseDebaterCallWithContextIncludesRoleAndPhaseInErrors(t *testing.T) {
 		slog.Default(),
 	)
 
-	_, _, err := debater.CallWithContext(context.Background(), "system", nil, nil)
+	_, _, _, err := debater.CallWithContext(context.Background(), "system", nil, nil)
 	if err == nil {
 		t.Fatal("CallWithContext() error = nil, want non-nil")
 	}

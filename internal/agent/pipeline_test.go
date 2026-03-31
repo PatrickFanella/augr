@@ -1805,6 +1805,9 @@ func TestExecute_PersistsAgentDecisions(t *testing.T) {
 			if decision.LLMModel != model {
 				t.Fatalf("%s/%s model = %q, want %q", phase, role, decision.LLMModel, model)
 			}
+			if decision.PromptText == "" {
+				t.Fatalf("%s/%s prompt text is empty", phase, role)
+			}
 			if decision.PromptTokens != promptTokens {
 				t.Fatalf("%s/%s prompt tokens = %d, want %d", phase, role, decision.PromptTokens, promptTokens)
 			}
@@ -2044,7 +2047,8 @@ func TestExecute_PhaseFailureUpdatesRunStatus(t *testing.T) {
 
 func newTestDecisionLLMResponse(provider, model string, promptTokens, completionTokens, latencyMS int) *DecisionLLMResponse {
 	return &DecisionLLMResponse{
-		Provider: provider,
+		Provider:   provider,
+		PromptText: "system prompt\n\nuser prompt",
 		Response: &llm.CompletionResponse{
 			Model: model,
 			Usage: llm.CompletionUsage{

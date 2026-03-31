@@ -139,13 +139,15 @@ func (t *Trader) Trade(ctx context.Context, input agent.TradingInput) (agent.Tra
 	}
 
 	userContent := buildUserPromptFromInput(input)
+	messages := []llm.Message{
+		{Role: "system", Content: TraderSystemPrompt},
+		{Role: "user", Content: userContent},
+	}
+	promptText := agent.PromptTextFromMessages(messages)
 
 	resp, err := t.provider.Complete(ctx, llm.CompletionRequest{
-		Model: t.model,
-		Messages: []llm.Message{
-			{Role: "system", Content: TraderSystemPrompt},
-			{Role: "user", Content: userContent},
-		},
+		Model:    t.model,
+		Messages: messages,
 	})
 	if err != nil {
 		return agent.TradingOutput{}, fmt.Errorf("trader (trading): llm completion failed: %w", err)
@@ -197,7 +199,8 @@ func (t *Trader) Trade(ctx context.Context, input agent.TradingInput) (agent.Tra
 		Plan:         tradingPlan,
 		StoredOutput: storedOutput,
 		LLMResponse: &agent.DecisionLLMResponse{
-			Provider: t.providerName,
+			Provider:   t.providerName,
+			PromptText: promptText,
 			Response: &llm.CompletionResponse{
 				Content: content,
 				Model:   resp.Model,

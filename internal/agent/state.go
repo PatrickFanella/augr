@@ -101,8 +101,9 @@ func (s *PipelineState) GetAnalystReport(role AgentRole) string {
 
 // DecisionLLMResponse captures the persisted LLM metadata for a node decision.
 type DecisionLLMResponse struct {
-	Provider string                  `json:"provider,omitempty"`
-	Response *llm.CompletionResponse `json:"response,omitempty"`
+	Provider   string                  `json:"provider,omitempty"`
+	PromptText string                  `json:"prompt_text,omitempty"`
+	Response   *llm.CompletionResponse `json:"response,omitempty"`
 }
 
 // NodeDecision stores a node's output text and optional LLM metadata.

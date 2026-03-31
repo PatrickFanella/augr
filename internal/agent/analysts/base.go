@@ -121,12 +121,15 @@ func (b *BaseAnalyst) Analyze(ctx context.Context, input agent.AnalysisInput) (a
 		return agent.AnalysisOutput{}, fmt.Errorf("%s: provider is nil", b.name)
 	}
 
+	messages := []llm.Message{
+		{Role: "system", Content: b.systemPrompt},
+		{Role: "user", Content: userPrompt},
+	}
+	promptText := agent.PromptTextFromMessages(messages)
+
 	resp, err := b.provider.Complete(ctx, llm.CompletionRequest{
-		Model: b.model,
-		Messages: []llm.Message{
-			{Role: "system", Content: b.systemPrompt},
-			{Role: "user", Content: userPrompt},
-		},
+		Model:    b.model,
+		Messages: messages,
 	})
 	if err != nil {
 		return agent.AnalysisOutput{}, fmt.Errorf("%s: llm completion failed: %w", b.name, err)
@@ -140,8 +143,9 @@ func (b *BaseAnalyst) Analyze(ctx context.Context, input agent.AnalysisInput) (a
 	return agent.AnalysisOutput{
 		Report: resp.Content,
 		LLMResponse: &agent.DecisionLLMResponse{
-			Provider: b.providerName,
-			Response: resp,
+			Provider:   b.providerName,
+			PromptText: promptText,
+			Response:   resp,
 		},
 	}, nil
 }

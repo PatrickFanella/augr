@@ -45,7 +45,7 @@ func debateRiskFromInput(
 	providerName string,
 	input agent.DebateInput,
 ) (agent.DebateOutput, error) {
-	content, usage, err := debater.CallWithContext(
+	content, promptText, usage, err := debater.CallWithContext(
 		ctx,
 		systemPrompt,
 		input.Rounds,
@@ -58,7 +58,8 @@ func debateRiskFromInput(
 	return agent.DebateOutput{
 		Contribution: content,
 		LLMResponse: &agent.DecisionLLMResponse{
-			Provider: providerName,
+			Provider:   providerName,
+			PromptText: promptText,
 			Response: &llm.CompletionResponse{
 				Content: content,
 				Model:   debater.Model(),

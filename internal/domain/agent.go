@@ -97,6 +97,7 @@ type AgentDecision struct {
 	OutputStructured json.RawMessage `json:"output_structured,omitempty"`
 	LLMProvider      string          `json:"llm_provider,omitempty"`
 	LLMModel         string          `json:"llm_model,omitempty"`
+	PromptText       string          `json:"prompt_text,omitempty"`
 	PromptTokens     int             `json:"prompt_tokens,omitempty"`
 	CompletionTokens int             `json:"completion_tokens,omitempty"`
 	LatencyMS        int             `json:"latency_ms,omitempty"`

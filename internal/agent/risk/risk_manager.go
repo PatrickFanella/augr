@@ -134,7 +134,7 @@ func (r *RiskManager) JudgeRisk(ctx context.Context, input agent.RiskJudgeInput)
 		agent.AgentRoleTrader: string(tradingPlanJSON),
 	}
 
-	content, usage, err := r.CallWithContext(
+	content, promptText, usage, err := r.CallWithContext(
 		ctx,
 		RiskManagerSystemPrompt,
 		input.Rounds,
@@ -194,7 +194,8 @@ func (r *RiskManager) JudgeRisk(ctx context.Context, input agent.RiskJudgeInput)
 		StoredSignal: storedSignal,
 		TradingPlan:  tradingPlan,
 		LLMResponse: &agent.DecisionLLMResponse{
-			Provider: r.providerName,
+			Provider:   r.providerName,
+			PromptText: promptText,
 			Response: &llm.CompletionResponse{
 				Content: content,
 				Model:   r.Model(),

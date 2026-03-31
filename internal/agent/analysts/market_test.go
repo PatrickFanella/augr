@@ -140,6 +140,10 @@ func TestMarketAnalystExecute(t *testing.T) {
 	if dec.LLMResponse.Provider != "openai" {
 		t.Errorf("decision provider = %q, want %q", dec.LLMResponse.Provider, "openai")
 	}
+	wantPromptText := MarketAnalystSystemPrompt + "\n\n" + userMsg
+	if dec.LLMResponse.PromptText != wantPromptText {
+		t.Errorf("prompt text = %q, want %q", dec.LLMResponse.PromptText, wantPromptText)
+	}
 }
 
 func TestMarketAnalystExecuteLLMError(t *testing.T) {

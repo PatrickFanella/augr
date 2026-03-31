@@ -198,6 +198,7 @@ func TestAgentDecisionRepoIntegration_CreateAndGetByRun(t *testing.T) {
 		OutputStructured: json.RawMessage(`{"trend":"bullish"}`),
 		LLMProvider:      "openai",
 		LLMModel:         "gpt-4o",
+		PromptText:       "system prompt\n\nuser prompt",
 		PromptTokens:     200,
 		CompletionTokens: 50,
 		LatencyMS:        450,
@@ -270,6 +271,9 @@ func TestAgentDecisionRepoIntegration_CreateAndGetByRun(t *testing.T) {
 	}
 	if got.LLMModel != d1.LLMModel {
 		t.Errorf("LLMModel: want %q, got %q", d1.LLMModel, got.LLMModel)
+	}
+	if got.PromptText != d1.PromptText {
+		t.Errorf("PromptText: want %q, got %q", d1.PromptText, got.PromptText)
 	}
 	if got.PromptTokens != d1.PromptTokens {
 		t.Errorf("PromptTokens: want %d, got %d", d1.PromptTokens, got.PromptTokens)
@@ -605,6 +609,7 @@ func newAgentDecisionIntegrationPool(t *testing.T, ctx context.Context) (*pgxpoo
 			output_structured JSONB,
 			llm_provider      TEXT,
 			llm_model         TEXT,
+			prompt_text       TEXT,
 			prompt_tokens     INT,
 			completion_tokens INT,
 			latency_ms        INT,

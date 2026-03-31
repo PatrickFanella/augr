@@ -94,7 +94,7 @@ func (r *ResearchManager) Phase() agent.Phase { return agent.PhaseResearchDebate
 func (r *ResearchManager) Execute(ctx context.Context, state *agent.PipelineState) error {
 	rounds := state.ResearchDebate.Rounds
 
-	content, usage, err := r.CallWithContext(
+	content, promptText, usage, err := r.CallWithContext(
 		ctx,
 		ResearchManagerSystemPrompt,
 		rounds,
@@ -134,7 +134,8 @@ func (r *ResearchManager) Execute(ctx context.Context, state *agent.PipelineStat
 		nil,
 		storedPlan,
 		&agent.DecisionLLMResponse{
-			Provider: r.providerName,
+			Provider:   r.providerName,
+			PromptText: promptText,
 			Response: &llm.CompletionResponse{
 				Content: content,
 				Model:   r.model,
