@@ -51,9 +51,11 @@ describe('RunsPage', () => {
 
     render(<RunsPage />, { wrapper: Wrapper })
 
-    expect(await screen.findByTestId('runs-table')).toBeInTheDocument()
+    const table = await screen.findByTestId('runs-table')
+
+    expect(table).toBeInTheDocument()
     expect(screen.getByText('AAPL')).toBeInTheDocument()
-    expect(screen.getByText('Completed')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /AAPL/i })).toHaveTextContent('Completed')
     expect(screen.getByText('buy')).toBeInTheDocument()
   })
 
