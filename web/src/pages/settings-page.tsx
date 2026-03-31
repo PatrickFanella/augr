@@ -216,6 +216,7 @@ export function SettingsPage() {
   }
 
   const settingsData = settingsQuery.data!
+  const connectedBrokers = settingsData.system.connected_brokers ?? []
 
   function handleProviderChange<K extends ProviderKey>(
     providerKey: K,
@@ -648,19 +649,25 @@ export function SettingsPage() {
               <div className="space-y-3">
                 <p className="text-sm font-medium">Connected brokers</p>
                 <div className="space-y-2">
-                  {settingsData.system.connected_brokers.map((broker) => (
-                    <div key={broker.name} className="flex items-center justify-between rounded-lg border px-3 py-2">
-                      <div>
-                        <p className="font-medium capitalize">{broker.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {broker.paper_mode ? 'Paper mode' : 'Live mode'}
-                        </p>
+                  {connectedBrokers.length === 0 ? (
+                    <p className="rounded-lg border px-3 py-2 text-sm text-muted-foreground">
+                      No connected brokers reported.
+                    </p>
+                  ) : (
+                    connectedBrokers.map((broker) => (
+                      <div key={broker.name} className="flex items-center justify-between rounded-lg border px-3 py-2">
+                        <div>
+                          <p className="font-medium capitalize">{broker.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {broker.paper_mode ? 'Paper mode' : 'Live mode'}
+                          </p>
+                        </div>
+                        <Badge variant={broker.configured ? 'success' : 'secondary'}>
+                          {broker.configured ? 'Configured' : 'Not configured'}
+                        </Badge>
                       </div>
-                      <Badge variant={broker.configured ? 'success' : 'secondary'}>
-                        {broker.configured ? 'Configured' : 'Not configured'}
-                      </Badge>
-                    </div>
-                  ))}
+                    ))
+                  )}
                 </div>
               </div>
             </CardContent>

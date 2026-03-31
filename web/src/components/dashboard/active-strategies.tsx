@@ -22,6 +22,7 @@ export function ActiveStrategies() {
     queryFn: () => apiClient.listStrategies({ is_active: true, limit: 20 }),
     refetchInterval: 30_000,
   })
+  const strategies = data?.data ?? []
 
   return (
     <Card data-testid="active-strategies">
@@ -43,14 +44,14 @@ export function ActiveStrategies() {
           <p className="text-sm text-muted-foreground" data-testid="active-strategies-error">
             Unable to load strategies. Start the API server to see live data.
           </p>
-        ) : !data?.data.length ? (
+        ) : strategies.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-8 text-center" data-testid="active-strategies-empty">
             <Pause className="size-8 text-muted-foreground" />
             <p className="text-sm text-muted-foreground">No active strategies</p>
           </div>
         ) : (
           <ul className="space-y-2" data-testid="active-strategies-list">
-            {data.data.map((strategy) => (
+            {strategies.map((strategy) => (
               <li
                 key={strategy.id}
                 className="flex items-center gap-3 rounded-lg border p-3 transition-colors hover:bg-secondary/40"

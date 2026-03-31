@@ -278,4 +278,25 @@ describe('PipelineRunPage', () => {
 
     expect(await screen.findByText('buy')).toBeInTheDocument()
   })
+
+  it('renders safely when the decisions data array is null', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString()
+      if (url.includes('/decisions')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ ...mockDecisions, data: null }),
+        })
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => mockRun })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<PipelineRunPage />, { wrapper: Wrapper })
+
+    expect(await screen.findByTestId('pipeline-run-page')).toBeInTheDocument()
+    expect(screen.getAllByText('Waiting for result…')).toHaveLength(4)
+    expect(screen.getAllByText('Waiting for debate to begin…')).toHaveLength(2)
+  })
 })

@@ -146,6 +146,38 @@ describe('SettingsPage', () => {
     expect(screen.getByRole('button', { name: 'Activate' })).toBeInTheDocument()
   })
 
+  it('renders when connected brokers is null', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString()
+
+      if (url.includes('/api/v1/settings')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            ...settingsResponse,
+            system: {
+              ...settingsResponse.system,
+              connected_brokers: null,
+            },
+          }),
+        })
+      }
+
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => riskStatusResponse,
+      })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<SettingsPage />, { wrapper: Wrapper })
+
+    expect(await screen.findByTestId('settings-page')).toBeInTheDocument()
+    expect(screen.getByText('No connected brokers reported.')).toBeInTheDocument()
+  })
+
   it('saves edited settings through the API', async () => {
     const user = userEvent.setup()
     let currentSettings = structuredClone(settingsResponse)

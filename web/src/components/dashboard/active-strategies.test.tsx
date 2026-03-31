@@ -70,6 +70,19 @@ describe('ActiveStrategies', () => {
     expect(await screen.findByText('No active strategies')).toBeInTheDocument()
   })
 
+  it('shows empty state when API returns a null data array', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: null, limit: 20, offset: 0 }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<ActiveStrategies />, { wrapper: Wrapper })
+
+    expect(await screen.findByText('No active strategies')).toBeInTheDocument()
+  })
+
   it('shows error state when fetch fails', async () => {
     const fetchMock = vi.fn().mockRejectedValue(new Error('Network error'))
     vi.stubGlobal('fetch', fetchMock)

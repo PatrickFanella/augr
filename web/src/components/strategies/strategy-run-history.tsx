@@ -36,6 +36,7 @@ export function StrategyRunHistory({ strategyId }: StrategyRunHistoryProps) {
     queryFn: () => apiClient.listRuns({ strategy_id: strategyId, limit: 20 }),
     refetchInterval: 15_000,
   })
+  const runs = data?.data ?? []
 
   return (
     <Card data-testid="strategy-run-history">
@@ -57,14 +58,14 @@ export function StrategyRunHistory({ strategyId }: StrategyRunHistoryProps) {
           <p className="text-sm text-muted-foreground" data-testid="run-history-error">
             Unable to load run history.
           </p>
-        ) : !data?.data.length ? (
+        ) : runs.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-8 text-center" data-testid="run-history-empty">
             <Clock className="size-8 text-muted-foreground" />
             <p className="text-sm text-muted-foreground">No runs yet</p>
           </div>
         ) : (
           <ul className="space-y-2" data-testid="run-history-list">
-            {data.data.map((run) => (
+            {runs.map((run) => (
               <RunRow key={run.id} run={run} />
             ))}
           </ul>

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -21,6 +21,7 @@ function Wrapper({ children }: { children: React.ReactNode }) {
 }
 
 afterEach(() => {
+  cleanup()
   vi.unstubAllGlobals()
 })
 
@@ -134,5 +135,43 @@ describe('StrategyDetailPage', () => {
     expect(await screen.findByTestId('strategy-run-history')).toBeInTheDocument()
     expect(screen.getByTestId('strategy-config-editor')).toBeInTheDocument()
     expect(await screen.findByTestId('run-history-list')).toBeInTheDocument()
+  })
+
+  it('renders when the run history data array is null', async () => {
+    const strategy = {
+      id: strategyId,
+      name: 'Test Strategy',
+      ticker: 'TEST',
+      market_type: 'stock',
+      is_active: true,
+      is_paper: true,
+      config: {},
+      created_at: '2025-01-01T00:00:00Z',
+      updated_at: '2025-01-01T00:00:00Z',
+    }
+
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString()
+
+      if (url.includes('/runs')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: null, limit: 20, offset: 0 }),
+        })
+      }
+
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => strategy,
+      })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<StrategyDetailPage />, { wrapper: Wrapper })
+
+    expect(await screen.findByTestId('strategy-detail-page')).toBeInTheDocument()
+    expect(await screen.findByTestId('run-history-empty')).toBeInTheDocument()
   })
 })
