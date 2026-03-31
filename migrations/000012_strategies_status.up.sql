@@ -11,8 +11,11 @@ WHERE is_active = FALSE;
 CREATE OR REPLACE FUNCTION sync_strategy_status_with_is_active() RETURNS trigger AS $$
 BEGIN
     IF TG_OP = 'INSERT' THEN
-        IF NEW.status = 'active' AND NEW.is_active = FALSE THEN
-            NEW.status := 'inactive';
+        IF NEW.status IN ('active', 'inactive') THEN
+            NEW.status := CASE
+                WHEN NEW.is_active THEN 'active'
+                ELSE 'inactive'
+            END;
         END IF;
         RETURN NEW;
     END IF;

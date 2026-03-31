@@ -18,7 +18,7 @@ func TestStrategiesStatusUpMigrationDefinesExpectedSchema(t *testing.T) {
 		"alter table strategies add column status text not null default 'active', add column skip_next_run boolean not null default false;",
 		"update strategies set status = 'inactive' where is_active = false;",
 		"create or replace function sync_strategy_status_with_is_active() returns trigger as $$",
-		"if new.status = 'active' and new.is_active = false then",
+		"if new.status in ('active', 'inactive') then",
 		"create trigger trg_strategies_sync_status_with_is_active before insert or update of is_active, status on strategies for each row execute function sync_strategy_status_with_is_active();",
 		"comment on column strategies.is_active is 'deprecated: use status instead.';",
 	}
@@ -268,7 +268,7 @@ WHERE id = $1
 
 	if _, err := pool.Exec(ctx, `
 UPDATE strategies
-SET is_active = FALSE
+SET is_active = false
 WHERE id = $1
 `, legacyActiveStrategyID); err != nil {
 		t.Fatalf("failed to update legacy active strategy after status migration: %v", err)
