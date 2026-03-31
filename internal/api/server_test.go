@@ -652,6 +652,30 @@ func TestListTradesByPositionID(t *testing.T) {
 	}
 }
 
+func TestListTradesRejectsOrderIDAndPositionIDTogether(t *testing.T) {
+	t.Parallel()
+	orderID := uuid.MustParse("88888888-8888-8888-8888-888888888888")
+	positionID := uuid.MustParse("99999999-9999-9999-9999-999999999999")
+	tradeRepo := &stubTradeRepo{}
+	deps := testDeps()
+	deps.Trades = tradeRepo
+	srv := newTestServerWithDeps(t, deps)
+
+	rr := doRequest(t, srv, http.MethodGet, "/api/v1/trades?order_id="+orderID.String()+"&position_id="+positionID.String(), nil)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusBadRequest)
+	}
+
+	body := decodeJSON[ErrorResponse](t, rr)
+	if body.Code != ErrCodeBadRequest {
+		t.Fatalf("code = %q, want %q", body.Code, ErrCodeBadRequest)
+	}
+	if tradeRepo.listCalls != 0 || tradeRepo.getByOrderCalls != 0 || tradeRepo.getByPositionCalls != 0 {
+		t.Fatalf("trade repo should not be called, got list=%d order=%d position=%d", tradeRepo.listCalls, tradeRepo.getByOrderCalls, tradeRepo.getByPositionCalls)
+	}
+}
+
 func TestListTradesEmptyDatabaseReturnsEmptyArray(t *testing.T) {
 	t.Parallel()
 	tradeRepo := &stubTradeRepo{}

@@ -447,6 +447,11 @@ func (s *Server) handleListTrades(w http.ResponseWriter, r *http.Request) {
 		filter.PositionID = &positionID
 	}
 
+	if filter.OrderID != nil && filter.PositionID != nil {
+		respondError(w, http.StatusBadRequest, "order_id and position_id cannot be combined", ErrCodeBadRequest)
+		return
+	}
+
 	if ticker := q.Get("ticker"); ticker != "" {
 		filter.Ticker = &ticker
 	}
