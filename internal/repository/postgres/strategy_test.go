@@ -145,12 +145,13 @@ func TestStrategyRepoIntegration_CreateListAndUpdateStatus(t *testing.T) {
 	repo := NewStrategyRepo(pool)
 
 	paused := &domain.Strategy{
-		Name:        "Paused Strategy",
-		Ticker:      "AAPL",
-		MarketType:  domain.MarketTypeStock,
-		Status:      domain.StrategyStatusPaused,
-		SkipNextRun: true,
-		IsPaper:     true,
+		Name:         "Paused Strategy",
+		Ticker:       "AAPL",
+		MarketType:   domain.MarketTypeStock,
+		ScheduleCron: "0 9 * * 1-5",
+		Status:       domain.StrategyStatusPaused,
+		SkipNextRun:  true,
+		IsPaper:      true,
 	}
 	if err := repo.Create(ctx, paused); err != nil {
 		t.Fatalf("Create(paused) error = %v", err)
@@ -168,6 +169,9 @@ func TestStrategyRepoIntegration_CreateListAndUpdateStatus(t *testing.T) {
 	}
 	if storedPaused.Status != domain.StrategyStatusPaused {
 		t.Fatalf("paused strategy status = %q, want %q", storedPaused.Status, domain.StrategyStatusPaused)
+	}
+	if storedPaused.ScheduleCron != paused.ScheduleCron {
+		t.Fatalf("paused strategy schedule_cron = %q, want %q", storedPaused.ScheduleCron, paused.ScheduleCron)
 	}
 	if !storedPaused.SkipNextRun {
 		t.Fatal("paused strategy skip_next_run = false, want true")
@@ -196,6 +200,7 @@ func TestStrategyRepoIntegration_CreateListAndUpdateStatus(t *testing.T) {
 	}
 
 	paused.Status = domain.StrategyStatusInactive
+	paused.ScheduleCron = "0 15 * * 1-5"
 	paused.SkipNextRun = false
 	if err := repo.Update(ctx, paused); err != nil {
 		t.Fatalf("Update(paused) error = %v", err)
@@ -210,6 +215,9 @@ func TestStrategyRepoIntegration_CreateListAndUpdateStatus(t *testing.T) {
 	}
 	if updatedPaused.Status != domain.StrategyStatusInactive {
 		t.Fatalf("updated status = %q, want %q", updatedPaused.Status, domain.StrategyStatusInactive)
+	}
+	if updatedPaused.ScheduleCron != paused.ScheduleCron {
+		t.Fatalf("updated schedule_cron = %q, want %q", updatedPaused.ScheduleCron, paused.ScheduleCron)
 	}
 	if updatedPaused.SkipNextRun {
 		t.Fatal("updated skip_next_run = true, want false")
