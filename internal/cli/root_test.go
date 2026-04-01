@@ -72,7 +72,7 @@ func TestCLICommands(t *testing.T) {
 		Name:       "AAPL Trend",
 		Ticker:     "AAPL",
 		MarketType: domain.MarketTypeStock,
-		IsActive:   true,
+		Status:     domain.StrategyStatusActive,
 		IsPaper:    true,
 		UpdatedAt:  now,
 	}

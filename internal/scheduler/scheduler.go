@@ -247,8 +247,7 @@ func (s *Scheduler) InFlightCount() int {
 }
 
 func (s *Scheduler) loadActiveStrategies(ctx context.Context) ([]domain.Strategy, error) {
-	active := true
-	filter := repository.StrategyFilter{IsActive: &active}
+	filter := repository.StrategyFilter{Status: domain.StrategyStatusActive}
 
 	var strategies []domain.Strategy
 	for offset := 0; ; offset += defaultStrategyPageSize {

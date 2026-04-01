@@ -110,10 +110,7 @@ func (s *Server) handleListStrategies(w http.ResponseWriter, r *http.Request) {
 	filter := repository.StrategyFilter{
 		Ticker:     q.Get("ticker"),
 		MarketType: domain.MarketType(q.Get("market_type")),
-	}
-	if v := q.Get("is_active"); v != "" {
-		b := v == "true"
-		filter.IsActive = &b
+		Status:     q.Get("status"),
 	}
 	if v := q.Get("is_paper"); v != "" {
 		b := v == "true"

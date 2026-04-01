@@ -677,7 +677,7 @@ func (s *rootState) tuiSnapshot(
 func activeStrategies(strategies []domain.Strategy) []domain.Strategy {
 	active := make([]domain.Strategy, 0, len(strategies))
 	for _, strategy := range strategies {
-		if strategy.IsActive {
+		if strategy.Status == domain.StrategyStatusActive {
 			active = append(active, strategy)
 		}
 	}
@@ -700,7 +700,7 @@ func (s *rootState) resolveStrategyForTicker(ctx context.Context, client *apiCli
 			continue
 		}
 		exactMatches = append(exactMatches, strategy)
-		if strategy.IsActive {
+		if strategy.Status == domain.StrategyStatusActive {
 			activeMatches = append(activeMatches, strategy)
 		}
 	}
@@ -724,8 +724,11 @@ func (o createStrategyOptions) strategy() (domain.Strategy, error) {
 		Ticker:       strings.TrimSpace(o.Ticker),
 		MarketType:   domain.MarketType(strings.ToLower(strings.TrimSpace(o.MarketType))),
 		ScheduleCron: strings.TrimSpace(o.ScheduleCron),
-		IsActive:     o.Active,
+		Status:       domain.StrategyStatusInactive,
 		IsPaper:      o.Paper,
+	}
+	if o.Active {
+		strategy.Status = domain.StrategyStatusActive
 	}
 	if strings.TrimSpace(o.Config) != "" {
 		raw := strings.TrimSpace(o.Config)

@@ -129,17 +129,18 @@ func applyDDL(t *testing.T, pool *pgxpool.Pool) {
 
 		// Strategies
 		`CREATE TABLE strategies (
-			id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-			name        TEXT        NOT NULL,
-			description TEXT        NOT NULL DEFAULT '',
-			ticker      TEXT        NOT NULL,
-			market_type market_type NOT NULL DEFAULT 'stock',
-			schedule    TEXT        NOT NULL DEFAULT '',
-			config      JSONB       NOT NULL DEFAULT '{}',
-			is_active   BOOLEAN     NOT NULL DEFAULT true,
-			is_paper    BOOLEAN     NOT NULL DEFAULT true,
-			created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-			updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+			id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+			name          TEXT        NOT NULL,
+			description   TEXT        NOT NULL DEFAULT '',
+			ticker        TEXT        NOT NULL,
+			market_type   market_type NOT NULL DEFAULT 'stock',
+			schedule_cron TEXT        NOT NULL DEFAULT '',
+			config        JSONB       NOT NULL DEFAULT '{}',
+			status        TEXT        NOT NULL DEFAULT 'active',
+			skip_next_run BOOLEAN     NOT NULL DEFAULT false,
+			is_paper      BOOLEAN     NOT NULL DEFAULT true,
+			created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		)`,
 
 		// Pipeline runs (partitioned)
@@ -283,7 +284,7 @@ func createStrategy(t *testing.T, ctx context.Context, r *postgres.StrategyRepo,
 		Name:       name,
 		Ticker:     ticker,
 		MarketType: domain.MarketTypeStock,
-		IsActive:   true,
+		Status:     domain.StrategyStatusActive,
 		IsPaper:    true,
 	}
 	if err := r.Create(ctx, s); err != nil {

@@ -330,7 +330,7 @@ func TestSchedulerStartTriggersPipelineExecution(t *testing.T) {
 				Ticker:       "BTCUSD",
 				MarketType:   domain.MarketTypeCrypto,
 				ScheduleCron: testScheduleSpec,
-				IsActive:     true,
+				Status:       domain.StrategyStatusActive,
 			},
 		},
 	}
@@ -348,7 +348,7 @@ func TestSchedulerStartTriggersPipelineExecution(t *testing.T) {
 	if !ok {
 		t.Fatal("expected strategy repository List to be called")
 	}
-	if filter.IsActive == nil || !*filter.IsActive {
+	if filter.Status != domain.StrategyStatusActive {
 		t.Fatalf("expected active strategy filter, got %+v", filter)
 	}
 	if !fakeCron.started.Load() {
@@ -402,7 +402,7 @@ func TestSchedulerStartIsIdempotentWhenAlreadyStarted(t *testing.T) {
 				Ticker:       "BTCUSD",
 				MarketType:   domain.MarketTypeCrypto,
 				ScheduleCron: testScheduleSpec,
-				IsActive:     true,
+				Status:       domain.StrategyStatusActive,
 			},
 		},
 	}
@@ -447,7 +447,7 @@ func TestSchedulerStopCancelsRunningJobs(t *testing.T) {
 				Ticker:       "BTCUSD",
 				MarketType:   domain.MarketTypeCrypto,
 				ScheduleCron: testScheduleSpec,
-				IsActive:     true,
+				Status:       domain.StrategyStatusActive,
 			},
 		},
 	}

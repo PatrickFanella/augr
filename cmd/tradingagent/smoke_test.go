@@ -71,7 +71,7 @@ func TestSmokeEndToEnd(t *testing.T) {
 		"name":          "Smoke Strategy",
 		"ticker":        "SMOKE",
 		"market_type":   "stock",
-		"is_active":     true,
+		"status":        domain.StrategyStatusActive,
 		"is_paper":      true,
 		"schedule_cron": "",
 	}

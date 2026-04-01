@@ -16,6 +16,10 @@ const (
 	MarketTypeStock      MarketType = "stock"
 	MarketTypeCrypto     MarketType = "crypto"
 	MarketTypePolymarket MarketType = "polymarket"
+
+	StrategyStatusActive   = "active"
+	StrategyStatusPaused   = "paused"
+	StrategyStatusInactive = "inactive"
 )
 
 // String returns the string representation of a MarketType.
@@ -48,6 +52,15 @@ func (s *Strategy) Validate() error {
 	if !s.MarketType.IsValid() {
 		return fmt.Errorf("invalid market type: %q", s.MarketType)
 	}
+	s.Status = strings.ToLower(strings.TrimSpace(s.Status))
+	if s.Status == "" {
+		s.Status = StrategyStatusActive
+	}
+	switch s.Status {
+	case StrategyStatusActive, StrategyStatusPaused, StrategyStatusInactive:
+	default:
+		return fmt.Errorf("invalid status: %q", s.Status)
+	}
 	return nil
 }
 
@@ -63,7 +76,8 @@ type Strategy struct {
 	MarketType   MarketType     `json:"market_type"`
 	ScheduleCron string         `json:"schedule_cron,omitempty"`
 	Config       StrategyConfig `json:"config"`
-	IsActive     bool           `json:"is_active"`
+	Status       string         `json:"status"`
+	SkipNextRun  bool           `json:"skip_next_run"`
 	IsPaper      bool           `json:"is_paper"`
 	CreatedAt    time.Time      `json:"created_at"`
 	UpdatedAt    time.Time      `json:"updated_at"`

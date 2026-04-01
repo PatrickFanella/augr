@@ -25,11 +25,11 @@ func TestRenderIncludesDashboardSections(t *testing.T) {
 			RealizedPnL:   67.89,
 		},
 		Strategies: []domain.Strategy{{
-			ID:       uuid.New(),
-			Name:     "AAPL Trend",
-			Ticker:   "AAPL",
-			IsActive: true,
-			IsPaper:  true,
+			ID:      uuid.New(),
+			Name:    "AAPL Trend",
+			Ticker:  "AAPL",
+			Status:  domain.StrategyStatusActive,
+			IsPaper: true,
 		}},
 		Positions: []domain.Position{{
 			ID:           uuid.New(),

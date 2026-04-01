@@ -77,7 +77,7 @@ var (
 		Name:       "Alpha",
 		Ticker:     "AAPL",
 		MarketType: domain.MarketTypeStock,
-		IsActive:   true,
+		Status:     domain.StrategyStatusActive,
 		CreatedAt:  time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 		UpdatedAt:  time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 	}
@@ -86,7 +86,7 @@ var (
 		Name:       "Beta",
 		Ticker:     "MSFT",
 		MarketType: domain.MarketTypeStock,
-		IsActive:   false,
+		Status:     domain.StrategyStatusInactive,
 		CreatedAt:  time.Date(2024, 2, 1, 0, 0, 0, 0, time.UTC),
 		UpdatedAt:  time.Date(2024, 2, 1, 0, 0, 0, 0, time.UTC),
 	}
@@ -161,6 +161,8 @@ func TestValidateStrategyConfigPayloadWrapsJSONError(t *testing.T) {
 	if !errors.As(err, &syntaxErr) {
 		t.Fatalf("errors.As(err, *json.SyntaxError) = false, want true; err = %v", err)
 	}
+}
+
 func doUnauthenticatedRequest(t *testing.T, srv *Server, method, path string, body any) *httptest.ResponseRecorder {
 	t.Helper()
 
@@ -570,6 +572,9 @@ func TestCreateStrategy(t *testing.T) {
 	if body.Name != "Gamma" {
 		t.Fatalf("name = %q, want %q", body.Name, "Gamma")
 	}
+	if body.Status != domain.StrategyStatusActive {
+		t.Fatalf("status = %q, want %q", body.Status, domain.StrategyStatusActive)
+	}
 	if body.ID == uuid.Nil {
 		t.Fatal("ID should be set")
 	}
@@ -659,6 +664,28 @@ func TestCreateStrategyConfigValidation(t *testing.T) {
 
 			assertValidationError(t, rr, tt.wantErrSubstrs...)
 		})
+	}
+}
+
+func TestListStrategiesStatusFilter(t *testing.T) {
+	t.Parallel()
+
+	deps := testDeps()
+	strategyRepo := deps.Strategies.(*stubStrategyRepo)
+	srv := newTestServerWithDeps(t, deps)
+
+	rr := doRequest(t, srv, http.MethodGet, "/api/v1/strategies?status=paused", nil)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+	}
+
+	filter, ok := strategyRepo.lastListedFilter()
+	if !ok {
+		t.Fatal("expected strategy repository List to be called")
+	}
+	if filter.Status != domain.StrategyStatusPaused {
+		t.Fatalf("status filter = %q, want %q", filter.Status, domain.StrategyStatusPaused)
 	}
 }
 
@@ -1503,7 +1530,10 @@ func TestNewServerRequiresDeps(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 type stubStrategyRepo struct {
-	items map[uuid.UUID]domain.Strategy
+	mu         sync.Mutex
+	items      map[uuid.UUID]domain.Strategy
+	lastFilter repository.StrategyFilter
+	sawList    bool
 }
 
 type stubAPIKeyRepo struct {
@@ -1652,11 +1682,15 @@ func (s *stubUserRepo) GetByID(_ context.Context, id uuid.UUID) (*domain.User, e
 }
 
 func (s *stubStrategyRepo) Create(_ context.Context, strategy *domain.Strategy) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.items[strategy.ID] = *strategy
 	return nil
 }
 
 func (s *stubStrategyRepo) Get(_ context.Context, id uuid.UUID) (*domain.Strategy, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	st, ok := s.items[id]
 	if !ok {
 		return nil, fmt.Errorf("strategy %v: %w", id, repository.ErrNotFound)
@@ -1664,7 +1698,11 @@ func (s *stubStrategyRepo) Get(_ context.Context, id uuid.UUID) (*domain.Strateg
 	return &st, nil
 }
 
-func (s *stubStrategyRepo) List(_ context.Context, _ repository.StrategyFilter, _, _ int) ([]domain.Strategy, error) {
+func (s *stubStrategyRepo) List(_ context.Context, filter repository.StrategyFilter, _, _ int) ([]domain.Strategy, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.lastFilter = filter
+	s.sawList = true
 	out := make([]domain.Strategy, 0, len(s.items))
 	for _, v := range s.items {
 		out = append(out, v)
@@ -1673,6 +1711,8 @@ func (s *stubStrategyRepo) List(_ context.Context, _ repository.StrategyFilter, 
 }
 
 func (s *stubStrategyRepo) Update(_ context.Context, strategy *domain.Strategy) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if _, ok := s.items[strategy.ID]; !ok {
 		return fmt.Errorf("strategy %v: %w", strategy.ID, repository.ErrNotFound)
 	}
@@ -1681,11 +1721,22 @@ func (s *stubStrategyRepo) Update(_ context.Context, strategy *domain.Strategy) 
 }
 
 func (s *stubStrategyRepo) Delete(_ context.Context, id uuid.UUID) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if _, ok := s.items[id]; !ok {
 		return fmt.Errorf("strategy %v: %w", id, repository.ErrNotFound)
 	}
 	delete(s.items, id)
 	return nil
+}
+
+func (s *stubStrategyRepo) lastListedFilter() (repository.StrategyFilter, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.sawList {
+		return repository.StrategyFilter{}, false
+	}
+	return s.lastFilter, true
 }
 
 // stubRunRepo

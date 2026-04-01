@@ -57,12 +57,12 @@ func renderStrategiesTable(w io.Writer, strategies []domain.Strategy) error {
 			strategy.Name,
 			strategy.Ticker,
 			strategy.MarketType.String(),
-			strconv.FormatBool(strategy.IsActive),
+			strategy.Status,
 			strconv.FormatBool(strategy.IsPaper),
 			formatTime(strategy.UpdatedAt),
 		})
 	}
-	return writeTable(w, []string{"ID", "NAME", "TICKER", "MARKET", "ACTIVE", "PAPER", "UPDATED"}, rows)
+	return writeTable(w, []string{"ID", "NAME", "TICKER", "MARKET", "STATUS", "PAPER", "UPDATED"}, rows)
 }
 
 func renderPortfolioTable(w io.Writer, output portfolioOutput) error {

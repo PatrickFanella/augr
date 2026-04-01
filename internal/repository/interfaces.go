@@ -18,7 +18,7 @@ var ErrNotFound = errors.New("not found")
 type StrategyFilter struct {
 	Ticker     string
 	MarketType domain.MarketType
-	IsActive   *bool
+	Status     string
 	IsPaper    *bool
 }
 

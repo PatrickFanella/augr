@@ -41,8 +41,8 @@ func (r *StrategyRepo) Create(ctx context.Context, s *domain.Strategy) error {
 	}
 
 	row := r.pool.QueryRow(ctx,
-		`INSERT INTO strategies (name, description, ticker, market_type, schedule_cron, config, is_active, is_paper)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		`INSERT INTO strategies (name, description, ticker, market_type, schedule_cron, config, status, skip_next_run, is_paper)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		 RETURNING id, created_at, updated_at`,
 		s.Name,
 		s.Description,
@@ -50,7 +50,8 @@ func (r *StrategyRepo) Create(ctx context.Context, s *domain.Strategy) error {
 		s.MarketType,
 		s.ScheduleCron,
 		configBytes,
-		s.IsActive,
+		s.Status,
+		s.SkipNextRun,
 		s.IsPaper,
 	)
 
@@ -64,7 +65,7 @@ func (r *StrategyRepo) Create(ctx context.Context, s *domain.Strategy) error {
 // Get retrieves a strategy by ID. It returns ErrNotFound when no row matches.
 func (r *StrategyRepo) Get(ctx context.Context, id uuid.UUID) (*domain.Strategy, error) {
 	row := r.pool.QueryRow(ctx,
-		`SELECT id, name, description, ticker, market_type, schedule_cron, config, is_active, is_paper, created_at, updated_at
+		`SELECT id, name, description, ticker, market_type, schedule_cron, config, status, skip_next_run, is_paper, created_at, updated_at
 		 FROM strategies
 		 WHERE id = $1`,
 		id,
@@ -118,9 +119,9 @@ func (r *StrategyRepo) Update(ctx context.Context, s *domain.Strategy) error {
 	row := r.pool.QueryRow(ctx,
 		`UPDATE strategies
 		 SET name = $1, description = $2, ticker = $3, market_type = $4,
-		     schedule_cron = $5, config = $6, is_active = $7, is_paper = $8,
+		     schedule_cron = $5, config = $6, status = $7, skip_next_run = $8, is_paper = $9,
 		     updated_at = NOW()
-		 WHERE id = $9
+		 WHERE id = $10
 		 RETURNING updated_at`,
 		s.Name,
 		s.Description,
@@ -128,7 +129,8 @@ func (r *StrategyRepo) Update(ctx context.Context, s *domain.Strategy) error {
 		s.MarketType,
 		s.ScheduleCron,
 		configBytes,
-		s.IsActive,
+		s.Status,
+		s.SkipNextRun,
 		s.IsPaper,
 		s.ID,
 	)
@@ -183,7 +185,8 @@ func scanStrategy(sc scanner) (*domain.Strategy, error) {
 		&s.MarketType,
 		&s.ScheduleCron,
 		&configBytes,
-		&s.IsActive,
+		&s.Status,
+		&s.SkipNextRun,
 		&s.IsPaper,
 		&s.CreatedAt,
 		&s.UpdatedAt,
@@ -219,15 +222,15 @@ func buildListQuery(filter repository.StrategyFilter, limit, offset int) (string
 		conditions = append(conditions, "market_type = "+nextArg(filter.MarketType))
 	}
 
-	if filter.IsActive != nil {
-		conditions = append(conditions, "is_active = "+nextArg(*filter.IsActive))
+	if filter.Status != "" {
+		conditions = append(conditions, "status = "+nextArg(filter.Status))
 	}
 
 	if filter.IsPaper != nil {
 		conditions = append(conditions, "is_paper = "+nextArg(*filter.IsPaper))
 	}
 
-	base := `SELECT id, name, description, ticker, market_type, schedule_cron, config, is_active, is_paper, created_at, updated_at
+	base := `SELECT id, name, description, ticker, market_type, schedule_cron, config, status, skip_next_run, is_paper, created_at, updated_at
 		 FROM strategies`
 
 	if len(conditions) > 0 {

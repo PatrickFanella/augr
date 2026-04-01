@@ -171,6 +171,36 @@ func TestPipelineSignalIsValid(t *testing.T) {
 	}
 }
 
+func TestStrategyValidateDefaultsStatusToActive(t *testing.T) {
+	strategy := Strategy{
+		Name:       "Momentum",
+		Ticker:     "AAPL",
+		MarketType: MarketTypeStock,
+	}
+
+	if err := strategy.Validate(); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+
+	if strategy.Status != StrategyStatusActive {
+		t.Fatalf("status = %q, want %q", strategy.Status, StrategyStatusActive)
+	}
+}
+
+func TestStrategyValidateRejectsInvalidStatus(t *testing.T) {
+	strategy := Strategy{
+		Name:       "Momentum",
+		Ticker:     "AAPL",
+		MarketType: MarketTypeStock,
+		Status:     "archived",
+	}
+
+	err := strategy.Validate()
+	if err == nil {
+		t.Fatal("expected validation error for invalid status")
+	}
+}
+
 func TestOrderStatusIsValid(t *testing.T) {
 	valid := []OrderStatus{
 		OrderStatusPending, OrderStatusSubmitted, OrderStatusPartial,
