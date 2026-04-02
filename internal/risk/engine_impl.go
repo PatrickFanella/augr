@@ -335,8 +335,10 @@ func (e *RiskEngineImpl) GetStatus(ctx context.Context) (EngineStatus, error) {
 		if err != nil {
 			return EngineStatus{}, fmt.Errorf("risk: portfolio snapshot: %w", err)
 		}
-		limits.CurrentOpenPositions = portfolio.ConcurrentPositions
-		limits.CurrentTotalExposurePct = portfolio.TotalExposurePct
+		openPositions := portfolio.ConcurrentPositions
+		totalExposure := portfolio.TotalExposurePct
+		limits.CurrentOpenPositions = &openPositions
+		limits.CurrentTotalExposurePct = &totalExposure
 	}
 
 	ksActive, mechanisms := e.isKillSwitchActiveUnlocked(apiKS)

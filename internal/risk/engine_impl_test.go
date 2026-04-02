@@ -502,11 +502,11 @@ func TestGetStatus_UsesPortfolioSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if status.PositionLimits.CurrentOpenPositions != 4 {
-		t.Fatalf("expected current open positions 4, got %d", status.PositionLimits.CurrentOpenPositions)
+	if status.PositionLimits.CurrentOpenPositions == nil || *status.PositionLimits.CurrentOpenPositions != 4 {
+		t.Fatalf("expected current open positions 4, got %v", status.PositionLimits.CurrentOpenPositions)
 	}
-	if status.PositionLimits.CurrentTotalExposurePct != 0.76 {
-		t.Fatalf("expected current total exposure 0.76, got %f", status.PositionLimits.CurrentTotalExposurePct)
+	if status.PositionLimits.CurrentTotalExposurePct == nil || *status.PositionLimits.CurrentTotalExposurePct != 0.76 {
+		t.Fatalf("expected current total exposure 0.76, got %v", status.PositionLimits.CurrentTotalExposurePct)
 	}
 }
 

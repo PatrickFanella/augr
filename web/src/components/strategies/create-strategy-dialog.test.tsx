@@ -116,7 +116,7 @@ describe('CreateStrategyDialog', () => {
     fireEvent.submit(screen.getByRole('button', { name: 'Create strategy' }).closest('form')!)
 
     expect(onSubmit).not.toHaveBeenCalled()
-    expect(screen.getByText('Research debate rounds must be between 1 and 10')).toBeInTheDocument()
+    expect(screen.getByText('Debate rounds must be between 1 and 10')).toBeInTheDocument()
 
     fireEvent.change(screen.getByLabelText('Research Debate Rounds'), { target: { value: '4' } })
     fireEvent.click(screen.getByRole('button', { name: 'Show' }))

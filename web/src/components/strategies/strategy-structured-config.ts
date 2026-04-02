@@ -111,7 +111,7 @@ export function buildStructuredStrategyConfig(
 
   const debateRoundsSource = values.researchDebateRounds.trim() || values.riskDebateRounds.trim()
   if (debateRoundsSource) {
-    const result = requireNumberInRange(debateRoundsSource, 1, 10, 'Research debate rounds must be between 1 and 10')
+    const result = requireNumberInRange(debateRoundsSource, 1, 10, 'Debate rounds must be between 1 and 10')
     if ('error' in result) return result
     pipelineConfig.debate_rounds = result.value
   } else {
