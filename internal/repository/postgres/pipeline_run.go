@@ -40,9 +40,9 @@ func (r *PipelineRunRepo) Create(ctx context.Context, run *domain.PipelineRun) e
 
 	row := r.pool.QueryRow(ctx,
 		`INSERT INTO pipeline_runs (
-			strategy_id, ticker, trade_date, status, signal, started_at, completed_at, error_message, config_snapshot
+			strategy_id, ticker, trade_date, status, signal, started_at, completed_at, error_message, config_snapshot, phase_timings
 		)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		 RETURNING id`,
 		run.StrategyID,
 		run.Ticker,
@@ -53,6 +53,7 @@ func (r *PipelineRunRepo) Create(ctx context.Context, run *domain.PipelineRun) e
 		run.CompletedAt,
 		run.ErrorMessage,
 		configSnapshot,
+		run.PhaseTimings,
 	)
 
 	if err := row.Scan(&run.ID); err != nil {
@@ -66,7 +67,7 @@ func (r *PipelineRunRepo) Create(ctx context.Context, run *domain.PipelineRun) e
 // when no row matches.
 func (r *PipelineRunRepo) Get(ctx context.Context, id uuid.UUID, tradeDate time.Time) (*domain.PipelineRun, error) {
 	row := r.pool.QueryRow(ctx,
-		`SELECT id, strategy_id, ticker, trade_date, status, signal, started_at, completed_at, error_message, config_snapshot
+		`SELECT id, strategy_id, ticker, trade_date, status, signal, started_at, completed_at, error_message, config_snapshot, phase_timings
 		 FROM pipeline_runs
 		 WHERE id = $1 AND trade_date = $2::date`,
 		id,
@@ -117,13 +118,14 @@ func (r *PipelineRunRepo) UpdateStatus(ctx context.Context, id uuid.UUID, tradeD
 		`UPDATE pipeline_runs
 		 -- Preserve the previously stored signal when a caller is only updating
 		 -- terminal status fields and does not provide a new signal value.
-		 SET status = $1, completed_at = $2, error_message = $3, signal = COALESCE($4, signal)
-		 WHERE id = $5 AND trade_date = $6::date
+		 SET status = $1, completed_at = $2, error_message = $3, signal = COALESCE($4, signal), phase_timings = COALESCE($5, phase_timings)
+		 WHERE id = $6 AND trade_date = $7::date
 		 RETURNING id`,
 		update.Status,
 		update.CompletedAt,
 		update.ErrorMessage,
 		update.Signal,
+		update.PhaseTimings,
 		id,
 		tradeDate,
 	)
@@ -145,6 +147,7 @@ func scanPipelineRun(sc scanner) (*domain.PipelineRun, error) {
 		run                domain.PipelineRun
 		signal             string
 		configSnapshotJSON []byte
+		phaseTimingsJSON   []byte
 	)
 
 	err := sc.Scan(
@@ -158,6 +161,7 @@ func scanPipelineRun(sc scanner) (*domain.PipelineRun, error) {
 		&run.CompletedAt,
 		&run.ErrorMessage,
 		&configSnapshotJSON,
+		&phaseTimingsJSON,
 	)
 	if err != nil {
 		return nil, err
@@ -166,6 +170,9 @@ func scanPipelineRun(sc scanner) (*domain.PipelineRun, error) {
 	run.Signal = domain.PipelineSignal(signal)
 	if configSnapshotJSON != nil {
 		run.ConfigSnapshot = json.RawMessage(configSnapshotJSON)
+	}
+	if phaseTimingsJSON != nil {
+		run.PhaseTimings = json.RawMessage(phaseTimingsJSON)
 	}
 
 	return &run, nil
@@ -210,7 +217,7 @@ func buildPipelineRunListQuery(filter repository.PipelineRunFilter, limit, offse
 		conditions = append(conditions, "started_at <= "+nextArg(*filter.StartedBefore))
 	}
 
-	base := `SELECT id, strategy_id, ticker, trade_date, status, signal, started_at, completed_at, error_message, config_snapshot
+	base := `SELECT id, strategy_id, ticker, trade_date, status, signal, started_at, completed_at, error_message, config_snapshot, phase_timings
 		 FROM pipeline_runs`
 
 	if len(conditions) > 0 {

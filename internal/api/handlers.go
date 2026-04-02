@@ -14,7 +14,9 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/agent"
+	"github.com/PatrickFanella/get-rich-quick/internal/agent/conversation"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
+	"github.com/PatrickFanella/get-rich-quick/internal/llm"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 )
 
@@ -351,12 +353,28 @@ func (s *Server) handleGetRunDecisions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	limit, offset := parsePagination(r)
+	includePrompt := r.URL.Query().Get("include_prompt") == "true"
+
 	decisions, err := s.decisions.GetByRun(r.Context(), id, repository.AgentDecisionFilter{}, limit, offset)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to get decisions", ErrCodeInternal)
 		return
 	}
-	respondList(w, decisions, limit, offset)
+
+	type decisionResponse struct {
+		domain.AgentDecision
+		PromptText string `json:"prompt_text,omitempty"`
+	}
+
+	responses := make([]decisionResponse, len(decisions))
+	for i, d := range decisions {
+		resp := decisionResponse{AgentDecision: d}
+		if includePrompt {
+			resp.PromptText = d.PromptText
+		}
+		responses[i] = resp
+	}
+	respondList(w, responses, limit, offset)
 }
 
 func (s *Server) handleCancelRun(w http.ResponseWriter, r *http.Request) {
@@ -386,6 +404,35 @@ func (s *Server) handleCancelRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respondJSON(w, http.StatusOK, map[string]string{"status": "cancelled"})
+}
+
+func (s *Server) handleGetRunSnapshot(w http.ResponseWriter, r *http.Request) {
+	if s.snapshots == nil {
+		respondError(w, http.StatusNotImplemented, "snapshots not configured", ErrCodeNotImplemented)
+		return
+	}
+	id, err := parseUUID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, err.Error(), ErrCodeBadRequest)
+		return
+	}
+
+	snapshots, err := s.snapshots.GetByRun(r.Context(), id)
+	if err != nil {
+		if isNotFound(err) {
+			respondError(w, http.StatusNotFound, "run not found", ErrCodeNotFound)
+			return
+		}
+		respondError(w, http.StatusInternalServerError, "failed to get snapshot", ErrCodeInternal)
+		return
+	}
+
+	grouped := make(map[string]json.RawMessage)
+	for _, snap := range snapshots {
+		grouped[snap.DataType] = snap.Payload
+	}
+
+	respondJSON(w, http.StatusOK, grouped)
 }
 
 // --- Portfolio handlers ---
@@ -950,6 +997,121 @@ func (s *Server) handleCreateConversation(w http.ResponseWriter, r *http.Request
 		return
 	}
 	respondJSON(w, http.StatusCreated, conv)
+}
+
+func (s *Server) handleCreateConversationMessage(w http.ResponseWriter, r *http.Request) {
+	if s.conversations == nil {
+		respondError(w, http.StatusNotImplemented, "conversations not configured", ErrCodeNotImplemented)
+		return
+	}
+	convID, err := parseUUID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, err.Error(), ErrCodeBadRequest)
+		return
+	}
+
+	conv, err := s.conversations.GetConversation(r.Context(), convID)
+	if err != nil {
+		if isNotFound(err) {
+			respondError(w, http.StatusNotFound, "conversation not found", ErrCodeNotFound)
+			return
+		}
+		respondError(w, http.StatusInternalServerError, "failed to get conversation", ErrCodeInternal)
+		return
+	}
+
+	var body struct {
+		Content string `json:"content"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body", ErrCodeBadRequest)
+		return
+	}
+	if strings.TrimSpace(body.Content) == "" {
+		respondError(w, http.StatusBadRequest, "content is required", ErrCodeValidation)
+		return
+	}
+
+	// Save the user message.
+	userMsg := &domain.ConversationMessage{
+		ConversationID: convID,
+		Role:           domain.ConversationMessageRoleUser,
+		Content:        body.Content,
+	}
+	if err := s.conversations.AddMessage(r.Context(), convID, userMsg); err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to save message", ErrCodeInternal)
+		return
+	}
+
+	if s.llmProvider == nil {
+		respondError(w, http.StatusNotImplemented, "LLM provider not configured", ErrCodeNotImplemented)
+		return
+	}
+
+	// Fetch conversation history for context.
+	history, err := s.conversations.GetMessages(r.Context(), convID, 100, 0)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to load history", ErrCodeInternal)
+		return
+	}
+
+	// Build LLM context using ContextBuilder if dependencies are available.
+	var llmMessages []llm.Message
+	var systemPrompt string
+
+	if s.snapshots != nil && s.decisions != nil && s.memories != nil {
+		cb := conversation.NewContextBuilder(s.decisions, s.snapshots, s.memories, 0)
+		builtCtx, buildErr := cb.BuildContext(r.Context(), conversation.ContextInput{
+			RunID:               conv.PipelineRunID,
+			AgentRole:           conv.AgentRole,
+			ConversationHistory: history,
+		})
+		if buildErr != nil {
+			s.logger.Warn("failed to build conversation context, using simple prompt", "error", buildErr)
+			systemPrompt = fmt.Sprintf("You are a %s trading agent. Answer questions about your decisions.", conv.AgentRole)
+			llmMessages = historyToLLMMessages(history)
+		} else {
+			systemPrompt = builtCtx.SystemPrompt
+			llmMessages = builtCtx.Messages
+		}
+	} else {
+		systemPrompt = fmt.Sprintf("You are a %s trading agent. Answer questions about your decisions.", conv.AgentRole)
+		llmMessages = historyToLLMMessages(history)
+	}
+
+	messages := append([]llm.Message{{Role: "system", Content: systemPrompt}}, llmMessages...)
+
+	resp, err := s.llmProvider.Complete(r.Context(), llm.CompletionRequest{
+		Messages: messages,
+	})
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "LLM completion failed", ErrCodeInternal)
+		return
+	}
+
+	assistantMsg := &domain.ConversationMessage{
+		ConversationID: convID,
+		Role:           domain.ConversationMessageRoleAssistant,
+		Content:        resp.Content,
+	}
+	if err := s.conversations.AddMessage(r.Context(), convID, assistantMsg); err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to save response", ErrCodeInternal)
+		return
+	}
+
+	respondJSON(w, http.StatusCreated, assistantMsg)
+}
+
+// historyToLLMMessages converts conversation history to LLM message format.
+func historyToLLMMessages(history []domain.ConversationMessage) []llm.Message {
+	msgs := make([]llm.Message, 0, len(history))
+	for _, m := range history {
+		msgs = append(msgs, llm.Message{
+			Role:    string(m.Role),
+			Content: m.Content,
+		})
+	}
+	return msgs
 }
 
 // --- Audit log (#455) ---

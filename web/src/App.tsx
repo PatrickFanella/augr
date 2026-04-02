@@ -7,7 +7,8 @@ import { DashboardPage } from '@/pages/dashboard-page'
 import { LoginPage } from '@/pages/login-page'
 import { PipelineRunPage } from '@/pages/pipeline-run-page'
 import { MemoriesPage } from '@/pages/memories-page'
-import { PlaceholderPage } from '@/pages/placeholder-page'
+import { RealtimePage } from '@/pages/realtime-page'
+import { RiskPage } from '@/pages/risk-page'
 import { RunsPage } from '@/pages/runs-page'
 import { SettingsPage } from '@/pages/settings-page'
 import { StrategiesPage } from '@/pages/strategies-page'
@@ -31,32 +32,8 @@ export function AppRoutes() {
           <Route path="portfolio" element={<PortfolioPage />} />
           <Route path="memories" element={<MemoriesPage />} />
           <Route path="settings" element={<SettingsPage />} />
-          <Route
-            path="risk"
-            element={
-              <PlaceholderPage
-                title="Risk controls"
-                description="Risk engine status and kill-switch actions have typed request and response models ready to consume."
-                bullets={[
-                  'Engine status mirrors the backend circuit breaker, kill switch, and position limit structures.',
-                  'This placeholder keeps the route visible without prematurely defining the full page UX.',
-                ]}
-              />
-            }
-          />
-          <Route
-            path="realtime"
-            element={
-              <PlaceholderPage
-                title="Realtime events"
-                description="A reusable WebSocket hook is wired for subscription, reconnection, and message parsing."
-                bullets={[
-                  'Subscribe by strategy ID, run ID, or to all events using the backend command format.',
-                  'Client code exposes the last parsed message and connection state for future widgets.',
-                ]}
-              />
-            }
-          />
+          <Route path="risk" element={<RiskPage />} />
+          <Route path="realtime" element={<RealtimePage />} />
         </Route>
       </Route>
     </Routes>

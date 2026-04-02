@@ -1,4 +1,4 @@
-import { getAccessToken } from '@/lib/auth'
+import { getAccessToken, getRefreshToken, getExpiresAt, clearTokens, setTokens } from '@/lib/auth'
 import { getApiBaseUrl } from '@/lib/config'
 import type {
   AgentDecision,
@@ -72,6 +72,7 @@ export class ApiClient {
   private readonly tokenGetter?: () => string | null
   private readonly apiKey?: string
   private readonly defaultHeaders?: HeadersInit
+  private refreshPromise: Promise<void> | null = null
 
   constructor(config: ApiClientConfig = {}) {
     this.baseUrl = (config.baseUrl || getApiBaseUrl()).replace(/\/$/, '')
@@ -216,6 +217,8 @@ export class ApiClient {
   }
 
   private async fetch(url: URL, options: RequestOptions) {
+    await this.ensureFreshToken()
+
     if (options.query) {
       for (const [key, value] of Object.entries(options.query)) {
         if (value !== undefined) {
@@ -246,6 +249,11 @@ export class ApiClient {
     })
 
     if (!response.ok) {
+      if (response.status === 401) {
+        clearTokens()
+        this.redirectToLogin()
+      }
+
       let payload: ErrorResponse | undefined
       try {
         payload = (await response.json()) as ErrorResponse
@@ -261,6 +269,65 @@ export class ApiClient {
     }
 
     return response
+  }
+
+  private async ensureFreshToken(): Promise<void> {
+    // Skip if no tokenGetter (means static token or API key auth)
+    if (!this.tokenGetter) return
+
+    const expiresAt = getExpiresAt()
+    if (!expiresAt) return
+
+    // If token expires in more than 60 seconds, it's fresh enough
+    if (expiresAt - Date.now() > 60_000) return
+
+    // Prevent concurrent refresh attempts
+    if (this.refreshPromise) {
+      await this.refreshPromise
+      return
+    }
+
+    const refreshToken = getRefreshToken()
+    if (!refreshToken) {
+      clearTokens()
+      this.redirectToLogin()
+      return
+    }
+
+    this.refreshPromise = (async () => {
+      try {
+        const url = new URL(`${this.baseUrl}/api/v1/auth/refresh`)
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh_token: refreshToken }),
+        })
+
+        if (!response.ok) {
+          clearTokens()
+          this.redirectToLogin()
+          return
+        }
+
+        const data = await response.json() as { access_token: string; refresh_token: string; expires_at: string | number }
+        setTokens(data.access_token, data.refresh_token, data.expires_at)
+      } catch {
+        clearTokens()
+        this.redirectToLogin()
+      }
+    })()
+
+    try {
+      await this.refreshPromise
+    } finally {
+      this.refreshPromise = null
+    }
+  }
+
+  private redirectToLogin(): void {
+    if (typeof window !== 'undefined') {
+      window.location.href = '/login'
+    }
   }
 }
 

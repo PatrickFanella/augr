@@ -85,6 +85,8 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 		AuditLog:       auditLogRepo,
 		Events:         eventRepo,
 		MetricsHandler: appMetrics.Handler(),
+		Snapshots:      snapshotRepo,
+		// LLMProvider: wired when LLM config is available
 	}
 
 	var sched *scheduler.Scheduler

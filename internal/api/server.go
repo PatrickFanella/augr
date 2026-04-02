@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
+	"github.com/PatrickFanella/get-rich-quick/internal/llm"
 	"github.com/go-chi/chi/v5"
 	"github.com/gorilla/websocket"
 
@@ -33,8 +34,10 @@ type Server struct {
 	trades        repository.TradeRepository
 	memories      repository.MemoryRepository
 	users         repository.UserRepository
-	conversations repository.ConversationRepository
 	auditLog      repository.AuditLogRepository
+	conversations repository.ConversationRepository
+	snapshots     repository.PipelineRunSnapshotRepository
+	llmProvider   llm.Provider
 	events        repository.AgentEventRepository
 
 	// Risk engine
@@ -117,6 +120,8 @@ type Deps struct {
 	Conversations  repository.ConversationRepository
 	AuditLog       repository.AuditLogRepository
 	Events         repository.AgentEventRepository
+	Snapshots      repository.PipelineRunSnapshotRepository
+	LLMProvider    llm.Provider
 	Risk           risk.RiskEngine
 	Settings       SettingsService
 	Runner         StrategyRunner
@@ -200,6 +205,8 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 		memories:       deps.Memories,
 		users:          deps.Users,
 		conversations:  deps.Conversations,
+		snapshots:      deps.Snapshots,
+		llmProvider:    deps.LLMProvider,
 		auditLog:       deps.AuditLog,
 		events:         deps.Events,
 		risk:           deps.Risk,
@@ -266,6 +273,7 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 			rr.Get("/{id}", s.handleGetRun)
 			rr.Get("/{id}/decisions", s.handleGetRunDecisions)
 			rr.Post("/{id}/cancel", s.handleCancelRun)
+			rr.Get("/{id}/snapshot", s.handleGetRunSnapshot)
 		})
 
 		// Portfolio
@@ -311,6 +319,7 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 			cr.Get("/", s.handleListConversations)
 			cr.Post("/", s.handleCreateConversation)
 			cr.Get("/{id}/messages", s.handleGetConversationMessages)
+			cr.Post("/{id}/messages", s.handleCreateConversationMessage)
 		})
 
 		// Audit log

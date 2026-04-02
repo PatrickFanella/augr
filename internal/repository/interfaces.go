@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -54,6 +55,7 @@ type PipelineRunStatusUpdate struct {
 	Signal       *domain.PipelineSignal
 	CompletedAt  *time.Time
 	ErrorMessage string
+	PhaseTimings json.RawMessage
 }
 
 // AgentDecisionFilter defines supported filters when retrieving agent decisions.

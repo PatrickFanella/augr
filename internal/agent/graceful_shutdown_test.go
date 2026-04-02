@@ -37,7 +37,7 @@ func TestRepoPersister_RecordRunCompleteSucceedsWithCancelledContext(t *testing.
 	runID := uuid.New()
 	tradeDate := time.Now().UTC().Truncate(24 * time.Hour)
 
-	err := persister.RecordRunComplete(cancelledCtx, runID, tradeDate, domain.PipelineStatusFailed, time.Now(), "context canceled")
+	err := persister.RecordRunComplete(cancelledCtx, runID, tradeDate, domain.PipelineStatusFailed, time.Now(), "context canceled", nil)
 	if err != nil {
 		t.Fatalf("RecordRunComplete with cancelled context returned error: %v; pipeline run would be stuck at 'running'", err)
 	}
@@ -66,7 +66,7 @@ func TestRepoPersister_RecordRunCompleteCompletedStatusWithCancelledContext(t *t
 	runID := uuid.New()
 	tradeDate := time.Now().UTC().Truncate(24 * time.Hour)
 
-	err := persister.RecordRunComplete(cancelledCtx, runID, tradeDate, domain.PipelineStatusCompleted, time.Now(), "")
+	err := persister.RecordRunComplete(cancelledCtx, runID, tradeDate, domain.PipelineStatusCompleted, time.Now(), "", nil)
 	if err != nil {
 		t.Fatalf("RecordRunComplete (completed) with cancelled context returned error: %v; pipeline run would be stuck at 'running'", err)
 	}

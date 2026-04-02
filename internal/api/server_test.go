@@ -20,6 +20,7 @@ import (
 
 	"github.com/PatrickFanella/get-rich-quick/internal/agent"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
+	"github.com/PatrickFanella/get-rich-quick/internal/llm"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 	"github.com/PatrickFanella/get-rich-quick/internal/risk"
 )
@@ -1772,11 +1773,13 @@ func (s *stubStrategyRunner) RunStrategy(context.Context, domain.Strategy) (*Str
 
 // stubDecisionRepo
 
-type stubDecisionRepo struct{}
+type stubDecisionRepo struct {
+	decisions []domain.AgentDecision
+}
 
 func (stubDecisionRepo) Create(context.Context, *domain.AgentDecision) error { return nil }
-func (stubDecisionRepo) GetByRun(context.Context, uuid.UUID, repository.AgentDecisionFilter, int, int) ([]domain.AgentDecision, error) {
-	return nil, nil
+func (s *stubDecisionRepo) GetByRun(_ context.Context, _ uuid.UUID, _ repository.AgentDecisionFilter, _, _ int) ([]domain.AgentDecision, error) {
+	return s.decisions, nil
 }
 
 // stubOrderRepo
@@ -2217,5 +2220,305 @@ func TestCreateConversationEndpoint(t *testing.T) {
 	}
 	if conv.PipelineRunID != runID {
 		t.Fatalf("pipeline_run_id = %s, want %s", conv.PipelineRunID, runID)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Stub: snapshot repo
+// ---------------------------------------------------------------------------
+
+type stubSnapshotRepo struct {
+	snapshots []domain.PipelineRunSnapshot
+	createErr error
+}
+
+func (r *stubSnapshotRepo) Create(_ context.Context, _ *domain.PipelineRunSnapshot) error {
+	return r.createErr
+}
+
+func (r *stubSnapshotRepo) GetByRun(_ context.Context, _ uuid.UUID) ([]domain.PipelineRunSnapshot, error) {
+	return r.snapshots, nil
+}
+
+// ---------------------------------------------------------------------------
+// Stub: LLM provider
+// ---------------------------------------------------------------------------
+
+type stubLLMProvider struct {
+	content string
+	err     error
+}
+
+func (p *stubLLMProvider) Complete(_ context.Context, _ llm.CompletionRequest) (*llm.CompletionResponse, error) {
+	if p.err != nil {
+		return nil, p.err
+	}
+	return &llm.CompletionResponse{Content: p.content, Model: "test-model"}, nil
+}
+
+// ---------------------------------------------------------------------------
+// #446 — Decisions: cost_usd and prompt_text
+// ---------------------------------------------------------------------------
+
+func TestGetRunDecisions_IncludesCostUSD(t *testing.T) {
+	t.Parallel()
+
+	runID := uuid.New()
+	deps := testDeps()
+	deps.Decisions = &stubDecisionRepo{
+		decisions: []domain.AgentDecision{
+			{
+				ID:            uuid.New(),
+				PipelineRunID: runID,
+				AgentRole:     "market_analyst",
+				Phase:         "analysis",
+				OutputText:    "bullish",
+				CostUSD:       0.05,
+			},
+		},
+	}
+	srv := newTestServerWithDeps(t, deps)
+
+	rr := doRequest(t, srv, http.MethodGet, "/api/v1/runs/"+runID.String()+"/decisions", nil)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", rr.Code, http.StatusOK, rr.Body.String())
+	}
+
+	// Decode raw JSON to check cost_usd is present.
+	var body struct {
+		Data []map[string]any `json:"data"`
+	}
+	if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Data) != 1 {
+		t.Fatalf("len(data) = %d, want 1", len(body.Data))
+	}
+	cost, ok := body.Data[0]["cost_usd"]
+	if !ok {
+		t.Fatal("cost_usd field missing from response")
+	}
+	if cost.(float64) != 0.05 {
+		t.Fatalf("cost_usd = %v, want 0.05", cost)
+	}
+}
+
+func TestGetRunDecisions_IncludePromptText(t *testing.T) {
+	t.Parallel()
+
+	runID := uuid.New()
+	deps := testDeps()
+	deps.Decisions = &stubDecisionRepo{
+		decisions: []domain.AgentDecision{
+			{
+				ID:            uuid.New(),
+				PipelineRunID: runID,
+				AgentRole:     "market_analyst",
+				Phase:         "analysis",
+				OutputText:    "bearish",
+				PromptText:    "test prompt content",
+			},
+		},
+	}
+	srv := newTestServerWithDeps(t, deps)
+
+	// With include_prompt=true, prompt_text should appear.
+	rr := doRequest(t, srv, http.MethodGet, "/api/v1/runs/"+runID.String()+"/decisions?include_prompt=true", nil)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", rr.Code, http.StatusOK, rr.Body.String())
+	}
+	var withPrompt struct {
+		Data []map[string]any `json:"data"`
+	}
+	if err := json.NewDecoder(rr.Body).Decode(&withPrompt); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(withPrompt.Data) != 1 {
+		t.Fatalf("len(data) = %d, want 1", len(withPrompt.Data))
+	}
+	prompt, ok := withPrompt.Data[0]["prompt_text"]
+	if !ok {
+		t.Fatal("prompt_text field missing when include_prompt=true")
+	}
+	if prompt.(string) != "test prompt content" {
+		t.Fatalf("prompt_text = %q, want %q", prompt, "test prompt content")
+	}
+
+	// Without include_prompt, prompt_text should be absent (omitempty).
+	rr2 := doRequest(t, srv, http.MethodGet, "/api/v1/runs/"+runID.String()+"/decisions", nil)
+	if rr2.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rr2.Code, http.StatusOK)
+	}
+	var withoutPrompt struct {
+		Data []map[string]any `json:"data"`
+	}
+	if err := json.NewDecoder(rr2.Body).Decode(&withoutPrompt); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if _, ok := withoutPrompt.Data[0]["prompt_text"]; ok {
+		t.Fatal("prompt_text should be absent when include_prompt is not set")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// #471 — GET /api/v1/runs/{id}/snapshot
+// ---------------------------------------------------------------------------
+
+func TestGetRunSnapshot(t *testing.T) {
+	t.Parallel()
+
+	runID := uuid.New()
+	deps := testDeps()
+	deps.Snapshots = &stubSnapshotRepo{
+		snapshots: []domain.PipelineRunSnapshot{
+			{
+				ID:            uuid.New(),
+				PipelineRunID: runID,
+				DataType:      "market",
+				Payload:       json.RawMessage(`{"price":150.0}`),
+			},
+			{
+				ID:            uuid.New(),
+				PipelineRunID: runID,
+				DataType:      "news",
+				Payload:       json.RawMessage(`{"headline":"test"}`),
+			},
+		},
+	}
+	srv := newTestServerWithDeps(t, deps)
+
+	rr := doRequest(t, srv, http.MethodGet, "/api/v1/runs/"+runID.String()+"/snapshot", nil)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", rr.Code, http.StatusOK, rr.Body.String())
+	}
+
+	body := decodeJSON[map[string]json.RawMessage](t, rr)
+	if _, ok := body["market"]; !ok {
+		t.Fatal("missing \"market\" key in snapshot response")
+	}
+	if _, ok := body["news"]; !ok {
+		t.Fatal("missing \"news\" key in snapshot response")
+	}
+	if string(body["market"]) != `{"price":150.0}` {
+		t.Fatalf("market payload = %s, want %s", body["market"], `{"price":150.0}`)
+	}
+}
+
+func TestGetRunSnapshot_NotConfigured(t *testing.T) {
+	t.Parallel()
+
+	deps := testDeps()
+	// Snapshots is nil by default.
+	srv := newTestServerWithDeps(t, deps)
+
+	rr := doRequest(t, srv, http.MethodGet, "/api/v1/runs/"+uuid.New().String()+"/snapshot", nil)
+	if rr.Code != http.StatusNotImplemented {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusNotImplemented)
+	}
+	body := decodeJSON[ErrorResponse](t, rr)
+	if body.Code != ErrCodeNotImplemented {
+		t.Fatalf("code = %q, want %q", body.Code, ErrCodeNotImplemented)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// #450 — POST /api/v1/conversations/{id}/messages
+// ---------------------------------------------------------------------------
+
+func TestCreateConversationMessage(t *testing.T) {
+	t.Parallel()
+
+	runID := uuid.New()
+	convRepo := newStubConversationRepo()
+	conv := &domain.Conversation{
+		PipelineRunID: runID,
+		AgentRole:     "market_analyst",
+		Title:         "Test conversation",
+	}
+	_ = convRepo.CreateConversation(context.Background(), conv)
+
+	deps := testDeps()
+	deps.Conversations = convRepo
+	deps.LLMProvider = &stubLLMProvider{content: "AI response here"}
+	srv := newTestServerWithDeps(t, deps)
+
+	rr := doRequest(t, srv, http.MethodPost, "/api/v1/conversations/"+conv.ID.String()+"/messages", map[string]string{
+		"content": "What do you think about AAPL?",
+	})
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body: %s", rr.Code, http.StatusCreated, rr.Body.String())
+	}
+
+	var msg domain.ConversationMessage
+	if err := json.NewDecoder(rr.Body).Decode(&msg); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if msg.Role != domain.ConversationMessageRoleAssistant {
+		t.Fatalf("role = %q, want %q", msg.Role, domain.ConversationMessageRoleAssistant)
+	}
+	if msg.Content != "AI response here" {
+		t.Fatalf("content = %q, want %q", msg.Content, "AI response here")
+	}
+
+	// Verify both messages were stored.
+	msgs, _ := convRepo.GetMessages(context.Background(), conv.ID, 100, 0)
+	if len(msgs) != 2 {
+		t.Fatalf("stored messages = %d, want 2 (user + assistant)", len(msgs))
+	}
+	if msgs[0].Role != domain.ConversationMessageRoleUser {
+		t.Fatalf("first message role = %q, want %q", msgs[0].Role, domain.ConversationMessageRoleUser)
+	}
+	if msgs[1].Role != domain.ConversationMessageRoleAssistant {
+		t.Fatalf("second message role = %q, want %q", msgs[1].Role, domain.ConversationMessageRoleAssistant)
+	}
+}
+
+func TestCreateConversationMessage_NoLLM(t *testing.T) {
+	t.Parallel()
+
+	runID := uuid.New()
+	convRepo := newStubConversationRepo()
+	conv := &domain.Conversation{
+		PipelineRunID: runID,
+		AgentRole:     "market_analyst",
+		Title:         "Test conversation",
+	}
+	_ = convRepo.CreateConversation(context.Background(), conv)
+
+	deps := testDeps()
+	deps.Conversations = convRepo
+	// LLMProvider is nil by default.
+	srv := newTestServerWithDeps(t, deps)
+
+	rr := doRequest(t, srv, http.MethodPost, "/api/v1/conversations/"+conv.ID.String()+"/messages", map[string]string{
+		"content": "Hello",
+	})
+	if rr.Code != http.StatusNotImplemented {
+		t.Fatalf("status = %d, want %d; body: %s", rr.Code, http.StatusNotImplemented, rr.Body.String())
+	}
+
+	// User message should still have been saved.
+	msgs, _ := convRepo.GetMessages(context.Background(), conv.ID, 100, 0)
+	if len(msgs) != 1 {
+		t.Fatalf("stored messages = %d, want 1 (user msg saved before 501)", len(msgs))
+	}
+	if msgs[0].Role != domain.ConversationMessageRoleUser {
+		t.Fatalf("message role = %q, want %q", msgs[0].Role, domain.ConversationMessageRoleUser)
+	}
+}
+
+func TestCreateConversationMessage_ConversationNotFound(t *testing.T) {
+	t.Parallel()
+
+	deps := testDeps()
+	deps.Conversations = newStubConversationRepo()
+	deps.LLMProvider = &stubLLMProvider{content: "nope"}
+	srv := newTestServerWithDeps(t, deps)
+
+	rr := doRequest(t, srv, http.MethodPost, "/api/v1/conversations/"+uuid.New().String()+"/messages", map[string]string{
+		"content": "Hello",
+	})
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d; body: %s", rr.Code, http.StatusNotFound, rr.Body.String())
 	}
 }

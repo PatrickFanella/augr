@@ -27,15 +27,26 @@ const (
 )
 
 type mockStrategyRepo struct {
-	mu         sync.Mutex
-	strategies []domain.Strategy
-	filters    []repository.StrategyFilter
-	listErr    error
+	mu          sync.Mutex
+	strategies  []domain.Strategy
+	filters     []repository.StrategyFilter
+	listErr     error
+	updateCalls []domain.Strategy
 }
 
 func (m *mockStrategyRepo) Create(context.Context, *domain.Strategy) error { return nil }
 
-func (m *mockStrategyRepo) Get(context.Context, uuid.UUID) (*domain.Strategy, error) { return nil, nil }
+func (m *mockStrategyRepo) Get(_ context.Context, id uuid.UUID) (*domain.Strategy, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i := range m.strategies {
+		if m.strategies[i].ID == id {
+			clone := m.strategies[i]
+			return &clone, nil
+		}
+	}
+	return nil, repository.ErrNotFound
+}
 
 func (m *mockStrategyRepo) List(_ context.Context, filter repository.StrategyFilter, limit, offset int) ([]domain.Strategy, error) {
 	m.mu.Lock()
@@ -45,32 +56,33 @@ func (m *mockStrategyRepo) List(_ context.Context, filter repository.StrategyFil
 	if m.listErr != nil {
 		return nil, m.listErr
 	}
-	if offset >= len(m.strategies) {
+
+	// Filter by status when set, matching real repo behavior.
+	var pool []domain.Strategy
+	for _, s := range m.strategies {
+		if filter.Status == "" || s.Status == filter.Status {
+			pool = append(pool, s)
+		}
+	}
+
+	if offset >= len(pool) {
 		return nil, nil
 	}
-
 	end := offset + limit
-	if end > len(m.strategies) {
-		end = len(m.strategies)
+	if end > len(pool) {
+		end = len(pool)
 	}
-
-	return append([]domain.Strategy(nil), m.strategies[offset:end]...), nil
+	return append([]domain.Strategy(nil), pool[offset:end]...), nil
 }
 
-func (m *mockStrategyRepo) Update(context.Context, *domain.Strategy) error { return nil }
-
-func (m *mockStrategyRepo) Delete(context.Context, uuid.UUID) error { return nil }
-
-func (m *mockStrategyRepo) lastFilter() (repository.StrategyFilter, bool) {
+func (m *mockStrategyRepo) Update(_ context.Context, s *domain.Strategy) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-
-	if len(m.filters) == 0 {
-		return repository.StrategyFilter{}, false
-	}
-
-	return m.filters[len(m.filters)-1], true
+	m.updateCalls = append(m.updateCalls, *s)
+	return nil
 }
+
+func (m *mockStrategyRepo) Delete(context.Context, uuid.UUID) error { return nil }
 
 type pipelineCall struct {
 	strategyID uuid.UUID
@@ -344,12 +356,15 @@ func TestSchedulerStartTriggersPipelineExecution(t *testing.T) {
 	}
 	defer s.Stop()
 
-	filter, ok := repo.lastFilter()
-	if !ok {
-		t.Fatal("expected strategy repository List to be called")
+	// loadActiveStrategies queries active then paused; verify both filters were recorded.
+	if len(repo.filters) < 2 {
+		t.Fatalf("expected at least 2 List calls (active + paused), got %d", len(repo.filters))
 	}
-	if filter.Status != domain.StrategyStatusActive {
-		t.Fatalf("expected active strategy filter, got %+v", filter)
+	if repo.filters[0].Status != domain.StrategyStatusActive {
+		t.Fatalf("first filter status = %q, want %q", repo.filters[0].Status, domain.StrategyStatusActive)
+	}
+	if repo.filters[1].Status != domain.StrategyStatusPaused {
+		t.Fatalf("second filter status = %q, want %q", repo.filters[1].Status, domain.StrategyStatusPaused)
 	}
 	if !fakeCron.started.Load() {
 		t.Fatal("expected cron engine to be started")
@@ -380,14 +395,22 @@ func TestSchedulerStartTriggersPipelineExecution(t *testing.T) {
 }
 
 func TestSchedulerRunStrategySkipsWhenKillSwitchActive(t *testing.T) {
+	strategyID := uuid.New()
+	repo := &mockStrategyRepo{
+		strategies: []domain.Strategy{
+			{
+				ID:         strategyID,
+				Ticker:     "BTCUSD",
+				MarketType: domain.MarketTypeCrypto,
+				Status:     domain.StrategyStatusActive,
+			},
+		},
+	}
 	pipeline := &mockPipeline{}
-	s := NewScheduler(nil, pipeline, &mockRiskEngine{killSwitchActive: true}, testLogger())
+	s := NewScheduler(repo, pipeline, &mockRiskEngine{killSwitchActive: true}, testLogger())
+	s.ctx = context.Background()
 
-	s.runStrategy(domain.Strategy{
-		ID:         uuid.New(),
-		Ticker:     "BTCUSD",
-		MarketType: domain.MarketTypeCrypto,
-	})
+	s.runStrategy(repo.strategies[0])
 
 	if got := pipeline.callCount(); got != 0 {
 		t.Fatalf("pipeline calls = %d, want 0", got)
@@ -508,17 +531,25 @@ func TestSchedulerRunStrategySkipsOutsideStockMarketHours(t *testing.T) {
 		t.Fatalf("LoadLocation(America/New_York): %v", err)
 	}
 
+	strategyID := uuid.New()
+	repo := &mockStrategyRepo{
+		strategies: []domain.Strategy{
+			{
+				ID:         strategyID,
+				Ticker:     "AAPL",
+				MarketType: domain.MarketTypeStock,
+				Status:     domain.StrategyStatusActive,
+			},
+		},
+	}
 	pipeline := &mockPipeline{}
-	s := NewScheduler(nil, pipeline, &mockRiskEngine{}, testLogger())
+	s := NewScheduler(repo, pipeline, &mockRiskEngine{}, testLogger())
+	s.ctx = context.Background()
 	s.nowFunc = func() time.Time {
 		return time.Date(2024, time.January, 6, 10, 0, 0, 0, loc)
 	}
 
-	s.runStrategy(domain.Strategy{
-		ID:         uuid.New(),
-		Ticker:     "AAPL",
-		MarketType: domain.MarketTypeStock,
-	})
+	s.runStrategy(repo.strategies[0])
 
 	if got := pipeline.callCount(); got != 0 {
 		t.Fatalf("pipeline calls = %d, want 0", got)
@@ -630,5 +661,90 @@ func TestSchedulerStartTriggersScheduledBacktestAndPersistsRun(t *testing.T) {
 	}
 	if len(curve) != 1 || !curve[0].Timestamp.Equal(triggeredAt) {
 		t.Fatalf("equity curve = %+v, want timestamp %s", curve, triggeredAt)
+	}
+}
+
+func TestRunStrategy_PausedIsSkipped(t *testing.T) {
+	strategyID := uuid.New()
+	repo := &mockStrategyRepo{
+		strategies: []domain.Strategy{
+			{
+				ID:           strategyID,
+				Ticker:       "BTCUSD",
+				MarketType:   domain.MarketTypeCrypto,
+				ScheduleCron: testScheduleSpec,
+				Status:       domain.StrategyStatusPaused,
+			},
+		},
+	}
+	pipeline := &mockPipeline{}
+	s := NewScheduler(repo, pipeline, &mockRiskEngine{}, testLogger())
+	s.ctx = context.Background()
+
+	s.runStrategy(repo.strategies[0])
+
+	if got := pipeline.callCount(); got != 0 {
+		t.Fatalf("pipeline calls = %d, want 0 for paused strategy", got)
+	}
+}
+
+func TestRunStrategy_ActiveRunsNormally(t *testing.T) {
+	strategyID := uuid.New()
+	repo := &mockStrategyRepo{
+		strategies: []domain.Strategy{
+			{
+				ID:           strategyID,
+				Ticker:       "BTCUSD",
+				MarketType:   domain.MarketTypeCrypto,
+				ScheduleCron: testScheduleSpec,
+				Status:       domain.StrategyStatusActive,
+			},
+		},
+	}
+	pipeline := &mockPipeline{}
+	s := NewScheduler(repo, pipeline, &mockRiskEngine{}, testLogger())
+	s.ctx = context.Background()
+
+	s.runStrategy(repo.strategies[0])
+
+	if got := pipeline.callCount(); got != 1 {
+		t.Fatalf("pipeline calls = %d, want 1 for active strategy", got)
+	}
+}
+
+func TestRunStrategy_SkipNextRunResetsAndSkips(t *testing.T) {
+	strategyID := uuid.New()
+	repo := &mockStrategyRepo{
+		strategies: []domain.Strategy{
+			{
+				ID:           strategyID,
+				Ticker:       "BTCUSD",
+				MarketType:   domain.MarketTypeCrypto,
+				ScheduleCron: testScheduleSpec,
+				Status:       domain.StrategyStatusActive,
+				SkipNextRun:  true,
+			},
+		},
+	}
+	pipeline := &mockPipeline{}
+	s := NewScheduler(repo, pipeline, &mockRiskEngine{}, testLogger())
+	s.ctx = context.Background()
+
+	s.runStrategy(repo.strategies[0])
+
+	if got := pipeline.callCount(); got != 0 {
+		t.Fatalf("pipeline calls = %d, want 0 when skip_next_run is set", got)
+	}
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if len(repo.updateCalls) != 1 {
+		t.Fatalf("update calls = %d, want 1", len(repo.updateCalls))
+	}
+	if repo.updateCalls[0].SkipNextRun {
+		t.Fatal("expected SkipNextRun to be reset to false in update call")
+	}
+	if repo.updateCalls[0].ID != strategyID {
+		t.Fatalf("update call strategy ID = %s, want %s", repo.updateCalls[0].ID, strategyID)
 	}
 }

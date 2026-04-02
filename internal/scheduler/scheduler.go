@@ -247,21 +247,20 @@ func (s *Scheduler) InFlightCount() int {
 }
 
 func (s *Scheduler) loadActiveStrategies(ctx context.Context) ([]domain.Strategy, error) {
-	filter := repository.StrategyFilter{Status: domain.StrategyStatusActive}
-
 	var strategies []domain.Strategy
-	for offset := 0; ; offset += defaultStrategyPageSize {
-		batch, err := s.strategyRepo.List(ctx, filter, defaultStrategyPageSize, offset)
-		if err != nil {
-			return nil, fmt.Errorf("scheduler: list active strategies: %w", err)
-		}
-
-		strategies = append(strategies, batch...)
-		if len(batch) < defaultStrategyPageSize {
-			break
+	for _, status := range []string{domain.StrategyStatusActive, domain.StrategyStatusPaused} {
+		filter := repository.StrategyFilter{Status: status}
+		for offset := 0; ; offset += defaultStrategyPageSize {
+			batch, err := s.strategyRepo.List(ctx, filter, defaultStrategyPageSize, offset)
+			if err != nil {
+				return nil, fmt.Errorf("scheduler: list %s strategies: %w", status, err)
+			}
+			strategies = append(strategies, batch...)
+			if len(batch) < defaultStrategyPageSize {
+				break
+			}
 		}
 	}
-
 	return strategies, nil
 }
 
@@ -304,6 +303,40 @@ func (s *Scheduler) runStrategy(strategy domain.Strategy) {
 	}
 	defer s.dedup.Release(strategy.ID)
 
+	// Re-read strategy to get latest status and skip_next_run.
+	fetchCtx, fetchCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer fetchCancel()
+	current, err := s.strategyRepo.Get(fetchCtx, strategy.ID)
+	if err != nil {
+		s.logger.Error("scheduler: failed to fetch strategy",
+			slog.String("strategy_id", strategy.ID.String()),
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	if current.Status == domain.StrategyStatusPaused {
+		s.logger.Info("scheduler: skipping paused strategy",
+			slog.String("strategy_id", strategy.ID.String()),
+			slog.String("ticker", strategy.Ticker),
+		)
+		return
+	}
+
+	if current.SkipNextRun {
+		s.logger.Info("scheduler: skip_next_run is set; resetting and skipping",
+			slog.String("strategy_id", strategy.ID.String()),
+			slog.String("ticker", strategy.Ticker),
+		)
+		current.SkipNextRun = false
+		if err := s.strategyRepo.Update(fetchCtx, current); err != nil {
+			s.logger.Error("scheduler: failed to reset skip_next_run",
+				slog.String("strategy_id", strategy.ID.String()),
+				slog.Any("error", err),
+			)
+		}
+		return
+	}
 	now := s.nowFunc()
 	ctx, cancel := s.jobContext()
 	defer cancel()

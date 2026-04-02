@@ -95,9 +95,9 @@ export function MemoriesPage() {
     },
   })
 
-  const visibleMemories = data?.data.slice(0, PAGE_SIZE) ?? []
+  const visibleMemories = (data?.data ?? []).slice(0, PAGE_SIZE)
   const visibleCount = visibleMemories.length
-  const hasNextPage = (data?.data.length ?? 0) > PAGE_SIZE
+  const hasNextPage = (data?.data?.length ?? 0) > PAGE_SIZE
   const pageLabel = useMemo(() => Math.floor(offset / PAGE_SIZE) + 1, [offset])
 
   function applyFilters() {

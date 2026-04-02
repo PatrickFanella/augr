@@ -37,7 +37,7 @@ func (p *capturePersister) RecordRunStart(_ context.Context, run *domain.Pipelin
 	return nil
 }
 
-func (p *capturePersister) RecordRunComplete(_ context.Context, _ uuid.UUID, _ time.Time, status domain.PipelineStatus, completedAt time.Time, _ string) error {
+func (p *capturePersister) RecordRunComplete(_ context.Context, _ uuid.UUID, _ time.Time, status domain.PipelineStatus, completedAt time.Time, _ string, _ json.RawMessage) error {
 	p.completedStat = status
 	p.completedAt = completedAt
 	return nil
@@ -1296,7 +1296,7 @@ func (*blockingSnapshotPersister) RecordRunStart(context.Context, *domain.Pipeli
 	return nil
 }
 
-func (*blockingSnapshotPersister) RecordRunComplete(context.Context, uuid.UUID, time.Time, domain.PipelineStatus, time.Time, string) error {
+func (*blockingSnapshotPersister) RecordRunComplete(context.Context, uuid.UUID, time.Time, domain.PipelineStatus, time.Time, string, json.RawMessage) error {
 	return nil
 }
 
