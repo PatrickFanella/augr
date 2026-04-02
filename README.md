@@ -222,6 +222,7 @@ docs/                   Architecture docs, ADRs, research
 
 ## Documentation
 
+- **[Getting Started: first run](docs/getting-started.md)** — Fresh clone to first visible run in the web UI
 - **[Development Setup Guide](docs/development-setup.md)** — Detailed native setup, database migrations, and troubleshooting
 - **[Architecture & Design](docs/design/system-architecture.md)** — System architecture and data flow
 - **[ADRs](docs/adr/)** — Architecture Decision Records

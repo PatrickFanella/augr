@@ -4,6 +4,7 @@
 
 | Section                                           | Description                                                     |
 | ------------------------------------------------- | --------------------------------------------------------------- |
+| [Getting Started](getting-started.md)             | Fresh clone to first visible run in the web UI                  |
 | [Design](design/index.md)                         | Production system architecture, agents, API, database, roadmap  |
 | [ADRs](adr/README.md)                             | Architecture Decision Records                                   |
 | [Runbooks](runbooks/README.md)                    | Operational procedures for incidents and routine interventions  |
