@@ -7,6 +7,12 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import type { AgentRole, MarketType, Settings, Strategy, StrategyStatus, StrategyUpdateRequest } from '@/lib/api/types'
 
+import {
+  analystOptions,
+  buildStructuredStrategyConfig,
+  parseStructuredStrategyConfig,
+} from './strategy-structured-config'
+
 interface StrategyConfigEditorProps {
   strategy: Strategy
   onSave: (data: StrategyUpdateRequest) => void
@@ -15,7 +21,6 @@ interface StrategyConfigEditorProps {
 }
 
 const marketTypes: MarketType[] = ['stock', 'crypto', 'polymarket']
-const allAnalysts: AgentRole[] = ['market_analyst', 'fundamentals_analyst', 'news_analyst', 'social_media_analyst']
 
 function resolveStrategyStatus(strategy: Strategy): StrategyStatus {
   if (strategy.status) {
@@ -33,7 +38,6 @@ export function StrategyConfigEditor({ strategy, onSave, isSaving, settings }: S
   const [scheduleCron, setScheduleCron] = useState(strategy.schedule_cron ?? '')
   const [isPaper, setIsPaper] = useState(strategy.is_paper)
   const [isActive, setIsActive] = useState(resolveStrategyStatus(strategy) === 'active')
-  const [configJson, setConfigJson] = useState(JSON.stringify(strategy.config ?? {}, null, 2))
   const [configError, setConfigError] = useState<string | null>(null)
   const [deepThinkProvider, setDeepThinkProvider] = useState('')
   const [deepThinkModel, setDeepThinkModel] = useState('')
@@ -47,16 +51,14 @@ export function StrategyConfigEditor({ strategy, onSave, isSaving, settings }: S
   const [stopLossAtrMultiplier, setStopLossAtrMultiplier] = useState('')
   const [takeProfitAtrMultiplier, setTakeProfitAtrMultiplier] = useState('')
   const [minConfidenceThreshold, setMinConfidenceThreshold] = useState('')
-  const [selectedAnalysts, setSelectedAnalysts] = useState<AgentRole[]>(allAnalysts)
+  const [selectedAnalysts, setSelectedAnalysts] = useState<AgentRole[]>([])
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [promptOverrides, setPromptOverrides] = useState('{}')
 
   useEffect(() => {
-    const cfg = (strategy.config ?? {}) as Record<string, unknown>
-    const llm = (cfg.llm_config ?? {}) as Record<string, unknown>
-    const pipeline = (cfg.pipeline_config ?? {}) as Record<string, unknown>
-    const risk = (cfg.risk_config ?? {}) as Record<string, unknown>
-    const analysts = Array.isArray(cfg.analyst_selection) ? (cfg.analyst_selection as AgentRole[]) : allAnalysts
+    const cfg = ((strategy.config ?? {}) as Record<string, unknown>) ?? {}
+    const llm = ((cfg.llm_config ?? {}) as Record<string, unknown>) ?? {}
+    const structuredConfig = parseStructuredStrategyConfig(strategy.config)
 
     setName(strategy.name)
     setDescription(strategy.description ?? '')
@@ -65,7 +67,6 @@ export function StrategyConfigEditor({ strategy, onSave, isSaving, settings }: S
     setScheduleCron(strategy.schedule_cron ?? '')
     setIsPaper(strategy.is_paper)
     setIsActive(resolveStrategyStatus(strategy) === 'active')
-    setConfigJson(JSON.stringify(strategy.config ?? {}, null, 2))
     setConfigError(null)
 
     setDeepThinkProvider((llm.provider as string) ?? '')
@@ -73,32 +74,16 @@ export function StrategyConfigEditor({ strategy, onSave, isSaving, settings }: S
     setQuickThinkProvider('')
     setQuickThinkModel((llm.quick_think_model as string) ?? '')
 
-    setResearchDebateRounds(
-      pipeline.debate_rounds == null ? '' : String(pipeline.debate_rounds),
-    )
-    setRiskDebateRounds('')
-    setPhaseTimeout(
-      pipeline.analysis_timeout_seconds == null ? '' : String(pipeline.analysis_timeout_seconds),
-    )
-    setPipelineTimeout(
-      pipeline.debate_timeout_seconds == null ? '' : String(pipeline.debate_timeout_seconds),
-    )
-
-    setMaxPositionSizePct(
-      risk.position_size_pct == null ? '' : String((risk.position_size_pct as number) / 100),
-    )
-    setStopLossAtrMultiplier(
-      risk.stop_loss_multiplier == null ? '' : String(risk.stop_loss_multiplier),
-    )
-    setTakeProfitAtrMultiplier(
-      risk.take_profit_multiplier == null ? '' : String(risk.take_profit_multiplier),
-    )
-    setMinConfidenceThreshold(
-      risk.min_confidence == null ? '' : String(risk.min_confidence),
-    )
-
-    setSelectedAnalysts(analysts.length > 0 ? analysts : allAnalysts)
-    setPromptOverrides(JSON.stringify((cfg.prompt_overrides ?? {}) as Record<string, string>, null, 2))
+    setResearchDebateRounds(structuredConfig.researchDebateRounds)
+    setRiskDebateRounds(structuredConfig.riskDebateRounds)
+    setPhaseTimeout(structuredConfig.phaseTimeout)
+    setPipelineTimeout(structuredConfig.pipelineTimeout)
+    setMaxPositionSizePct(structuredConfig.maxPositionSizePct)
+    setStopLossAtrMultiplier(structuredConfig.stopLossAtrMultiplier)
+    setTakeProfitAtrMultiplier(structuredConfig.takeProfitAtrMultiplier)
+    setMinConfidenceThreshold(structuredConfig.minConfidenceThreshold)
+    setSelectedAnalysts(structuredConfig.selectedAnalysts)
+    setPromptOverrides(structuredConfig.promptOverrides)
     setShowAdvanced(false)
   }, [strategy])
 
@@ -114,73 +99,58 @@ export function StrategyConfigEditor({ strategy, onSave, isSaving, settings }: S
       }
       return prev.filter((value) => value !== analyst)
     })
-  }
-
-  function numberValue(value: string) {
-    if (!value.trim()) {
-      return undefined
-    }
-
-    return Number(value)
+    setConfigError(null)
   }
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault()
 
-    let config: Record<string, unknown> = {}
-    try {
-      config = JSON.parse(configJson) as Record<string, unknown>
-    } catch {
-      setConfigError('Invalid JSON')
+    const structuredConfig = buildStructuredStrategyConfig(
+      {
+        researchDebateRounds,
+        riskDebateRounds,
+        phaseTimeout,
+        pipelineTimeout,
+        maxPositionSizePct,
+        stopLossAtrMultiplier,
+        takeProfitAtrMultiplier,
+        minConfidenceThreshold,
+        selectedAnalysts,
+        promptOverrides,
+      },
+      strategy.config,
+    )
+
+    if (structuredConfig.error || !structuredConfig.config) {
+      setConfigError(structuredConfig.error ?? 'Invalid configuration')
       return
     }
 
-    if (selectedAnalysts.length === 0) {
-      setConfigError('Select at least one analyst')
-      return
-    }
+    const config = structuredConfig.config
+    const llmConfig = ((config.llm_config ?? {}) as Record<string, unknown>) ?? {}
 
-    let parsedPromptOverrides: Record<string, string> = {}
-    try {
-      parsedPromptOverrides = JSON.parse(promptOverrides || '{}') as Record<string, string>
-    } catch {
-      setConfigError('Prompt overrides must be valid JSON')
-      return
+    if (deepThinkProvider) {
+      llmConfig.provider = deepThinkProvider
+    } else {
+      delete llmConfig.provider
+    }
+    if (deepThinkModel) {
+      llmConfig.deep_think_model = deepThinkModel
+    } else {
+      delete llmConfig.deep_think_model
+    }
+    if (quickThinkModel) {
+      llmConfig.quick_think_model = quickThinkModel
+    } else {
+      delete llmConfig.quick_think_model
+    }
+    if (Object.keys(llmConfig).length > 0) {
+      config.llm_config = llmConfig
+    } else {
+      delete config.llm_config
     }
 
     setConfigError(null)
-
-    const llmConfig: Record<string, string> = {}
-    if (deepThinkProvider) llmConfig.provider = deepThinkProvider
-    if (deepThinkModel) llmConfig.deep_think_model = deepThinkModel
-    if (quickThinkModel) llmConfig.quick_think_model = quickThinkModel
-    if (Object.keys(llmConfig).length > 0) {
-      config.llm_config = { ...((config.llm_config as Record<string, unknown>) ?? {}), ...llmConfig }
-    }
-
-    const pipelineConfig: Record<string, unknown> = {}
-    const debateRoundsSource = researchDebateRounds !== '' ? researchDebateRounds : riskDebateRounds
-    if (debateRoundsSource) pipelineConfig.debate_rounds = numberValue(debateRoundsSource)
-    if (phaseTimeout.trim()) pipelineConfig.analysis_timeout_seconds = numberValue(phaseTimeout)
-    if (pipelineTimeout.trim()) pipelineConfig.debate_timeout_seconds = numberValue(pipelineTimeout)
-    if (Object.keys(pipelineConfig).length > 0) {
-      config.pipeline_config = { ...((config.pipeline_config as Record<string, unknown>) ?? {}), ...pipelineConfig }
-    }
-
-    const riskConfig: Record<string, unknown> = {}
-    if (maxPositionSizePct) riskConfig.position_size_pct = numberValue(maxPositionSizePct) * 100
-    if (stopLossAtrMultiplier) riskConfig.stop_loss_multiplier = numberValue(stopLossAtrMultiplier)
-    if (takeProfitAtrMultiplier) riskConfig.take_profit_multiplier = numberValue(takeProfitAtrMultiplier)
-    if (minConfidenceThreshold) riskConfig.min_confidence = numberValue(minConfidenceThreshold)
-    if (Object.keys(riskConfig).length > 0) {
-      config.risk_config = { ...((config.risk_config as Record<string, unknown>) ?? {}), ...riskConfig }
-    }
-
-    config.analyst_selection = selectedAnalysts
-
-    if (Object.keys(parsedPromptOverrides).length > 0) {
-      config.prompt_overrides = parsedPromptOverrides
-    }
 
     const currentStatus = resolveStrategyStatus(strategy)
     const nextStatus: StrategyStatus = isActive ? 'active' : currentStatus === 'paused' ? 'paused' : 'inactive'
@@ -263,7 +233,10 @@ export function StrategyConfigEditor({ strategy, onSave, isSaving, settings }: S
                 <select
                   id="deep-think-provider"
                   value={deepThinkProvider}
-                  onChange={(e) => setDeepThinkProvider(e.target.value)}
+                  onChange={(e) => {
+                    setDeepThinkProvider(e.target.value)
+                    setConfigError(null)
+                  }}
                   className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 >
                   <option value="">Use global default</option>
@@ -277,7 +250,10 @@ export function StrategyConfigEditor({ strategy, onSave, isSaving, settings }: S
                 <Input
                   id="deep-think-model"
                   value={deepThinkModel}
-                  onChange={(e) => setDeepThinkModel(e.target.value)}
+                  onChange={(e) => {
+                    setDeepThinkModel(e.target.value)
+                    setConfigError(null)
+                  }}
                   placeholder={settings?.llm?.deep_think_model ?? 'Global default'}
                 />
               </div>
@@ -288,7 +264,10 @@ export function StrategyConfigEditor({ strategy, onSave, isSaving, settings }: S
                 <select
                   id="quick-think-provider"
                   value={quickThinkProvider}
-                  onChange={(e) => setQuickThinkProvider(e.target.value)}
+                  onChange={(e) => {
+                    setQuickThinkProvider(e.target.value)
+                    setConfigError(null)
+                  }}
                   className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 >
                   <option value="">Use global default</option>
@@ -302,7 +281,10 @@ export function StrategyConfigEditor({ strategy, onSave, isSaving, settings }: S
                 <Input
                   id="quick-think-model"
                   value={quickThinkModel}
-                  onChange={(e) => setQuickThinkModel(e.target.value)}
+                  onChange={(e) => {
+                    setQuickThinkModel(e.target.value)
+                    setConfigError(null)
+                  }}
                   placeholder={settings?.llm?.quick_think_model ?? 'Global default'}
                 />
               </div>
@@ -314,21 +296,61 @@ export function StrategyConfigEditor({ strategy, onSave, isSaving, settings }: S
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="research-debate-rounds">Research Debate Rounds</Label>
-                <Input id="research-debate-rounds" type="number" min={1} max={10} value={researchDebateRounds} onChange={(e) => setResearchDebateRounds(e.target.value)} />
+                <Input
+                  id="research-debate-rounds"
+                  type="number"
+                  min={1}
+                  max={10}
+                  value={researchDebateRounds}
+                  onChange={(e) => {
+                    setResearchDebateRounds(e.target.value)
+                    setConfigError(null)
+                  }}
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="risk-debate-rounds">Risk Debate Rounds</Label>
-                <Input id="risk-debate-rounds" type="number" min={1} max={10} value={riskDebateRounds} onChange={(e) => setRiskDebateRounds(e.target.value)} />
+                <Input
+                  id="risk-debate-rounds"
+                  type="number"
+                  min={1}
+                  max={10}
+                  value={riskDebateRounds}
+                  onChange={(e) => {
+                    setRiskDebateRounds(e.target.value)
+                    setConfigError(null)
+                  }}
+                />
               </div>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="phase-timeout">Analysis Timeout (seconds)</Label>
-                <Input id="phase-timeout" type="number" min={1} value={phaseTimeout} onChange={(e) => setPhaseTimeout(e.target.value)} placeholder="120" />
+                <Input
+                  id="phase-timeout"
+                  type="number"
+                  min={1}
+                  value={phaseTimeout}
+                  onChange={(e) => {
+                    setPhaseTimeout(e.target.value)
+                    setConfigError(null)
+                  }}
+                  placeholder="120"
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="pipeline-timeout">Debate Timeout (seconds)</Label>
-                <Input id="pipeline-timeout" type="number" min={1} value={pipelineTimeout} onChange={(e) => setPipelineTimeout(e.target.value)} placeholder="600" />
+                <Input
+                  id="pipeline-timeout"
+                  type="number"
+                  min={1}
+                  value={pipelineTimeout}
+                  onChange={(e) => {
+                    setPipelineTimeout(e.target.value)
+                    setConfigError(null)
+                  }}
+                  placeholder="600"
+                />
               </div>
             </div>
           </div>
@@ -338,21 +360,61 @@ export function StrategyConfigEditor({ strategy, onSave, isSaving, settings }: S
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="max-position-size-pct">Max Position Size %</Label>
-                <Input id="max-position-size-pct" type="number" step="0.01" min={0.01} max={1} value={maxPositionSizePct} onChange={(e) => setMaxPositionSizePct(e.target.value)} />
+                <Input
+                  id="max-position-size-pct"
+                  type="number"
+                  step="0.01"
+                  min={0.01}
+                  max={1}
+                  value={maxPositionSizePct}
+                  onChange={(e) => {
+                    setMaxPositionSizePct(e.target.value)
+                    setConfigError(null)
+                  }}
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="stop-loss-atr-multiplier">Stop Loss ATR Multiplier</Label>
-                <Input id="stop-loss-atr-multiplier" type="number" step="0.1" value={stopLossAtrMultiplier} onChange={(e) => setStopLossAtrMultiplier(e.target.value)} />
+                <Input
+                  id="stop-loss-atr-multiplier"
+                  type="number"
+                  step="0.1"
+                  value={stopLossAtrMultiplier}
+                  onChange={(e) => {
+                    setStopLossAtrMultiplier(e.target.value)
+                    setConfigError(null)
+                  }}
+                />
               </div>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="take-profit-atr-multiplier">Take Profit ATR Multiplier</Label>
-                <Input id="take-profit-atr-multiplier" type="number" step="0.1" value={takeProfitAtrMultiplier} onChange={(e) => setTakeProfitAtrMultiplier(e.target.value)} />
+                <Input
+                  id="take-profit-atr-multiplier"
+                  type="number"
+                  step="0.1"
+                  value={takeProfitAtrMultiplier}
+                  onChange={(e) => {
+                    setTakeProfitAtrMultiplier(e.target.value)
+                    setConfigError(null)
+                  }}
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="min-confidence-threshold">Min Confidence Threshold</Label>
-                <Input id="min-confidence-threshold" type="number" step="0.01" min={0} max={1} value={minConfidenceThreshold} onChange={(e) => setMinConfidenceThreshold(e.target.value)} />
+                <Input
+                  id="min-confidence-threshold"
+                  type="number"
+                  step="0.01"
+                  min={0}
+                  max={1}
+                  value={minConfidenceThreshold}
+                  onChange={(e) => {
+                    setMinConfidenceThreshold(e.target.value)
+                    setConfigError(null)
+                  }}
+                />
               </div>
             </div>
           </div>
@@ -360,22 +422,17 @@ export function StrategyConfigEditor({ strategy, onSave, isSaving, settings }: S
           <div className="space-y-4 rounded-lg border p-4">
             <h4 className="text-sm font-medium">Analysts</h4>
             <div className="grid gap-3 sm:grid-cols-2">
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={selectedAnalysts.includes('market_analyst')} onChange={(e) => toggleAnalyst('market_analyst', e.target.checked)} className="rounded border-input" />
-                Market Analyst
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={selectedAnalysts.includes('fundamentals_analyst')} onChange={(e) => toggleAnalyst('fundamentals_analyst', e.target.checked)} className="rounded border-input" />
-                Fundamentals Analyst
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={selectedAnalysts.includes('news_analyst')} onChange={(e) => toggleAnalyst('news_analyst', e.target.checked)} className="rounded border-input" />
-                News Analyst
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={selectedAnalysts.includes('social_media_analyst')} onChange={(e) => toggleAnalyst('social_media_analyst', e.target.checked)} className="rounded border-input" />
-                Social Media Analyst
-              </label>
+              {analystOptions.map(({ role, label }) => (
+                <label key={role} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={selectedAnalysts.includes(role)}
+                    onChange={(e) => toggleAnalyst(role, e.target.checked)}
+                    className="rounded border-input"
+                  />
+                  {label}
+                </label>
+              ))}
             </div>
           </div>
 
@@ -392,7 +449,10 @@ export function StrategyConfigEditor({ strategy, onSave, isSaving, settings }: S
                 <Textarea
                   id="prompt-overrides"
                   value={promptOverrides}
-                  onChange={(e) => setPromptOverrides(e.target.value)}
+                  onChange={(e) => {
+                    setPromptOverrides(e.target.value)
+                    setConfigError(null)
+                  }}
                   rows={6}
                   className="font-mono text-xs"
                 />
@@ -400,23 +460,9 @@ export function StrategyConfigEditor({ strategy, onSave, isSaving, settings }: S
             ) : null}
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="edit-config">Configuration (JSON)</Label>
-            <Textarea
-              id="edit-config"
-              value={configJson}
-              onChange={(e) => {
-                setConfigJson(e.target.value)
-                setConfigError(null)
-              }}
-              rows={6}
-              className="font-mono text-xs"
-              data-testid="config-editor-textarea"
-            />
-            {configError ? (
-              <p className="text-xs text-destructive">{configError}</p>
-            ) : null}
-          </div>
+          {configError ? (
+            <p className="text-xs text-destructive">{configError}</p>
+          ) : null}
 
           <div className="flex justify-end">
             <Button type="submit" disabled={isSaving || !name || !ticker}>

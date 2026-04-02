@@ -14,6 +14,12 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import type { MarketType, StrategyCreateRequest } from '@/lib/api/types'
 
+import {
+  analystOptions,
+  buildStructuredStrategyConfig,
+  defaultAnalysts,
+} from './strategy-structured-config'
+
 interface CreateStrategyDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -36,7 +42,17 @@ export function CreateStrategyDialog({
   const [scheduleCron, setScheduleCron] = useState('')
   const [isPaper, setIsPaper] = useState(true)
   const [isActive, setIsActive] = useState(false)
-  const [configJson, setConfigJson] = useState('{}')
+  const [researchDebateRounds, setResearchDebateRounds] = useState('')
+  const [riskDebateRounds, setRiskDebateRounds] = useState('')
+  const [phaseTimeout, setPhaseTimeout] = useState('')
+  const [pipelineTimeout, setPipelineTimeout] = useState('')
+  const [maxPositionSizePct, setMaxPositionSizePct] = useState('')
+  const [stopLossAtrMultiplier, setStopLossAtrMultiplier] = useState('')
+  const [takeProfitAtrMultiplier, setTakeProfitAtrMultiplier] = useState('')
+  const [minConfidenceThreshold, setMinConfidenceThreshold] = useState('')
+  const [selectedAnalysts, setSelectedAnalysts] = useState(defaultAnalysts)
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [promptOverrides, setPromptOverrides] = useState('{}')
   const [configError, setConfigError] = useState<string | null>(null)
 
   function resetForm() {
@@ -47,7 +63,17 @@ export function CreateStrategyDialog({
     setScheduleCron('')
     setIsPaper(true)
     setIsActive(false)
-    setConfigJson('{}')
+    setResearchDebateRounds('')
+    setRiskDebateRounds('')
+    setPhaseTimeout('')
+    setPipelineTimeout('')
+    setMaxPositionSizePct('')
+    setStopLossAtrMultiplier('')
+    setTakeProfitAtrMultiplier('')
+    setMinConfidenceThreshold('')
+    setSelectedAnalysts(defaultAnalysts)
+    setShowAdvanced(false)
+    setPromptOverrides('{}')
     setConfigError(null)
   }
 
@@ -58,25 +84,46 @@ export function CreateStrategyDialog({
     onOpenChange(nextOpen)
   }
 
+  function toggleAnalyst(analyst: (typeof defaultAnalysts)[number], checked: boolean) {
+    setSelectedAnalysts((prev) => {
+      if (checked) {
+        return prev.includes(analyst) ? prev : [...prev, analyst]
+      }
+
+      return prev.filter((value) => value !== analyst)
+    })
+    setConfigError(null)
+  }
+
   function handleSubmit(e: FormEvent) {
     e.preventDefault()
 
-    let config: unknown = {}
-    try {
-      config = JSON.parse(configJson)
-      setConfigError(null)
-    } catch {
-      setConfigError('Invalid JSON')
+    const result = buildStructuredStrategyConfig({
+      researchDebateRounds,
+      riskDebateRounds,
+      phaseTimeout,
+      pipelineTimeout,
+      maxPositionSizePct,
+      stopLossAtrMultiplier,
+      takeProfitAtrMultiplier,
+      minConfidenceThreshold,
+      selectedAnalysts,
+      promptOverrides,
+    })
+
+    if (result.error || !result.config) {
+      setConfigError(result.error ?? 'Invalid configuration')
       return
     }
 
+    setConfigError(null)
     onSubmit({
       name,
       description: description || undefined,
       ticker: ticker.toUpperCase(),
       market_type: marketType,
       schedule_cron: scheduleCron || undefined,
-      config,
+      config: result.config,
       status: isActive ? 'active' : 'inactive',
       is_paper: isPaper,
     })
@@ -181,25 +228,180 @@ export function CreateStrategyDialog({
             </label>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="strategy-config">Configuration (JSON)</Label>
-            <Textarea
-              id="strategy-config"
-              value={configJson}
-              onChange={(e) => {
-                setConfigJson(e.target.value)
-                setConfigError(null)
-              }}
-              rows={4}
-              className="font-mono text-xs"
-              data-testid="strategy-config-textarea"
-            />
-            {configError ? (
-              <p className="text-xs text-destructive" data-testid="config-error">
-                {configError}
-              </p>
+          <div className="space-y-4 rounded-lg border p-4">
+            <h4 className="text-sm font-medium">Pipeline</h4>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="create-research-debate-rounds">Research Debate Rounds</Label>
+                <Input
+                  id="create-research-debate-rounds"
+                  type="number"
+                  min={1}
+                  max={10}
+                  value={researchDebateRounds}
+                  onChange={(e) => {
+                    setResearchDebateRounds(e.target.value)
+                    setConfigError(null)
+                  }}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="create-risk-debate-rounds">Risk Debate Rounds</Label>
+                <Input
+                  id="create-risk-debate-rounds"
+                  type="number"
+                  min={1}
+                  max={10}
+                  value={riskDebateRounds}
+                  onChange={(e) => {
+                    setRiskDebateRounds(e.target.value)
+                    setConfigError(null)
+                  }}
+                />
+              </div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="create-phase-timeout">Analysis Timeout (seconds)</Label>
+                <Input
+                  id="create-phase-timeout"
+                  type="number"
+                  min={1}
+                  value={phaseTimeout}
+                  onChange={(e) => {
+                    setPhaseTimeout(e.target.value)
+                    setConfigError(null)
+                  }}
+                  placeholder="120"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="create-pipeline-timeout">Debate Timeout (seconds)</Label>
+                <Input
+                  id="create-pipeline-timeout"
+                  type="number"
+                  min={1}
+                  value={pipelineTimeout}
+                  onChange={(e) => {
+                    setPipelineTimeout(e.target.value)
+                    setConfigError(null)
+                  }}
+                  placeholder="600"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-4 rounded-lg border p-4">
+            <h4 className="text-sm font-medium">Risk</h4>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="create-max-position-size-pct">Max Position Size %</Label>
+                <Input
+                  id="create-max-position-size-pct"
+                  type="number"
+                  step="0.01"
+                  min={0.01}
+                  max={1}
+                  value={maxPositionSizePct}
+                  onChange={(e) => {
+                    setMaxPositionSizePct(e.target.value)
+                    setConfigError(null)
+                  }}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="create-stop-loss-atr-multiplier">Stop Loss ATR Multiplier</Label>
+                <Input
+                  id="create-stop-loss-atr-multiplier"
+                  type="number"
+                  step="0.1"
+                  value={stopLossAtrMultiplier}
+                  onChange={(e) => {
+                    setStopLossAtrMultiplier(e.target.value)
+                    setConfigError(null)
+                  }}
+                />
+              </div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="create-take-profit-atr-multiplier">Take Profit ATR Multiplier</Label>
+                <Input
+                  id="create-take-profit-atr-multiplier"
+                  type="number"
+                  step="0.1"
+                  value={takeProfitAtrMultiplier}
+                  onChange={(e) => {
+                    setTakeProfitAtrMultiplier(e.target.value)
+                    setConfigError(null)
+                  }}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="create-min-confidence-threshold">Min Confidence Threshold</Label>
+                <Input
+                  id="create-min-confidence-threshold"
+                  type="number"
+                  step="0.01"
+                  min={0}
+                  max={1}
+                  value={minConfidenceThreshold}
+                  onChange={(e) => {
+                    setMinConfidenceThreshold(e.target.value)
+                    setConfigError(null)
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-4 rounded-lg border p-4">
+            <h4 className="text-sm font-medium">Analysts</h4>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {analystOptions.map(({ role, label }) => (
+                <label key={role} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={selectedAnalysts.includes(role)}
+                    onChange={(e) => toggleAnalyst(role, e.target.checked)}
+                    className="rounded border-input"
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-3 rounded-lg border p-4">
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-medium">Advanced</h4>
+              <Button type="button" variant="outline" size="sm" onClick={() => setShowAdvanced((prev) => !prev)}>
+                {showAdvanced ? 'Hide' : 'Show'}
+              </Button>
+            </div>
+            {showAdvanced ? (
+              <div className="space-y-2">
+                <Label htmlFor="create-prompt-overrides">Prompt Overrides (JSON)</Label>
+                <Textarea
+                  id="create-prompt-overrides"
+                  value={promptOverrides}
+                  onChange={(e) => {
+                    setPromptOverrides(e.target.value)
+                    setConfigError(null)
+                  }}
+                  rows={6}
+                  className="font-mono text-xs"
+                />
+              </div>
             ) : null}
           </div>
+
+          {configError ? (
+            <p className="text-xs text-destructive" data-testid="config-error">
+              {configError}
+            </p>
+          ) : null}
 
           <DialogFooter>
             <Button
