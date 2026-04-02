@@ -213,6 +213,8 @@ export interface PositionLimits {
   max_total_pct: number
   max_concurrent: number
   max_per_market_pct: number
+  current_open_positions?: number
+  current_total_exposure_pct?: number
 }
 
 export interface EngineStatus {

@@ -28,6 +28,57 @@ function truncateDetails(details?: unknown) {
   return `${raw.slice(0, 77)}...`
 }
 
+function formatUtilizationValue(value: number) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1)
+}
+
+function percentDisplayValue(value: number, usesFraction: boolean) {
+  return usesFraction ? value * 100 : value
+}
+
+
+function utilizationBarClass(ratio: number) {
+  if (ratio > 0.9) return 'bg-red-500'
+  if (ratio >= 0.7) return 'bg-amber-500'
+  return 'bg-emerald-500'
+}
+
+function UtilizationRow({
+  label,
+  current,
+  max,
+  suffix = '',
+  testId,
+}: {
+  label: string
+  current: number
+  max: number
+  suffix?: string
+  testId: string
+}) {
+  const ratio = max > 0 ? current / max : 0
+  const width = Math.max(0, Math.min(ratio * 100, 100))
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-4 text-sm">
+        <span className="font-medium">{label}</span>
+        <span className="text-muted-foreground">
+          {formatUtilizationValue(current)}{suffix} / {formatUtilizationValue(max)}{suffix}
+        </span>
+      </div>
+      <div className="h-3 overflow-hidden rounded-full bg-muted">
+        <div
+          data-testid={testId}
+          className={`h-full rounded-full transition-all ${utilizationBarClass(ratio)}`}
+          style={{ width: `${width}%` }}
+        />
+      </div>
+    </div>
+  )
+}
+
+
 export function RiskPage() {
   const queryClient = useQueryClient()
   const [reason, setReason] = useState('')
@@ -197,6 +248,34 @@ export function RiskPage() {
           </CardContent>
         </Card>
       </div>
+
+      {data ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Position limit utilization</CardTitle>
+            <CardDescription>Current usage against configured open position and exposure caps</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <UtilizationRow
+              label="Open positions"
+              current={data.position_limits.current_open_positions ?? 0}
+              max={data.position_limits.max_concurrent}
+              testId="risk-utilization-open-positions"
+            />
+            <UtilizationRow
+              label="Total exposure"
+              current={percentDisplayValue(
+                data.position_limits.current_total_exposure_pct ?? 0,
+                data.position_limits.max_total_pct <= 1,
+              )}
+              max={percentDisplayValue(data.position_limits.max_total_pct, data.position_limits.max_total_pct <= 1)}
+              suffix="%"
+              testId="risk-utilization-total-exposure"
+            />
+          </CardContent>
+        </Card>
+      ) : null}
+
 
       <Card>
         <CardHeader>

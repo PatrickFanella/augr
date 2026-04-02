@@ -5,18 +5,21 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { RiskPage } from '@/pages/risk-page'
 import type { EngineStatus } from '@/lib/api/types'
 
-const mockEngineStatus: EngineStatus = {
+const mockEngineStatus = {
   risk_status: 'normal',
   circuit_breaker: { state: 'open', reason: '' },
   kill_switch: { active: false, reason: '', mechanisms: [] },
   position_limits: {
     max_per_position_pct: 10,
-    max_total_pct: 80,
+    max_total_pct: 0.8,
     max_concurrent: 5,
     max_per_market_pct: 40,
+    current_open_positions: 4,
+    current_total_exposure_pct: 0.76,
   },
   updated_at: '2025-01-01T00:00:00Z',
-}
+} as EngineStatus
+
 
 function Wrapper({ children }: { children: React.ReactNode }) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -166,6 +169,72 @@ describe('RiskPage', () => {
         .filter((url) => url.includes('/api/v1/audit-log'))
       expect(auditCalls.some((url) => url.includes('limit=20'))).toBe(true)
     })
+  })
+
+  it('shows utilization labels and threshold colors from risk status data', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString()
+      if (url.includes('/api/v1/audit-log')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: [], limit: 10, offset: 0 }),
+        })
+      }
+
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => mockEngineStatus,
+      })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<RiskPage />, { wrapper: Wrapper })
+
+    expect(await screen.findByText('Position limit utilization')).toBeInTheDocument()
+    expect(screen.getByText('Open positions')).toBeInTheDocument()
+    expect(screen.getByText('4 / 5')).toBeInTheDocument()
+    expect(screen.getByText('Total exposure')).toBeInTheDocument()
+    expect(screen.getByText('76% / 80%')).toBeInTheDocument()
+    expect(screen.getByTestId('risk-utilization-open-positions')).toHaveClass('bg-amber-500')
+    expect(screen.getByTestId('risk-utilization-total-exposure')).toHaveClass('bg-red-500')
+  })
+
+  it('shows green utilization bars below warning threshold', async () => {
+    const lowUtilizationStatus = {
+      ...mockEngineStatus,
+      position_limits: {
+        ...mockEngineStatus.position_limits,
+        current_open_positions: 3,
+        current_total_exposure_pct: 0.5,
+      },
+    } as EngineStatus
+
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString()
+      if (url.includes('/api/v1/audit-log')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: [], limit: 10, offset: 0 }),
+        })
+      }
+
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => lowUtilizationStatus,
+      })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<RiskPage />, { wrapper: Wrapper })
+
+    expect(await screen.findByText('3 / 5')).toBeInTheDocument()
+    expect(screen.getByText('50% / 80%')).toBeInTheDocument()
+    expect(screen.getByTestId('risk-utilization-open-positions')).toHaveClass('bg-emerald-500')
+    expect(screen.getByTestId('risk-utilization-total-exposure')).toHaveClass('bg-emerald-500')
   })
 
   it('shows empty audit log state', async () => {

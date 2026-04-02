@@ -490,6 +490,26 @@ func TestGetStatus_Normal(t *testing.T) {
 	}
 }
 
+func TestGetStatus_UsesPortfolioSnapshot(t *testing.T) {
+	t.Parallel()
+
+	engine := newTestEngine()
+	engine.SetPortfolioSnapshotFunc(func(context.Context) (Portfolio, error) {
+		return Portfolio{ConcurrentPositions: 4, TotalExposurePct: 0.76}, nil
+	})
+
+	status, err := engine.GetStatus(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if status.PositionLimits.CurrentOpenPositions != 4 {
+		t.Fatalf("expected current open positions 4, got %d", status.PositionLimits.CurrentOpenPositions)
+	}
+	if status.PositionLimits.CurrentTotalExposurePct != 0.76 {
+		t.Fatalf("expected current total exposure 0.76, got %f", status.PositionLimits.CurrentTotalExposurePct)
+	}
+}
+
 func TestGetStatus_Breached(t *testing.T) {
 	t.Parallel()
 

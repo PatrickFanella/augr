@@ -274,8 +274,15 @@ func newSmokeStrategyRunner(
 	riskEngine risk.RiskEngine,
 	logger *slog.Logger,
 ) api.StrategyRunner {
+	broker := paper.NewPaperBroker(100_000, 0, 0)
+	if engineImpl, ok := riskEngine.(*risk.RiskEngineImpl); ok {
+		engineImpl.SetPortfolioSnapshotFunc(func(ctx context.Context) (risk.Portfolio, error) {
+			return execution.BuildRiskPortfolioSnapshot(ctx, broker, positionRepo)
+		})
+	}
+
 	orderManager := execution.NewOrderManager(
-		paper.NewPaperBroker(100_000, 0, 0),
+		broker,
 		"paper",
 		riskEngine,
 		positionRepo,
