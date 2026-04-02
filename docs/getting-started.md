@@ -165,9 +165,107 @@ On the run detail page you should see:
 - trader plan
 - final signal
 
-## Troubleshooting
+## 11. Troubleshooting FAQ
 
-- `invalid configuration: DATABASE_URL is required` or similar: re-check `.env`, especially `DATABASE_URL`, one LLM provider, and one market-data provider key.
-- `manual strategy runs are not configured`: the backend is not running with `APP_ENV=smoke`.
-- login fails with `invalid username or password`: re-run the `INSERT INTO users ...` step or use a different username/password pair.
-- frontend cannot reach the API: verify the backend is on `http://localhost:8080` and `curl /healthz` succeeds.
+### Port already in use
+
+If `docker compose up -d postgres redis`, `./bin/tradingagent serve`, or `npm run dev` says the address is already in use:
+
+```bash
+lsof -i :8080
+lsof -i :5432
+lsof -i :6379
+lsof -i :5173
+```
+
+- Native backend/frontend: stop the conflicting process, or pick a new backend port and point Vite at it:
+
+```bash
+export APP_PORT=9090
+cd web
+VITE_API_BASE_URL=http://localhost:9090 npm run dev
+```
+
+- Docker Compose Postgres/Redis: set `POSTGRES_PORT` or `REDIS_PORT` in `.env`, then rerun `docker compose up -d postgres redis`.
+- If you use `task dev` or `docker compose up` for the full stack instead of this guide's native backend flow, `APP_PORT` changes the Compose app port mapping too.
+
+### Migration errors
+
+If `DB_URL="postgres://postgres:postgres@localhost:5432/tradingagent?sslmode=disable" task migrate:up` fails:
+
+```bash
+docker compose ps postgres
+docker compose logs postgres --tail=50
+DB_URL="postgres://postgres:postgres@localhost:5432/tradingagent?sslmode=disable" task migrate:status
+```
+
+- `migrate: not found`: run `task tools`.
+- `connect: connection refused`: Postgres is not healthy yet; wait for `docker compose ps postgres` to report it running, then retry.
+- `Dirty database version` or another disposable-local-db failure: reset the local volumes and re-apply migrations:
+
+```bash
+docker compose down -v
+docker compose up -d postgres redis
+DB_URL="postgres://postgres:postgres@localhost:5432/tradingagent?sslmode=disable" task migrate:up
+```
+
+- Native host commands must use `localhost:5432`. `postgres:5432` only works from inside Compose containers.
+
+### Ollama is not running
+
+If the backend starts but LLM calls fail while `LLM_DEFAULT_PROVIDER=ollama`:
+
+```bash
+curl http://localhost:11434/api/tags
+ollama serve
+ollama pull llama3.2
+```
+
+- Keep `OLLAMA_BASE_URL=http://localhost:11434` for this native-backend guide.
+- If you do not want Ollama, switch `.env` to a cloud provider and set the matching API key instead of leaving `LLM_DEFAULT_PROVIDER=ollama`.
+
+### Browser shows a CORS error
+
+Local development uses permissive CORS, so a browser CORS error usually means the frontend is calling the wrong backend URL or the backend is down.
+
+```bash
+curl http://localhost:8080/healthz
+```
+
+- If you changed `APP_PORT`, restart Vite with the matching API base URL:
+
+```bash
+cd web
+VITE_API_BASE_URL=http://localhost:9090 npm run dev
+```
+
+- Remove stale `VITE_API_BASE_URL` values from any `web/.env*` file if they still point at an old host or port.
+- If you later lock CORS down to specific origins, include the exact frontend origin such as `http://localhost:5173` or browser API/WebSocket calls will fail.
+
+### `invalid configuration: ...` on startup
+
+In `APP_ENV=smoke`, `.env` is not auto-loaded. Export it before starting the backend:
+
+```bash
+set -a
+source .env
+set +a
+export APP_ENV=smoke
+./bin/tradingagent serve
+```
+
+Then re-check `JWT_SECRET`, `DATABASE_URL`, one LLM provider, and one market-data provider key.
+
+### Login fails with `invalid username or password`
+
+There is no sign-up route yet. Check whether the local user exists:
+
+```bash
+docker compose exec postgres psql -U postgres -d tradingagent -c "SELECT username FROM users;"
+```
+
+If `demo` is missing, re-run the `INSERT INTO users ...` step from section 6 or create a new user with a known password.
+
+### `manual strategy runs are not configured`
+
+The backend is not running with `APP_ENV=smoke`. Stop it and restart with the smoke-mode steps from section 5. Outside smoke, manual `POST /api/v1/strategies/{id}/run` currently returns `501 manual strategy runs are not configured`.
