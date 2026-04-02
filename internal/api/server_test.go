@@ -1359,12 +1359,45 @@ func TestDeleteMemory(t *testing.T) {
 
 func TestRiskStatus(t *testing.T) {
 	t.Parallel()
-	srv := newTestServer(t)
+
+	deps := testDeps()
+	deps.Risk = &stubRiskEngine{
+		getStatusFn: func(context.Context) (risk.EngineStatus, error) {
+			return risk.EngineStatus{
+				RiskStatus: domain.RiskStatusNormal,
+				PositionLimits: risk.PositionLimits{
+					MaxPerPositionPct:       0.10,
+					MaxTotalPct:             0.80,
+					MaxConcurrent:           5,
+					MaxPerMarketPct:         0.40,
+					CurrentOpenPositions:    4,
+					CurrentTotalExposurePct: 0.76,
+				},
+				UpdatedAt: time.Now(),
+			}, nil
+		},
+	}
+	srv := newTestServerWithDeps(t, deps)
 
 	rr := doRequest(t, srv, http.MethodGet, "/api/v1/risk/status", nil)
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+	}
+
+	body := decodeJSON[map[string]any](t, rr)
+	limits, ok := body["position_limits"].(map[string]any)
+	if !ok {
+		t.Fatalf("position_limits = %T, want object", body["position_limits"])
+	}
+	if got := limits["current_open_positions"]; got != float64(4) {
+		t.Fatalf("current_open_positions = %v, want 4", got)
+	}
+	if got := limits["current_total_exposure_pct"]; got != 0.76 {
+		t.Fatalf("current_total_exposure_pct = %v, want 0.76", got)
+	}
+	if got := limits["max_total_pct"]; got != 0.8 {
+		t.Fatalf("max_total_pct = %v, want 0.8", got)
 	}
 }
 
@@ -1950,8 +1983,9 @@ func (stubMemoryRepo) Search(context.Context, string, repository.MemorySearchFil
 func (stubMemoryRepo) Delete(context.Context, uuid.UUID) error { return nil }
 
 // stubRiskEngine
-
-type stubRiskEngine struct{}
+type stubRiskEngine struct {
+	getStatusFn func(context.Context) (risk.EngineStatus, error)
+}
 
 func (stubRiskEngine) CheckPreTrade(context.Context, *domain.Order, risk.Portfolio) (bool, string, error) {
 	return true, "", nil
@@ -1961,7 +1995,10 @@ func (stubRiskEngine) CheckPositionLimits(context.Context, string, float64, risk
 	return true, "", nil
 }
 
-func (stubRiskEngine) GetStatus(context.Context) (risk.EngineStatus, error) {
+func (s *stubRiskEngine) GetStatus(ctx context.Context) (risk.EngineStatus, error) {
+	if s != nil && s.getStatusFn != nil {
+		return s.getStatusFn(ctx)
+	}
 	return risk.EngineStatus{
 		RiskStatus: domain.RiskStatusNormal,
 		UpdatedAt:  time.Now(),

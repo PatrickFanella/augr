@@ -58,20 +58,22 @@ An autonomous, multi-agent trading system built in Go. The system uses LLM-power
 
 ## Quick Start
 
-> **Prerequisites:** [Docker](https://docs.docker.com/get-docker/) and [Docker Compose v2+](https://docs.docker.com/compose/install/)
+> **Prerequisites:** [Docker](https://docs.docker.com/get-docker/), [Docker Compose v2+](https://docs.docker.com/compose/install/), and either one supported cloud LLM API key or a local [Ollama](https://ollama.com/download) install.
 
 ```bash
 # 1. Clone the repository
 git clone https://github.com/PatrickFanella/get-rich-quick.git
 cd get-rich-quick
 
-# 2. Copy the example environment file and add your API keys
+# 2. Copy the example environment file and configure an LLM provider
 cp .env.example .env
 
 # 3. Start all services (app + PostgreSQL + Redis)
 docker compose up --build
 ```
 
+
+For cloud LLMs, set one provider key in `.env` (for example `OPENAI_API_KEY`). For local Ollama, install Ollama, run `ollama pull llama3.2`, then set `LLM_DEFAULT_PROVIDER=ollama` and keep `OLLAMA_MODEL=llama3.2`. See the [Development Setup Guide](docs/development-setup.md) for the full prerequisites list and Docker-vs-native Ollama notes.
 The application will be available at [http://localhost:8080](http://localhost:8080). See the [Development Setup Guide](docs/development-setup.md) for native (non-Docker) setup and advanced configuration.
 
 ## Development Setup (Docker Compose)
@@ -173,56 +175,11 @@ See [`.env.example`](.env.example) for the full list of variables including all 
 
 ## API Overview
 
-The REST API is served under `/api/v1` and requires JWT authentication. A WebSocket endpoint provides real-time event streaming. The table below lists the primary endpoints; additional monitoring routes (`GET /health`, `GET /metrics`) are also available.
+The REST API is served under `/api/v1`. Public HTTP endpoints are `GET /healthz`, `GET /health`, `GET /metrics`, `POST /api/v1/auth/login`, and `POST /api/v1/auth/refresh`. The WebSocket endpoint is `GET /ws`; it is not behind auth middleware in the current server.
 
-| Method   | Endpoint                            | Description                     |
-|----------|-------------------------------------|---------------------------------|
-| `GET`    | `/healthz`                          | Health check                    |
-| `GET`    | `/health`                           | Liveness probe (monitoring)     |
-| `GET`    | `/metrics`                          | Metrics endpoint (monitoring)   |
-| `GET`    | `/ws`                               | WebSocket event stream          |
-| **Strategies** |                               |                                 |
-| `GET`    | `/api/v1/strategies`                | List strategies                 |
-| `POST`   | `/api/v1/strategies`                | Create a strategy               |
-| `GET`    | `/api/v1/strategies/{id}`           | Get strategy details            |
-| `PUT`    | `/api/v1/strategies/{id}`           | Update a strategy               |
-| `DELETE` | `/api/v1/strategies/{id}`           | Delete a strategy               |
-| `POST`   | `/api/v1/strategies/{id}/run`       | Trigger a pipeline run          |
-| **Pipeline Runs** |                            |                                 |
-| `GET`    | `/api/v1/runs`                      | List pipeline runs              |
-| `GET`    | `/api/v1/runs/{id}`                 | Get run details                 |
-| `GET`    | `/api/v1/runs/{id}/decisions`       | Get agent decisions for a run   |
-| `POST`   | `/api/v1/runs/{id}/cancel`          | Cancel a running pipeline       |
-| **Portfolio** |                                 |                                 |
-| `GET`    | `/api/v1/portfolio/positions`       | List all positions              |
-| `GET`    | `/api/v1/portfolio/positions/open`  | List open positions             |
-| `GET`    | `/api/v1/portfolio/summary`         | Portfolio summary               |
-| **Orders & Trades** |                          |                                 |
-| `GET`    | `/api/v1/orders`                    | List orders                     |
-| `GET`    | `/api/v1/orders/{id}`               | Get order details               |
-| `GET`    | `/api/v1/trades`                    | List trades                     |
-| **Memories** |                                  |                                 |
-| `GET`    | `/api/v1/memories`                  | List agent memories             |
-| `POST`   | `/api/v1/memories/search`           | Search memories (full-text)     |
-| `DELETE` | `/api/v1/memories/{id}`             | Delete a memory                 |
-| **Risk & Settings** |                          |                                 |
-| `GET`    | `/api/v1/risk/status`               | Risk engine status              |
-| `POST`   | `/api/v1/risk/killswitch`           | Toggle kill switch              |
-| `GET`    | `/api/v1/settings`                  | Get runtime settings            |
-| `PUT`    | `/api/v1/settings`                  | Update runtime settings         |
+All other `/api/v1/*` routes require either `Authorization: Bearer <jwt>` or `X-API-Key: <api_key>`. Implemented route groups include strategies, runs, portfolio, orders, trades, memories, risk, settings, events, conversations, and audit log.
 
-### WebSocket Protocol
-
-Connect to `/ws` and send JSON commands:
-
-```jsonc
-{ "action": "subscribe",   "strategy_ids": ["strategy-uuid-1"], "run_ids": ["run-uuid-1"] }
-{ "action": "unsubscribe", "strategy_ids": ["strategy-uuid-1"], "run_ids": ["run-uuid-1"] }
-{ "action": "subscribe_all" }
-{ "action": "unsubscribe_all" }
-```
-
-The server streams `WSMessage` envelopes with the following fields: `type`, `strategy_id`, `run_id`, `data`, and `timestamp`.
+For the canonical route list, request/response examples, and WebSocket command format, see [`docs/reference/api.md`](docs/reference/api.md).
 
 ## CLI
 
@@ -265,6 +222,7 @@ docs/                   Architecture docs, ADRs, research
 
 ## Documentation
 
+- **[Getting Started: first run](docs/getting-started.md)** — Fresh clone to first visible run in the web UI
 - **[Development Setup Guide](docs/development-setup.md)** — Detailed native setup, database migrations, and troubleshooting
 - **[Architecture & Design](docs/design/system-architecture.md)** — System architecture and data flow
 - **[ADRs](docs/adr/)** — Architecture Decision Records

@@ -118,17 +118,47 @@ above.
 
 | Environment variable | Default | Notes |
 | --- | --- | --- |
-| `POLYGON_API_KEY` | empty | Polygon.io credential |
-| `ALPHA_VANTAGE_API_KEY` | empty | Alpha Vantage credential |
-| `ALPHA_VANTAGE_RATE_LIMIT_PER_MINUTE` | `5` | Alpha Vantage rate limit |
-| `FINNHUB_API_KEY` | empty | Finnhub credential |
-| `FINNHUB_RATE_LIMIT_PER_MINUTE` | `60` | Finnhub rate limit |
-| `ALPACA_API_KEY` | empty | Alpaca credential |
-| `ALPACA_API_SECRET` | empty | Alpaca secret |
+| `POLYGON_API_KEY` | empty | Enables Polygon in the stock data-provider chain |
+| `ALPHA_VANTAGE_API_KEY` | empty | Enables Alpha Vantage in the stock data-provider chain |
+| `ALPHA_VANTAGE_RATE_LIMIT_PER_MINUTE` | `5` | Alpha Vantage client-side rate limit |
+| `FINNHUB_API_KEY` | empty | Parsed into config, but the current runtime does not instantiate a Finnhub provider |
+| `FINNHUB_RATE_LIMIT_PER_MINUTE` | `60` | Validated config surface for Finnhub; currently unused at runtime |
+| `ALPACA_API_KEY` | empty | Alpaca broker credential |
+| `ALPACA_API_SECRET` | empty | Alpaca broker secret |
 | `ALPACA_PAPER_MODE` | `true` | Enables paper trading for Alpaca |
-| `BINANCE_API_KEY` | empty | Binance credential |
-| `BINANCE_API_SECRET` | empty | Binance secret |
+| `BINANCE_API_KEY` | empty | Binance broker credential; not required for Binance market-data reads |
+| `BINANCE_API_SECRET` | empty | Binance broker secret |
 | `BINANCE_PAPER_MODE` | `true` | Enables paper trading for Binance |
+
+#### Notifications and alerting
+
+| Environment variable | Default | Notes |
+| --- | --- | --- |
+| `NOTIFY_TELEGRAM_BOT_TOKEN` | empty | Telegram bot token |
+| `NOTIFY_TELEGRAM_CHAT_ID` | empty | Telegram chat ID |
+| `NOTIFY_SMTP_HOST` | empty | SMTP host |
+| `NOTIFY_SMTP_PORT` | `587` | SMTP port |
+| `NOTIFY_SMTP_USERNAME` | empty | SMTP username |
+| `NOTIFY_SMTP_PASSWORD` | empty | SMTP password |
+| `NOTIFY_EMAIL_FROM` | empty | Sender email address |
+| `NOTIFY_EMAIL_TO` | empty | Comma-separated email recipients |
+| `N8N_WEBHOOK_URL` | empty | n8n webhook destination for structured alert, signal, and decision payloads |
+| `N8N_WEBHOOK_SECRET` | empty | Optional n8n shared secret sent as `X-Webhook-Secret` |
+| `NOTIFY_PAGERDUTY_WEBHOOK_URL` | empty | PagerDuty webhook URL |
+| `NOTIFY_PAGERDUTY_WEBHOOK_SECRET` | empty | PagerDuty webhook shared secret |
+| `NOTIFY_DISCORD_SIGNAL_WEBHOOK_URL` | empty | Preferred Discord signal webhook env var; legacy aliases `DISCORD_WEBHOOK_SIGNALS` and `DISCORD_SIGNAL_WEBHOOK_URL` still load |
+| `NOTIFY_DISCORD_DECISION_WEBHOOK_URL` | empty | Preferred Discord decision webhook env var; legacy aliases `DISCORD_WEBHOOK_DECISIONS` and `DISCORD_DECISION_WEBHOOK_URL` still load |
+| `NOTIFY_DISCORD_ALERT_WEBHOOK_URL` | empty | Preferred Discord alert webhook env var; legacy aliases `DISCORD_WEBHOOK_ALERTS` and `DISCORD_ALERT_WEBHOOK_URL` still load |
+| `ALERT_PIPELINE_FAILURE_THRESHOLD` | `3` | Consecutive pipeline failures before alerting |
+| `ALERT_PIPELINE_FAILURE_CHANNELS` | `telegram,email` | Channels for pipeline-failure alerts |
+| `ALERT_CIRCUIT_BREAKER_CHANNELS` | `telegram` | Channels for circuit-breaker alerts |
+| `ALERT_LLM_PROVIDER_DOWN_ERROR_RATE_THRESHOLD` | `0.5` | Error-rate threshold for LLM provider alerts |
+| `ALERT_LLM_PROVIDER_DOWN_WINDOW` | `5m` | Time window for LLM provider alerts |
+| `ALERT_LLM_PROVIDER_DOWN_CHANNELS` | `telegram` | Channels for LLM provider alerts |
+| `ALERT_HIGH_LATENCY_THRESHOLD` | `120s` | Threshold for high-latency alerts |
+| `ALERT_HIGH_LATENCY_CHANNELS` | `email` | Channels for high-latency alerts |
+| `ALERT_KILL_SWITCH_CHANNELS` | `telegram` | Channels for kill-switch alerts |
+| `ALERT_DB_CONNECTION_CHANNELS` | `email,pagerduty` | Channels for database-connection alerts |
 
 #### Risk and feature flags
 
@@ -145,27 +175,6 @@ above.
 | `ENABLE_REDIS_CACHE` | `true` | Enables Redis-backed caching |
 | `ENABLE_AGENT_MEMORY` | `true` | Enables the memory subsystem |
 | `ENABLE_LIVE_TRADING` | `false` | Enables non-paper trading paths |
-
-#### Notifications and alerting
-
-| Environment variable | Default | Notes |
-| --- | --- | --- |
-| `NOTIFY_TELEGRAM_BOT_TOKEN` | empty | Telegram bot token |
-| `NOTIFY_TELEGRAM_CHAT_ID` | empty | Telegram chat ID |
-| `NOTIFY_SMTP_HOST` | empty | SMTP host |
-| `NOTIFY_SMTP_PORT` | `587` | SMTP port |
-| `NOTIFY_SMTP_USERNAME` | empty | SMTP username |
-| `NOTIFY_SMTP_PASSWORD` | empty | SMTP password |
-| `NOTIFY_EMAIL_FROM` | empty | Sender email address |
-| `NOTIFY_WEBHOOK_URL` | empty | Generic webhook URL |
-| `NOTIFY_WEBHOOK_SECRET` | empty | Generic webhook shared secret |
-| `NOTIFY_PAGERDUTY_WEBHOOK_URL` | empty | PagerDuty webhook URL |
-| `NOTIFY_PAGERDUTY_WEBHOOK_SECRET` | empty | PagerDuty webhook shared secret |
-| `ALERT_PIPELINE_FAILURE_THRESHOLD` | `3` | Consecutive pipeline failures before alerting |
-| `ALERT_LLM_PROVIDER_DOWN_ERROR_RATE_THRESHOLD` | `0.5` | Error-rate threshold for LLM provider alerts |
-| `ALERT_LLM_PROVIDER_DOWN_WINDOW` | `5m` | Time window for LLM provider alerts |
-| `ALERT_HIGH_LATENCY_THRESHOLD` | `120s` | Threshold for high-latency alerts |
-
 ### `tradingagent run TICKER`
 
 Resolves a strategy for the given ticker by first requiring a unique exact

@@ -33,6 +33,11 @@ import type {
   Trade,
   TradeListParams,
   UUID,
+  Conversation,
+  ConversationCreateRequest,
+  ConversationListParams,
+  ConversationMessage,
+  ConversationMessageCreateRequest,
 } from '@/lib/api/types'
 
 interface ApiClientConfig {
@@ -176,6 +181,27 @@ export class ApiClient {
 
   async listEvents(params: PaginationParams & { run_id?: UUID; event_kind?: string } = {}) {
     return this.requestList<AgentEvent>('/api/v1/events', { query: toQueryParams(params) })
+  }
+
+  async listConversations(params: ConversationListParams & PaginationParams = {}) {
+    return this.requestList<Conversation>('/api/v1/conversations', { query: toQueryParams(params) })
+  }
+
+  async createConversation(payload: ConversationCreateRequest) {
+    return this.request<Conversation>('/api/v1/conversations', { method: 'POST', body: payload })
+  }
+
+  async getConversationMessages(id: UUID, params: PaginationParams = {}) {
+    return this.requestList<ConversationMessage>(`/api/v1/conversations/${id}/messages`, {
+      query: toQueryParams(params),
+    })
+  }
+
+  async createConversationMessage(id: UUID, payload: ConversationMessageCreateRequest) {
+    return this.request<ConversationMessage>(`/api/v1/conversations/${id}/messages`, {
+      method: 'POST',
+      body: payload,
+    })
   }
 
   async listMemories(params: MemoryListParams & PaginationParams = {}) {

@@ -6,13 +6,30 @@ This guide walks through setting up a local development environment for **get-ri
 
 ## Prerequisites
 
-| Tool              | Version  | Purpose                              |
-|-------------------|----------|--------------------------------------|
-| Docker            | 24+      | Container runtime                    |
-| Docker Compose    | v2+      | Multi-service orchestration          |
-| Go *(native only)*| 1.25+    | Build & test the backend             |
-| Task              | 3+       | Task runner ([taskfile.dev](https://taskfile.dev)) |
-| Node.js *(optional)* | 20+  | Frontend development                 |
+Install these before you start setup:
+
+| Tool | Version | Required for | Notes |
+|------|---------|--------------|-------|
+| Docker | 24+ | Docker Compose workflow | Install Docker Desktop on macOS/Windows, or Docker Engine on Linux. |
+| Docker Compose | v2+ | Docker Compose workflow | Required because this repo uses `docker compose ...`, not the legacy `docker-compose` binary. |
+| Go | 1.25+ | Native backend development, tests, Task-installed tooling | Install from [go.dev/dl](https://go.dev/dl/). |
+| Task | 3+ | Repo task runner | Install from [taskfile.dev](https://taskfile.dev/installation/). |
+| Ollama *(optional)* | latest | Local LLM development without a cloud API key | Install from [ollama.com/download](https://ollama.com/download). |
+| Node.js *(optional)* | 20+ | Frontend development in `web/` | Only needed when working on the Vite/React frontend. |
+
+### LLM prerequisite: choose one path
+
+Before starting the backend, configure at least one LLM provider:
+
+- **Cloud provider:** set one API key in `.env` (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, `OPENROUTER_API_KEY`, or `XAI_API_KEY`).
+- **Local Ollama:** install Ollama, make sure the daemon is running, then pull the default local model:
+
+```bash
+ollama serve    # if Ollama is not already running as a background service
+ollama pull llama3.2
+```
+
+If you use Ollama, set `LLM_DEFAULT_PROVIDER=ollama` and keep `OLLAMA_MODEL=llama3.2` (or change both to the model you pulled). When the backend runs in Docker Compose, `OLLAMA_BASE_URL` must point to an address reachable from inside the `app` container; `localhost` only works for native host runs.
 
 ---
 
@@ -30,10 +47,13 @@ cd get-rich-quick
 cp .env.example .env
 ```
 
-Edit `.env` to add any API keys you need (LLM providers, data feeds, broker credentials). At minimum you'll need an LLM provider key for agent features:
+Edit `.env` to configure at least one LLM provider and at least one market-data provider. For cloud LLMs, set one provider key. For local Ollama, switch the default provider and keep the model name aligned with what you pulled:
 
 ```dotenv
-OPENAI_API_KEY=sk-...          # or ANTHROPIC_API_KEY, etc.
+OPENAI_API_KEY=sk-...          # or ANTHROPIC_API_KEY, GOOGLE_API_KEY, OPENROUTER_API_KEY, XAI_API_KEY
+# or
+LLM_DEFAULT_PROVIDER=ollama
+OLLAMA_MODEL=llama3.2
 ```
 
 ### 1.2 Start Services

@@ -123,6 +123,23 @@ export interface AgentEvent {
   created_at: ISODateString
 }
 
+export interface Conversation {
+  id: UUID
+  pipeline_run_id: UUID
+  agent_role: AgentRole
+  title?: string
+  created_at: ISODateString
+  updated_at: ISODateString
+}
+
+export interface ConversationMessage {
+  id: UUID
+  conversation_id: UUID
+  role: 'user' | 'assistant'
+  content: string
+  created_at: ISODateString
+}
+
 export interface Position {
   id: UUID
   strategy_id?: UUID
@@ -213,6 +230,8 @@ export interface PositionLimits {
   max_total_pct: number
   max_concurrent: number
   max_per_market_pct: number
+  current_open_positions?: number
+  current_total_exposure_pct?: number
 }
 
 export interface EngineStatus {
@@ -391,6 +410,11 @@ export interface MemoryListParams {
   agent_role?: AgentRole
 }
 
+export interface ConversationListParams {
+  pipeline_run_id?: UUID
+  agent_role?: AgentRole
+}
+
 export interface PaginationParams {
   limit?: number
   offset?: number
@@ -419,4 +443,13 @@ export interface StrategyUpdateRequest {
   is_active?: boolean
   is_paper: boolean
   skip_next_run?: boolean
+}
+
+export interface ConversationCreateRequest {
+  pipeline_run_id: UUID
+  agent_role: AgentRole
+}
+
+export interface ConversationMessageCreateRequest {
+  content: string
 }

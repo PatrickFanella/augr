@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/config"
+	"github.com/PatrickFanella/get-rich-quick/internal/domain"
+	"github.com/google/uuid"
 )
 
 type recordingNotifier struct {
@@ -15,6 +17,22 @@ type recordingNotifier struct {
 
 func (n *recordingNotifier) Notify(_ context.Context, alert Alert) error {
 	n.alerts = append(n.alerts, alert)
+	return nil
+}
+
+type recordingStructuredNotifier struct {
+	recordingNotifier
+	signals   []SignalEvent
+	decisions []DecisionEvent
+}
+
+func (n *recordingStructuredNotifier) NotifySignal(_ context.Context, event SignalEvent) error {
+	n.signals = append(n.signals, event)
+	return nil
+}
+
+func (n *recordingStructuredNotifier) NotifyDecision(_ context.Context, event DecisionEvent) error {
+	n.decisions = append(n.decisions, event)
 	return nil
 }
 
@@ -168,6 +186,67 @@ func TestManagerRoutesImmediateTelegramAlerts(t *testing.T) {
 
 	if len(telegram.alerts) != 2 {
 		t.Fatalf("len(telegram.alerts) = %d, want 2", len(telegram.alerts))
+	}
+}
+
+func TestManagerRoutesSignalsAndDecisionsToN8NAndDiscord(t *testing.T) {
+	t.Parallel()
+
+	n8n := &recordingStructuredNotifier{}
+	discord := &recordingStructuredNotifier{}
+	pagerDuty := &recordingStructuredNotifier{}
+	manager := NewManager(testAlertRules(), map[string]Notifier{
+		ChannelN8N:       n8n,
+		ChannelDiscord:   discord,
+		ChannelPagerDuty: pagerDuty,
+	})
+
+	runID := uuid.New()
+	strategyID := uuid.New()
+	occurredAt := time.Date(2026, 4, 2, 14, 15, 0, 0, time.UTC)
+
+	if err := manager.RecordSignal(context.Background(), SignalEvent{
+		StrategyID:   strategyID,
+		StrategyName: "Momentum",
+		RunID:        runID,
+		Ticker:       "AAPL",
+		Signal:       domain.PipelineSignalBuy,
+		Confidence:   0.91,
+		Reasoning:    "Breakout confirmed.",
+		OccurredAt:   occurredAt,
+	}); err != nil {
+		t.Fatalf("RecordSignal() error = %v", err)
+	}
+
+	if err := manager.RecordDecision(context.Background(), DecisionEvent{
+		StrategyID:    strategyID,
+		RunID:         runID,
+		AgentRole:     domain.AgentRoleTrader,
+		Phase:         domain.PhaseTrading,
+		OutputSummary: `{"action":"buy"}`,
+		LLMProvider:   "openai",
+		LLMModel:      "gpt-4.1",
+		LatencyMS:     842,
+		OccurredAt:    occurredAt.Add(time.Minute),
+	}); err != nil {
+		t.Fatalf("RecordDecision() error = %v", err)
+	}
+
+	if len(n8n.signals) != 1 || len(discord.signals) != 1 {
+		t.Fatalf("signal counts = n8n:%d discord:%d, want 1 each", len(n8n.signals), len(discord.signals))
+	}
+	if len(n8n.decisions) != 1 || len(discord.decisions) != 1 {
+		t.Fatalf("decision counts = n8n:%d discord:%d, want 1 each", len(n8n.decisions), len(discord.decisions))
+	}
+	if len(pagerDuty.signals) != 0 || len(pagerDuty.decisions) != 0 {
+		t.Fatalf("pagerduty structured notifications = signals:%d decisions:%d, want 0", len(pagerDuty.signals), len(pagerDuty.decisions))
+	}
+
+	if got := n8n.signals[0].Signal; got != domain.PipelineSignalBuy {
+		t.Fatalf("n8n signal = %q, want %q", got, domain.PipelineSignalBuy)
+	}
+	if got := discord.decisions[0].AgentRole; got != domain.AgentRoleTrader {
+		t.Fatalf("discord decision role = %q, want %q", got, domain.AgentRoleTrader)
 	}
 }
 

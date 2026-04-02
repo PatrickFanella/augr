@@ -199,7 +199,10 @@ func (m *OrderManager) ProcessSignal(
 
 	additionalExposurePct := (quantity * plan.EntryPrice) / balance.Equity
 
-	portfolio := risk.Portfolio{}
+	portfolio, err := BuildRiskPortfolioSnapshotFromBalance(ctx, balance, m.positionRepo)
+	if err != nil {
+		return fmt.Errorf("order_manager: build risk portfolio: %w", err)
+	}
 	approved, reason, err := m.riskEngine.CheckPositionLimits(ctx, plan.Ticker, additionalExposurePct, portfolio)
 	if err != nil {
 		return fmt.Errorf("order_manager: check position limits: %w", err)

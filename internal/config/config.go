@@ -115,7 +115,7 @@ type RiskConfig struct {
 type NotificationConfig struct {
 	Telegram  TelegramNotificationConfig
 	Email     EmailNotificationConfig
-	Webhook   WebhookNotificationConfig
+	N8N       WebhookNotificationConfig
 	PagerDuty WebhookNotificationConfig
 	Discord   DiscordNotificationConfig
 	Alerts    AlertRulesConfig
@@ -137,7 +137,7 @@ type EmailNotificationConfig struct {
 	To       []string
 }
 
-// WebhookNotificationConfig contains generic webhook delivery settings.
+// WebhookNotificationConfig contains reusable webhook delivery settings.
 type WebhookNotificationConfig struct {
 	URL    string
 	Secret string
@@ -430,9 +430,9 @@ func loadFromEnvironment() (Config, error) {
 				From:     os.Getenv("NOTIFY_EMAIL_FROM"),
 				To:       getEnvCSV("NOTIFY_EMAIL_TO"),
 			},
-			Webhook: WebhookNotificationConfig{
-				URL:    os.Getenv("NOTIFY_WEBHOOK_URL"),
-				Secret: os.Getenv("NOTIFY_WEBHOOK_SECRET"),
+			N8N: WebhookNotificationConfig{
+				URL:    os.Getenv("N8N_WEBHOOK_URL"),
+				Secret: os.Getenv("N8N_WEBHOOK_SECRET"),
 			},
 			PagerDuty: WebhookNotificationConfig{
 				URL:    os.Getenv("NOTIFY_PAGERDUTY_WEBHOOK_URL"),

@@ -34,8 +34,8 @@ func TestLoadParsesEnvironmentValues(t *testing.T) {
 	t.Setenv("NOTIFY_SMTP_PASSWORD", "smtp-pass")
 	t.Setenv("NOTIFY_EMAIL_FROM", "alerts@example.com")
 	t.Setenv("NOTIFY_EMAIL_TO", "ops@example.com,dev@example.com")
-	t.Setenv("NOTIFY_WEBHOOK_URL", "https://hooks.example.com/alerts")
-	t.Setenv("NOTIFY_WEBHOOK_SECRET", "webhook-secret")
+	t.Setenv("N8N_WEBHOOK_URL", "https://hooks.example.com/alerts")
+	t.Setenv("N8N_WEBHOOK_SECRET", "webhook-secret")
 	t.Setenv("NOTIFY_PAGERDUTY_WEBHOOK_URL", "https://events.pagerduty.com/v2/enqueue")
 	t.Setenv("ALERT_PIPELINE_FAILURE_THRESHOLD", "4")
 	t.Setenv("ALERT_PIPELINE_FAILURE_CHANNELS", "telegram,email")
@@ -113,6 +113,13 @@ func TestLoadParsesEnvironmentValues(t *testing.T) {
 
 	if len(cfg.Notifications.Email.To) != 2 {
 		t.Fatalf("len(cfg.Notifications.Email.To) = %d, want %d", len(cfg.Notifications.Email.To), 2)
+	}
+
+	if cfg.Notifications.N8N.URL != "https://hooks.example.com/alerts" {
+		t.Fatalf("cfg.Notifications.N8N.URL = %q, want %q", cfg.Notifications.N8N.URL, "https://hooks.example.com/alerts")
+	}
+	if cfg.Notifications.N8N.Secret != "webhook-secret" {
+		t.Fatalf("cfg.Notifications.N8N.Secret = %q, want %q", cfg.Notifications.N8N.Secret, "webhook-secret")
 	}
 
 	if cfg.Notifications.Alerts.PipelineFailure.Threshold != 4 {
@@ -455,6 +462,15 @@ func TestValidateRejectsUnsupportedNotificationChannel(t *testing.T) {
 	}
 }
 
+func TestValidateAllowsN8NAlertChannelWithoutConfiguredWebhook(t *testing.T) {
+	cfg := validConfig()
+	cfg.Notifications.Alerts.PipelineFailure.Channels = []string{"n8n"}
+
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("Validate() error = %v, want nil", err)
+	}
+}
+
 func clearConfigEnv(t *testing.T) {
 	t.Helper()
 
@@ -510,8 +526,8 @@ func clearConfigEnv(t *testing.T) {
 		"NOTIFY_SMTP_PASSWORD",
 		"NOTIFY_EMAIL_FROM",
 		"NOTIFY_EMAIL_TO",
-		"NOTIFY_WEBHOOK_URL",
-		"NOTIFY_WEBHOOK_SECRET",
+		"N8N_WEBHOOK_URL",
+		"N8N_WEBHOOK_SECRET",
 		"NOTIFY_PAGERDUTY_WEBHOOK_URL",
 		"NOTIFY_PAGERDUTY_WEBHOOK_SECRET",
 		"ALERT_PIPELINE_FAILURE_THRESHOLD",

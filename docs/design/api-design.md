@@ -1,211 +1,194 @@
 ---
 title: "API Design"
-date: 2026-03-20
+date: 2026-04-02
 tags: [api, rest, websocket, endpoints]
 ---
 
 # API Design
 
-The Go server exposes a REST API for CRUD operations and a WebSocket endpoint for real-time streaming.
+This document describes the API surface currently implemented by the Go server. For endpoint-by-endpoint payload examples, see [[../reference/api.md|API Reference]].
 
-## Base URL
+## Base URLs
 
-```
+```text
 REST:      http://localhost:8080/api/v1
 WebSocket: ws://localhost:8080/ws
+Ops:       http://localhost:8080/healthz | /health | /metrics
 ```
 
-## Authentication
+## Authentication model
 
-- JWT bearer tokens for browser sessions
-- API key header (`X-API-Key`) for programmatic access
-- All endpoints require authentication except `/api/v1/auth/login`
+- Public REST endpoints: `POST /api/v1/auth/login`, `POST /api/v1/auth/refresh`
+- Protected REST endpoints: every other `/api/v1/*` route
+- Supported credentials for protected routes:
+  - `Authorization: Bearer <jwt>`
+  - `X-API-Key: <api_key>`
+- Public operational endpoints: `GET /healthz`, `GET /health`, `GET /metrics`
+- WebSocket auth is not enforced by the current `/ws` handler
 
-## REST Endpoints
+## Response conventions
+
+### List endpoints
+
+Most collection endpoints return:
+
+```json
+{
+  "data": [],
+  "limit": 50,
+  "offset": 0
+}
+```
+
+Notes:
+
+- Default `limit=50`
+- Maximum `limit=100`
+- `total` exists in the Go response type but is not currently populated by handlers
+
+### Error envelope
+
+```json
+{
+  "error": "strategy not found",
+  "code": "ERR_NOT_FOUND"
+}
+```
+
+## Implemented REST surface
+
+### Auth
+
+| Method | Path | Auth | Notes |
+| --- | --- | --- | --- |
+| `POST` | `/auth/login` | Public | Username/password login |
+| `POST` | `/auth/refresh` | Public | Refresh-token exchange |
 
 ### Strategies
 
-| Method   | Path                  | Description                   |
-| -------- | --------------------- | ----------------------------- |
-| `GET`    | `/strategies`         | List all strategies           |
-| `POST`   | `/strategies`         | Create a new strategy         |
-| `GET`    | `/strategies/:id`     | Get strategy details          |
-| `PUT`    | `/strategies/:id`     | Update strategy configuration |
-| `DELETE` | `/strategies/:id`     | Deactivate strategy           |
-| `POST`   | `/strategies/:id/run` | Trigger a manual pipeline run |
+| Method | Path | Auth | Notes |
+| --- | --- | --- | --- |
+| `GET` | `/strategies` | Required | Filters: `ticker`, `market_type`, `status`, `is_paper` |
+| `POST` | `/strategies` | Required | Validates `domain.Strategy` + typed strategy config |
+| `GET` | `/strategies/{id}` | Required | Fetch one strategy |
+| `PUT` | `/strategies/{id}` | Required | Replaces the strategy payload for the target id |
+| `DELETE` | `/strategies/{id}` | Required | Deletes the strategy |
+| `POST` | `/strategies/{id}/run` | Required | Manual run; returns `501` if runner not configured |
+| `POST` | `/strategies/{id}/pause` | Required | Requires current status `active` |
+| `POST` | `/strategies/{id}/resume` | Required | Requires current status `paused` |
+| `POST` | `/strategies/{id}/skip-next` | Required | Sets `skip_next_run=true`; requires current status `active` |
 
-### Pipeline Runs
+### Runs
 
-| Method | Path                  | Description                                               |
-| ------ | --------------------- | --------------------------------------------------------- |
-| `GET`  | `/runs`               | List pipeline runs (filterable by strategy, status, date) |
-| `GET`  | `/runs/:id`           | Get run details with all agent decisions                  |
-| `GET`  | `/runs/:id/decisions` | Get agent decisions for a specific run                    |
-| `POST` | `/runs/:id/cancel`    | Cancel a running pipeline                                 |
+| Method | Path | Auth | Notes |
+| --- | --- | --- | --- |
+| `GET` | `/runs` | Required | Filters: `strategy_id`, `ticker`, `status`, `start_date`, `end_date` |
+| `GET` | `/runs/{id}` | Required | Looks up by id by scanning paginated run lists |
+| `GET` | `/runs/{id}/decisions` | Required | Query: `include_prompt`, `limit`, `offset` |
+| `POST` | `/runs/{id}/cancel` | Required | Only valid when current run state can transition to `cancelled` |
+| `GET` | `/runs/{id}/snapshot` | Required | Returns snapshots grouped by `data_type`; `501` if snapshot repo missing |
 
 ### Portfolio
 
-| Method | Path                       | Description                                    |
-| ------ | -------------------------- | ---------------------------------------------- |
-| `GET`  | `/portfolio/positions`     | List open positions                            |
-| `GET`  | `/portfolio/positions/:id` | Position detail with P&L                       |
-| `GET`  | `/portfolio/summary`       | Portfolio summary (total value, P&L, exposure) |
-| `GET`  | `/portfolio/history`       | Historical portfolio value time series         |
+| Method | Path | Auth | Notes |
+| --- | --- | --- | --- |
+| `GET` | `/portfolio/positions` | Required | Filters: `ticker`, `side` |
+| `GET` | `/portfolio/positions/open` | Required | Lists open positions only |
+| `GET` | `/portfolio/summary` | Required | Aggregates realized/unrealized P&L from open positions |
 
-### Orders & Trades
+### Orders and trades
 
-| Method | Path          | Description              |
-| ------ | ------------- | ------------------------ |
-| `GET`  | `/orders`     | List orders (filterable) |
-| `GET`  | `/orders/:id` | Order detail with fills  |
-| `GET`  | `/trades`     | List executed trades     |
+| Method | Path | Auth | Notes |
+| --- | --- | --- | --- |
+| `GET` | `/orders` | Required | Filters: `ticker`, `status`, `side` |
+| `GET` | `/orders/{id}` | Required | Returns `{order, fills}` |
+| `GET` | `/trades` | Required | Filters: `order_id`, `position_id`, `ticker`, `side`, `start_date`, `end_date` |
 
-### Agent Memory
+### Memories
 
-| Method   | Path                              | Description                 |
-| -------- | --------------------------------- | --------------------------- |
-| `GET`    | `/memories`                       | List memories by agent role |
-| `GET`    | `/memories/search?q=...&role=...` | Search memories (full-text) |
-| `DELETE` | `/memories/:id`                   | Remove a memory entry       |
+| Method | Path | Auth | Notes |
+| --- | --- | --- | --- |
+| `GET` | `/memories` | Required | Query-driven search/list with optional `q`, `agent_role` |
+| `POST` | `/memories/search` | Required | Body: `{ "query": "..." }` |
+| `DELETE` | `/memories/{id}` | Required | Deletes one memory |
 
-### Configuration
+### Risk and settings
 
-| Method | Path                    | Description                             |
-| ------ | ----------------------- | --------------------------------------- |
-| `GET`  | `/config`               | Get system configuration                |
-| `PUT`  | `/config`               | Update system configuration             |
-| `GET`  | `/config/llm-providers` | List available LLM providers and models |
+| Method | Path | Auth | Notes |
+| --- | --- | --- | --- |
+| `GET` | `/risk/status` | Required | Returns `risk.EngineStatus` |
+| `POST` | `/risk/killswitch` | Required | Body: `{active, reason}`; `reason` required when activating |
+| `GET` | `/settings` | Required | Returns editable LLM/risk settings plus system metadata |
+| `PUT` | `/settings` | Required | Replaces editable settings; preserves existing provider secrets unless a new key is supplied |
 
-### Risk Controls
+### Events, conversations, audit log
 
-| Method   | Path                | Description                                    |
-| -------- | ------------------- | ---------------------------------------------- |
-| `GET`    | `/risk/status`      | Current risk status (circuit breakers, limits) |
-| `POST`   | `/risk/kill-switch` | Activate kill switch (halt all trading)        |
-| `DELETE` | `/risk/kill-switch` | Deactivate kill switch                         |
-| `GET`    | `/risk/limits`      | Get current risk limits                        |
-| `PUT`    | `/risk/limits`      | Update risk limits                             |
+| Method | Path | Auth | Notes |
+| --- | --- | --- | --- |
+| `GET` | `/events` | Required | Filters: `event_kind`, `pipeline_run_id`, `strategy_id`, `agent_role`, `after`, `before`; `501` if repo missing |
+| `GET` | `/conversations` | Required | Filters: `pipeline_run_id`, `agent_role`; `501` if repo missing |
+| `POST` | `/conversations` | Required | Creates a conversation for an existing run; title auto-generated |
+| `GET` | `/conversations/{id}/messages` | Required | Lists persisted messages |
+| `POST` | `/conversations/{id}/messages` | Required | Saves user message then generates assistant reply; `501` if LLM missing |
+| `GET` | `/audit-log` | Required | Filters: `event_type`, `entity_type`, `after`, `before`; `501` if repo missing |
 
-## Request/Response Examples
+## Deliberately absent from the current implementation
 
-### Create Strategy
+These endpoints appeared in older design docs but are not registered by `internal/api/server.go` and should not be treated as live routes:
 
-```json
-// POST /api/v1/strategies
-{
-  "name": "AAPL Multi-Agent",
-  "ticker": "AAPL",
-  "market_type": "stock",
-  "schedule_cron": "0 30 9 * * 1-5",
-  "is_paper": true,
-  "config": {
-    "analysts": ["market", "fundamentals", "news"],
-    "max_debate_rounds": 3,
-    "max_risk_debate_rounds": 3,
-    "deep_think_llm": { "provider": "anthropic", "model": "claude-sonnet-4-6" },
-    "quick_think_llm": {
-      "provider": "anthropic",
-      "model": "claude-haiku-4-5-20251001"
-    },
-    "position_size_pct": 5.0,
-    "stop_loss_atr_mult": 1.5,
-    "take_profit_atr_mult": 3.0
-  }
-}
-```
+- `GET /portfolio/history`
+- `GET /config`
+- `PUT /config`
+- `GET /config/llm-providers`
+- `GET /risk/limits`
+- `PUT /risk/limits`
+- `DELETE /risk/killswitch`
 
-### Pipeline Run Response
+## WebSocket design
+
+### Endpoint
+
+- `GET /ws`
+- Public upgrade route in current code
+- Subscription scope is client-side, not path-based
+
+### Client commands
 
 ```json
-// GET /api/v1/runs/:id
-{
-  "id": "uuid",
-  "strategy_id": "uuid",
-  "ticker": "AAPL",
-  "trade_date": "2026-03-20",
-  "status": "completed",
-  "signal": "buy",
-  "started_at": "2026-03-20T09:30:00Z",
-  "completed_at": "2026-03-20T09:30:28Z",
-  "decisions": [
-    {
-      "agent_role": "market_analyst",
-      "phase": "analysis",
-      "output_structured": {
-        "trend": "bullish",
-        "key_levels": { "support": 178.5, "resistance": 185.0 }
-      },
-      "latency_ms": 3200
-    }
-  ]
-}
+{ "action": "subscribe", "strategy_ids": ["<strategy-uuid>"] }
+{ "action": "subscribe", "run_ids": ["<run-uuid>"] }
+{ "action": "unsubscribe", "strategy_ids": ["<strategy-uuid>"] }
+{ "action": "subscribe_all" }
+{ "action": "unsubscribe_all" }
 ```
 
-## WebSocket Protocol
-
-### Connection
-
-```
-ws://localhost:8080/ws?token=<jwt>
-```
-
-### Message Format
-
-All messages are JSON with a `type` field:
+### Server event envelope
 
 ```json
 {
-  "type": "agent_decision",
-  "run_id": "uuid",
-  "data": {
-    "agent_role": "bull_researcher",
-    "phase": "research_debate",
-    "round": 2,
-    "output_preview": "Strong momentum confirmed by...",
-    "timestamp": "2026-03-20T09:30:12Z"
-  }
+  "type": "pipeline_start",
+  "strategy_id": "11111111-1111-1111-1111-111111111111",
+  "run_id": "22222222-2222-2222-2222-222222222222",
+  "data": {},
+  "timestamp": "2026-04-02T09:30:00Z"
 }
 ```
 
-### Event Types
+### Event types emitted by the current hub
 
-| Type              | Description                  | When                 |
-| ----------------- | ---------------------------- | -------------------- |
-| `pipeline_start`  | Pipeline initiated           | Run begins           |
-| `agent_decision`  | Agent produced output        | Each agent completes |
-| `debate_round`    | Debate round completed       | Each debate round    |
-| `signal`          | Final BUY/SELL/HOLD          | Risk manager decides |
-| `order_submitted` | Order sent to broker         | Execution phase      |
-| `order_filled`    | Order fully/partially filled | Fill received        |
-| `position_update` | Position changed             | After fill           |
-| `circuit_breaker` | Risk limit triggered         | Automatic halt       |
-| `error`           | Pipeline error               | Any failure          |
+- `pipeline_start`
+- `agent_decision`
+- `debate_round`
+- `signal`
+- `order_submitted`
+- `order_filled`
+- `position_update`
+- `circuit_breaker`
+- `error`
 
-### Client Subscriptions
+## Related
 
-Clients can subscribe to specific strategies or run IDs:
-
-```json
-// Send after connecting
-{ "action": "subscribe", "strategy_ids": ["uuid1", "uuid2"] }
-{ "action": "subscribe", "run_ids": ["uuid"] }
-{ "action": "unsubscribe", "strategy_ids": ["uuid1"] }
-```
-
-## Error Response Format
-
-```json
-{
-  "error": {
-    "code": "STRATEGY_NOT_FOUND",
-    "message": "Strategy with ID abc-123 not found",
-    "details": {}
-  }
-}
-```
-
-Standard HTTP status codes: 400 (validation), 401 (auth), 404 (not found), 409 (conflict), 500 (server error).
-
----
-
-**Related:** [[system-architecture]] · [[websocket-server]] · [[frontend-overview]] · [[go-project-structure]]
+- [[../reference/api.md|API Reference]]
+- [[backend/websocket-server]]
+- [[frontend/frontend-overview]]
+- [[system-architecture]]

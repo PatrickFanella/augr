@@ -572,6 +572,81 @@ func TestProcessSignal_HappyPath(t *testing.T) {
 	}
 }
 
+func TestProcessSignal_BuildsPortfolioForRiskChecks(t *testing.T) {
+	equity := 10_000.0
+	aaplPrice := 160.0
+	balance := execution.Balance{Currency: "USD", Cash: 7_400, BuyingPower: 7_400, Equity: equity}
+	openPositions := []domain.Position{
+		{Ticker: "AAPL", Quantity: 10, AvgEntry: 150, CurrentPrice: &aaplPrice},
+		{Ticker: "MSFT", Quantity: 20, AvgEntry: 50},
+	}
+
+	broker := &mockBroker{
+		getAccountBalanceFn: func(context.Context) (execution.Balance, error) {
+			return balance, nil
+		},
+	}
+	positionRepo := &mockPositionRepo{
+		getOpenFn: func(context.Context, repository.PositionFilter, int, int) ([]domain.Position, error) {
+			return openPositions, nil
+		},
+	}
+
+	var checkPositionPortfolio risk.Portfolio
+	var preTradePortfolio risk.Portfolio
+	riskEng := &mockRiskEngine{
+		checkPositionLimitsFn: func(_ context.Context, _ string, _ float64, portfolio risk.Portfolio) (bool, string, error) {
+			checkPositionPortfolio = portfolio
+			return true, "", nil
+		},
+		checkPreTradeFn: func(_ context.Context, _ *domain.Order, portfolio risk.Portfolio) (bool, string, error) {
+			preTradePortfolio = portfolio
+			return true, "", nil
+		},
+	}
+	orderRepo := &mockOrderRepo{}
+	tradeRepo := &mockTradeRepo{}
+	auditRepo := &mockAuditLogRepo{}
+
+	mgr := newTestOrderManager(broker, riskEng, orderRepo, positionRepo, tradeRepo, auditRepo)
+
+	err := mgr.ProcessSignal(
+		context.Background(),
+		defaultSignal(),
+		defaultPlan(),
+		uuid.New(),
+		uuid.New(),
+	)
+	if err != nil {
+		t.Fatalf("ProcessSignal() unexpected error: %v", err)
+	}
+
+	if checkPositionPortfolio.ConcurrentPositions != 2 {
+		t.Fatalf("checkPositionPortfolio.ConcurrentPositions = %d, want 2", checkPositionPortfolio.ConcurrentPositions)
+	}
+	if got := checkPositionPortfolio.TotalExposurePct; got != 0.26 {
+		t.Fatalf("checkPositionPortfolio.TotalExposurePct = %v, want 0.26", got)
+	}
+	if got := checkPositionPortfolio.PositionExposureBySymbol["AAPL"]; got != 0.16 {
+		t.Fatalf("checkPositionPortfolio.PositionExposureBySymbol[AAPL] = %v, want 0.16", got)
+	}
+	if got := checkPositionPortfolio.PositionExposureBySymbol["MSFT"]; got != 0.10 {
+		t.Fatalf("checkPositionPortfolio.PositionExposureBySymbol[MSFT] = %v, want 0.10", got)
+	}
+	if preTradePortfolio.ConcurrentPositions != checkPositionPortfolio.ConcurrentPositions {
+		t.Fatalf("preTradePortfolio.ConcurrentPositions = %d, want %d", preTradePortfolio.ConcurrentPositions, checkPositionPortfolio.ConcurrentPositions)
+	}
+	if preTradePortfolio.TotalExposurePct != checkPositionPortfolio.TotalExposurePct {
+		t.Fatalf("preTradePortfolio.TotalExposurePct = %v, want %v", preTradePortfolio.TotalExposurePct, checkPositionPortfolio.TotalExposurePct)
+	}
+	if got := preTradePortfolio.PositionExposureBySymbol["AAPL"]; got != checkPositionPortfolio.PositionExposureBySymbol["AAPL"] {
+		t.Fatalf("preTradePortfolio.PositionExposureBySymbol[AAPL] = %v, want %v", got, checkPositionPortfolio.PositionExposureBySymbol["AAPL"])
+	}
+	if got := preTradePortfolio.PositionExposureBySymbol["MSFT"]; got != checkPositionPortfolio.PositionExposureBySymbol["MSFT"] {
+		t.Fatalf("preTradePortfolio.PositionExposureBySymbol[MSFT] = %v, want %v", got, checkPositionPortfolio.PositionExposureBySymbol["MSFT"])
+	}
+}
+
 func TestProcessSignal_KillSwitchActive(t *testing.T) {
 	broker := &mockBroker{}
 	riskEng := &mockRiskEngine{

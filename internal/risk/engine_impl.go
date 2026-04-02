@@ -41,17 +41,18 @@ type engineState struct {
 
 // RiskEngineImpl is the concrete implementation of RiskEngine.
 type RiskEngineImpl struct {
-	limits             PositionLimits
-	cbConfig           CircuitBreakerConfig
-	positionRepo       repository.PositionRepository
-	logger             *slog.Logger
-	state              engineState
-	nowMu              sync.RWMutex
-	nowFunc            func() time.Time // for testability; defaults to time.Now
-	killSwitchFilePath string           // file flag path; defaults to defaultKillSwitchFilePath
-	ksMu               sync.RWMutex
-	fileExistsFunc     func(string) bool   // for testability; defaults to defaultFileExists
-	getEnvFunc         func(string) string // for testability; defaults to os.Getenv
+	limits                PositionLimits
+	cbConfig              CircuitBreakerConfig
+	positionRepo          repository.PositionRepository
+	logger                *slog.Logger
+	state                 engineState
+	nowMu                 sync.RWMutex
+	nowFunc               func() time.Time // for testability; defaults to time.Now
+	killSwitchFilePath    string           // file flag path; defaults to defaultKillSwitchFilePath
+	ksMu                  sync.RWMutex
+	fileExistsFunc        func(string) bool   // for testability; defaults to defaultFileExists
+	getEnvFunc            func(string) string // for testability; defaults to os.Getenv
+	portfolioSnapshotFunc func(context.Context) (Portfolio, error)
 }
 
 // defaultFileExists checks whether the given path exists on the filesystem.
@@ -124,6 +125,15 @@ func (e *RiskEngineImpl) SetGetEnvFunc(fn func(string) string) {
 	e.ksMu.Lock()
 	defer e.ksMu.Unlock()
 	e.getEnvFunc = fn
+}
+
+// SetPortfolioSnapshotFunc overrides how GetStatus derives live portfolio
+// utilization for status responses.
+func (e *RiskEngineImpl) SetPortfolioSnapshotFunc(fn func(context.Context) (Portfolio, error)) {
+	if e == nil {
+		return
+	}
+	e.portfolioSnapshotFunc = fn
 }
 
 func (e *RiskEngineImpl) currentTime() time.Time {
@@ -319,6 +329,17 @@ func (e *RiskEngineImpl) GetStatus(ctx context.Context) (EngineStatus, error) {
 	cb := e.state.cb
 	limits := e.limits
 	e.state.mu.Unlock()
+
+	if e.portfolioSnapshotFunc != nil {
+		portfolio, err := e.portfolioSnapshotFunc(ctx)
+		if err != nil {
+			return EngineStatus{}, fmt.Errorf("risk: portfolio snapshot: %w", err)
+		}
+		openPositions := portfolio.ConcurrentPositions
+		totalExposure := portfolio.TotalExposurePct
+		limits.CurrentOpenPositions = &openPositions
+		limits.CurrentTotalExposurePct = &totalExposure
+	}
 
 	ksActive, mechanisms := e.isKillSwitchActiveUnlocked(apiKS)
 	ks := KillSwitchStatus{

@@ -191,7 +191,7 @@ func validateNotificationConfig(errs *[]string, cfg NotificationConfig) {
 		}
 	}
 
-	validateWebhookNotification(errs, cfg.Webhook, "NOTIFY_WEBHOOK_URL")
+	validateWebhookNotification(errs, cfg.N8N, "N8N_WEBHOOK_URL")
 	validateWebhookNotification(errs, cfg.PagerDuty, "NOTIFY_PAGERDUTY_WEBHOOK_URL")
 	validateDiscordNotification(errs, cfg.Discord)
 	validateAlertRules(errs, cfg.Alerts)
@@ -251,7 +251,7 @@ func validateAlertRules(errs *[]string, cfg AlertRulesConfig) {
 		"ALERT_DB_CONNECTION_CHANNELS":     cfg.DBConnection.Channels,
 	} {
 		for _, channel := range channels {
-			if !slices.Contains([]string{"telegram", "email", "webhook", "pagerduty", "discord"}, strings.ToLower(strings.TrimSpace(channel))) {
+			if !slices.Contains([]string{"telegram", "email", "n8n", "pagerduty", "discord"}, strings.ToLower(strings.TrimSpace(channel))) {
 				*errs = append(*errs, fmt.Sprintf("%s contains unsupported channel %q", envName, channel))
 			}
 		}

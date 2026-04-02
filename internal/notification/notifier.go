@@ -6,12 +6,15 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/PatrickFanella/get-rich-quick/internal/domain"
+	"github.com/google/uuid"
 )
 
 const (
 	ChannelTelegram  = "telegram"
 	ChannelEmail     = "email"
-	ChannelWebhook   = "webhook"
+	ChannelN8N       = "n8n"
 	ChannelPagerDuty = "pagerduty"
 	ChannelDiscord   = "discord"
 )
@@ -38,6 +41,48 @@ type Alert struct {
 // Notifier delivers alerts to an external channel.
 type Notifier interface {
 	Notify(context.Context, Alert) error
+}
+
+// SignalEvent is a structured trading signal notification payload.
+type SignalEvent struct {
+	StrategyID   uuid.UUID
+	StrategyName string
+	RunID        uuid.UUID
+	Ticker       string
+	Signal       domain.PipelineSignal
+	Confidence   float64
+	Reasoning    string
+	OccurredAt   time.Time
+}
+
+// DecisionEvent is a structured agent decision notification payload.
+type DecisionEvent struct {
+	StrategyID    uuid.UUID
+	RunID         uuid.UUID
+	AgentRole     domain.AgentRole
+	Phase         domain.Phase
+	OutputSummary string
+	LLMProvider   string
+	LLMModel      string
+	LatencyMS     int
+	OccurredAt    time.Time
+}
+
+// SignalNotifier delivers structured trading signal events.
+type SignalNotifier interface {
+	NotifySignal(context.Context, SignalEvent) error
+}
+
+// DecisionNotifier delivers structured agent decision events.
+type DecisionNotifier interface {
+	NotifyDecision(context.Context, DecisionEvent) error
+}
+
+func uuidString(id uuid.UUID) string {
+	if id == uuid.Nil {
+		return ""
+	}
+	return id.String()
 }
 
 func normalizeChannels(channels []string) []string {

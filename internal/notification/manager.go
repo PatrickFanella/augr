@@ -270,6 +270,66 @@ func (m *Manager) RecordDBConnectionState(ctx context.Context, connected bool, c
 	return nil
 }
 
+// RecordSignal dispatches a structured signal notification to supported channels.
+func (m *Manager) RecordSignal(ctx context.Context, event SignalEvent) error {
+	event.OccurredAt = normalizeOccurredAt(event.OccurredAt)
+	return m.dispatchSignal(ctx, event, []string{ChannelN8N, ChannelDiscord})
+}
+
+// RecordDecision dispatches a structured decision notification to supported channels.
+func (m *Manager) RecordDecision(ctx context.Context, event DecisionEvent) error {
+	event.OccurredAt = normalizeOccurredAt(event.OccurredAt)
+	return m.dispatchDecision(ctx, event, []string{ChannelN8N, ChannelDiscord})
+}
+
+func (m *Manager) dispatchSignal(ctx context.Context, event SignalEvent, channels []string) error {
+	channels = normalizeChannels(channels)
+	if len(channels) == 0 {
+		return nil
+	}
+
+	var errs []error
+	for _, channel := range channels {
+		notifier, ok := m.notifiers[channel]
+		if !ok {
+			continue
+		}
+		signalNotifier, ok := notifier.(SignalNotifier)
+		if !ok {
+			errs = append(errs, fmt.Errorf("%s notifier does not support signal delivery", channel))
+			continue
+		}
+		if err := signalNotifier.NotifySignal(ctx, event); err != nil {
+			errs = append(errs, fmt.Errorf("%s notifier: %w", channel, err))
+		}
+	}
+	return errors.Join(errs...)
+}
+
+func (m *Manager) dispatchDecision(ctx context.Context, event DecisionEvent, channels []string) error {
+	channels = normalizeChannels(channels)
+	if len(channels) == 0 {
+		return nil
+	}
+
+	var errs []error
+	for _, channel := range channels {
+		notifier, ok := m.notifiers[channel]
+		if !ok {
+			continue
+		}
+		decisionNotifier, ok := notifier.(DecisionNotifier)
+		if !ok {
+			errs = append(errs, fmt.Errorf("%s notifier does not support decision delivery", channel))
+			continue
+		}
+		if err := decisionNotifier.NotifyDecision(ctx, event); err != nil {
+			errs = append(errs, fmt.Errorf("%s notifier: %w", channel, err))
+		}
+	}
+	return errors.Join(errs...)
+}
+
 func (m *Manager) dispatch(ctx context.Context, alert Alert, channels []string) error {
 	channels = normalizeChannels(channels)
 	if len(channels) == 0 {
