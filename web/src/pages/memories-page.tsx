@@ -22,30 +22,10 @@ import {
 import { Input } from '@/components/ui/input'
 import { apiClient } from '@/lib/api/client'
 import type { AgentMemory, AgentRole } from '@/lib/api/types'
+import { AGENT_ROLE_OPTIONS, formatAgentRole } from '@/lib/agent-roles'
 
 const PAGE_SIZE = 10
 const PAGE_REQUEST_SIZE = PAGE_SIZE + 1
-const AGENT_ROLE_OPTIONS: AgentRole[] = [
-  'market_analyst',
-  'fundamentals_analyst',
-  'news_analyst',
-  'social_media_analyst',
-  'bull_researcher',
-  'bear_researcher',
-  'trader',
-  'invest_judge',
-  'risk_manager',
-  'aggressive_analyst',
-  'conservative_analyst',
-  'neutral_analyst',
-  'aggressive_risk',
-  'conservative_risk',
-  'neutral_risk',
-]
-
-function formatAgentRole(role: AgentRole) {
-  return role.replaceAll('_', ' ')
-}
 
 function formatDate(date: string) {
   return new Date(date).toLocaleString(undefined, {

@@ -32,6 +32,12 @@ describe('ChatPanel', () => {
     expect(screen.getByText('No messages yet.')).toBeInTheDocument()
   })
 
+  it('renders an optional header above the transcript', () => {
+    render(<ChatPanel messages={[]} header={<div>Conversation selector</div>} />)
+
+    expect(screen.getByTestId('chat-panel-header')).toHaveTextContent('Conversation selector')
+  })
+
   it('renders user message right-aligned with primary background', () => {
     const { container } = render(<ChatPanel messages={[userMsg]} />)
     const msgWrapper = container.querySelector('[class*="justify-end"]')

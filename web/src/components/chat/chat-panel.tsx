@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -15,14 +15,17 @@ interface ChatPanelProps {
   messages: ChatMessage[]
   onSendMessage?: (content: string) => void
   isLoading?: boolean
+  header?: ReactNode
 }
 
-export function ChatPanel({ messages, onSendMessage, isLoading = false }: ChatPanelProps) {
+export function ChatPanel({ messages, onSendMessage, isLoading = false, header }: ChatPanelProps) {
   const [inputValue, setInputValue] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (typeof bottomRef.current?.scrollIntoView === 'function') {
+      bottomRef.current.scrollIntoView({ behavior: 'smooth' })
+    }
   }, [messages, isLoading])
 
   function handleSend() {
@@ -37,6 +40,12 @@ export function ChatPanel({ messages, onSendMessage, isLoading = false }: ChatPa
 
   return (
     <div className="flex h-full flex-1 flex-col" data-testid="chat-panel">
+      {header ? (
+        <div className="border-b px-4 py-3" data-testid="chat-panel-header">
+          {header}
+        </div>
+      ) : null}
+
       <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-4">
         {messages.length === 0 ? (
           <p className="text-center text-sm text-muted-foreground">
