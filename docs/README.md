@@ -8,7 +8,7 @@
 | [Design](design/index.md)                         | Production system architecture, agents, API, database, roadmap  |
 | [ADRs](adr/README.md)                             | Architecture Decision Records                                   |
 | [Runbooks](runbooks/README.md)                    | Operational procedures for incidents and routine interventions  |
-| [Reference](reference/index.md)                   | TradingAgents Python framework (the system we're evolving from) |
+| [Reference](reference/api.md)                   | Code-truth API, agent, LLM, strategy, CLI, and architecture references |
 | [Research](research/index.md)                     | Trading strategies, LLM patterns, risk management               |
 | [Paper Tracker](paper-tracker.md)                 | Index of 52 academic papers in `research/papers/`               |
 | [Agent Execution Guide](agent-execution-guide.md) | How autonomous agents pick up and complete work                 |
