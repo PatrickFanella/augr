@@ -17,8 +17,10 @@ import (
 	"github.com/google/uuid"
 )
 
-// Compile-time interface check.
+// Compile-time interface checks.
 var _ Notifier = (*DiscordNotifier)(nil)
+var _ SignalNotifier = (*DiscordNotifier)(nil)
+var _ DecisionNotifier = (*DiscordNotifier)(nil)
 
 // DiscordNotifier delivers alerts as Discord embeds via webhooks.
 type DiscordNotifier struct {
@@ -74,6 +76,32 @@ func (n *DiscordNotifier) Notify(ctx context.Context, alert Alert) error {
 		slog.Error("discord notification failed", "err", err, "alert_key", alert.Key)
 	}
 	return nil
+}
+
+// NotifySignal sends a signal embed to the configured Discord signal webhook.
+func (n *DiscordNotifier) NotifySignal(ctx context.Context, event SignalEvent) error {
+	return n.Send(ctx, n.signalWebhookURL, FormatSignalEmbed(
+		event.StrategyName,
+		event.Ticker,
+		event.Signal,
+		event.Confidence,
+		event.Reasoning,
+		event.RunID,
+		event.OccurredAt,
+	))
+}
+
+// NotifyDecision sends a decision embed to the configured Discord decision webhook.
+func (n *DiscordNotifier) NotifyDecision(ctx context.Context, event DecisionEvent) error {
+	return n.Send(ctx, n.decisionWebhookURL, FormatDecisionEmbed(
+		string(event.AgentRole),
+		string(event.Phase),
+		event.OutputSummary,
+		event.LLMModel,
+		event.LatencyMS,
+		event.RunID,
+		event.OccurredAt,
+	))
 }
 
 // metadataFields converts alert metadata into Discord embed field objects.

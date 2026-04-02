@@ -11,6 +11,12 @@ import (
 	"time"
 )
 
+var _ Notifier = (*WebhookNotifier)(nil)
+
+var _ SignalNotifier = (*WebhookNotifier)(nil)
+
+var _ DecisionNotifier = (*WebhookNotifier)(nil)
+
 // WebhookNotifier delivers alerts as JSON POST requests.
 type WebhookNotifier struct {
 	url        string
@@ -38,6 +44,35 @@ func (n *WebhookNotifier) Notify(ctx context.Context, alert Alert) error {
 		"occurred_at": alert.OccurredAt.UTC().Format(time.RFC3339),
 		"metadata":    alert.Metadata,
 		"text":        formatAlertText(alert),
+	}, "")
+
+	return n.SendPayload(ctx, payload)
+}
+
+// NotifySignal sends a structured trading signal payload to the configured webhook.
+func (n *WebhookNotifier) NotifySignal(ctx context.Context, event SignalEvent) error {
+	payload := FormatPayload("signal", string(SeverityInfo), uuidString(event.StrategyID), uuidString(event.RunID), map[string]any{
+		"strategy_name": event.StrategyName,
+		"ticker":        event.Ticker,
+		"signal":        event.Signal,
+		"confidence":    event.Confidence,
+		"reasoning":     event.Reasoning,
+		"occurred_at":   event.OccurredAt.UTC().Format(time.RFC3339),
+	}, "")
+
+	return n.SendPayload(ctx, payload)
+}
+
+// NotifyDecision sends a structured agent decision payload to the configured webhook.
+func (n *WebhookNotifier) NotifyDecision(ctx context.Context, event DecisionEvent) error {
+	payload := FormatPayload("decision", string(SeverityInfo), uuidString(event.StrategyID), uuidString(event.RunID), map[string]any{
+		"agent_role":   event.AgentRole,
+		"phase":        event.Phase,
+		"summary":      event.OutputSummary,
+		"llm_provider": event.LLMProvider,
+		"llm_model":    event.LLMModel,
+		"latency_ms":   event.LatencyMS,
+		"occurred_at":  event.OccurredAt.UTC().Format(time.RFC3339),
 	}, "")
 
 	return n.SendPayload(ctx, payload)
