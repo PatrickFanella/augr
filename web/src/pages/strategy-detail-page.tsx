@@ -121,6 +121,7 @@ export function StrategyDetailPage() {
     },
     onError: handleMutationError,
   })
+  const isLifecycleActionPending = pauseMutation.isPending || resumeMutation.isPending || skipMutation.isPending
 
   if (isLoading) {
     return (
@@ -184,20 +185,27 @@ export function StrategyDetailPage() {
               {runMutation.isPending ? 'Running…' : 'Run now'}
             </Button>
             <Button
-              variant={isStrategyPaused ? 'default' : 'outline'}
-              onClick={() => (isStrategyPaused ? resumeMutation.mutate() : pauseMutation.mutate())}
-              disabled={isStrategyPaused ? resumeMutation.isPending : !isStrategyActive || pauseMutation.isPending}
-              data-testid={isStrategyPaused ? 'resume-strategy-button' : 'pause-strategy-button'}
+              variant="outline"
+              onClick={() => pauseMutation.mutate()}
+              disabled={!isStrategyActive || isLifecycleActionPending}
+              data-testid="pause-strategy-button"
             >
-              {isStrategyPaused ? <Play className="mr-2 size-4" /> : <Pause className="mr-2 size-4" />}
-              {isStrategyPaused
-                ? (resumeMutation.isPending ? 'Resuming…' : 'Resume')
-                : (pauseMutation.isPending ? 'Pausing…' : 'Pause')}
+              <Pause className="mr-2 size-4" />
+              {pauseMutation.isPending ? 'Pausing…' : 'Pause'}
+            </Button>
+            <Button
+              variant="default"
+              onClick={() => resumeMutation.mutate()}
+              disabled={!isStrategyPaused || isLifecycleActionPending}
+              data-testid="resume-strategy-button"
+            >
+              <Play className="mr-2 size-4" />
+              {resumeMutation.isPending ? 'Resuming…' : 'Resume'}
             </Button>
             <Button
               variant="ghost"
               onClick={() => skipMutation.mutate()}
-              disabled={!isStrategyActive || skipMutation.isPending}
+              disabled={!isStrategyActive || isLifecycleActionPending}
               data-testid="skip-next-button"
             >
               <SkipForward className="mr-2 size-4" />

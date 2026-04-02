@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -20,50 +20,118 @@ function Wrapper({ children }: { children: React.ReactNode }) {
   )
 }
 
+type StrategyFixture = {
+  id: string
+  name: string
+  description?: string
+  ticker: string
+  market_type: 'stock' | 'crypto' | 'polymarket'
+  status: 'active' | 'paused' | 'inactive'
+  skip_next_run: boolean
+  is_paper: boolean
+  schedule_cron?: string
+  config: Record<string, unknown>
+  created_at: string
+  updated_at: string
+}
+
+type MutationStub = {
+  status: number
+  body: StrategyFixture | { error: string; code?: string }
+}
+
+function createStrategy(overrides: Partial<StrategyFixture> = {}): StrategyFixture {
+  return {
+    id: strategyId,
+    name: 'AAPL Momentum',
+    description: 'A momentum-based strategy',
+    ticker: 'AAPL',
+    market_type: 'stock',
+    status: 'active',
+    skip_next_run: false,
+    is_paper: false,
+    schedule_cron: '0 9 * * 1-5',
+    config: { analysts: ['market'] },
+    created_at: '2025-01-01T00:00:00Z',
+    updated_at: '2025-01-01T00:00:00Z',
+    ...overrides,
+  }
+}
+
+function createResponse(body: unknown, status = 200) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => body,
+  }
+}
+
+function stubStrategyFetch({
+  strategy = createStrategy(),
+  pauseResult,
+  resumeResult,
+  skipResult,
+}: {
+  strategy?: StrategyFixture
+  pauseResult?: MutationStub
+  resumeResult?: MutationStub
+  skipResult?: MutationStub
+} = {}) {
+  let currentStrategy = strategy
+  const runs = { data: [], limit: 20, offset: 0 }
+
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input.toString()
+
+    if (url.includes('/runs')) {
+      return createResponse(runs)
+    }
+
+    if (url.includes(`/api/v1/strategies/${strategyId}/pause`)) {
+      const result = pauseResult ?? { status: 200, body: { ...currentStrategy, status: 'paused' as const } }
+      if (result.status >= 200 && result.status < 300 && 'status' in result.body) {
+        currentStrategy = result.body
+      }
+      return createResponse(result.body, result.status)
+    }
+
+    if (url.includes(`/api/v1/strategies/${strategyId}/resume`)) {
+      const result = resumeResult ?? { status: 200, body: { ...currentStrategy, status: 'active' as const } }
+      if (result.status >= 200 && result.status < 300 && 'status' in result.body) {
+        currentStrategy = result.body
+      }
+      return createResponse(result.body, result.status)
+    }
+
+    if (url.includes(`/api/v1/strategies/${strategyId}/skip-next`)) {
+      const result = skipResult ?? { status: 200, body: { ...currentStrategy, skip_next_run: true } }
+      if (result.status >= 200 && result.status < 300 && 'status' in result.body) {
+        currentStrategy = result.body
+      }
+      return createResponse(result.body, result.status)
+    }
+
+    return createResponse(currentStrategy)
+  })
+
+  vi.stubGlobal('fetch', fetchMock)
+  return fetchMock
+}
+
+function renderPage() {
+  render(<StrategyDetailPage />, { wrapper: Wrapper })
+}
+
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
 })
 
 describe('StrategyDetailPage', () => {
-  it('renders strategy details and lifecycle actions on successful fetch', async () => {
-    const strategy = {
-      id: strategyId,
-      name: 'AAPL Momentum',
-      description: 'A momentum-based strategy',
-      ticker: 'AAPL',
-      market_type: 'stock',
-      status: 'active',
-      skip_next_run: false,
-      is_paper: false,
-      schedule_cron: '0 9 * * 1-5',
-      config: { analysts: ['market'] },
-      created_at: '2025-01-01T00:00:00Z',
-      updated_at: '2025-01-01T00:00:00Z',
-    }
+  it('renders active strategies with the correct lifecycle action matrix', async () => {
+    stubStrategyFetch()
 
-    const runs = { data: [], limit: 20, offset: 0 }
-
-    const fetchMock = vi.fn((input: RequestInfo | URL) => {
-      const url = typeof input === 'string' ? input : input.toString()
-
-      if (url.includes('/runs')) {
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          json: async () => runs,
-        })
-      }
-
-      return Promise.resolve({
-        ok: true,
-        status: 200,
-        json: async () => strategy,
-      })
-    })
-    vi.stubGlobal('fetch', fetchMock)
-
-    render(<StrategyDetailPage />, { wrapper: Wrapper })
+    renderPage()
 
     expect(await screen.findByText('AAPL Momentum')).toBeInTheDocument()
     expect(screen.getByText('A momentum-based strategy')).toBeInTheDocument()
@@ -72,62 +140,113 @@ describe('StrategyDetailPage', () => {
     expect(screen.getByTestId('strategy-status-badge')).toHaveTextContent('active')
     expect(screen.getByTestId('run-strategy-button')).toBeInTheDocument()
     expect(screen.getByTestId('pause-strategy-button')).toBeEnabled()
+    expect(screen.getByTestId('resume-strategy-button')).toBeDisabled()
     expect(screen.getByTestId('skip-next-button')).toBeEnabled()
     expect(screen.getByTestId('delete-strategy-button')).toBeInTheDocument()
   })
 
-  it('shows resume button for paused strategies', async () => {
-    const strategy = {
-      id: strategyId,
-      name: 'Paused Strategy',
-      ticker: 'AAPL',
-      market_type: 'stock',
-      status: 'paused',
-      skip_next_run: false,
-      is_paper: false,
-      config: {},
-      created_at: '2025-01-01T00:00:00Z',
-      updated_at: '2025-01-01T00:00:00Z',
-    }
+  it('renders paused strategies with the correct lifecycle action matrix', async () => {
+    stubStrategyFetch({ strategy: createStrategy({ status: 'paused', name: 'Paused Strategy' }) })
 
-    const fetchMock = vi.fn((input: RequestInfo | URL) => {
-      const url = typeof input === 'string' ? input : input.toString()
-      if (url.includes('/runs')) {
-        return Promise.resolve({ ok: true, status: 200, json: async () => ({ data: [], limit: 20, offset: 0 }) })
-      }
-      return Promise.resolve({ ok: true, status: 200, json: async () => strategy })
-    })
-    vi.stubGlobal('fetch', fetchMock)
+    renderPage()
 
-    render(<StrategyDetailPage />, { wrapper: Wrapper })
-
-    expect(await screen.findByTestId('resume-strategy-button')).toBeEnabled()
+    expect(await screen.findByText('Paused Strategy')).toBeInTheDocument()
+    expect(screen.getByTestId('pause-strategy-button')).toBeDisabled()
+    expect(screen.getByTestId('resume-strategy-button')).toBeEnabled()
     expect(screen.getByTestId('skip-next-button')).toBeDisabled()
+  })
+
+  it('renders inactive strategies with all lifecycle actions disabled', async () => {
+    stubStrategyFetch({ strategy: createStrategy({ status: 'inactive', name: 'Inactive Strategy' }) })
+
+    renderPage()
+
+    expect(await screen.findByText('Inactive Strategy')).toBeInTheDocument()
+    expect(screen.getByTestId('pause-strategy-button')).toBeDisabled()
+    expect(screen.getByTestId('resume-strategy-button')).toBeDisabled()
+    expect(screen.getByTestId('skip-next-button')).toBeDisabled()
+  })
+
+  it('pauses an active strategy through the pause endpoint and refreshes the action state', async () => {
+    const fetchMock = stubStrategyFetch()
+
+    renderPage()
+
+    fireEvent.click(await screen.findByTestId('pause-strategy-button'))
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.objectContaining({ pathname: `/api/v1/strategies/${strategyId}/pause` }),
+        expect.objectContaining({ method: 'POST' }),
+      )
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('strategy-status-badge')).toHaveTextContent('paused')
+      expect(screen.getByTestId('pause-strategy-button')).toBeDisabled()
+      expect(screen.getByTestId('resume-strategy-button')).toBeEnabled()
+      expect(screen.getByTestId('skip-next-button')).toBeDisabled()
+    })
+  })
+
+  it('resumes a paused strategy through the resume endpoint', async () => {
+    const fetchMock = stubStrategyFetch({ strategy: createStrategy({ status: 'paused' }) })
+
+    renderPage()
+
+    fireEvent.click(await screen.findByTestId('resume-strategy-button'))
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.objectContaining({ pathname: `/api/v1/strategies/${strategyId}/resume` }),
+        expect.objectContaining({ method: 'POST' }),
+      )
+    })
+  })
+
+  it('queues skip next through the skip endpoint', async () => {
+    const fetchMock = stubStrategyFetch()
+
+    renderPage()
+
+    fireEvent.click(await screen.findByTestId('skip-next-button'))
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.objectContaining({ pathname: `/api/v1/strategies/${strategyId}/skip-next` }),
+        expect.objectContaining({ method: 'POST' }),
+      )
+    })
+
+    expect(await screen.findByText('skip next queued')).toBeInTheDocument()
+  })
+
+  it('shows conflict feedback when a lifecycle transition fails', async () => {
+    stubStrategyFetch({
+      pauseResult: {
+        status: 409,
+        body: { error: 'strategy already paused', code: 'strategy_conflict' },
+      },
+    })
+
+    renderPage()
+
+    fireEvent.click(await screen.findByTestId('pause-strategy-button'))
+
+    expect(await screen.findByTestId('strategy-action-error')).toHaveTextContent('strategy already paused')
   })
 
   it('shows error state when strategy fetch fails', async () => {
     const fetchMock = vi.fn().mockRejectedValue(new Error('Network error'))
     vi.stubGlobal('fetch', fetchMock)
 
-    render(<StrategyDetailPage />, { wrapper: Wrapper })
+    renderPage()
 
     expect(await screen.findByTestId('strategy-detail-error')).toBeInTheDocument()
   })
 
   it('renders run history and config editor', async () => {
-    const strategy = {
-      id: strategyId,
-      name: 'Test Strategy',
-      ticker: 'TEST',
-      market_type: 'stock',
-      status: 'active',
-      skip_next_run: false,
-      is_paper: true,
-      config: {},
-      created_at: '2025-01-01T00:00:00Z',
-      updated_at: '2025-01-01T00:00:00Z',
-    }
-
+    const strategy = createStrategy({ name: 'Test Strategy', ticker: 'TEST', is_paper: true })
     const runs = {
       data: [
         {
@@ -149,14 +268,14 @@ describe('StrategyDetailPage', () => {
       const url = typeof input === 'string' ? input : input.toString()
 
       if (url.includes('/runs')) {
-        return Promise.resolve({ ok: true, status: 200, json: async () => runs })
+        return Promise.resolve(createResponse(runs))
       }
 
-      return Promise.resolve({ ok: true, status: 200, json: async () => strategy })
+      return Promise.resolve(createResponse(strategy))
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    render(<StrategyDetailPage />, { wrapper: Wrapper })
+    renderPage()
 
     expect(await screen.findByTestId('strategy-run-history')).toBeInTheDocument()
     expect(screen.getByTestId('strategy-config-editor')).toBeInTheDocument()
