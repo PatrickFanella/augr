@@ -25,13 +25,14 @@ type PipelineConfig struct {
 
 // Pipeline holds all dependencies and configuration needed by the executor.
 type Pipeline struct {
-	nodes     map[Phase][]Node
-	persister DecisionPersister
-	events    chan<- PipelineEvent
-	logger    *slog.Logger
-	config    PipelineConfig
-	nowMu     sync.RWMutex
-	now       func() time.Time
+	nodes          map[Phase][]Node
+	persister      DecisionPersister
+	events         chan<- PipelineEvent
+	logger         *slog.Logger
+	config         PipelineConfig
+	nowMu          sync.RWMutex
+	now            func() time.Time
+	configSnapshot json.RawMessage // set by ExecuteStrategy for auditability
 }
 
 // NewPipeline constructs a Pipeline with the supplied dependencies. Default
@@ -431,6 +432,43 @@ func (p *Pipeline) executeRiskDebatePhase(ctx context.Context, state *PipelineSt
 	})
 }
 
+// ExecuteStrategy runs the full pipeline for the given strategy, resolving
+// the strategy's JSON config against the provided global settings before
+// execution begins. The resolved config overrides debate rounds, timeouts,
+// and LLM selections. A JSON snapshot of the resolved config is stored in
+// the pipeline run for auditability.
+//
+// Callers that do not need config resolution can continue using Execute directly.
+func (p *Pipeline) ExecuteStrategy(ctx context.Context, strategy domain.Strategy, globals GlobalSettings) (*PipelineState, error) {
+	// Parse the strategy's JSONB config into a typed StrategyConfig.
+	var stratCfg *StrategyConfig
+	if len(strategy.Config) > 0 {
+		var parsed StrategyConfig
+		if err := json.Unmarshal(strategy.Config, &parsed); err != nil {
+			return nil, fmt.Errorf("agent/pipeline: parse strategy config: %w", err)
+		}
+		stratCfg = &parsed
+	}
+
+	resolved := ResolveConfig(stratCfg, globals)
+
+	// Apply resolved pipeline config to the pipeline's runtime config.
+	p.config.ResearchDebateRounds = resolved.PipelineConfig.DebateRounds
+	p.config.RiskDebateRounds = resolved.PipelineConfig.DebateRounds
+	if resolved.PipelineConfig.AnalysisTimeoutSeconds > 0 {
+		p.config.PhaseTimeout = time.Duration(resolved.PipelineConfig.AnalysisTimeoutSeconds) * time.Second
+	}
+
+	// Snapshot the resolved config for auditability.
+	configSnapshot, _ := json.Marshal(resolved)
+
+	// Store the snapshot so Execute can attach it to the PipelineRun.
+	p.configSnapshot = configSnapshot
+	defer func() { p.configSnapshot = nil }()
+
+	return p.Execute(ctx, strategy.ID, strategy.Ticker)
+}
+
 // Execute runs the full pipeline for the given strategy and ticker. It creates
 // a PipelineRun record in the database (status=running), applies the
 // pipeline-level timeout from config, and executes the four phases in order:
@@ -454,12 +492,13 @@ func (p *Pipeline) Execute(ctx context.Context, strategyID uuid.UUID, ticker str
 
 	now := p.currentTime().UTC()
 	run := &domain.PipelineRun{
-		ID:         uuid.New(),
-		StrategyID: strategyID,
-		Ticker:     ticker,
-		TradeDate:  now.Truncate(24 * time.Hour),
-		Status:     domain.PipelineStatusRunning,
-		StartedAt:  now,
+		ID:             uuid.New(),
+		StrategyID:     strategyID,
+		Ticker:         ticker,
+		TradeDate:      now.Truncate(24 * time.Hour),
+		Status:         domain.PipelineStatusRunning,
+		StartedAt:      now,
+		ConfigSnapshot: p.configSnapshot,
 	}
 
 	if err := p.persister.RecordRunStart(ctx, run); err != nil {

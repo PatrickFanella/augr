@@ -39,9 +39,9 @@ func (r *AgentDecisionRepo) Create(ctx context.Context, decision *domain.AgentDe
 		`INSERT INTO agent_decisions (
 			pipeline_run_id, agent_role, phase, round_number, input_summary,
 			output_text, output_structured, llm_provider, llm_model,
-			prompt_text, prompt_tokens, completion_tokens, latency_ms
+			prompt_text, prompt_tokens, completion_tokens, latency_ms, cost_usd
 		)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 		 RETURNING id, created_at`,
 		decision.PipelineRunID,
 		decision.AgentRole,
@@ -56,6 +56,7 @@ func (r *AgentDecisionRepo) Create(ctx context.Context, decision *domain.AgentDe
 		decision.PromptTokens,
 		decision.CompletionTokens,
 		decision.LatencyMS,
+		decision.CostUSD,
 	)
 
 	if err := row.Scan(&decision.ID, &decision.CreatedAt); err != nil {
@@ -111,6 +112,7 @@ func scanAgentDecision(sc scanner) (*domain.AgentDecision, error) {
 		promptTokens         *int
 		completionTokens     *int
 		latencyMS            *int
+		costUSD              *float64
 	)
 
 	err := sc.Scan(
@@ -128,6 +130,7 @@ func scanAgentDecision(sc scanner) (*domain.AgentDecision, error) {
 		&promptTokens,
 		&completionTokens,
 		&latencyMS,
+		&costUSD,
 		&d.CreatedAt,
 	)
 	if err != nil {
@@ -157,6 +160,9 @@ func scanAgentDecision(sc scanner) (*domain.AgentDecision, error) {
 	}
 	if latencyMS != nil {
 		d.LatencyMS = *latencyMS
+	}
+	if costUSD != nil {
+		d.CostUSD = *costUSD
 	}
 
 	return &d, nil
@@ -194,7 +200,7 @@ func buildGetByRunQuery(runID uuid.UUID, filter repository.AgentDecisionFilter, 
 
 	base := `SELECT id, pipeline_run_id, agent_role, phase, round_number, input_summary,
 		 output_text, output_structured, llm_provider, llm_model, prompt_text,
-		 prompt_tokens, completion_tokens, latency_ms, created_at
+		 prompt_tokens, completion_tokens, latency_ms, cost_usd, created_at
 		 FROM agent_decisions`
 
 	base += " WHERE " + strings.Join(conditions, " AND ")

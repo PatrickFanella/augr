@@ -19,6 +19,7 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution/paper"
+	"github.com/PatrickFanella/get-rich-quick/internal/metrics"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 	pgrepo "github.com/PatrickFanella/get-rich-quick/internal/repository/postgres"
 	"github.com/PatrickFanella/get-rich-quick/internal/risk"
@@ -33,6 +34,8 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 
 	redisHealth, closeRedis := newRedisHealthCheck(cfg)
 
+	appMetrics := metrics.New()
+
 	strategyRepo := pgrepo.NewStrategyRepo(db.Pool)
 	runRepo := pgrepo.NewPipelineRunRepo(db.Pool)
 	snapshotRepo := pgrepo.NewPipelineRunSnapshotRepo(db.Pool)
@@ -45,6 +48,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 	apiKeyRepo := pgrepo.NewAPIKeyRepo(db.Pool)
 	auditLogRepo := pgrepo.NewAuditLogRepo(db.Pool)
 	userRepo := pgrepo.NewUserRepo(db.Pool)
+	conversationRepo := pgrepo.NewConversationRepo(db.Pool)
 
 	riskEngine := risk.NewRiskEngine(
 		risk.PositionLimits{
@@ -64,25 +68,29 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 	)
 
 	deps := api.Deps{
-		Strategies:  strategyRepo,
-		Runs:        runRepo,
-		Decisions:   decisionRepo,
-		Orders:      orderRepo,
-		Positions:   positionRepo,
-		Trades:      tradeRepo,
-		Memories:    memoryRepo,
-		APIKeys:     apiKeyRepo,
-		Users:       userRepo,
-		Risk:        riskEngine,
-		Settings:    api.NewMemorySettingsServiceFromConfig(cfg),
-		DBHealth:    api.HealthCheckFunc(db.Pool.Ping),
-		RedisHealth: redisHealth,
+		Strategies:     strategyRepo,
+		Runs:           runRepo,
+		Decisions:      decisionRepo,
+		Orders:         orderRepo,
+		Positions:      positionRepo,
+		Trades:         tradeRepo,
+		Memories:       memoryRepo,
+		APIKeys:        apiKeyRepo,
+		Users:          userRepo,
+		Risk:           riskEngine,
+		Settings:       api.NewMemorySettingsServiceFromConfig(cfg),
+		DBHealth:       api.HealthCheckFunc(db.Pool.Ping),
+		RedisHealth:    redisHealth,
+		Conversations:  conversationRepo,
+		AuditLog:       auditLogRepo,
+		Events:         eventRepo,
+		MetricsHandler: appMetrics.Handler(),
 	}
 
 	var sched *scheduler.Scheduler
 	if strings.EqualFold(cfg.Environment, "smoke") {
 		pipeline := newSmokePipeline(runRepo, snapshotRepo, decisionRepo, eventRepo, logger)
-		deps.Runner = newSmokeStrategyRunner(pipeline, runRepo, orderRepo, positionRepo, tradeRepo, auditLogRepo, riskEngine, logger)
+		deps.Runner = newSmokeStrategyRunner(pipeline, runRepo, orderRepo, positionRepo, tradeRepo, auditLogRepo, eventRepo, riskEngine, logger)
 		sched = scheduler.NewScheduler(strategyRepo, pipeline, riskEngine, logger)
 	}
 
@@ -152,6 +160,7 @@ func newSmokeStrategyRunner(
 	positionRepo repository.PositionRepository,
 	tradeRepo repository.TradeRepository,
 	auditLogRepo repository.AuditLogRepository,
+	agentEventRepo repository.AgentEventRepository,
 	riskEngine risk.RiskEngine,
 	logger *slog.Logger,
 ) api.StrategyRunner {
@@ -163,6 +172,7 @@ func newSmokeStrategyRunner(
 		orderRepo,
 		tradeRepo,
 		auditLogRepo,
+		agentEventRepo,
 		execution.SizingConfig{
 			Method:      execution.PositionSizingMethodFixedFractional,
 			FractionPct: 0.05,
@@ -180,7 +190,7 @@ func newSmokeStrategyRunner(
 }
 
 func (r *smokeStrategyRunner) RunStrategy(ctx context.Context, strategy domain.Strategy) (*api.StrategyRunResult, error) {
-	state, err := r.pipeline.Execute(ctx, strategy.ID, strategy.Ticker)
+	state, err := r.pipeline.ExecuteStrategy(ctx, strategy, agent.GlobalSettings{})
 	if err != nil {
 		return nil, err
 	}

@@ -63,4 +63,5 @@ type CompletionResponse struct {
 	Usage     CompletionUsage `json:"usage"`
 	Model     string          `json:"model,omitempty"`
 	LatencyMS int             `json:"latency_ms,omitempty"`
+	CostUSD   float64         `json:"cost_usd,omitempty"`
 }

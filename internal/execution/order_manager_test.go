@@ -394,6 +394,32 @@ func (r *mockAuditLogRepo) Query(ctx context.Context, filter repository.AuditLog
 	return nil, nil
 }
 
+// mockAgentEventRepo implements repository.AgentEventRepository.
+type mockAgentEventRepo struct {
+	mu     sync.Mutex
+	events []*domain.AgentEvent
+
+	createFn func(ctx context.Context, event *domain.AgentEvent) error
+}
+
+func (r *mockAgentEventRepo) Create(ctx context.Context, event *domain.AgentEvent) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.createFn != nil {
+		return r.createFn(ctx, event)
+	}
+
+	cp := *event
+	r.events = append(r.events, &cp)
+
+	return nil
+}
+
+func (r *mockAgentEventRepo) List(_ context.Context, _ repository.AgentEventFilter, _, _ int) ([]domain.AgentEvent, error) {
+	return nil, nil
+}
+
 // ---------------------------------------------------------------------------
 // Test helpers
 // ---------------------------------------------------------------------------
@@ -419,6 +445,7 @@ func newTestOrderManager(
 		orderRepo,
 		tradeRepo,
 		auditRepo,
+		nil, // agentEventRepo
 		cfg,
 		slog.Default(),
 	)
@@ -948,6 +975,7 @@ func TestNewOrderManager_NilLogger(t *testing.T) {
 		&mockOrderRepo{},
 		&mockTradeRepo{},
 		&mockAuditLogRepo{},
+		nil, // agentEventRepo
 		execution.SizingConfig{},
 		nil, // nil logger should not panic
 	)
@@ -1070,5 +1098,175 @@ func TestProcessSignal_EntryTypeVariants(t *testing.T) {
 				t.Fatalf("order type = %s, want %s", got, tc.wantType)
 			}
 		})
+	}
+}
+
+func TestProcessSignal_EmitsOrderEvents(t *testing.T) {
+	t.Parallel()
+
+	broker := &mockBroker{}
+	riskEng := &mockRiskEngine{}
+	orderRepo := &mockOrderRepo{}
+	positionRepo := &mockPositionRepo{}
+	tradeRepo := &mockTradeRepo{}
+	auditRepo := &mockAuditLogRepo{}
+	eventRepo := &mockAgentEventRepo{}
+
+	cfg := execution.SizingConfig{
+		Method:      execution.PositionSizingMethodFixedFractional,
+		FractionPct: 0.02,
+	}
+
+	mgr := execution.NewOrderManager(
+		broker,
+		"paper",
+		riskEng,
+		positionRepo,
+		orderRepo,
+		tradeRepo,
+		auditRepo,
+		eventRepo,
+		cfg,
+		slog.Default(),
+	)
+
+	strategyID := uuid.New()
+	runID := uuid.New()
+
+	err := mgr.ProcessSignal(
+		context.Background(),
+		defaultSignal(),
+		defaultPlan(),
+		strategyID,
+		runID,
+	)
+	if err != nil {
+		t.Fatalf("ProcessSignal() unexpected error: %v", err)
+	}
+
+	eventRepo.mu.Lock()
+	events := eventRepo.events
+	eventRepo.mu.Unlock()
+
+	// Happy path: broker submits then returns filled → expect submitted + filled.
+	if len(events) != 2 {
+		t.Fatalf("expected 2 agent events, got %d", len(events))
+	}
+
+	wantKinds := []string{execution.OrderEventSubmitted, execution.OrderEventFilled}
+	for i, want := range wantKinds {
+		if events[i].EventKind != want {
+			t.Errorf("event[%d].EventKind = %q, want %q", i, events[i].EventKind, want)
+		}
+		if events[i].PipelineRunID == nil || *events[i].PipelineRunID != runID {
+			t.Errorf("event[%d].PipelineRunID = %v, want %s", i, events[i].PipelineRunID, runID)
+		}
+		if events[i].StrategyID == nil || *events[i].StrategyID != strategyID {
+			t.Errorf("event[%d].StrategyID = %v, want %s", i, events[i].StrategyID, strategyID)
+		}
+		if events[i].Metadata == nil {
+			t.Errorf("event[%d].Metadata is nil", i)
+		} else {
+			var meta map[string]any
+			if err := json.Unmarshal(events[i].Metadata, &meta); err != nil {
+				t.Fatalf("event[%d] metadata unmarshal: %v", i, err)
+			}
+			if meta["ticker"] != "AAPL" {
+				t.Errorf("event[%d] metadata ticker = %v, want AAPL", i, meta["ticker"])
+			}
+		}
+	}
+}
+
+func TestProcessSignal_NilEventRepo_NoPanic(t *testing.T) {
+	t.Parallel()
+
+	broker := &mockBroker{}
+	riskEng := &mockRiskEngine{}
+	orderRepo := &mockOrderRepo{}
+	positionRepo := &mockPositionRepo{}
+	tradeRepo := &mockTradeRepo{}
+	auditRepo := &mockAuditLogRepo{}
+
+	cfg := execution.SizingConfig{
+		Method:      execution.PositionSizingMethodFixedFractional,
+		FractionPct: 0.02,
+	}
+
+	mgr := execution.NewOrderManager(
+		broker,
+		"paper",
+		riskEng,
+		positionRepo,
+		orderRepo,
+		tradeRepo,
+		auditRepo,
+		nil, // nil agentEventRepo — must not panic
+		cfg,
+		slog.Default(),
+	)
+
+	err := mgr.ProcessSignal(
+		context.Background(),
+		defaultSignal(),
+		defaultPlan(),
+		uuid.New(),
+		uuid.New(),
+	)
+	if err != nil {
+		t.Fatalf("ProcessSignal() with nil event repo: %v", err)
+	}
+}
+
+func TestProcessSignal_EventRepoError_DoesNotFailOrder(t *testing.T) {
+	t.Parallel()
+
+	broker := &mockBroker{}
+	riskEng := &mockRiskEngine{}
+	orderRepo := &mockOrderRepo{}
+	positionRepo := &mockPositionRepo{}
+	tradeRepo := &mockTradeRepo{}
+	auditRepo := &mockAuditLogRepo{}
+	eventRepo := &mockAgentEventRepo{
+		createFn: func(_ context.Context, _ *domain.AgentEvent) error {
+			return errors.New("event repo down")
+		},
+	}
+
+	cfg := execution.SizingConfig{
+		Method:      execution.PositionSizingMethodFixedFractional,
+		FractionPct: 0.02,
+	}
+
+	mgr := execution.NewOrderManager(
+		broker,
+		"paper",
+		riskEng,
+		positionRepo,
+		orderRepo,
+		tradeRepo,
+		auditRepo,
+		eventRepo,
+		cfg,
+		slog.Default(),
+	)
+
+	err := mgr.ProcessSignal(
+		context.Background(),
+		defaultSignal(),
+		defaultPlan(),
+		uuid.New(),
+		uuid.New(),
+	)
+	if err != nil {
+		t.Fatalf("ProcessSignal() should succeed even when event repo fails: %v", err)
+	}
+
+	// Order should still be created successfully.
+	orderRepo.mu.Lock()
+	gotOrders := len(orderRepo.orders)
+	orderRepo.mu.Unlock()
+	if gotOrders != 1 {
+		t.Fatalf("expected 1 order, got %d", gotOrders)
 	}
 }

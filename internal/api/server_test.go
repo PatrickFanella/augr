@@ -1743,17 +1743,18 @@ func (s *stubStrategyRepo) lastListedFilter() (repository.StrategyFilter, bool) 
 
 type stubRunRepo struct {
 	lastFilter repository.PipelineRunFilter
+	runs       []domain.PipelineRun
 }
 
 func (*stubRunRepo) Create(context.Context, *domain.PipelineRun) error { return nil }
 
-func (*stubRunRepo) Get(_ context.Context, _ uuid.UUID, _ time.Time) (*domain.PipelineRun, error) {
+func (s *stubRunRepo) Get(_ context.Context, _ uuid.UUID, _ time.Time) (*domain.PipelineRun, error) {
 	return nil, fmt.Errorf("run: %w", repository.ErrNotFound)
 }
 
 func (s *stubRunRepo) List(_ context.Context, filter repository.PipelineRunFilter, _, _ int) ([]domain.PipelineRun, error) {
 	s.lastFilter = filter
-	return nil, nil
+	return s.runs, nil
 }
 
 func (*stubRunRepo) UpdateStatus(context.Context, uuid.UUID, time.Time, repository.PipelineRunStatusUpdate) error {
@@ -1931,3 +1932,290 @@ func (stubRiskEngine) IsKillSwitchActive(context.Context) (bool, error)         
 func (stubRiskEngine) ActivateKillSwitch(context.Context, string) error           { return nil }
 func (stubRiskEngine) DeactivateKillSwitch(context.Context) error                 { return nil }
 func (stubRiskEngine) UpdateMetrics(context.Context, float64, float64, int) error { return nil }
+
+// ---------------------------------------------------------------------------
+// Stubs for new repository dependencies
+// ---------------------------------------------------------------------------
+
+type stubConversationRepo struct {
+	mu    sync.Mutex
+	convs []domain.Conversation
+	msgs  map[uuid.UUID][]domain.ConversationMessage
+}
+
+func newStubConversationRepo() *stubConversationRepo {
+	return &stubConversationRepo{msgs: make(map[uuid.UUID][]domain.ConversationMessage)}
+}
+
+func (s *stubConversationRepo) CreateConversation(_ context.Context, conv *domain.Conversation) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if conv.ID == uuid.Nil {
+		conv.ID = uuid.New()
+	}
+	conv.CreatedAt = time.Now()
+	conv.UpdatedAt = time.Now()
+	s.convs = append(s.convs, *conv)
+	return nil
+}
+
+func (s *stubConversationRepo) GetConversation(_ context.Context, id uuid.UUID) (*domain.Conversation, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.convs {
+		if s.convs[i].ID == id {
+			return &s.convs[i], nil
+		}
+	}
+	return nil, repository.ErrNotFound
+}
+
+func (s *stubConversationRepo) ListConversations(_ context.Context, _ repository.ConversationFilter, _, _ int) ([]domain.Conversation, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.convs, nil
+}
+
+func (s *stubConversationRepo) AddMessage(_ context.Context, convID uuid.UUID, msg *domain.ConversationMessage) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	msg.ID = uuid.New()
+	msg.ConversationID = convID
+	msg.CreatedAt = time.Now()
+	s.msgs[convID] = append(s.msgs[convID], *msg)
+	return nil
+}
+
+func (s *stubConversationRepo) GetMessages(_ context.Context, convID uuid.UUID, _, _ int) ([]domain.ConversationMessage, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.msgs[convID], nil
+}
+
+type stubAuditLogRepo struct {
+	entries []domain.AuditLogEntry
+}
+
+func (s *stubAuditLogRepo) Create(_ context.Context, entry *domain.AuditLogEntry) error {
+	if entry.ID == uuid.Nil {
+		entry.ID = uuid.New()
+	}
+	entry.CreatedAt = time.Now()
+	s.entries = append(s.entries, *entry)
+	return nil
+}
+
+func (s *stubAuditLogRepo) Query(_ context.Context, _ repository.AuditLogFilter, _, _ int) ([]domain.AuditLogEntry, error) {
+	return s.entries, nil
+}
+
+type stubEventRepo struct {
+	events []domain.AgentEvent
+}
+
+func (s *stubEventRepo) Create(_ context.Context, event *domain.AgentEvent) error {
+	if event.ID == uuid.Nil {
+		event.ID = uuid.New()
+	}
+	event.CreatedAt = time.Now()
+	s.events = append(s.events, *event)
+	return nil
+}
+
+func (s *stubEventRepo) List(_ context.Context, _ repository.AgentEventFilter, _, _ int) ([]domain.AgentEvent, error) {
+	return s.events, nil
+}
+
+// ---------------------------------------------------------------------------
+// Tests for new handlers
+// ---------------------------------------------------------------------------
+
+func TestRefreshTokenEndpoint(t *testing.T) {
+	t.Parallel()
+	deps := testDeps()
+	deps.Users.(*stubUserRepo).mustStore(t, "testuser", "password123")
+	srv := newTestServerWithDeps(t, deps)
+
+	// First get a valid token pair via login.
+	rr := doUnauthenticatedRequest(t, srv, http.MethodPost, "/api/v1/auth/login", loginRequest{
+		Username: "testuser",
+		Password: "password123",
+	})
+	if rr.Code != http.StatusOK {
+		t.Fatalf("login status = %d, want %d; body: %s", rr.Code, http.StatusOK, rr.Body.String())
+	}
+	var loginResp LoginResponse
+	if err := json.NewDecoder(rr.Body).Decode(&loginResp); err != nil {
+		t.Fatalf("decode login response: %v", err)
+	}
+
+	// Use the refresh token.
+	rr = doUnauthenticatedRequest(t, srv, http.MethodPost, "/api/v1/auth/refresh", map[string]string{
+		"refresh_token": loginResp.RefreshToken,
+	})
+	if rr.Code != http.StatusOK {
+		t.Fatalf("refresh status = %d, want %d; body: %s", rr.Code, http.StatusOK, rr.Body.String())
+	}
+	var refreshResp LoginResponse
+	if err := json.NewDecoder(rr.Body).Decode(&refreshResp); err != nil {
+		t.Fatalf("decode refresh response: %v", err)
+	}
+	if refreshResp.AccessToken == "" {
+		t.Fatal("expected non-empty access_token in refresh response")
+	}
+}
+
+func TestRefreshTokenInvalidToken(t *testing.T) {
+	t.Parallel()
+	srv := newTestServer(t)
+
+	rr := doUnauthenticatedRequest(t, srv, http.MethodPost, "/api/v1/auth/refresh", map[string]string{
+		"refresh_token": "invalid-token",
+	})
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusUnauthorized)
+	}
+}
+
+func TestRefreshTokenMissingBody(t *testing.T) {
+	t.Parallel()
+	srv := newTestServer(t)
+
+	rr := doUnauthenticatedRequest(t, srv, http.MethodPost, "/api/v1/auth/refresh", map[string]string{
+		"refresh_token": "",
+	})
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusBadRequest)
+	}
+}
+
+func TestPauseStrategy(t *testing.T) {
+	t.Parallel()
+	srv := newTestServer(t)
+
+	// stratA is status=active by default in testDeps.
+	rr := doRequest(t, srv, http.MethodPost, "/api/v1/strategies/"+stratA.ID.String()+"/pause", nil)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", rr.Code, http.StatusOK, rr.Body.String())
+	}
+	body := decodeJSON[domain.Strategy](t, rr)
+	if body.Status != domain.StrategyStatusPaused {
+		t.Fatalf("status = %q, want %q", body.Status, domain.StrategyStatusPaused)
+	}
+}
+
+func TestPauseStrategyAlreadyPaused(t *testing.T) {
+	t.Parallel()
+	// stratB has status=active too; pause it first, then pause again.
+	deps := testDeps()
+	pausedStrat := stratB
+	pausedStrat.Status = domain.StrategyStatusPaused
+	deps.Strategies.(*stubStrategyRepo).items[pausedStrat.ID] = pausedStrat
+	srv := newTestServerWithDeps(t, deps)
+
+	rr := doRequest(t, srv, http.MethodPost, "/api/v1/strategies/"+pausedStrat.ID.String()+"/pause", nil)
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want %d; body: %s", rr.Code, http.StatusConflict, rr.Body.String())
+	}
+}
+
+func TestResumeStrategy(t *testing.T) {
+	t.Parallel()
+	deps := testDeps()
+	pausedStrat := stratA
+	pausedStrat.Status = domain.StrategyStatusPaused
+	deps.Strategies.(*stubStrategyRepo).items[pausedStrat.ID] = pausedStrat
+	srv := newTestServerWithDeps(t, deps)
+
+	rr := doRequest(t, srv, http.MethodPost, "/api/v1/strategies/"+pausedStrat.ID.String()+"/resume", nil)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", rr.Code, http.StatusOK, rr.Body.String())
+	}
+	body := decodeJSON[domain.Strategy](t, rr)
+	if body.Status != domain.StrategyStatusActive {
+		t.Fatalf("status = %q, want %q", body.Status, domain.StrategyStatusActive)
+	}
+}
+
+func TestSkipNextStrategy(t *testing.T) {
+	t.Parallel()
+	srv := newTestServer(t)
+
+	rr := doRequest(t, srv, http.MethodPost, "/api/v1/strategies/"+stratA.ID.String()+"/skip-next", nil)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", rr.Code, http.StatusOK, rr.Body.String())
+	}
+	body := decodeJSON[domain.Strategy](t, rr)
+	if !body.SkipNextRun {
+		t.Fatal("skip_next_run should be true")
+	}
+}
+
+func TestListEventsEndpoint(t *testing.T) {
+	t.Parallel()
+	deps := testDeps()
+	deps.Events = &stubEventRepo{}
+	srv := newTestServerWithDeps(t, deps)
+
+	rr := doRequest(t, srv, http.MethodGet, "/api/v1/events", nil)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", rr.Code, http.StatusOK, rr.Body.String())
+	}
+}
+
+func TestListAuditLogEndpoint(t *testing.T) {
+	t.Parallel()
+	deps := testDeps()
+	deps.AuditLog = &stubAuditLogRepo{}
+	srv := newTestServerWithDeps(t, deps)
+
+	rr := doRequest(t, srv, http.MethodGet, "/api/v1/audit-log", nil)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", rr.Code, http.StatusOK, rr.Body.String())
+	}
+}
+
+func TestListConversationsEndpoint(t *testing.T) {
+	t.Parallel()
+	deps := testDeps()
+	deps.Conversations = newStubConversationRepo()
+	srv := newTestServerWithDeps(t, deps)
+
+	rr := doRequest(t, srv, http.MethodGet, "/api/v1/conversations", nil)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", rr.Code, http.StatusOK, rr.Body.String())
+	}
+}
+
+func TestCreateConversationEndpoint(t *testing.T) {
+	t.Parallel()
+	deps := testDeps()
+
+	// Seed a pipeline run so the handler can verify it exists.
+	runID := uuid.New()
+	deps.Runs = &stubRunRepo{
+		runs: []domain.PipelineRun{{
+			ID:         runID,
+			StrategyID: stratA.ID,
+			Ticker:     "AAPL",
+			Status:     domain.PipelineStatusCompleted,
+		}},
+	}
+	deps.Conversations = newStubConversationRepo()
+	srv := newTestServerWithDeps(t, deps)
+
+	rr := doRequest(t, srv, http.MethodPost, "/api/v1/conversations", map[string]any{
+		"pipeline_run_id": runID.String(),
+		"agent_role":      "bull_researcher",
+	})
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body: %s", rr.Code, http.StatusCreated, rr.Body.String())
+	}
+	var conv domain.Conversation
+	if err := json.NewDecoder(rr.Body).Decode(&conv); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if conv.PipelineRunID != runID {
+		t.Fatalf("pipeline_run_id = %s, want %s", conv.PipelineRunID, runID)
+	}
+}

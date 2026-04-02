@@ -296,6 +296,17 @@ export interface WebSocketMessage<TData = unknown> {
   timestamp?: ISODateString
 }
 
+
+export interface LoginRequest {
+  username: string
+  password: string
+}
+
+export interface LoginResponse {
+  access_token: string
+  refresh_token: string
+  expires_at: ISODateString
+}
 export interface WebSocketAck {
   status: 'ok'
   action: 'subscribe' | 'unsubscribe' | 'subscribe_all' | 'unsubscribe_all'

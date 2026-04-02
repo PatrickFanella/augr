@@ -88,6 +88,7 @@ type PipelineRun struct {
 	CompletedAt    *time.Time      `json:"completed_at,omitempty"`
 	ErrorMessage   string          `json:"error_message,omitempty"`
 	ConfigSnapshot json.RawMessage `json:"config_snapshot,omitempty"`
+	PhaseTimings   json.RawMessage `json:"phase_timings,omitempty"`
 }
 
 // PipelineRunSnapshot captures market data made available during a pipeline run.

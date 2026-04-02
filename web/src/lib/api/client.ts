@@ -5,6 +5,8 @@ import type {
   EngineStatus,
   ErrorResponse,
   HealthStatus,
+  LoginRequest,
+  LoginResponse,
   KillSwitchToggleRequest,
   KillSwitchToggleResponse,
   ListResponse,
@@ -77,6 +79,10 @@ export class ApiClient {
 
   async health() {
     return this.request<HealthStatus>('/health')
+  }
+
+  async login(data: LoginRequest) {
+    return this.request<LoginResponse>('/api/v1/auth/login', { method: 'POST', body: data })
   }
 
   async listStrategies(params: StrategyListParams & PaginationParams = {}) {

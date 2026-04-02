@@ -16,6 +16,7 @@ const (
 	ErrCodeMethodNotAllowed = "ERR_METHOD_NOT_ALLOWED"
 	ErrCodeUnauthorized     = "ERR_UNAUTHORIZED"
 	ErrCodeRateLimited      = "ERR_RATE_LIMITED"
+	ErrCodeConflict         = "ERR_CONFLICT"
 )
 
 // ErrorResponse is the standard error envelope returned by the API.

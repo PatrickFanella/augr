@@ -699,3 +699,293 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 func isNotFound(err error) bool {
 	return errors.Is(err, repository.ErrNotFound)
 }
+
+// --- Auth: Refresh token (#417) ---
+
+func (s *Server) handleRefreshToken(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body", ErrCodeBadRequest)
+		return
+	}
+	if strings.TrimSpace(body.RefreshToken) == "" {
+		respondError(w, http.StatusBadRequest, "refresh_token is required", ErrCodeValidation)
+		return
+	}
+
+	tokenPair, err := s.auth.RefreshTokenPair(body.RefreshToken)
+	if err != nil {
+		respondError(w, http.StatusUnauthorized, "invalid or expired refresh token", ErrCodeUnauthorized)
+		return
+	}
+
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Pragma", "no-cache")
+	respondJSON(w, http.StatusOK, LoginResponse{
+		AccessToken:  tokenPair.AccessToken,
+		RefreshToken: tokenPair.RefreshToken,
+		ExpiresAt:    tokenPair.ExpiresAt.UTC(),
+	})
+}
+
+// --- Strategy lifecycle (#438) ---
+
+func (s *Server) handlePauseStrategy(w http.ResponseWriter, r *http.Request) {
+	s.handleStrategyTransition(w, r, domain.StrategyStatusActive, domain.StrategyStatusPaused, "pause")
+}
+
+func (s *Server) handleResumeStrategy(w http.ResponseWriter, r *http.Request) {
+	s.handleStrategyTransition(w, r, domain.StrategyStatusPaused, domain.StrategyStatusActive, "resume")
+}
+
+func (s *Server) handleSkipNextStrategy(w http.ResponseWriter, r *http.Request) {
+	id, err := parseUUID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, err.Error(), ErrCodeBadRequest)
+		return
+	}
+	strategy, err := s.strategies.Get(r.Context(), id)
+	if err != nil {
+		if isNotFound(err) {
+			respondError(w, http.StatusNotFound, "strategy not found", ErrCodeNotFound)
+			return
+		}
+		respondError(w, http.StatusInternalServerError, "failed to get strategy", ErrCodeInternal)
+		return
+	}
+	if strategy.Status != domain.StrategyStatusActive {
+		respondError(w, http.StatusConflict, "skip-next requires status \"active\"", ErrCodeConflict)
+		return
+	}
+	strategy.SkipNextRun = true
+	if err := s.strategies.Update(r.Context(), strategy); err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to update strategy", ErrCodeInternal)
+		return
+	}
+	respondJSON(w, http.StatusOK, strategy)
+}
+
+func (s *Server) handleStrategyTransition(w http.ResponseWriter, r *http.Request, fromStatus, toStatus, verb string) {
+	id, err := parseUUID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, err.Error(), ErrCodeBadRequest)
+		return
+	}
+	strategy, err := s.strategies.Get(r.Context(), id)
+	if err != nil {
+		if isNotFound(err) {
+			respondError(w, http.StatusNotFound, "strategy not found", ErrCodeNotFound)
+			return
+		}
+		respondError(w, http.StatusInternalServerError, "failed to get strategy", ErrCodeInternal)
+		return
+	}
+	if strategy.Status != fromStatus {
+		msg := fmt.Sprintf("cannot %s: strategy status is %q, must be %q", verb, strategy.Status, fromStatus)
+		respondError(w, http.StatusConflict, msg, ErrCodeConflict)
+		return
+	}
+	strategy.Status = toStatus
+	if err := s.strategies.Update(r.Context(), strategy); err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to update strategy", ErrCodeInternal)
+		return
+	}
+	respondJSON(w, http.StatusOK, strategy)
+}
+
+// --- Events (#462) ---
+
+func (s *Server) handleListEvents(w http.ResponseWriter, r *http.Request) {
+	if s.events == nil {
+		respondError(w, http.StatusNotImplemented, "events not configured", ErrCodeNotImplemented)
+		return
+	}
+	limit, offset := parsePagination(r)
+	q := r.URL.Query()
+
+	filter := repository.AgentEventFilter{
+		EventKind: q.Get("event_kind"),
+	}
+	if v := q.Get("pipeline_run_id"); v != "" {
+		if id, err := uuid.Parse(v); err == nil {
+			filter.PipelineRunID = &id
+		}
+	}
+	if v := q.Get("strategy_id"); v != "" {
+		if id, err := uuid.Parse(v); err == nil {
+			filter.StrategyID = &id
+		}
+	}
+	if v := q.Get("agent_role"); v != "" {
+		filter.AgentRole = domain.AgentRole(v)
+	}
+	if v := q.Get("after"); v != "" {
+		if t, err := time.Parse(time.RFC3339Nano, v); err == nil {
+			filter.CreatedAfter = &t
+		}
+	}
+	if v := q.Get("before"); v != "" {
+		if t, err := time.Parse(time.RFC3339Nano, v); err == nil {
+			filter.CreatedBefore = &t
+		}
+	}
+
+	events, err := s.events.List(r.Context(), filter, limit, offset)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to list events", ErrCodeInternal)
+		return
+	}
+	respondList(w, events, limit, offset)
+}
+
+// --- Conversations (#454, #445) ---
+
+func (s *Server) handleListConversations(w http.ResponseWriter, r *http.Request) {
+	if s.conversations == nil {
+		respondError(w, http.StatusNotImplemented, "conversations not configured", ErrCodeNotImplemented)
+		return
+	}
+	limit, offset := parsePagination(r)
+	q := r.URL.Query()
+
+	filter := repository.ConversationFilter{
+		AgentRole: domain.AgentRole(q.Get("agent_role")),
+	}
+	if v := q.Get("pipeline_run_id"); v != "" {
+		if id, err := uuid.Parse(v); err == nil {
+			filter.PipelineRunID = &id
+		}
+	}
+
+	conversations, err := s.conversations.ListConversations(r.Context(), filter, limit, offset)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to list conversations", ErrCodeInternal)
+		return
+	}
+	respondList(w, conversations, limit, offset)
+}
+
+func (s *Server) handleGetConversationMessages(w http.ResponseWriter, r *http.Request) {
+	if s.conversations == nil {
+		respondError(w, http.StatusNotImplemented, "conversations not configured", ErrCodeNotImplemented)
+		return
+	}
+	id, err := parseUUID(r, "id")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, err.Error(), ErrCodeBadRequest)
+		return
+	}
+
+	// Verify conversation exists.
+	if _, err := s.conversations.GetConversation(r.Context(), id); err != nil {
+		if isNotFound(err) {
+			respondError(w, http.StatusNotFound, "conversation not found", ErrCodeNotFound)
+			return
+		}
+		respondError(w, http.StatusInternalServerError, "failed to get conversation", ErrCodeInternal)
+		return
+	}
+
+	limit, offset := parsePagination(r)
+	messages, err := s.conversations.GetMessages(r.Context(), id, limit, offset)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to get messages", ErrCodeInternal)
+		return
+	}
+	respondList(w, messages, limit, offset)
+}
+
+func (s *Server) handleCreateConversation(w http.ResponseWriter, r *http.Request) {
+	if s.conversations == nil {
+		respondError(w, http.StatusNotImplemented, "conversations not configured", ErrCodeNotImplemented)
+		return
+	}
+	var body struct {
+		PipelineRunID uuid.UUID        `json:"pipeline_run_id"`
+		AgentRole     domain.AgentRole `json:"agent_role"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body", ErrCodeBadRequest)
+		return
+	}
+	if body.PipelineRunID == uuid.Nil {
+		respondError(w, http.StatusBadRequest, "pipeline_run_id is required", ErrCodeValidation)
+		return
+	}
+	if body.AgentRole == "" {
+		respondError(w, http.StatusBadRequest, "agent_role is required", ErrCodeValidation)
+		return
+	}
+
+	// Verify pipeline run exists.
+	run, err := s.findRunByID(r.Context(), body.PipelineRunID)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to verify pipeline run", ErrCodeInternal)
+		return
+	}
+	if run == nil {
+		respondError(w, http.StatusBadRequest, "pipeline_run_id does not reference an existing run", ErrCodeValidation)
+		return
+	}
+
+	// Auto-generate title.
+	roleLabel := strings.ReplaceAll(string(body.AgentRole), "_", " ")
+	title := fmt.Sprintf("Chat with %s \u2014 %s", titleCase(roleLabel), run.Ticker)
+
+	conv := &domain.Conversation{
+		PipelineRunID: body.PipelineRunID,
+		AgentRole:     body.AgentRole,
+		Title:         title,
+	}
+	if err := s.conversations.CreateConversation(r.Context(), conv); err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to create conversation", ErrCodeInternal)
+		return
+	}
+	respondJSON(w, http.StatusCreated, conv)
+}
+
+// --- Audit log (#455) ---
+
+func (s *Server) handleListAuditLog(w http.ResponseWriter, r *http.Request) {
+	if s.auditLog == nil {
+		respondError(w, http.StatusNotImplemented, "audit log not configured", ErrCodeNotImplemented)
+		return
+	}
+	limit, offset := parsePagination(r)
+	q := r.URL.Query()
+
+	filter := repository.AuditLogFilter{
+		EventType:  q.Get("event_type"),
+		EntityType: q.Get("entity_type"),
+	}
+	if v := q.Get("after"); v != "" {
+		if t, err := time.Parse(time.RFC3339Nano, v); err == nil {
+			filter.CreatedAfter = &t
+		}
+	}
+	if v := q.Get("before"); v != "" {
+		if t, err := time.Parse(time.RFC3339Nano, v); err == nil {
+			filter.CreatedBefore = &t
+		}
+	}
+
+	entries, err := s.auditLog.Query(r.Context(), filter, limit, offset)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to query audit log", ErrCodeInternal)
+		return
+	}
+	respondList(w, entries, limit, offset)
+}
+
+// titleCase capitalises the first letter of each whitespace-delimited word.
+func titleCase(s string) string {
+	words := strings.Fields(s)
+	for i, w := range words {
+		if len(w) > 0 {
+			words[i] = strings.ToUpper(w[:1]) + w[1:]
+		}
+	}
+	return strings.Join(words, " ")
+}

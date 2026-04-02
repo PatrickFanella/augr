@@ -118,6 +118,7 @@ func (p *RepoPersister) PersistDecision(
 			decision.PromptTokens = llmResponse.Response.Usage.PromptTokens
 			decision.CompletionTokens = llmResponse.Response.Usage.CompletionTokens
 			decision.LatencyMS = llmResponse.Response.LatencyMS
+			decision.CostUSD = llmResponse.Response.CostUSD
 		}
 	}
 

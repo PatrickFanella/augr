@@ -101,6 +101,7 @@ type AgentDecision struct {
 	PromptTokens     int             `json:"prompt_tokens,omitempty"`
 	CompletionTokens int             `json:"completion_tokens,omitempty"`
 	LatencyMS        int             `json:"latency_ms,omitempty"`
+	CostUSD          float64         `json:"cost_usd,omitempty"`
 	CreatedAt        time.Time       `json:"created_at"`
 }
 

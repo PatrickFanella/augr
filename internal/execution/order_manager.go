@@ -16,6 +16,14 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/risk"
 )
 
+// Order event kinds emitted by the OrderManager.
+const (
+	OrderEventSubmitted = "order_submitted"
+	OrderEventFilled    = "order_filled"
+	OrderEventCancelled = "order_cancelled"
+	OrderEventRejected  = "order_rejected"
+)
+
 // FinalSignal stores the extracted pipeline signal and confidence.
 type FinalSignal struct {
 	Signal     domain.PipelineSignal `json:"signal,omitempty"`
@@ -51,17 +59,18 @@ type SizingConfig struct {
 // OrderManager orchestrates the full order lifecycle:
 // Signal → Risk Check → Size → Create → Submit → Track → Update Position → Audit.
 type OrderManager struct {
-	broker       Broker
-	brokerName   string
-	riskEngine   risk.RiskEngine
-	positionRepo repository.PositionRepository
-	orderRepo    repository.OrderRepository
-	tradeRepo    repository.TradeRepository
-	auditLogRepo repository.AuditLogRepository
-	sizingConfig SizingConfig
-	logger       *slog.Logger
-	nowMu        sync.RWMutex
-	nowFunc      func() time.Time
+	broker         Broker
+	brokerName     string
+	riskEngine     risk.RiskEngine
+	positionRepo   repository.PositionRepository
+	orderRepo      repository.OrderRepository
+	tradeRepo      repository.TradeRepository
+	auditLogRepo   repository.AuditLogRepository
+	agentEventRepo repository.AgentEventRepository
+	sizingConfig   SizingConfig
+	logger         *slog.Logger
+	nowMu          sync.RWMutex
+	nowFunc        func() time.Time
 }
 
 // NewOrderManager constructs an OrderManager with the given dependencies.
@@ -73,6 +82,7 @@ func NewOrderManager(
 	orderRepo repository.OrderRepository,
 	tradeRepo repository.TradeRepository,
 	auditLogRepo repository.AuditLogRepository,
+	agentEventRepo repository.AgentEventRepository,
 	sizingConfig SizingConfig,
 	logger *slog.Logger,
 ) *OrderManager {
@@ -81,16 +91,17 @@ func NewOrderManager(
 	}
 
 	return &OrderManager{
-		broker:       broker,
-		brokerName:   brokerName,
-		riskEngine:   riskEngine,
-		positionRepo: positionRepo,
-		orderRepo:    orderRepo,
-		tradeRepo:    tradeRepo,
-		auditLogRepo: auditLogRepo,
-		sizingConfig: sizingConfig,
-		logger:       logger,
-		nowFunc:      time.Now,
+		broker:         broker,
+		brokerName:     brokerName,
+		riskEngine:     riskEngine,
+		positionRepo:   positionRepo,
+		orderRepo:      orderRepo,
+		tradeRepo:      tradeRepo,
+		auditLogRepo:   auditLogRepo,
+		agentEventRepo: agentEventRepo,
+		sizingConfig:   sizingConfig,
+		logger:         logger,
+		nowFunc:        time.Now,
 	}
 }
 
@@ -286,6 +297,8 @@ func (m *OrderManager) ProcessSignal(
 			m.logger.ErrorContext(ctx, "audit log failed", "error", auditErr)
 		}
 
+		m.emitOrderEvent(ctx, OrderEventRejected, order, strategyID, runID)
+
 		return fmt.Errorf("order_manager: submit order: %w", err)
 	}
 
@@ -304,6 +317,8 @@ func (m *OrderManager) ProcessSignal(
 		m.logger.ErrorContext(ctx, "audit log failed", "error", auditErr)
 	}
 
+	m.emitOrderEvent(ctx, OrderEventSubmitted, order, strategyID, runID)
+
 	// 7. Check order status and handle fill.
 	status, err := m.broker.GetOrderStatus(ctx, externalID)
 	if err != nil {
@@ -314,8 +329,8 @@ func (m *OrderManager) ProcessSignal(
 
 	switch status {
 	case domain.OrderStatusFilled:
-		return m.handleFill(ctx, order, plan, strategyID)
-	case domain.OrderStatusCancelled, domain.OrderStatusRejected:
+		return m.handleFill(ctx, order, plan, strategyID, runID)
+	case domain.OrderStatusCancelled:
 		if err := m.orderRepo.Update(ctx, order); err != nil {
 			return fmt.Errorf("order_manager: update %s order: %w", status, err)
 		}
@@ -323,6 +338,20 @@ func (m *OrderManager) ProcessSignal(
 		if auditErr := m.audit(ctx, "order_"+string(status), "order", &order.ID, nil); auditErr != nil {
 			m.logger.ErrorContext(ctx, "audit log failed", "error", auditErr)
 		}
+
+		m.emitOrderEvent(ctx, OrderEventCancelled, order, strategyID, runID)
+
+		return nil
+	case domain.OrderStatusRejected:
+		if err := m.orderRepo.Update(ctx, order); err != nil {
+			return fmt.Errorf("order_manager: update %s order: %w", status, err)
+		}
+
+		if auditErr := m.audit(ctx, "order_"+string(status), "order", &order.ID, nil); auditErr != nil {
+			m.logger.ErrorContext(ctx, "audit log failed", "error", auditErr)
+		}
+
+		m.emitOrderEvent(ctx, OrderEventRejected, order, strategyID, runID)
 
 		return nil
 	default:
@@ -340,7 +369,7 @@ func (m *OrderManager) handleFill(
 	ctx context.Context,
 	order *domain.Order,
 	plan TradingPlan,
-	strategyID uuid.UUID,
+	strategyID, runID uuid.UUID,
 ) error {
 	now := m.currentTime()
 	order.FilledQuantity = order.Quantity
@@ -425,6 +454,8 @@ func (m *OrderManager) handleFill(
 		m.logger.ErrorContext(ctx, "audit log failed", "error", auditErr)
 	}
 
+	m.emitOrderEvent(ctx, OrderEventFilled, order, strategyID, runID)
+
 	return nil
 }
 
@@ -475,4 +506,49 @@ func (m *OrderManager) audit(
 	}
 
 	return m.auditLogRepo.Create(ctx, entry)
+}
+
+// emitOrderEvent persists an AgentEvent for order lifecycle transitions.
+// If the agentEventRepo is nil or persistence fails, the error is logged
+// but does not propagate — order flow must not break on event emission.
+func (m *OrderManager) emitOrderEvent(
+	ctx context.Context,
+	eventKind string,
+	order *domain.Order,
+	strategyID, runID uuid.UUID,
+) {
+	if m.agentEventRepo == nil {
+		return
+	}
+
+	meta, err := json.Marshal(map[string]any{
+		"ticker":   order.Ticker,
+		"side":     order.Side,
+		"quantity": order.Quantity,
+		"price":    order.LimitPrice,
+		"broker":   order.Broker,
+		"order_id": order.ID,
+	})
+	if err != nil {
+		m.logger.ErrorContext(ctx, "order_manager: marshal event metadata", "error", err)
+		return
+	}
+
+	title := fmt.Sprintf("Order %s: %s %.4g %s", eventKind, order.Side, order.Quantity, order.Ticker)
+
+	event := &domain.AgentEvent{
+		ID:            uuid.New(),
+		PipelineRunID: &runID,
+		StrategyID:    &strategyID,
+		AgentRole:     domain.AgentRoleTrader,
+		EventKind:     eventKind,
+		Title:         title,
+		Tags:          []string{"order", eventKind},
+		Metadata:      meta,
+		CreatedAt:     m.currentTime(),
+	}
+
+	if err := m.agentEventRepo.Create(ctx, event); err != nil {
+		m.logger.ErrorContext(ctx, "order_manager: emit order event", "error", err, "kind", eventKind)
+	}
 }

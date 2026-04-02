@@ -25,14 +25,17 @@ type Server struct {
 	redisHealth HealthCheck
 
 	// Repositories
-	strategies repository.StrategyRepository
-	runs       repository.PipelineRunRepository
-	decisions  repository.AgentDecisionRepository
-	orders     repository.OrderRepository
-	positions  repository.PositionRepository
-	trades     repository.TradeRepository
-	memories   repository.MemoryRepository
-	users      repository.UserRepository
+	strategies    repository.StrategyRepository
+	runs          repository.PipelineRunRepository
+	decisions     repository.AgentDecisionRepository
+	orders        repository.OrderRepository
+	positions     repository.PositionRepository
+	trades        repository.TradeRepository
+	memories      repository.MemoryRepository
+	users         repository.UserRepository
+	conversations repository.ConversationRepository
+	auditLog      repository.AuditLogRepository
+	events        repository.AgentEventRepository
 
 	// Risk engine
 	risk     risk.RiskEngine
@@ -42,8 +45,9 @@ type Server struct {
 	auth *AuthManager
 
 	// WebSocket hub for real-time event streaming.
-	hub        *Hub
-	wsUpgrader websocket.Upgrader
+	hub            *Hub
+	wsUpgrader     websocket.Upgrader
+	metricsHandler http.Handler
 }
 
 // StrategyRunResult captures the persisted artifacts created by a manual run.
@@ -101,20 +105,24 @@ func DefaultServerConfig() ServerConfig {
 
 // Deps groups the repository and service dependencies required by the Server.
 type Deps struct {
-	Strategies  repository.StrategyRepository
-	Runs        repository.PipelineRunRepository
-	Decisions   repository.AgentDecisionRepository
-	Orders      repository.OrderRepository
-	Positions   repository.PositionRepository
-	Trades      repository.TradeRepository
-	Memories    repository.MemoryRepository
-	APIKeys     repository.APIKeyRepository
-	Users       repository.UserRepository
-	Risk        risk.RiskEngine
-	Settings    SettingsService
-	Runner      StrategyRunner
-	DBHealth    HealthCheck
-	RedisHealth HealthCheck
+	Strategies     repository.StrategyRepository
+	Runs           repository.PipelineRunRepository
+	Decisions      repository.AgentDecisionRepository
+	Orders         repository.OrderRepository
+	Positions      repository.PositionRepository
+	Trades         repository.TradeRepository
+	Memories       repository.MemoryRepository
+	APIKeys        repository.APIKeyRepository
+	Users          repository.UserRepository
+	Conversations  repository.ConversationRepository
+	AuditLog       repository.AuditLogRepository
+	Events         repository.AgentEventRepository
+	Risk           risk.RiskEngine
+	Settings       SettingsService
+	Runner         StrategyRunner
+	DBHealth       HealthCheck
+	RedisHealth    HealthCheck
+	MetricsHandler http.Handler
 }
 
 // NewServer creates a new API server with all routes and middleware registered.
@@ -180,23 +188,27 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 	}
 
 	s := &Server{
-		logger:      logger,
-		dbHealth:    deps.DBHealth,
-		redisHealth: deps.RedisHealth,
-		strategies:  deps.Strategies,
-		runs:        deps.Runs,
-		decisions:   deps.Decisions,
-		orders:      deps.Orders,
-		positions:   deps.Positions,
-		trades:      deps.Trades,
-		memories:    deps.Memories,
-		users:       deps.Users,
-		risk:        deps.Risk,
-		settings:    settingsService,
-		runner:      deps.Runner,
-		auth:        authManager,
-		hub:         hub,
-		wsUpgrader:  newUpgrader(cfg.CORSConfig.AllowedOrigins),
+		logger:         logger,
+		dbHealth:       deps.DBHealth,
+		redisHealth:    deps.RedisHealth,
+		strategies:     deps.Strategies,
+		runs:           deps.Runs,
+		decisions:      deps.Decisions,
+		orders:         deps.Orders,
+		positions:      deps.Positions,
+		trades:         deps.Trades,
+		memories:       deps.Memories,
+		users:          deps.Users,
+		conversations:  deps.Conversations,
+		auditLog:       deps.AuditLog,
+		events:         deps.Events,
+		risk:           deps.Risk,
+		settings:       settingsService,
+		runner:         deps.Runner,
+		auth:           authManager,
+		hub:            hub,
+		wsUpgrader:     newUpgrader(cfg.CORSConfig.AllowedOrigins),
+		metricsHandler: deps.MetricsHandler,
 	}
 
 	r := chi.NewRouter()
@@ -229,6 +241,7 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 	// API v1
 	r.Route("/api/v1/auth", func(auth chi.Router) {
 		auth.Post("/login", s.handleLogin)
+		auth.Post("/refresh", s.handleRefreshToken)
 	})
 
 	r.Route("/api/v1", func(v1 chi.Router) {
@@ -242,6 +255,9 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 			sr.Post("/{id}/run", s.handleRunStrategy)
 			sr.Put("/{id}", s.handleUpdateStrategy)
 			sr.Delete("/{id}", s.handleDeleteStrategy)
+			sr.Post("/{id}/pause", s.handlePauseStrategy)
+			sr.Post("/{id}/resume", s.handleResumeStrategy)
+			sr.Post("/{id}/skip-next", s.handleSkipNextStrategy)
 		})
 
 		// Pipeline runs
@@ -286,6 +302,19 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 			sr.Get("/", s.handleGetSettings)
 			sr.Put("/", s.handleUpdateSettings)
 		})
+
+		// Events
+		v1.Get("/events", s.handleListEvents)
+
+		// Conversations
+		v1.Route("/conversations", func(cr chi.Router) {
+			cr.Get("/", s.handleListConversations)
+			cr.Post("/", s.handleCreateConversation)
+			cr.Get("/{id}/messages", s.handleGetConversationMessages)
+		})
+
+		// Audit log
+		v1.Get("/audit-log", s.handleListAuditLog)
 	})
 
 	s.router = r
@@ -437,8 +466,13 @@ func (s *Server) runHealthCheck(ctx context.Context, check HealthCheck) error {
 	return check.Check(ctx)
 }
 
-// handleMetrics returns a placeholder Prometheus-compatible metrics payload.
-func (s *Server) handleMetrics(w http.ResponseWriter, _ *http.Request) {
+// handleMetrics serves Prometheus metrics. Falls back to a placeholder if no
+// metrics handler is configured.
+func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	if s.metricsHandler != nil {
+		s.metricsHandler.ServeHTTP(w, r)
+		return
+	}
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("# metrics placeholder\n"))

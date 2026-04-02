@@ -12,7 +12,7 @@ vi.mock('recharts', async () => {
     ...actual,
     ResponsiveContainer: ({ children }: { children: React.ReactNode }) =>
       React.isValidElement(children)
-        ? React.cloneElement(children, { width: 400, height: 256 })
+        ? React.cloneElement(children as React.ReactElement<Record<string, unknown>>, { width: 400, height: 256 })
         : children,
   }
 })
