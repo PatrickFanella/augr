@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { RunsPage } from '@/pages/runs-page'
+import type { PipelineRun } from '@/lib/api/types'
 
 function Wrapper({ children }: { children: React.ReactNode }) {
   const client = new QueryClient({
@@ -59,13 +60,13 @@ const strategies = [
   },
 ]
 
-const baseRun = {
+const baseRun: PipelineRun = {
   id: '10000000-0000-0000-0000-000000000001',
   strategy_id: strategies[0].id,
   ticker: 'AAPL',
   trade_date: '2025-01-03',
-  status: 'completed' as const,
-  signal: 'buy' as const,
+  status: 'completed',
+  signal: 'buy',
   started_at: '2025-01-03T09:00:00Z',
   completed_at: '2025-01-03T09:01:00Z',
 }
@@ -286,6 +287,28 @@ describe('RunsPage', () => {
     render(<RunsPage />, { wrapper: Wrapper })
 
     expect(await screen.findByTestId('runs-error')).toBeInTheDocument()
-    expect(screen.getByText('Unable to load runs')).toBeInTheDocument()
+    expect(screen.getByText('Unable to load runs. Start the API server to see live data.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
+  })
+
+  it('renders computed duration and running placeholder', async () => {
+    const runningRun = {
+      ...baseRun,
+      id: '10000000-0000-0000-0000-000000000099',
+      status: 'running' as const,
+      completed_at: undefined,
+    }
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(createStrategyResponse())
+      .mockResolvedValueOnce(createRunsResponse([baseRun, runningRun], 2))
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<RunsPage />, { wrapper: Wrapper })
+
+    expect(await screen.findByTestId('runs-table')).toBeInTheDocument()
+    expect(screen.getByText('Duration')).toBeInTheDocument()
+    expect(screen.getByText('1m 0s')).toBeInTheDocument()
+    expect(screen.getByText('Running…')).toBeInTheDocument()
   })
 })

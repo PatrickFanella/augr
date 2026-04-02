@@ -976,6 +976,65 @@ func TestListRunsAppliesDateRangeFilters(t *testing.T) {
 	}
 }
 
+func TestGetRunIncludesPhaseTimings(t *testing.T) {
+	t.Parallel()
+
+	runID := uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+	tradeDate := time.Date(2026, 3, 14, 0, 0, 0, 0, time.UTC)
+	phaseTimings := json.RawMessage(`{"analysis_ms":1200,"risk_ms":800}`)
+
+	runRepo := &stubRunRepo{
+		runs: []domain.PipelineRun{{
+			ID:           runID,
+			StrategyID:   stratA.ID,
+			Ticker:       stratA.Ticker,
+			TradeDate:    tradeDate,
+			Status:       domain.PipelineStatusCompleted,
+			StartedAt:    tradeDate.Add(9 * time.Hour),
+			CompletedAt:  timePtr(tradeDate.Add(9*time.Hour + time.Minute)),
+			PhaseTimings: phaseTimings,
+		}},
+	}
+	deps := testDeps()
+	deps.Runs = runRepo
+	srv := newTestServerWithDeps(t, deps)
+
+	rr := doRequest(t, srv, http.MethodGet, "/api/v1/runs/"+runID.String(), nil)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", rr.Code, http.StatusOK, rr.Body.String())
+	}
+
+	var body map[string]any
+	if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if _, ok := body["phase_timings"]; !ok {
+		t.Fatalf("phase_timings missing from response: %+v", body)
+	}
+
+	rrList := doRequest(t, srv, http.MethodGet, "/api/v1/runs", nil)
+	if rrList.Code != http.StatusOK {
+		t.Fatalf("list status = %d, want %d; body: %s", rrList.Code, http.StatusOK, rrList.Body.String())
+	}
+	var listBody struct {
+		Data []map[string]any `json:"data"`
+	}
+	if err := json.NewDecoder(rrList.Body).Decode(&listBody); err != nil {
+		t.Fatalf("decode list response: %v", err)
+	}
+	if len(listBody.Data) != 1 {
+		t.Fatalf("len(data) = %d, want 1", len(listBody.Data))
+	}
+	if _, ok := listBody.Data[0]["phase_timings"]; !ok {
+		t.Fatalf("phase_timings missing from list response item: %+v", listBody.Data[0])
+	}
+	if runRepo.lastFilter != (repository.PipelineRunFilter{}) {
+		t.Fatalf("lastFilter = %+v, want empty filter", runRepo.lastFilter)
+	}
+}
+
+func timePtr(v time.Time) *time.Time { return &v }
+
 // ---------------------------------------------------------------------------
 // Portfolio
 // ---------------------------------------------------------------------------

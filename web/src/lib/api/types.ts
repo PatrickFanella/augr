@@ -2,6 +2,7 @@ export type UUID = string
 export type ISODateString = string
 
 export type MarketType = 'stock' | 'crypto' | 'polymarket'
+export type StrategyStatus = 'active' | 'paused' | 'inactive'
 export type PipelineStatus = 'running' | 'completed' | 'failed' | 'cancelled'
 export type PipelineSignal = 'buy' | 'sell' | 'hold'
 export type OrderSide = 'buy' | 'sell'
@@ -63,7 +64,9 @@ export interface Strategy {
   market_type: MarketType
   schedule_cron?: string
   config: unknown
-  is_active: boolean
+  status: StrategyStatus
+  skip_next_run: boolean
+  is_active?: boolean
   is_paper: boolean
   created_at: ISODateString
   updated_at: ISODateString
@@ -80,6 +83,7 @@ export interface PipelineRun {
   completed_at?: ISODateString
   error_message?: string
   config_snapshot?: unknown
+  phase_timings?: unknown
 }
 
 export interface StrategyRunResult {
@@ -103,6 +107,19 @@ export interface AgentDecision {
   prompt_tokens?: number
   completion_tokens?: number
   latency_ms?: number
+  created_at: ISODateString
+}
+
+export interface AgentEvent {
+  id: UUID
+  pipeline_run_id?: UUID
+  strategy_id?: UUID
+  agent_role?: AgentRole
+  event_kind: string
+  title: string
+  summary?: string
+  tags?: string[]
+  metadata?: unknown
   created_at: ISODateString
 }
 
@@ -325,9 +342,20 @@ export interface WebSocketSubscriptionCommand {
   run_ids?: UUID[]
 }
 
+export interface AuditLogEntry {
+  id: UUID
+  event_type: string
+  entity_type?: string
+  entity_id?: UUID
+  actor?: string
+  details?: unknown
+  created_at: ISODateString
+}
+
 export interface StrategyListParams {
   ticker?: string
   market_type?: MarketType
+  status?: StrategyStatus
   is_active?: boolean
   is_paper?: boolean
 }
@@ -375,7 +403,7 @@ export interface StrategyCreateRequest {
   market_type: MarketType
   schedule_cron?: string
   config?: unknown
-  // Optional on create: backend only requires name, ticker, and market_type
+  status?: StrategyStatus
   is_active?: boolean
   is_paper?: boolean
 }
@@ -387,7 +415,8 @@ export interface StrategyUpdateRequest {
   market_type: MarketType
   schedule_cron?: string
   config?: unknown
-  // Required on update: PUT handler expects full strategy state
-  is_active: boolean
+  status: StrategyStatus
+  is_active?: boolean
   is_paper: boolean
+  skip_next_run?: boolean
 }

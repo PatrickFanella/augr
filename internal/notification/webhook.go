@@ -31,7 +31,7 @@ func NewWebhookNotifier(rawURL, secret string) *WebhookNotifier {
 
 // Notify sends an alert payload to the configured webhook endpoint.
 func (n *WebhookNotifier) Notify(ctx context.Context, alert Alert) error {
-	p := FormatPayload("alert", string(alert.Severity), "", "", map[string]any{
+	payload := FormatPayload("alert", string(alert.Severity), "", "", map[string]any{
 		"key":         alert.Key,
 		"title":       alert.Title,
 		"body":        alert.Body,
@@ -40,12 +40,27 @@ func (n *WebhookNotifier) Notify(ctx context.Context, alert Alert) error {
 		"text":        formatAlertText(alert),
 	}, "")
 
-	payload, err := json.Marshal(p)
+	return n.SendPayload(ctx, payload)
+}
+
+// SendPayload POSTs any pre-built WebhookPayload to the configured endpoint.
+// This supports all event types (signal, decision, alert, etc.).
+func (n *WebhookNotifier) SendPayload(ctx context.Context, payload WebhookPayload) error {
+	if strings.TrimSpace(n.url) == "" {
+		return nil
+	}
+
+	return n.send(ctx, payload)
+}
+
+// send marshals a payload and POSTs it to the webhook URL.
+func (n *WebhookNotifier) send(ctx context.Context, payload WebhookPayload) error {
+	encoded, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("marshal webhook payload: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, n.url, bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, n.url, bytes.NewReader(encoded))
 	if err != nil {
 		return fmt.Errorf("create webhook request: %w", err)
 	}

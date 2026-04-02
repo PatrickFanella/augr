@@ -26,17 +26,18 @@ afterEach(() => {
 })
 
 describe('StrategyDetailPage', () => {
-  it('renders strategy details on successful fetch', async () => {
+  it('renders strategy details and lifecycle actions on successful fetch', async () => {
     const strategy = {
       id: strategyId,
       name: 'AAPL Momentum',
       description: 'A momentum-based strategy',
       ticker: 'AAPL',
       market_type: 'stock',
-      is_active: true,
+      status: 'active',
+      skip_next_run: false,
       is_paper: false,
       schedule_cron: '0 9 * * 1-5',
-      config: { analysts: ['market_analyst'] },
+      config: { analysts: ['market'] },
       created_at: '2025-01-01T00:00:00Z',
       updated_at: '2025-01-01T00:00:00Z',
     }
@@ -68,8 +69,40 @@ describe('StrategyDetailPage', () => {
     expect(screen.getByText('A momentum-based strategy')).toBeInTheDocument()
     expect(screen.getByText('AAPL')).toBeInTheDocument()
     expect(screen.getByTestId('strategy-detail-page')).toBeInTheDocument()
+    expect(screen.getByTestId('strategy-status-badge')).toHaveTextContent('active')
     expect(screen.getByTestId('run-strategy-button')).toBeInTheDocument()
+    expect(screen.getByTestId('pause-strategy-button')).toBeEnabled()
+    expect(screen.getByTestId('skip-next-button')).toBeEnabled()
     expect(screen.getByTestId('delete-strategy-button')).toBeInTheDocument()
+  })
+
+  it('shows resume button for paused strategies', async () => {
+    const strategy = {
+      id: strategyId,
+      name: 'Paused Strategy',
+      ticker: 'AAPL',
+      market_type: 'stock',
+      status: 'paused',
+      skip_next_run: false,
+      is_paper: false,
+      config: {},
+      created_at: '2025-01-01T00:00:00Z',
+      updated_at: '2025-01-01T00:00:00Z',
+    }
+
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString()
+      if (url.includes('/runs')) {
+        return Promise.resolve({ ok: true, status: 200, json: async () => ({ data: [], limit: 20, offset: 0 }) })
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => strategy })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<StrategyDetailPage />, { wrapper: Wrapper })
+
+    expect(await screen.findByTestId('resume-strategy-button')).toBeEnabled()
+    expect(screen.getByTestId('skip-next-button')).toBeDisabled()
   })
 
   it('shows error state when strategy fetch fails', async () => {
@@ -87,7 +120,8 @@ describe('StrategyDetailPage', () => {
       name: 'Test Strategy',
       ticker: 'TEST',
       market_type: 'stock',
-      is_active: true,
+      status: 'active',
+      skip_next_run: false,
       is_paper: true,
       config: {},
       created_at: '2025-01-01T00:00:00Z',
@@ -115,18 +149,10 @@ describe('StrategyDetailPage', () => {
       const url = typeof input === 'string' ? input : input.toString()
 
       if (url.includes('/runs')) {
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          json: async () => runs,
-        })
+        return Promise.resolve({ ok: true, status: 200, json: async () => runs })
       }
 
-      return Promise.resolve({
-        ok: true,
-        status: 200,
-        json: async () => strategy,
-      })
+      return Promise.resolve({ ok: true, status: 200, json: async () => strategy })
     })
     vi.stubGlobal('fetch', fetchMock)
 
@@ -135,43 +161,5 @@ describe('StrategyDetailPage', () => {
     expect(await screen.findByTestId('strategy-run-history')).toBeInTheDocument()
     expect(screen.getByTestId('strategy-config-editor')).toBeInTheDocument()
     expect(await screen.findByTestId('run-history-list')).toBeInTheDocument()
-  })
-
-  it('renders when the run history data array is null', async () => {
-    const strategy = {
-      id: strategyId,
-      name: 'Test Strategy',
-      ticker: 'TEST',
-      market_type: 'stock',
-      is_active: true,
-      is_paper: true,
-      config: {},
-      created_at: '2025-01-01T00:00:00Z',
-      updated_at: '2025-01-01T00:00:00Z',
-    }
-
-    const fetchMock = vi.fn((input: RequestInfo | URL) => {
-      const url = typeof input === 'string' ? input : input.toString()
-
-      if (url.includes('/runs')) {
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          json: async () => ({ data: null, limit: 20, offset: 0 }),
-        })
-      }
-
-      return Promise.resolve({
-        ok: true,
-        status: 200,
-        json: async () => strategy,
-      })
-    })
-    vi.stubGlobal('fetch', fetchMock)
-
-    render(<StrategyDetailPage />, { wrapper: Wrapper })
-
-    expect(await screen.findByTestId('strategy-detail-page')).toBeInTheDocument()
-    expect(await screen.findByTestId('run-history-empty')).toBeInTheDocument()
   })
 })

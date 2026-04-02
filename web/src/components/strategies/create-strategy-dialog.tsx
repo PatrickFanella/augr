@@ -77,7 +77,7 @@ export function CreateStrategyDialog({
       market_type: marketType,
       schedule_cron: scheduleCron || undefined,
       config,
-      is_active: isActive,
+      status: isActive ? 'active' : 'inactive',
       is_paper: isPaper,
     })
   }

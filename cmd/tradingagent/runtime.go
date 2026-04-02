@@ -25,6 +25,7 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/llm/ollama"
 	openaiProvider "github.com/PatrickFanella/get-rich-quick/internal/llm/openai"
 	"github.com/PatrickFanella/get-rich-quick/internal/metrics"
+	"github.com/PatrickFanella/get-rich-quick/internal/notification"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 	pgrepo "github.com/PatrickFanella/get-rich-quick/internal/repository/postgres"
 	"github.com/PatrickFanella/get-rich-quick/internal/risk"
@@ -181,6 +182,52 @@ func newLLMProviderFromConfig(cfg config.LLMConfig, logger *slog.Logger) llm.Pro
 		return nil
 	}
 	return p
+}
+
+func newNotificationManager(cfg config.Config) *notification.Manager {
+	notifiers := map[string]notification.Notifier{}
+
+	if cfg.Notifications.Telegram.BotToken != "" && cfg.Notifications.Telegram.ChatID != "" {
+		notifiers[notification.ChannelTelegram] = notification.NewTelegramNotifier(
+			cfg.Notifications.Telegram.BotToken,
+			cfg.Notifications.Telegram.ChatID,
+		)
+	}
+
+	if cfg.Notifications.Email.SMTPHost != "" && len(cfg.Notifications.Email.To) > 0 {
+		notifiers[notification.ChannelEmail] = notification.NewEmailNotifier(
+			cfg.Notifications.Email.SMTPHost,
+			cfg.Notifications.Email.SMTPPort,
+			cfg.Notifications.Email.Username,
+			cfg.Notifications.Email.Password,
+			cfg.Notifications.Email.From,
+			cfg.Notifications.Email.To,
+		)
+	}
+
+	if cfg.Notifications.Webhook.URL != "" {
+		notifiers[notification.ChannelWebhook] = notification.NewWebhookNotifier(
+			cfg.Notifications.Webhook.URL,
+			cfg.Notifications.Webhook.Secret,
+		)
+	}
+
+	if cfg.Notifications.PagerDuty.URL != "" {
+		notifiers[notification.ChannelPagerDuty] = notification.NewWebhookNotifier(
+			cfg.Notifications.PagerDuty.URL,
+			cfg.Notifications.PagerDuty.Secret,
+		)
+	}
+
+	if cfg.Notifications.Discord.SignalWebhookURL != "" || cfg.Notifications.Discord.DecisionWebhookURL != "" || cfg.Notifications.Discord.AlertWebhookURL != "" {
+		notifiers[notification.ChannelDiscord] = notification.NewDiscordNotifier(
+			cfg.Notifications.Discord.SignalWebhookURL,
+			cfg.Notifications.Discord.DecisionWebhookURL,
+			cfg.Notifications.Discord.AlertWebhookURL,
+		)
+	}
+
+	return notification.NewManager(cfg.Notifications.Alerts, notifiers)
 }
 
 func newRedisHealthCheck(cfg config.Config) (api.HealthCheck, func()) {

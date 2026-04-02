@@ -117,6 +117,7 @@ type NotificationConfig struct {
 	Email     EmailNotificationConfig
 	Webhook   WebhookNotificationConfig
 	PagerDuty WebhookNotificationConfig
+	Discord   DiscordNotificationConfig
 	Alerts    AlertRulesConfig
 }
 
@@ -140,6 +141,13 @@ type EmailNotificationConfig struct {
 type WebhookNotificationConfig struct {
 	URL    string
 	Secret string
+}
+
+// DiscordNotificationConfig contains Discord webhook URLs for different event types.
+type DiscordNotificationConfig struct {
+	SignalWebhookURL   string
+	DecisionWebhookURL string
+	AlertWebhookURL    string
 }
 
 // AlertRulesConfig contains alert thresholds and channel routing.
@@ -429,6 +437,11 @@ func loadFromEnvironment() (Config, error) {
 			PagerDuty: WebhookNotificationConfig{
 				URL:    os.Getenv("NOTIFY_PAGERDUTY_WEBHOOK_URL"),
 				Secret: os.Getenv("NOTIFY_PAGERDUTY_WEBHOOK_SECRET"),
+			},
+			Discord: DiscordNotificationConfig{
+				SignalWebhookURL:   firstNonEmpty(os.Getenv("NOTIFY_DISCORD_SIGNAL_WEBHOOK_URL"), firstNonEmpty(os.Getenv("DISCORD_WEBHOOK_SIGNALS"), os.Getenv("DISCORD_SIGNAL_WEBHOOK_URL"))),
+				DecisionWebhookURL: firstNonEmpty(os.Getenv("NOTIFY_DISCORD_DECISION_WEBHOOK_URL"), firstNonEmpty(os.Getenv("DISCORD_WEBHOOK_DECISIONS"), os.Getenv("DISCORD_DECISION_WEBHOOK_URL"))),
+				AlertWebhookURL:    firstNonEmpty(os.Getenv("NOTIFY_DISCORD_ALERT_WEBHOOK_URL"), firstNonEmpty(os.Getenv("DISCORD_WEBHOOK_ALERTS"), os.Getenv("DISCORD_ALERT_WEBHOOK_URL"))),
 			},
 			Alerts: AlertRulesConfig{
 				PipelineFailure: PipelineFailureAlertRuleConfig{

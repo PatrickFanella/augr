@@ -4,7 +4,7 @@ import { Activity, Clock, Pause } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { apiClient } from '@/lib/api/client'
-import type { Strategy } from '@/lib/api/types'
+import type { Strategy, StrategyStatus } from '@/lib/api/types'
 
 function MarketTypeBadge({ type }: { type: Strategy['market_type'] }) {
   const variants: Record<Strategy['market_type'], 'default' | 'secondary' | 'outline'> = {
@@ -16,13 +16,21 @@ function MarketTypeBadge({ type }: { type: Strategy['market_type'] }) {
   return <Badge variant={variants[type]}>{type}</Badge>
 }
 
+function resolveStrategyStatus(strategy: Strategy): StrategyStatus {
+  if (strategy.status) {
+    return strategy.status
+  }
+
+  return strategy.is_active ? 'active' : 'inactive'
+}
+
 export function ActiveStrategies() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['strategies', 'active'],
-    queryFn: () => apiClient.listStrategies({ is_active: true, limit: 20 }),
+    queryFn: () => apiClient.listStrategies({ status: 'active', limit: 20 }),
     refetchInterval: 30_000,
   })
-  const strategies = data?.data ?? []
+  const strategies = (data?.data ?? []).filter((strategy) => resolveStrategyStatus(strategy) === 'active')
 
   return (
     <Card data-testid="active-strategies">
@@ -60,7 +68,10 @@ export function ActiveStrategies() {
                   <Activity className="size-4" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium">{strategy.name}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="truncate font-medium">{strategy.name}</p>
+                    <Badge variant="success">active</Badge>
+                  </div>
                   <p className="text-xs text-muted-foreground">
                     {strategy.ticker}
                     {strategy.schedule_cron ? (

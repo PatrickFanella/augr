@@ -2,68 +2,67 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
-
-	"github.com/PatrickFanella/get-rich-quick/internal/domain"
-	"github.com/PatrickFanella/get-rich-quick/internal/repository"
+	"github.com/PatrickFanella/get-rich-quick/internal/config"
+	"github.com/PatrickFanella/get-rich-quick/internal/notification"
 )
 
-func TestSmokeStrategyRunnerFindRunPagesThroughHistory(t *testing.T) {
+func TestNewNotificationManager_DiscordAlertDispatch(t *testing.T) {
 	t.Parallel()
 
-	runID := uuid.New()
-	repo := &pagingRunRepo{
-		items: make([]domain.PipelineRun, 0, 105),
-	}
-	for i := 0; i < 104; i++ {
-		repo.items = append(repo.items, domain.PipelineRun{ID: uuid.New()})
-	}
-	repo.items = append(repo.items, domain.PipelineRun{
-		ID:        runID,
-		TradeDate: time.Now().UTC().Truncate(24 * time.Hour),
-	})
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
 
-	runner := &smokeStrategyRunner{runRepo: repo}
+	cfg := config.Config{
+		Notifications: config.NotificationConfig{
+			Discord: config.DiscordNotificationConfig{
+				AlertWebhookURL: server.URL,
+			},
+			Alerts: config.AlertRulesConfig{
+				KillSwitch: config.ImmediateAlertRuleConfig{Channels: []string{notification.ChannelDiscord}},
+			},
+		},
+	}
 
-	run, err := runner.findRun(context.Background(), runID)
-	if err != nil {
-		t.Fatalf("findRun() error = %v", err)
+	manager := newNotificationManager(cfg)
+	if manager == nil {
+		t.Fatal("newNotificationManager() = nil")
 	}
-	if run.ID != runID {
-		t.Fatalf("findRun() id = %s, want %s", run.ID, runID)
+
+	if err := manager.RecordKillSwitchToggle(context.Background(), true, "manual test", time.Now()); err != nil {
+		t.Fatalf("RecordKillSwitchToggle() error = %v", err)
 	}
-	if repo.listCalls < 2 {
-		t.Fatalf("expected paged lookup to call List multiple times, got %d", repo.listCalls)
+	if requests.Load() != 1 {
+		t.Fatalf("discord requests = %d, want 1", requests.Load())
 	}
 }
 
-type pagingRunRepo struct {
-	items     []domain.PipelineRun
-	listCalls int
-}
+func TestNewNotificationManager_SkipsDiscordWhenUnconfigured(t *testing.T) {
+	t.Parallel()
 
-func (p *pagingRunRepo) Create(context.Context, *domain.PipelineRun) error { return nil }
-
-func (p *pagingRunRepo) Get(_ context.Context, _ uuid.UUID, _ time.Time) (*domain.PipelineRun, error) {
-	return nil, fmt.Errorf("run: %w", repository.ErrNotFound)
-}
-
-func (p *pagingRunRepo) List(_ context.Context, _ repository.PipelineRunFilter, limit, offset int) ([]domain.PipelineRun, error) {
-	p.listCalls++
-	if offset >= len(p.items) {
-		return nil, nil
+	cfg := config.Config{
+		Notifications: config.NotificationConfig{
+			Alerts: config.AlertRulesConfig{
+				KillSwitch: config.ImmediateAlertRuleConfig{Channels: []string{notification.ChannelDiscord}},
+			},
+		},
 	}
-	end := offset + limit
-	if end > len(p.items) {
-		end = len(p.items)
-	}
-	return append([]domain.PipelineRun(nil), p.items[offset:end]...), nil
-}
 
-func (p *pagingRunRepo) UpdateStatus(context.Context, uuid.UUID, time.Time, repository.PipelineRunStatusUpdate) error {
-	return nil
+	manager := newNotificationManager(cfg)
+	if manager == nil {
+		t.Fatal("newNotificationManager() = nil")
+	}
+
+	if err := manager.RecordKillSwitchToggle(context.Background(), true, "manual test", time.Now()); err == nil {
+		t.Fatal("RecordKillSwitchToggle() error = nil, want missing discord notifier error")
+	}
 }

@@ -56,6 +56,26 @@ function formatRunDate(dateStr?: string) {
   })
 }
 
+function formatDuration(startedAt: string, completedAt?: string) {
+  if (!completedAt) {
+    return 'Running…'
+  }
+
+  const deltaMs = new Date(completedAt).getTime() - new Date(startedAt).getTime()
+  if (deltaMs < 1000) {
+    return `${Math.max(0, deltaMs)}ms`
+  }
+
+  const seconds = Math.floor(deltaMs / 1000)
+  if (seconds < 60) {
+    return `${seconds}s`
+  }
+
+  const minutes = Math.floor(seconds / 60)
+  const remainingSeconds = seconds % 60
+  return `${minutes}m ${remainingSeconds}s`
+}
+
 function RunStatusBadge({ status }: { status: PipelineStatus }) {
   return <Badge variant={STATUS_VARIANTS[status]}>{formatStatusLabel(status)}</Badge>
 }
@@ -81,7 +101,7 @@ export function RunsPage() {
     queryFn: () => apiClient.listStrategies({ limit: 500 }),
   })
 
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['runs', strategyId, status, startDate, endDate, offset],
     queryFn: () =>
       apiClient.listRuns({
@@ -252,9 +272,14 @@ export function RunsPage() {
               ))}
             </div>
           ) : isError ? (
-            <p className="text-sm text-muted-foreground" data-testid="runs-error">
-              Unable to load runs. Start the API server to see live data.
-            </p>
+            <div className="space-y-3" data-testid="runs-error">
+              <p className="text-sm text-muted-foreground">
+                Unable to load runs. Start the API server to see live data.
+              </p>
+              <Button type="button" variant="outline" size="sm" onClick={() => void refetch()}>
+                Retry
+              </Button>
+            </div>
           ) : !visibleRuns.length ? (
             <div className="flex flex-col items-center gap-2 py-8 text-center" data-testid="runs-empty">
               <Activity className="size-8 text-muted-foreground" />
@@ -272,7 +297,7 @@ export function RunsPage() {
                     <th className="pb-2 font-medium">Status</th>
                     <th className="pb-2 font-medium">Signal</th>
                     <th className="pb-2 font-medium">Started</th>
-                    <th className="pb-2 font-medium">Completed</th>
+                    <th className="pb-2 font-medium">Duration</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -333,7 +358,7 @@ export function RunsPage() {
                           {run.signal ? <RunSignalBadge signal={run.signal} /> : '—'}
                         </td>
                         <td className="py-3">{formatRunDate(run.started_at)}</td>
-                        <td className="py-3">{formatRunDate(run.completed_at)}</td>
+                        <td className="py-3">{formatDuration(run.started_at, run.completed_at)}</td>
                       </tr>
                     )
                   })}

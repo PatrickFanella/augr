@@ -519,3 +519,116 @@ func TestResolveConfig_PromptOverridesIsCopied(t *testing.T) {
 			strategy.PromptOverrides[agent.AgentRoleTrader], "original prompt")
 	}
 }
+
+func TestResolveConfig_EdgeCases(t *testing.T) {
+	tests := []struct {
+		name     string
+		strategy *agent.StrategyConfig
+		global   agent.GlobalSettings
+		check    func(t *testing.T, got agent.ResolvedConfig)
+	}{
+		{
+			name:     "empty strategy and global uses hardcoded defaults",
+			strategy: &agent.StrategyConfig{},
+			global:   agent.GlobalSettings{},
+			check: func(t *testing.T, got agent.ResolvedConfig) {
+				t.Helper()
+				if got.LLMConfig.Provider != "openai" || got.LLMConfig.DeepThinkModel != "gpt-5.2" || got.LLMConfig.QuickThinkModel != "gpt-5-mini" {
+					t.Fatalf("LLM defaults = %+v", got.LLMConfig)
+				}
+				if got.PipelineConfig.DebateRounds != 3 || got.PipelineConfig.AnalysisTimeoutSeconds != 30 || got.PipelineConfig.DebateTimeoutSeconds != 60 {
+					t.Fatalf("pipeline defaults = %+v", got.PipelineConfig)
+				}
+				if got.RiskConfig.PositionSizePct != 5.0 || got.RiskConfig.StopLossMultiplier != 1.5 || got.RiskConfig.TakeProfitMultiplier != 2.0 || got.RiskConfig.MinConfidence != 0.65 {
+					t.Fatalf("risk defaults = %+v", got.RiskConfig)
+				}
+			},
+		},
+		{
+			name: "prompt overrides propagate from strategy",
+			strategy: &agent.StrategyConfig{
+				PromptOverrides: map[agent.AgentRole]string{
+					agent.AgentRoleTrader:      "trader override",
+					agent.AgentRoleRiskManager: "risk override",
+				},
+			},
+			global: agent.GlobalSettings{},
+			check: func(t *testing.T, got agent.ResolvedConfig) {
+				t.Helper()
+				want := map[agent.AgentRole]string{
+					agent.AgentRoleTrader:      "trader override",
+					agent.AgentRoleRiskManager: "risk override",
+				}
+				if !reflect.DeepEqual(got.PromptOverrides, want) {
+					t.Fatalf("PromptOverrides = %v, want %v", got.PromptOverrides, want)
+				}
+			},
+		},
+		{
+			name: "analyst selection copies exact subset",
+			strategy: &agent.StrategyConfig{
+				AnalystSelection: []agent.AgentRole{agent.AgentRoleMarketAnalyst, agent.AgentRoleNewsAnalyst},
+			},
+			global: agent.GlobalSettings{},
+			check: func(t *testing.T, got agent.ResolvedConfig) {
+				t.Helper()
+				want := []agent.AgentRole{agent.AgentRoleMarketAnalyst, agent.AgentRoleNewsAnalyst}
+				if !reflect.DeepEqual(got.AnalystSelection, want) {
+					t.Fatalf("AnalystSelection = %v, want %v", got.AnalystSelection, want)
+				}
+			},
+		},
+		{
+			name: "zero and boundary values survive resolution",
+			strategy: &agent.StrategyConfig{
+				PipelineConfig: &agent.StrategyPipelineConfig{
+					DebateRounds:           intPtr(0),
+					AnalysisTimeoutSeconds: intPtr(1),
+					DebateTimeoutSeconds:   intPtr(0),
+				},
+				RiskConfig: &agent.StrategyRiskConfig{
+					PositionSizePct:    float64Ptr(0.0),
+					MinConfidence:      float64Ptr(1.0),
+					StopLossMultiplier: float64Ptr(0.1),
+				},
+			},
+			global: agent.GlobalSettings{},
+			check: func(t *testing.T, got agent.ResolvedConfig) {
+				t.Helper()
+				if got.PipelineConfig.DebateRounds != 0 || got.PipelineConfig.AnalysisTimeoutSeconds != 1 || got.PipelineConfig.DebateTimeoutSeconds != 0 {
+					t.Fatalf("pipeline boundaries = %+v", got.PipelineConfig)
+				}
+				if got.RiskConfig.PositionSizePct != 0.0 || got.RiskConfig.MinConfidence != 1.0 || got.RiskConfig.StopLossMultiplier != 0.1 {
+					t.Fatalf("risk boundaries = %+v", got.RiskConfig)
+				}
+			},
+		},
+		{
+			name: "partial strategy llm override preserves defaults elsewhere",
+			strategy: &agent.StrategyConfig{
+				LLMConfig: &agent.StrategyLLMConfig{
+					Provider:        strPtr("anthropic"),
+					DeepThinkModel:  strPtr("claude-3-7-sonnet-latest"),
+					QuickThinkModel: strPtr("gpt-5-mini"),
+				},
+			},
+			global: agent.GlobalSettings{},
+			check: func(t *testing.T, got agent.ResolvedConfig) {
+				t.Helper()
+				if got.LLMConfig.Provider != "anthropic" || got.LLMConfig.DeepThinkModel != "claude-3-7-sonnet-latest" || got.LLMConfig.QuickThinkModel != "gpt-5-mini" {
+					t.Fatalf("LLM override = %+v", got.LLMConfig)
+				}
+				if got.RiskConfig.MinConfidence != 0.65 {
+					t.Fatalf("risk defaults changed unexpectedly: %+v", got.RiskConfig)
+				}
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := agent.ResolveConfig(tc.strategy, tc.global)
+			tc.check(t, got)
+		})
+	}
+}

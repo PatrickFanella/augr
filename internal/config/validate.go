@@ -193,6 +193,7 @@ func validateNotificationConfig(errs *[]string, cfg NotificationConfig) {
 
 	validateWebhookNotification(errs, cfg.Webhook, "NOTIFY_WEBHOOK_URL")
 	validateWebhookNotification(errs, cfg.PagerDuty, "NOTIFY_PAGERDUTY_WEBHOOK_URL")
+	validateDiscordNotification(errs, cfg.Discord)
 	validateAlertRules(errs, cfg.Alerts)
 }
 
@@ -209,10 +210,20 @@ func hasAnyTelegramField(cfg TelegramNotificationConfig) bool {
 }
 
 func validateWebhookNotification(errs *[]string, cfg WebhookNotificationConfig, envName string) {
-	if strings.TrimSpace(cfg.URL) == "" {
+	validateURLIfSet(errs, cfg.URL, envName)
+}
+
+func validateDiscordNotification(errs *[]string, cfg DiscordNotificationConfig) {
+	validateURLIfSet(errs, cfg.SignalWebhookURL, "Discord signal webhook URL")
+	validateURLIfSet(errs, cfg.DecisionWebhookURL, "Discord decision webhook URL")
+	validateURLIfSet(errs, cfg.AlertWebhookURL, "Discord alert webhook URL")
+}
+
+func validateURLIfSet(errs *[]string, rawURL, envName string) {
+	if strings.TrimSpace(rawURL) == "" {
 		return
 	}
-	if _, err := url.ParseRequestURI(cfg.URL); err != nil {
+	if _, err := url.ParseRequestURI(rawURL); err != nil {
 		*errs = append(*errs, fmt.Sprintf("%s must be a valid URL: %v", envName, err))
 	}
 }
@@ -240,7 +251,7 @@ func validateAlertRules(errs *[]string, cfg AlertRulesConfig) {
 		"ALERT_DB_CONNECTION_CHANNELS":     cfg.DBConnection.Channels,
 	} {
 		for _, channel := range channels {
-			if !slices.Contains([]string{"telegram", "email", "webhook", "pagerduty"}, strings.ToLower(strings.TrimSpace(channel))) {
+			if !slices.Contains([]string{"telegram", "email", "webhook", "pagerduty", "discord"}, strings.ToLower(strings.TrimSpace(channel))) {
 				*errs = append(*errs, fmt.Sprintf("%s contains unsupported channel %q", envName, channel))
 			}
 		}

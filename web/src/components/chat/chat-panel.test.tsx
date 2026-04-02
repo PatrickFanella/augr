@@ -1,13 +1,11 @@
-import { cleanup, render, screen } from '@testing-library/react'
-import { afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { ChatPanel, type ChatMessage } from './chat-panel'
 
 beforeAll(() => {
   Element.prototype.scrollIntoView = () => {}
 })
-
-afterEach(cleanup)
 
 const userMsg: ChatMessage = {
   id: '1',
@@ -25,6 +23,10 @@ const assistantMsg: ChatMessage = {
 }
 
 describe('ChatPanel', () => {
+  afterEach(() => {
+    cleanup()
+  })
+
   it('renders empty state', () => {
     render(<ChatPanel messages={[]} />)
     expect(screen.getByText('No messages yet.')).toBeInTheDocument()
@@ -57,7 +59,60 @@ describe('ChatPanel', () => {
   it('renders multiple messages in order', () => {
     render(<ChatPanel messages={[userMsg, assistantMsg]} />)
     const panel = screen.getByTestId('chat-panel')
-    const texts = Array.from(panel.querySelectorAll('p.whitespace-pre-wrap')).map(el => el.textContent)
+    const texts = Array.from(panel.querySelectorAll('p.whitespace-pre-wrap')).map((el) => el.textContent)
     expect(texts).toEqual(['Why did you buy?', 'The bull case outweighed bear signals.'])
+  })
+
+  it('renders input bar when onSendMessage provided', () => {
+    render(<ChatPanel messages={[]} onSendMessage={vi.fn()} />)
+    expect(screen.getByTestId('chat-input-bar')).toBeInTheDocument()
+  })
+
+  it('does not render input bar when onSendMessage not provided', () => {
+    render(<ChatPanel messages={[]} />)
+    expect(screen.queryByTestId('chat-input-bar')).not.toBeInTheDocument()
+  })
+
+  it('calls onSendMessage on button click', () => {
+    const onSendMessage = vi.fn()
+    render(<ChatPanel messages={[]} onSendMessage={onSendMessage} />)
+
+    fireEvent.change(screen.getByTestId('chat-input'), { target: { value: 'hello world' } })
+    fireEvent.click(screen.getByTestId('chat-send-button'))
+
+    expect(onSendMessage).toHaveBeenCalledWith('hello world')
+    expect(screen.getByTestId('chat-input')).toHaveValue('')
+  })
+
+  it('calls onSendMessage on Enter key', () => {
+    const onSendMessage = vi.fn()
+    render(<ChatPanel messages={[]} onSendMessage={onSendMessage} />)
+
+    fireEvent.change(screen.getByTestId('chat-input'), { target: { value: 'enter send' } })
+    fireEvent.keyDown(screen.getByTestId('chat-input'), { key: 'Enter' })
+
+    expect(onSendMessage).toHaveBeenCalledWith('enter send')
+  })
+
+  it('does not send on Shift+Enter', () => {
+    const onSendMessage = vi.fn()
+    render(<ChatPanel messages={[]} onSendMessage={onSendMessage} />)
+
+    fireEvent.change(screen.getByTestId('chat-input'), { target: { value: 'multi line' } })
+    fireEvent.keyDown(screen.getByTestId('chat-input'), { key: 'Enter', shiftKey: true })
+
+    expect(onSendMessage).not.toHaveBeenCalled()
+  })
+
+  it('disables input and button when isLoading', () => {
+    render(<ChatPanel messages={[]} onSendMessage={vi.fn()} isLoading />)
+
+    expect(screen.getByTestId('chat-input')).toBeDisabled()
+    expect(screen.getByTestId('chat-send-button')).toBeDisabled()
+  })
+
+  it('shows typing indicator when isLoading', () => {
+    render(<ChatPanel messages={[]} onSendMessage={vi.fn()} isLoading />)
+    expect(screen.getByTestId('typing-indicator')).toBeInTheDocument()
   })
 })

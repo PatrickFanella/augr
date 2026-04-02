@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Play, Trash2 } from 'lucide-react'
+import { ArrowLeft, Pause, Play, SkipForward, Trash2 } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { StrategyConfigEditor } from '@/components/strategies/strategy-config-editor'
@@ -7,13 +8,33 @@ import { StrategyRunHistory } from '@/components/strategies/strategy-run-history
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { apiClient } from '@/lib/api/client'
-import type { StrategyUpdateRequest } from '@/lib/api/types'
+import { ApiClientError, apiClient } from '@/lib/api/client'
+import type { StrategyStatus, StrategyUpdateRequest } from '@/lib/api/types'
+
+function resolveStrategyStatus(strategy: { status?: StrategyStatus; is_active?: boolean }): StrategyStatus {
+  if (strategy.status) {
+    return strategy.status
+  }
+
+  return strategy.is_active ? 'active' : 'inactive'
+}
+
+function statusBadgeVariant(status: StrategyStatus): 'success' | 'warning' | 'secondary' {
+  switch (status) {
+    case 'active':
+      return 'success'
+    case 'paused':
+      return 'warning'
+    default:
+      return 'secondary'
+  }
+}
 
 export function StrategyDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const [actionError, setActionError] = useState<string | null>(null)
 
   const { data: strategy, isLoading, isError } = useQuery({
     queryKey: ['strategy', id],
@@ -21,27 +42,84 @@ export function StrategyDetailPage() {
     enabled: !!id,
   })
 
+  const strategyStatus = useMemo(
+    () => (strategy ? resolveStrategyStatus(strategy) : 'inactive'),
+    [strategy],
+  )
+  const isStrategyActive = strategyStatus === 'active'
+  const isStrategyPaused = strategyStatus === 'paused'
+
+  function handleMutationError(err: unknown) {
+    if (err instanceof ApiClientError && err.status === 409) {
+      setActionError(err.message)
+      return
+    }
+
+    if (err instanceof Error) {
+      setActionError(err.message)
+      return
+    }
+
+    setActionError('Unable to update strategy state.')
+  }
+
   const updateMutation = useMutation({
     mutationFn: (data: StrategyUpdateRequest) => apiClient.updateStrategy(id!, data),
+    onMutate: () => setActionError(null),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['strategy', id] })
       queryClient.invalidateQueries({ queryKey: ['strategies'] })
     },
+    onError: handleMutationError,
   })
 
   const deleteMutation = useMutation({
     mutationFn: () => apiClient.deleteStrategy(id!),
+    onMutate: () => setActionError(null),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['strategies'] })
       navigate('/strategies')
     },
+    onError: handleMutationError,
   })
 
   const runMutation = useMutation({
     mutationFn: () => apiClient.runStrategy(id!),
+    onMutate: () => setActionError(null),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['runs', { strategy_id: id }] })
     },
+    onError: handleMutationError,
+  })
+
+  const pauseMutation = useMutation({
+    mutationFn: () => apiClient.pauseStrategy(id!),
+    onMutate: () => setActionError(null),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['strategy', id] })
+      queryClient.invalidateQueries({ queryKey: ['strategies'] })
+    },
+    onError: handleMutationError,
+  })
+
+  const resumeMutation = useMutation({
+    mutationFn: () => apiClient.resumeStrategy(id!),
+    onMutate: () => setActionError(null),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['strategy', id] })
+      queryClient.invalidateQueries({ queryKey: ['strategies'] })
+    },
+    onError: handleMutationError,
+  })
+
+  const skipMutation = useMutation({
+    mutationFn: () => apiClient.skipNextRun(id!),
+    onMutate: () => setActionError(null),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['strategy', id] })
+      queryClient.invalidateQueries({ queryKey: ['strategies'] })
+    },
+    onError: handleMutationError,
   })
 
   if (isLoading) {
@@ -73,40 +151,72 @@ export function StrategyDetailPage() {
 
   return (
     <div className="space-y-6" data-testid="strategy-detail-page">
-      <div className="flex items-center justify-between">
-        <div className="space-y-1">
-          <Link
-            to="/strategies"
-            className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-          >
-            <ArrowLeft className="size-4" />
-            Back to strategies
-          </Link>
-          <h2 className="text-2xl font-semibold tracking-tight">{strategy.name}</h2>
-          {strategy.description ? (
-            <p className="text-sm text-muted-foreground">{strategy.description}</p>
-          ) : null}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="space-y-1">
+            <Link
+              to="/strategies"
+              className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+            >
+              <ArrowLeft className="size-4" />
+              Back to strategies
+            </Link>
+            <div className="flex items-center gap-2">
+              <h2 className="text-2xl font-semibold tracking-tight">{strategy.name}</h2>
+              <Badge variant={statusBadgeVariant(strategyStatus)} data-testid="strategy-status-badge">
+                {strategyStatus}
+              </Badge>
+              {strategy.is_paper ? <Badge variant="warning">paper</Badge> : null}
+              {strategy.skip_next_run ? <Badge variant="outline">skip next queued</Badge> : null}
+            </div>
+            {strategy.description ? (
+              <p className="text-sm text-muted-foreground">{strategy.description}</p>
+            ) : null}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => runMutation.mutate()}
+              disabled={runMutation.isPending}
+              data-testid="run-strategy-button"
+            >
+              <Play className="mr-2 size-4" />
+              {runMutation.isPending ? 'Running…' : 'Run now'}
+            </Button>
+            <Button
+              variant={isStrategyPaused ? 'default' : 'outline'}
+              onClick={() => (isStrategyPaused ? resumeMutation.mutate() : pauseMutation.mutate())}
+              disabled={isStrategyPaused ? resumeMutation.isPending : !isStrategyActive || pauseMutation.isPending}
+              data-testid={isStrategyPaused ? 'resume-strategy-button' : 'pause-strategy-button'}
+            >
+              {isStrategyPaused ? <Play className="mr-2 size-4" /> : <Pause className="mr-2 size-4" />}
+              {isStrategyPaused
+                ? (resumeMutation.isPending ? 'Resuming…' : 'Resume')
+                : (pauseMutation.isPending ? 'Pausing…' : 'Pause')}
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => skipMutation.mutate()}
+              disabled={!isStrategyActive || skipMutation.isPending}
+              data-testid="skip-next-button"
+            >
+              <SkipForward className="mr-2 size-4" />
+              {skipMutation.isPending ? 'Skipping…' : 'Skip next'}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => deleteMutation.mutate()}
+              disabled={deleteMutation.isPending}
+              data-testid="delete-strategy-button"
+            >
+              <Trash2 className="mr-2 size-4" />
+              Delete
+            </Button>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            onClick={() => runMutation.mutate()}
-            disabled={runMutation.isPending}
-            data-testid="run-strategy-button"
-          >
-            <Play className="mr-2 size-4" />
-            {runMutation.isPending ? 'Running…' : 'Run now'}
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => deleteMutation.mutate()}
-            disabled={deleteMutation.isPending}
-            data-testid="delete-strategy-button"
-          >
-            <Trash2 className="mr-2 size-4" />
-            Delete
-          </Button>
-        </div>
+        {actionError ? (
+          <p className="text-sm text-destructive" data-testid="strategy-action-error">{actionError}</p>
+        ) : null}
       </div>
 
       <Card>
@@ -131,11 +241,7 @@ export function StrategyDetailPage() {
             <div>
               <dt className="text-xs text-muted-foreground">Status</dt>
               <dd className="flex items-center gap-2">
-                {strategy.is_active ? (
-                  <Badge variant="success">active</Badge>
-                ) : (
-                  <Badge variant="secondary">inactive</Badge>
-                )}
+                <Badge variant={statusBadgeVariant(strategyStatus)}>{strategyStatus}</Badge>
                 {strategy.is_paper ? <Badge variant="warning">paper</Badge> : null}
               </dd>
             </div>

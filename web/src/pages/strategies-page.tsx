@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { apiClient } from '@/lib/api/client'
-import type { Strategy, StrategyCreateRequest } from '@/lib/api/types'
+import type { Strategy, StrategyCreateRequest, StrategyStatus } from '@/lib/api/types'
 
 function MarketTypeBadge({ type }: { type: Strategy['market_type'] }) {
   const variants: Record<Strategy['market_type'], 'default' | 'secondary' | 'outline'> = {
@@ -17,6 +17,25 @@ function MarketTypeBadge({ type }: { type: Strategy['market_type'] }) {
     polymarket: 'outline',
   }
   return <Badge variant={variants[type]}>{type}</Badge>
+}
+
+function statusVariant(status: StrategyStatus): 'success' | 'warning' | 'secondary' {
+  switch (status) {
+    case 'active':
+      return 'success'
+    case 'paused':
+      return 'warning'
+    default:
+      return 'secondary'
+  }
+}
+
+function resolveStrategyStatus(strategy: Strategy): StrategyStatus {
+  if (strategy.status) {
+    return strategy.status
+  }
+
+  return strategy.is_active ? 'active' : 'inactive'
 }
 
 function formatDate(dateStr: string) {
@@ -104,57 +123,62 @@ export function StrategiesPage() {
             </div>
           ) : (
             <ul className="space-y-2" data-testid="strategies-list">
-              {(data?.data ?? []).map((strategy) => (
-                <li key={strategy.id}>
-                  <div className="flex items-center gap-3 rounded-lg border p-3 transition-colors hover:bg-secondary/40">
-                    <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-                      <Activity className="size-4" />
-                    </div>
-                    <Link
-                      to={`/strategies/${strategy.id}`}
-                      className="min-w-0 flex-1"
-                      data-testid={`strategy-link-${strategy.id}`}
-                    >
-                      <p className="truncate font-medium hover:underline">
-                        {strategy.name}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {strategy.ticker}
-                        {strategy.schedule_cron ? (
-                          <span className="ml-2 inline-flex items-center gap-1">
-                            <Clock className="size-3" />
-                            scheduled
-                          </span>
-                        ) : null}
-                        <span className="ml-2">
-                          Updated {formatDate(strategy.updated_at)}
-                        </span>
-                      </p>
-                    </Link>
-                    <div className="flex items-center gap-2">
-                      <MarketTypeBadge type={strategy.market_type} />
-                      {strategy.is_paper ? (
-                        <Badge variant="warning">paper</Badge>
-                      ) : null}
-                      {strategy.is_active ? (
-                        <Badge variant="success">active</Badge>
-                      ) : (
-                        <Badge variant="secondary">inactive</Badge>
-                      )}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => runMutation.mutate(strategy.id)}
-                        disabled={runMutation.isPending}
-                        data-testid={`run-strategy-${strategy.id}`}
+              {(data?.data ?? []).map((strategy) => {
+                const strategyStatus = resolveStrategyStatus(strategy)
+
+                return (
+                  <li key={strategy.id}>
+                    <div className="flex items-center gap-3 rounded-lg border p-3 transition-colors hover:bg-secondary/40">
+                      <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                        <Activity className="size-4" />
+                      </div>
+                      <Link
+                        to={`/strategies/${strategy.id}`}
+                        className="min-w-0 flex-1"
+                        data-testid={`strategy-link-${strategy.id}`}
                       >
-                        <Play className="mr-1 size-3" />
-                        Run
-                      </Button>
+                        <div className="flex items-center gap-2">
+                          <p className="truncate font-medium hover:underline">
+                            {strategy.name}
+                          </p>
+                          <Badge variant={statusVariant(strategyStatus)} data-testid={`strategy-status-${strategy.id}`}>
+                            {strategyStatus}
+                          </Badge>
+                          {strategy.skip_next_run ? <Badge variant="outline">skip next</Badge> : null}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {strategy.ticker}
+                          {strategy.schedule_cron ? (
+                            <span className="ml-2 inline-flex items-center gap-1">
+                              <Clock className="size-3" />
+                              scheduled
+                            </span>
+                          ) : null}
+                          <span className="ml-2">
+                            Updated {formatDate(strategy.updated_at)}
+                          </span>
+                        </p>
+                      </Link>
+                      <div className="flex items-center gap-2">
+                        <MarketTypeBadge type={strategy.market_type} />
+                        {strategy.is_paper ? (
+                          <Badge variant="warning">paper</Badge>
+                        ) : null}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => runMutation.mutate(strategy.id)}
+                          disabled={runMutation.isPending}
+                          data-testid={`run-strategy-${strategy.id}`}
+                        >
+                          <Play className="mr-1 size-3" />
+                          Run
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                </li>
-              ))}
+                  </li>
+                )
+              })}
             </ul>
           )}
         </CardContent>
@@ -163,7 +187,7 @@ export function StrategiesPage() {
       <CreateStrategyDialog
         open={createOpen}
         onOpenChange={setCreateOpen}
-        onSubmit={(data) => createMutation.mutate(data)}
+        onSubmit={(formData) => createMutation.mutate(formData)}
         isSubmitting={createMutation.isPending}
       />
     </div>

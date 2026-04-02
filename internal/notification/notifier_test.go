@@ -145,3 +145,76 @@ func TestWebhookNotifierNotify(t *testing.T) {
 		t.Fatalf("payload[data][key] = %v, want %q", data["key"], "db_connection_loss")
 	}
 }
+
+func TestWebhookNotifierSendPayloadSupportsSignalAndDecision(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		payload   WebhookPayload
+		assertion func(t *testing.T, payload map[string]any)
+	}{
+		{
+			name: "signal payload",
+			payload: FormatPayload("signal", string(SeverityInfo), "strategy-1", "run-1", map[string]any{
+				"ticker": "AAPL",
+				"signal": "buy",
+			}, "https://example.com/callback"),
+			assertion: func(t *testing.T, payload map[string]any) {
+				t.Helper()
+				if payload["event_type"] != "signal" {
+					t.Fatalf("event_type = %v, want %q", payload["event_type"], "signal")
+				}
+				if payload["callback_url"] != "https://example.com/callback" {
+					t.Fatalf("callback_url = %v, want callback URL", payload["callback_url"])
+				}
+			},
+		},
+		{
+			name: "decision payload",
+			payload: FormatPayload("decision", string(SeverityInfo), "strategy-2", "run-2", map[string]any{
+				"agent_role": "trader",
+				"summary":    "Position reduced due to volatility",
+			}, ""),
+			assertion: func(t *testing.T, payload map[string]any) {
+				t.Helper()
+				if payload["event_type"] != "decision" {
+					t.Fatalf("event_type = %v, want %q", payload["event_type"], "decision")
+				}
+				data, ok := payload["data"].(map[string]any)
+				if !ok {
+					t.Fatalf("payload[data] missing or wrong type: %T", payload["data"])
+				}
+				if data["agent_role"] != "trader" {
+					t.Fatalf("agent_role = %v, want %q", data["agent_role"], "trader")
+				}
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var payload map[string]any
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				body, err := io.ReadAll(r.Body)
+				if err != nil {
+					t.Fatalf("ReadAll() error = %v", err)
+				}
+				if err := json.Unmarshal(body, &payload); err != nil {
+					t.Fatalf("Unmarshal() error = %v", err)
+				}
+				w.WriteHeader(http.StatusAccepted)
+			}))
+			defer server.Close()
+
+			notifier := NewWebhookNotifier(server.URL, "")
+			notifier.httpClient = server.Client()
+
+			if err := notifier.SendPayload(context.Background(), tc.payload); err != nil {
+				t.Fatalf("SendPayload() error = %v", err)
+			}
+
+			tc.assertion(t, payload)
+		})
+	}
+}

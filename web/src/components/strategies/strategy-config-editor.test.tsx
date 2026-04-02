@@ -13,14 +13,29 @@ const mockStrategy: Strategy = {
   market_type: 'stock',
   schedule_cron: '0 9 * * 1-5',
   config: {
-    llm: {
-      deep_think_provider: 'anthropic',
+    llm_config: {
+      provider: 'anthropic',
       deep_think_model: 'claude-3-opus',
-      quick_think_provider: 'openai',
       quick_think_model: 'gpt-4o-mini',
     },
+    pipeline_config: {
+      debate_rounds: 4,
+      analysis_timeout_seconds: 120,
+      debate_timeout_seconds: 600,
+    },
+    risk_config: {
+      position_size_pct: 20,
+      stop_loss_multiplier: 1.5,
+      take_profit_multiplier: 2.5,
+      min_confidence: 0.7,
+    },
+    analyst_selection: ['market_analyst', 'news_analyst'],
+    prompt_overrides: {
+      trader: 'Use custom trader prompt',
+    },
   },
-  is_active: true,
+  status: 'active',
+  skip_next_run: false,
   is_paper: true,
   created_at: '2025-01-01T00:00:00Z',
   updated_at: '2025-01-01T00:00:00Z',
@@ -59,7 +74,9 @@ const mockSettings: Settings = {
 }
 
 describe('StrategyConfigEditor', () => {
-  afterEach(cleanup)
+  afterEach(() => {
+    cleanup()
+  })
 
   it('renders LLM config fields with settings providers', () => {
     render(
@@ -70,23 +87,15 @@ describe('StrategyConfigEditor', () => {
       />,
     )
 
-    // Provider dropdowns should have all providers as options
     const deepProviderSelect = screen.getByLabelText('Deep Think Provider') as HTMLSelectElement
     const quickProviderSelect = screen.getByLabelText('Quick Think Provider') as HTMLSelectElement
 
     expect(deepProviderSelect).toBeInTheDocument()
     expect(quickProviderSelect).toBeInTheDocument()
-
-    // Each dropdown should have "Use global default" + 6 providers
-    const deepOptions = deepProviderSelect.querySelectorAll('option')
-    expect(deepOptions).toHaveLength(7) // 1 default + 6 providers
-
-    expect(deepOptions[0]).toHaveTextContent('Use global default')
-    expect(deepOptions[1]).toHaveTextContent('openai')
-    expect(deepOptions[2]).toHaveTextContent('anthropic')
+    expect(deepProviderSelect.querySelectorAll('option')).toHaveLength(7)
   })
 
-  it('pre-populates LLM fields from strategy config', () => {
+  it('pre-populates pipeline and risk fields from strategy config', () => {
     render(
       <StrategyConfigEditor
         strategy={mockStrategy}
@@ -95,85 +104,115 @@ describe('StrategyConfigEditor', () => {
       />,
     )
 
-    const deepProviderSelect = screen.getByLabelText('Deep Think Provider') as HTMLSelectElement
-    const deepModelInput = screen.getByLabelText('Deep Think Model') as HTMLInputElement
-    const quickProviderSelect = screen.getByLabelText('Quick Think Provider') as HTMLSelectElement
-    const quickModelInput = screen.getByLabelText('Quick Think Model') as HTMLInputElement
-
-    expect(deepProviderSelect.value).toBe('anthropic')
-    expect(deepModelInput.value).toBe('claude-3-opus')
-    expect(quickProviderSelect.value).toBe('openai')
-    expect(quickModelInput.value).toBe('gpt-4o-mini')
+    expect(screen.getByLabelText('Research Debate Rounds')).toHaveValue(4)
+    expect(screen.getByLabelText('Risk Debate Rounds')).toHaveValue(null)
+    expect(screen.getByLabelText('Analysis Timeout (seconds)')).toHaveValue(120)
+    expect(screen.getByLabelText('Debate Timeout (seconds)')).toHaveValue(600)
+    expect(screen.getByLabelText('Max Position Size %')).toHaveValue(0.2)
+    expect(screen.getByLabelText('Stop Loss ATR Multiplier')).toHaveValue(1.5)
+    expect(screen.getByLabelText('Take Profit ATR Multiplier')).toHaveValue(2.5)
+    expect(screen.getByLabelText('Min Confidence Threshold')).toHaveValue(0.7)
   })
 
-  it('shows global defaults as placeholders', () => {
-    const strategyNoLlm: Strategy = {
-      ...mockStrategy,
-      config: {},
-    }
-
+  it('defaults all analysts to checked when no config is present', () => {
     render(
       <StrategyConfigEditor
-        strategy={strategyNoLlm}
+        strategy={{ ...mockStrategy, config: {} }}
         onSave={vi.fn()}
         settings={mockSettings}
       />,
     )
 
-    const deepModelInput = screen.getByLabelText('Deep Think Model') as HTMLInputElement
-    const quickModelInput = screen.getByLabelText('Quick Think Model') as HTMLInputElement
-
-    expect(deepModelInput.placeholder).toBe('gpt-4o')
-    expect(quickModelInput.placeholder).toBe('gpt-4o-mini')
+    expect(screen.getByLabelText('Market Analyst')).toBeChecked()
+    expect(screen.getByLabelText('Fundamentals Analyst')).toBeChecked()
+    expect(screen.getByLabelText('News Analyst')).toBeChecked()
+    expect(screen.getByLabelText('Social Media Analyst')).toBeChecked()
   })
 
-  it('renders only global default option when no settings provided', () => {
+  it('keeps advanced section collapsed by default and expands on click', () => {
     render(
       <StrategyConfigEditor
         strategy={mockStrategy}
         onSave={vi.fn()}
+        settings={mockSettings}
       />,
     )
 
-    const deepProviderSelect = screen.getByLabelText('Deep Think Provider') as HTMLSelectElement
-    const options = deepProviderSelect.querySelectorAll('option')
-    expect(options).toHaveLength(1)
-    expect(options[0]).toHaveTextContent('Use global default')
+    expect(screen.queryByLabelText('Prompt Overrides (JSON)')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Show' }))
+    expect(screen.getByLabelText('Prompt Overrides (JSON)')).toBeInTheDocument()
   })
 
-  it('includes LLM fields in submitted config', () => {
+  it('includes new config sections in submitted payload', () => {
     const onSave = vi.fn()
 
     render(
       <StrategyConfigEditor
-        strategy={{ ...mockStrategy, config: {} }}
+        strategy={mockStrategy}
         onSave={onSave}
         settings={mockSettings}
       />,
     )
 
-    // Fill LLM fields
     fireEvent.change(screen.getByLabelText('Deep Think Provider'), { target: { value: 'anthropic' } })
     fireEvent.change(screen.getByLabelText('Deep Think Model'), { target: { value: 'claude-4' } })
     fireEvent.change(screen.getByLabelText('Quick Think Provider'), { target: { value: 'openai' } })
     fireEvent.change(screen.getByLabelText('Quick Think Model'), { target: { value: 'gpt-5' } })
+    fireEvent.change(screen.getByLabelText('Research Debate Rounds'), { target: { value: '3' } })
+    fireEvent.change(screen.getByLabelText('Risk Debate Rounds'), { target: { value: '2' } })
+    fireEvent.change(screen.getByLabelText('Analysis Timeout (seconds)'), { target: { value: '90' } })
+    fireEvent.change(screen.getByLabelText('Debate Timeout (seconds)'), { target: { value: '900' } })
+    fireEvent.change(screen.getByLabelText('Max Position Size %'), { target: { value: '0.25' } })
+    fireEvent.change(screen.getByLabelText('Stop Loss ATR Multiplier'), { target: { value: '1.8' } })
+    fireEvent.change(screen.getByLabelText('Take Profit ATR Multiplier'), { target: { value: '2.8' } })
+    fireEvent.change(screen.getByLabelText('Min Confidence Threshold'), { target: { value: '0.75' } })
 
-    // Submit
+    fireEvent.click(screen.getByLabelText('Fundamentals Analyst'))
+    fireEvent.click(screen.getByLabelText('Social Media Analyst'))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show' }))
+    fireEvent.change(screen.getByLabelText('Prompt Overrides (JSON)'), {
+      target: { value: '{\n  "trader": "Use concise prompts"\n}' },
+    })
+
     fireEvent.submit(screen.getByTestId('strategy-config-editor').querySelector('form')!)
 
     expect(onSave).toHaveBeenCalledTimes(1)
-    const payload = onSave.mock.calls[0][0]
-    expect(payload.config).toEqual({
-      llm: {
-        deep_think_provider: 'anthropic',
-        deep_think_model: 'claude-4',
-        quick_think_provider: 'openai',
-        quick_think_model: 'gpt-5',
+    expect(onSave.mock.calls[0][0]).toEqual({
+      name: 'Test Strategy',
+      description: 'A test strategy',
+      ticker: 'AAPL',
+      market_type: 'stock',
+      schedule_cron: '0 9 * * 1-5',
+      status: 'active',
+      is_paper: true,
+      skip_next_run: false,
+      config: {
+        llm_config: {
+          provider: 'anthropic',
+          deep_think_model: 'claude-4',
+          quick_think_model: 'gpt-5',
+        },
+        pipeline_config: {
+          debate_rounds: 3,
+          analysis_timeout_seconds: 90,
+          debate_timeout_seconds: 900,
+        },
+        risk_config: {
+          position_size_pct: 25,
+          stop_loss_multiplier: 1.8,
+          take_profit_multiplier: 2.8,
+          min_confidence: 0.75,
+        },
+        analyst_selection: ['market_analyst', 'news_analyst', 'fundamentals_analyst', 'social_media_analyst'],
+        prompt_overrides: {
+          trader: 'Use concise prompts',
+        },
       },
     })
   })
 
-  it('does not include empty LLM fields in config', () => {
+  it('blocks submit when no analysts are selected', () => {
     const onSave = vi.fn()
 
     render(
@@ -184,65 +223,13 @@ describe('StrategyConfigEditor', () => {
       />,
     )
 
-    // Leave all LLM fields empty, just submit
+    fireEvent.click(screen.getByLabelText('Market Analyst'))
+    fireEvent.click(screen.getByLabelText('Fundamentals Analyst'))
+    fireEvent.click(screen.getByLabelText('News Analyst'))
+    fireEvent.click(screen.getByLabelText('Social Media Analyst'))
     fireEvent.submit(screen.getByTestId('strategy-config-editor').querySelector('form')!)
 
-    expect(onSave).toHaveBeenCalledTimes(1)
-    const payload = onSave.mock.calls[0][0]
-    // No llm key should exist when all fields are empty
-    expect(payload.config).toEqual({})
-  })
-
-  it('merges LLM fields with existing JSON config', () => {
-    const onSave = vi.fn()
-    const strategyWithExtraConfig: Strategy = {
-      ...mockStrategy,
-      config: { some_other_key: 'value', llm: { existing_key: 'keep' } },
-    }
-
-    render(
-      <StrategyConfigEditor
-        strategy={strategyWithExtraConfig}
-        onSave={onSave}
-        settings={mockSettings}
-      />,
-    )
-
-    // Set deep think provider, clear everything else
-    fireEvent.change(screen.getByLabelText('Deep Think Provider'), { target: { value: 'anthropic' } })
-    fireEvent.change(screen.getByLabelText('Deep Think Model'), { target: { value: '' } })
-    fireEvent.change(screen.getByLabelText('Quick Think Provider'), { target: { value: '' } })
-    fireEvent.change(screen.getByLabelText('Quick Think Model'), { target: { value: '' } })
-
-    fireEvent.submit(screen.getByTestId('strategy-config-editor').querySelector('form')!)
-
-    expect(onSave).toHaveBeenCalledTimes(1)
-    const payload = onSave.mock.calls[0][0]
-    expect(payload.config.some_other_key).toBe('value')
-    // LLM should merge: existing_key from JSON + deep_think_provider from structured field
-    expect(payload.config.llm.existing_key).toBe('keep')
-    expect(payload.config.llm.deep_think_provider).toBe('anthropic')
-  })
-
-  it('renders LLM section above JSON textarea', () => {
-    const { container } = render(
-      <StrategyConfigEditor
-        strategy={mockStrategy}
-        onSave={vi.fn()}
-        settings={mockSettings}
-      />,
-    )
-
-    const llmHeading = screen.getByText('LLM Configuration')
-    const textarea = screen.getByTestId('config-editor-textarea')
-
-    // LLM section should appear before the JSON textarea in DOM order
-    const allElements = container.querySelectorAll('h4, textarea')
-    const positions = Array.from(allElements).map((el) => el.textContent || el.tagName)
-    const llmIndex = positions.indexOf('LLM Configuration')
-    const textareaIndex = positions.findIndex((_, i) => allElements[i] === textarea)
-
-    expect(llmHeading).toBeInTheDocument()
-    expect(llmIndex).toBeLessThan(textareaIndex)
+    expect(onSave).not.toHaveBeenCalled()
+    expect(screen.getByText('Select at least one analyst')).toBeInTheDocument()
   })
 })

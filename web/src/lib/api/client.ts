@@ -2,7 +2,9 @@ import { getAccessToken, getRefreshToken, getExpiresAt, clearTokens, setTokens }
 import { getApiBaseUrl } from '@/lib/config'
 import type {
   AgentDecision,
+  AgentEvent,
   AgentMemory,
+  AuditLogEntry,
   EngineStatus,
   ErrorResponse,
   HealthStatus,
@@ -110,6 +112,18 @@ export class ApiClient {
     return this.requestNoContent(`/api/v1/strategies/${id}`, { method: 'DELETE' })
   }
 
+  async pauseStrategy(id: UUID) {
+    return this.request<Strategy>(`/api/v1/strategies/${id}/pause`, { method: 'POST' })
+  }
+
+  async resumeStrategy(id: UUID) {
+    return this.request<Strategy>(`/api/v1/strategies/${id}/resume`, { method: 'POST' })
+  }
+
+  async skipNextRun(id: UUID) {
+    return this.request<Strategy>(`/api/v1/strategies/${id}/skip-next`, { method: 'POST' })
+  }
+
   async runStrategy(id: UUID) {
     return this.request<StrategyRunResult>(`/api/v1/strategies/${id}/run`, { method: 'POST' })
   }
@@ -160,6 +174,10 @@ export class ApiClient {
     return this.requestList<Trade>('/api/v1/trades', { query: toQueryParams(params) })
   }
 
+  async listEvents(params: PaginationParams & { run_id?: UUID; event_kind?: string } = {}) {
+    return this.requestList<AgentEvent>('/api/v1/events', { query: toQueryParams(params) })
+  }
+
   async listMemories(params: MemoryListParams & PaginationParams = {}) {
     return this.requestList<AgentMemory>('/api/v1/memories', {
       query: toQueryParams(params),
@@ -198,6 +216,10 @@ export class ApiClient {
       method: 'PUT',
       body: payload,
     })
+  }
+
+  async listAuditLog(params: PaginationParams = {}) {
+    return this.requestList<AuditLogEntry>('/api/v1/audit-log', { query: toQueryParams(params) })
   }
 
   private async request<T>(path: string, options: RequestOptions = {}): Promise<T> {

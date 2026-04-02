@@ -13,6 +13,7 @@ const (
 	ChannelEmail     = "email"
 	ChannelWebhook   = "webhook"
 	ChannelPagerDuty = "pagerduty"
+	ChannelDiscord   = "discord"
 )
 
 // Severity describes the urgency of an alert.
