@@ -12,6 +12,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/PatrickFanella/get-rich-quick/internal/domain"
+	"github.com/google/uuid"
 )
 
 // Compile-time interface check.
@@ -173,4 +176,98 @@ func parseRetryAfter(val string) time.Duration {
 		return time.Second
 	}
 	return time.Duration(secs * float64(time.Second))
+}
+
+// truncate shortens s to maxLen, appending "..." if truncated.
+func truncate(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-3] + "..."
+}
+
+// signalColor maps a pipeline signal to a Discord embed color.
+func signalColor(signal domain.PipelineSignal) int {
+	switch signal {
+	case domain.PipelineSignalBuy:
+		return 0x2ECC71
+	case domain.PipelineSignalSell:
+		return 0xE74C3C
+	default:
+		return 0x95A5A6
+	}
+}
+
+// alertSeverityColor maps a severity string to a Discord embed color.
+func alertSeverityColor(severity string) int {
+	switch strings.ToLower(severity) {
+	case "critical":
+		return 0xE74C3C
+	case "warning":
+		return 0xE67E22
+	default:
+		return 0x3498DB
+	}
+}
+
+// FormatSignalEmbed builds a Discord embed for a pipeline trading signal.
+func FormatSignalEmbed(strategyName, ticker string, signal domain.PipelineSignal, confidence float64, reasoning string, runID uuid.UUID, occurredAt time.Time) map[string]any {
+	return map[string]any{
+		"title": fmt.Sprintf("Signal: %s", strings.ToUpper(string(signal))),
+		"color": signalColor(signal),
+		"fields": []map[string]any{
+			{"name": "Strategy", "value": strategyName, "inline": true},
+			{"name": "Ticker", "value": ticker, "inline": true},
+			{"name": "Confidence", "value": fmt.Sprintf("%.1f%%", confidence*100), "inline": true},
+			{"name": "Reasoning", "value": truncate(reasoning, 1024), "inline": false},
+		},
+		"footer":    map[string]any{"text": fmt.Sprintf("Run %s", runID.String()[:8])},
+		"timestamp": occurredAt.UTC().Format(time.RFC3339),
+	}
+}
+
+// FormatDecisionEmbed builds a Discord embed for an agent decision.
+func FormatDecisionEmbed(agentRole, phase, outputSummary, llmModel string, latencyMS int, runID uuid.UUID, occurredAt time.Time) map[string]any {
+	return map[string]any{
+		"title": fmt.Sprintf("Decision: %s", agentRole),
+		"color": 0x3498DB,
+		"fields": []map[string]any{
+			{"name": "Phase", "value": phase, "inline": true},
+			{"name": "Model", "value": llmModel, "inline": true},
+			{"name": "Latency", "value": fmt.Sprintf("%dms", latencyMS), "inline": true},
+			{"name": "Output", "value": truncate(outputSummary, 1024), "inline": false},
+		},
+		"footer":    map[string]any{"text": fmt.Sprintf("Run %s", runID.String()[:8])},
+		"timestamp": occurredAt.UTC().Format(time.RFC3339),
+	}
+}
+
+// FormatAlertEmbed builds a Discord embed for a system alert.
+func FormatAlertEmbed(eventType, severity, reason string, details map[string]any, occurredAt time.Time) map[string]any {
+	fields := []map[string]any{
+		{"name": "Severity", "value": strings.ToUpper(severity), "inline": true},
+	}
+
+	if len(details) > 0 {
+		keys := make([]string, 0, len(details))
+		for k := range details {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			fields = append(fields, map[string]any{
+				"name":   k,
+				"value":  fmt.Sprintf("%v", details[k]),
+				"inline": true,
+			})
+		}
+	}
+
+	return map[string]any{
+		"title":       fmt.Sprintf("Alert: %s", eventType),
+		"description": reason,
+		"color":       alertSeverityColor(severity),
+		"fields":      fields,
+		"timestamp":   occurredAt.UTC().Format(time.RFC3339),
+	}
 }

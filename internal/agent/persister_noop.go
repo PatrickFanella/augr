@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,7 +15,7 @@ import (
 type NoopPersister struct{}
 
 func (NoopPersister) RecordRunStart(context.Context, *domain.PipelineRun) error { return nil }
-func (NoopPersister) RecordRunComplete(context.Context, uuid.UUID, time.Time, domain.PipelineStatus, time.Time, string) error {
+func (NoopPersister) RecordRunComplete(context.Context, uuid.UUID, time.Time, domain.PipelineStatus, time.Time, string, json.RawMessage) error {
 	return nil
 }
 

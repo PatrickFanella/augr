@@ -131,7 +131,17 @@ func TestWebhookNotifierNotify(t *testing.T) {
 	if gotSecret != "super-secret" {
 		t.Fatalf("X-Webhook-Secret = %q, want %q", gotSecret, "super-secret")
 	}
-	if payload["key"] != "db_connection_loss" {
-		t.Fatalf("payload[key] = %v, want %q", payload["key"], "db_connection_loss")
+	if payload["event_type"] != "alert" {
+		t.Fatalf("payload[event_type] = %v, want %q", payload["event_type"], "alert")
+	}
+	if payload["severity"] != string(SeverityCritical) {
+		t.Fatalf("payload[severity] = %v, want %q", payload["severity"], SeverityCritical)
+	}
+	data, ok := payload["data"].(map[string]any)
+	if !ok {
+		t.Fatalf("payload[data] missing or wrong type: %T", payload["data"])
+	}
+	if data["key"] != "db_connection_loss" {
+		t.Fatalf("payload[data][key] = %v, want %q", data["key"], "db_connection_loss")
 	}
 }

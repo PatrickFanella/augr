@@ -101,9 +101,9 @@ export function RunsPage() {
     () => new Map(strategies.map((strategy) => [strategy.id, strategy])),
     [strategies],
   )
-  const visibleRuns = data?.data.slice(0, PAGE_SIZE) ?? []
+  const visibleRuns = (data?.data ?? []).slice(0, PAGE_SIZE)
   const visibleCount = visibleRuns.length
-  const hasNextPage = (data?.data.length ?? 0) > PAGE_SIZE
+  const hasNextPage = (data?.data?.length ?? 0) > PAGE_SIZE
   const pageLabel = useMemo(() => Math.floor(offset / PAGE_SIZE) + 1, [offset])
   const hasActiveFilters = Boolean(strategyId || status || startDate || endDate)
 

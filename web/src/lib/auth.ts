@@ -60,6 +60,23 @@ export function getAccessToken() {
   return getStorageValue(ACCESS_TOKEN_KEY)
 }
 
+export function getRefreshToken(): string | null {
+  return getStorageValue(REFRESH_TOKEN_KEY)
+}
+
+export function getExpiresAt(): number | null {
+  const raw = getStorageValue(EXPIRES_AT_KEY)
+  if (!raw) return null
+  let parsed = Number(raw)
+  // Fall back to RFC3339/ISO string parsing when the raw value is not numeric.
+  if (Number.isNaN(parsed)) {
+    parsed = Date.parse(raw)
+  }
+  if (Number.isNaN(parsed)) return null
+  // Normalize to milliseconds
+  return parsed < 1_000_000_000_000 ? parsed * 1000 : parsed
+}
+
 export function setTokens(accessToken: string, refreshToken: string, expiresAt: string | number) {
   setStorageValue(ACCESS_TOKEN_KEY, accessToken)
   setStorageValue(REFRESH_TOKEN_KEY, refreshToken)

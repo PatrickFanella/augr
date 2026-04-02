@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"time"
@@ -53,7 +54,7 @@ func (p *RepoPersister) RecordRunStart(ctx context.Context, run *domain.Pipeline
 	return nil
 }
 
-func (p *RepoPersister) RecordRunComplete(_ context.Context, runID uuid.UUID, tradeDate time.Time, status domain.PipelineStatus, completedAt time.Time, errMsg string) error {
+func (p *RepoPersister) RecordRunComplete(_ context.Context, runID uuid.UUID, tradeDate time.Time, status domain.PipelineStatus, completedAt time.Time, errMsg string, phaseTimings json.RawMessage) error {
 	if p.pipelineRunRepo == nil {
 		return nil
 	}
@@ -61,8 +62,9 @@ func (p *RepoPersister) RecordRunComplete(_ context.Context, runID uuid.UUID, tr
 	defer dbCancel()
 
 	update := repository.PipelineRunStatusUpdate{
-		Status:      status,
-		CompletedAt: &completedAt,
+		Status:       status,
+		CompletedAt:  &completedAt,
+		PhaseTimings: phaseTimings,
 	}
 	if errMsg != "" {
 		update.ErrorMessage = errMsg

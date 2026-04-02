@@ -552,6 +552,8 @@ func (p *Pipeline) Execute(ctx context.Context, strategyID uuid.UUID, ticker str
 		{"risk_debate", p.executeRiskDebatePhase},
 	}
 
+	phaseTimingsMap := make(map[string]int64)
+
 	for _, phase := range phases {
 		p.persistStructuredEvent(ctx, p.newStructuredEvent(
 			run.ID,
@@ -565,14 +567,18 @@ func (p *Pipeline) Execute(ctx context.Context, strategyID uuid.UUID, ticker str
 			},
 			[]string{"phase", phase.name},
 		))
+		phaseStart := time.Now()
 		if err := phase.fn(ctx, state); err != nil {
+			elapsed := time.Since(phaseStart).Milliseconds()
+			phaseTimingsMap[phase.name+"_ms"] = elapsed
 			p.logger.Error("agent/pipeline: phase failed",
 				slog.String("phase", phase.name),
 				slog.Any("error", err),
 			)
 
 			completedAt := p.currentTime().UTC()
-			_ = p.persister.RecordRunComplete(ctx, run.ID, run.TradeDate, domain.PipelineStatusFailed, completedAt, err.Error())
+			phaseTimingsJSON, _ := json.Marshal(phaseTimingsMap)
+			_ = p.persister.RecordRunComplete(ctx, run.ID, run.TradeDate, domain.PipelineStatusFailed, completedAt, err.Error(), phaseTimingsJSON)
 			p.emitCacheStats(state, cacheStatsCollector, run.ID, strategyID, ticker)
 			p.persistStructuredTerminalEvent(p.newStructuredEvent(
 				run.ID,
@@ -599,6 +605,8 @@ func (p *Pipeline) Execute(ctx context.Context, strategyID uuid.UUID, ticker str
 
 			return state, err
 		}
+		elapsed := time.Since(phaseStart).Milliseconds()
+		phaseTimingsMap[phase.name+"_ms"] = elapsed
 		p.persistStructuredEvent(ctx, p.newStructuredEvent(
 			run.ID,
 			strategyID,
@@ -615,7 +623,8 @@ func (p *Pipeline) Execute(ctx context.Context, strategyID uuid.UUID, ticker str
 
 	// All phases succeeded – mark the run as completed.
 	completedAt := p.currentTime().UTC()
-	_ = p.persister.RecordRunComplete(ctx, run.ID, run.TradeDate, domain.PipelineStatusCompleted, completedAt, "")
+	phaseTimingsJSON, _ := json.Marshal(phaseTimingsMap)
+	_ = p.persister.RecordRunComplete(ctx, run.ID, run.TradeDate, domain.PipelineStatusCompleted, completedAt, "", phaseTimingsJSON)
 	p.emitCacheStats(state, cacheStatsCollector, run.ID, strategyID, ticker)
 	p.persistStructuredTerminalEvent(p.newStructuredEvent(
 		run.ID,

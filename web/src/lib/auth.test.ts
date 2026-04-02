@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { clearTokens, isAuthenticated, setTokens } from '@/lib/auth'
+import { clearTokens, getAccessToken, getExpiresAt, getRefreshToken, isAuthenticated, setTokens } from '@/lib/auth'
 
 describe('auth', () => {
   beforeEach(() => {
@@ -78,5 +78,54 @@ describe('auth', () => {
         Object.defineProperty(window, 'localStorage', descriptor)
       }
     }
+  })
+
+  it('getRefreshToken returns stored refresh token', () => {
+    setTokens('access', 'refresh-123', Date.now() + 3600_000)
+    expect(getRefreshToken()).toBe('refresh-123')
+  })
+
+  it('getRefreshToken returns null when no token', () => {
+    expect(getRefreshToken()).toBeNull()
+  })
+
+  it('getExpiresAt normalizes seconds to milliseconds', () => {
+    const seconds = Math.floor(Date.now() / 1000) + 3600
+    setTokens('access', 'refresh', seconds)
+    const result = getExpiresAt()
+    expect(result).toBeGreaterThan(Date.now())
+    // Should be in milliseconds (13+ digits)
+    expect(String(result).length).toBeGreaterThanOrEqual(13)
+  })
+
+  it('getExpiresAt returns milliseconds as-is', () => {
+    const ms = Date.now() + 3600_000
+    setTokens('access', 'refresh', ms)
+    expect(getExpiresAt()).toBe(ms)
+  })
+
+  it('getExpiresAt parses RFC3339 string expiry from storage', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-03-30T08:00:00Z'))
+
+    const future = new Date('2026-03-30T09:00:00Z')
+
+    localStorage.setItem('access_token', 'access')
+    localStorage.setItem('refresh_token', 'refresh')
+    localStorage.setItem('expires_at', future.toISOString())
+
+    const result = getExpiresAt()
+    expect(typeof result).toBe('number')
+    expect(result).toBeGreaterThan(Date.now())
+
+    vi.useRealTimers()
+  })
+
+  it('clearTokens removes all tokens', () => {
+    setTokens('access', 'refresh', Date.now() + 3600_000)
+    clearTokens()
+    expect(getAccessToken()).toBeNull()
+    expect(getRefreshToken()).toBeNull()
+    expect(getExpiresAt()).toBeNull()
   })
 })

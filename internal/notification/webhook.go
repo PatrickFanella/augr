@@ -31,15 +31,16 @@ func NewWebhookNotifier(rawURL, secret string) *WebhookNotifier {
 
 // Notify sends an alert payload to the configured webhook endpoint.
 func (n *WebhookNotifier) Notify(ctx context.Context, alert Alert) error {
-	payload, err := json.Marshal(map[string]any{
+	p := FormatPayload("alert", string(alert.Severity), "", "", map[string]any{
 		"key":         alert.Key,
 		"title":       alert.Title,
 		"body":        alert.Body,
-		"severity":    alert.Severity,
 		"occurred_at": alert.OccurredAt.UTC().Format(time.RFC3339),
 		"metadata":    alert.Metadata,
 		"text":        formatAlertText(alert),
-	})
+	}, "")
+
+	payload, err := json.Marshal(p)
 	if err != nil {
 		return fmt.Errorf("marshal webhook payload: %w", err)
 	}
@@ -70,4 +71,39 @@ func (n *WebhookNotifier) Notify(ctx context.Context, alert Alert) error {
 	}
 
 	return nil
+}
+
+// WebhookPayload is the structured JSON body sent to webhook endpoints.
+// All event types (signal, decision, alert) share this envelope.
+//
+// Schema:
+//
+//	event_type      - string: "signal", "decision", "alert", etc.
+//	severity        - string: "info", "warning", "critical"
+//	timestamp       - string: ISO 8601 (RFC3339)
+//	strategy_id     - string: UUID of the strategy (may be empty)
+//	pipeline_run_id - string: UUID of the pipeline run (may be empty)
+//	data            - object: event-specific payload
+//	callback_url    - string: optional callback URL for interactive webhooks
+type WebhookPayload struct {
+	EventType     string         `json:"event_type"`
+	Severity      string         `json:"severity"`
+	Timestamp     string         `json:"timestamp"`
+	StrategyID    string         `json:"strategy_id,omitempty"`
+	PipelineRunID string         `json:"pipeline_run_id,omitempty"`
+	Data          map[string]any `json:"data,omitempty"`
+	CallbackURL   string         `json:"callback_url,omitempty"`
+}
+
+// FormatPayload builds a WebhookPayload with the standard envelope fields.
+func FormatPayload(eventType, severity, strategyID, runID string, data map[string]any, callbackURL string) WebhookPayload {
+	return WebhookPayload{
+		EventType:     eventType,
+		Severity:      severity,
+		Timestamp:     time.Now().UTC().Format(time.RFC3339),
+		StrategyID:    strategyID,
+		PipelineRunID: runID,
+		Data:          data,
+		CallbackURL:   callbackURL,
+	}
 }

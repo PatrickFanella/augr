@@ -19,6 +19,11 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution/paper"
+	"github.com/PatrickFanella/get-rich-quick/internal/llm"
+	"github.com/PatrickFanella/get-rich-quick/internal/llm/anthropic"
+	"github.com/PatrickFanella/get-rich-quick/internal/llm/google"
+	"github.com/PatrickFanella/get-rich-quick/internal/llm/ollama"
+	openaiProvider "github.com/PatrickFanella/get-rich-quick/internal/llm/openai"
 	"github.com/PatrickFanella/get-rich-quick/internal/metrics"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 	pgrepo "github.com/PatrickFanella/get-rich-quick/internal/repository/postgres"
@@ -85,6 +90,8 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 		AuditLog:       auditLogRepo,
 		Events:         eventRepo,
 		MetricsHandler: appMetrics.Handler(),
+		Snapshots:      snapshotRepo,
+		LLMProvider:    newLLMProviderFromConfig(cfg.LLM, logger),
 	}
 
 	var sched *scheduler.Scheduler
@@ -118,6 +125,62 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 		closeRedis()
 		db.Close()
 	}, nil
+}
+
+// newLLMProviderFromConfig builds an llm.Provider from application config.
+// Returns nil (logged as a warning) when no provider is configured or the
+// required credentials are missing so callers can handle the absent provider
+// gracefully (e.g. returning 501 from the conversations endpoint).
+func newLLMProviderFromConfig(cfg config.LLMConfig, logger *slog.Logger) llm.Provider {
+	providerName := strings.ToLower(strings.TrimSpace(cfg.DefaultProvider))
+	// resolveModel prefers the global QuickThink model (suitable for interactive
+	// chat) and falls back to the provider-specific model field.
+	resolveModel := func(providerModel string) string {
+		if m := strings.TrimSpace(cfg.QuickThinkModel); m != "" {
+			return m
+		}
+		return strings.TrimSpace(providerModel)
+	}
+
+	var (
+		p   llm.Provider
+		err error
+	)
+	switch providerName {
+	case "openai":
+		p, err = openaiProvider.NewProvider(openaiProvider.Config{
+			APIKey:  cfg.Providers.OpenAI.APIKey,
+			BaseURL: cfg.Providers.OpenAI.BaseURL,
+			Model:   resolveModel(cfg.Providers.OpenAI.Model),
+		})
+	case "anthropic":
+		p, err = anthropic.NewProvider(anthropic.Config{
+			APIKey:  cfg.Providers.Anthropic.APIKey,
+			BaseURL: cfg.Providers.Anthropic.BaseURL,
+			Model:   resolveModel(cfg.Providers.Anthropic.Model),
+		})
+	case "google":
+		p, err = google.NewProvider(google.Config{
+			APIKey:  cfg.Providers.Google.APIKey,
+			BaseURL: cfg.Providers.Google.BaseURL,
+			Model:   resolveModel(cfg.Providers.Google.Model),
+		})
+	case "ollama":
+		p, err = ollama.NewProvider(ollama.Config{
+			BaseURL: cfg.Providers.Ollama.BaseURL,
+			Model:   resolveModel(cfg.Providers.Ollama.Model),
+		})
+	default:
+		if providerName != "" {
+			logger.Warn("LLM provider not available", slog.String("provider", providerName), slog.String("reason", "unsupported provider name"))
+		}
+		return nil
+	}
+	if err != nil {
+		logger.Warn("LLM provider not available", slog.String("provider", providerName), slog.Any("error", err))
+		return nil
+	}
+	return p
 }
 
 func newRedisHealthCheck(cfg config.Config) (api.HealthCheck, func()) {
