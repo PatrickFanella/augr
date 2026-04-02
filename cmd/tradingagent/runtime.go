@@ -98,7 +98,8 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 	var sched *scheduler.Scheduler
 	if strings.EqualFold(cfg.Environment, "smoke") {
 		pipeline := newSmokePipeline(runRepo, snapshotRepo, decisionRepo, eventRepo, logger)
-		deps.Runner = newSmokeStrategyRunner(pipeline, runRepo, orderRepo, positionRepo, tradeRepo, auditLogRepo, eventRepo, riskEngine, logger)
+		notificationManager := newNotificationManager(cfg)
+		deps.Runner = newSmokeStrategyRunner(pipeline, runRepo, decisionRepo, orderRepo, positionRepo, tradeRepo, auditLogRepo, eventRepo, riskEngine, notificationManager, logger)
 		sched = scheduler.NewScheduler(strategyRepo, pipeline, riskEngine, logger)
 	}
 
@@ -256,22 +257,26 @@ func newRedisHealthCheck(cfg config.Config) (api.HealthCheck, func()) {
 }
 
 type smokeStrategyRunner struct {
-	pipeline     *agent.Pipeline
-	runRepo      repository.PipelineRunRepository
-	orderRepo    repository.OrderRepository
-	positionRepo repository.PositionRepository
-	orderManager *execution.OrderManager
+	pipeline            *agent.Pipeline
+	runRepo             repository.PipelineRunRepository
+	decisionRepo        repository.AgentDecisionRepository
+	orderRepo           repository.OrderRepository
+	positionRepo        repository.PositionRepository
+	orderManager        *execution.OrderManager
+	notificationManager *notification.Manager
 }
 
 func newSmokeStrategyRunner(
 	pipeline *agent.Pipeline,
 	runRepo repository.PipelineRunRepository,
+	decisionRepo repository.AgentDecisionRepository,
 	orderRepo repository.OrderRepository,
 	positionRepo repository.PositionRepository,
 	tradeRepo repository.TradeRepository,
 	auditLogRepo repository.AuditLogRepository,
 	agentEventRepo repository.AgentEventRepository,
 	riskEngine risk.RiskEngine,
+	notificationManager *notification.Manager,
 	logger *slog.Logger,
 ) api.StrategyRunner {
 	orderManager := execution.NewOrderManager(
@@ -291,11 +296,13 @@ func newSmokeStrategyRunner(
 	)
 
 	return &smokeStrategyRunner{
-		pipeline:     pipeline,
-		runRepo:      runRepo,
-		orderRepo:    orderRepo,
-		positionRepo: positionRepo,
-		orderManager: orderManager,
+		pipeline:            pipeline,
+		runRepo:             runRepo,
+		decisionRepo:        decisionRepo,
+		orderRepo:           orderRepo,
+		positionRepo:        positionRepo,
+		orderManager:        orderManager,
+		notificationManager: notificationManager,
 	}
 }
 
@@ -328,6 +335,10 @@ func (r *smokeStrategyRunner) RunStrategy(ctx context.Context, strategy domain.S
 		return nil, err
 	}
 	run.Signal = signal
+
+	if err := r.dispatchNotifications(ctx, strategy, run, state); err != nil {
+		return nil, err
+	}
 
 	if err := r.orderManager.ProcessSignal(
 		ctx,
@@ -369,6 +380,69 @@ func (r *smokeStrategyRunner) RunStrategy(ctx context.Context, strategy domain.S
 		Orders:    orders,
 		Positions: positions,
 	}, nil
+}
+
+func (r *smokeStrategyRunner) dispatchNotifications(ctx context.Context, strategy domain.Strategy, run *domain.PipelineRun, state *agent.PipelineState) error {
+	if r.notificationManager == nil || run == nil || state == nil {
+		return nil
+	}
+
+	signal := state.FinalSignal.Signal
+	if signal == "" {
+		signal = state.TradingPlan.Action
+	}
+	if signal == "" {
+		signal = domain.PipelineSignalHold
+	}
+
+	occurredAt := time.Time{}
+	if run.CompletedAt != nil {
+		occurredAt = *run.CompletedAt
+	}
+
+	reasoning := state.TradingPlan.Rationale
+	if reasoning == "" {
+		reasoning = state.RiskDebate.FinalSignal
+	}
+
+	if err := r.notificationManager.RecordSignal(ctx, notification.SignalEvent{
+		StrategyID:   strategy.ID,
+		StrategyName: strategy.Name,
+		RunID:        run.ID,
+		Ticker:       strategy.Ticker,
+		Signal:       signal,
+		Confidence:   state.FinalSignal.Confidence,
+		Reasoning:    reasoning,
+		OccurredAt:   occurredAt,
+	}); err != nil {
+		return fmt.Errorf("dispatch signal notification: %w", err)
+	}
+
+	if r.decisionRepo == nil {
+		return nil
+	}
+
+	decisions, err := r.decisionRepo.GetByRun(ctx, run.ID, repository.AgentDecisionFilter{}, 100, 0)
+	if err != nil {
+		return fmt.Errorf("load run decisions: %w", err)
+	}
+	for _, decision := range decisions {
+		if err := r.notificationManager.RecordDecision(ctx, notification.DecisionEvent{
+			StrategyID:    strategy.ID,
+			RunID:         run.ID,
+			AgentRole:     decision.AgentRole,
+			Phase:         decision.Phase,
+			OutputSummary: decision.OutputText,
+			LLMProvider:   decision.LLMProvider,
+			LLMModel:      decision.LLMModel,
+			LatencyMS:     decision.LatencyMS,
+			OccurredAt:    decision.CreatedAt,
+		}); err != nil {
+			return fmt.Errorf("dispatch decision notification: %w", err)
+		}
+	}
+
+	return nil
 }
 
 func (r *smokeStrategyRunner) findRun(ctx context.Context, runID uuid.UUID) (*domain.PipelineRun, error) {
