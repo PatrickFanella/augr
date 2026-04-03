@@ -1,0 +1,289 @@
+package agent
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"sort"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+
+	"github.com/PatrickFanella/get-rich-quick/internal/domain"
+)
+
+type runnerSpyPersister struct {
+	mu        sync.Mutex
+	runs      map[uuid.UUID]domain.PipelineRun
+	decisions map[uuid.UUID][]persistedDecision
+}
+
+type persistedDecision struct {
+	role  AgentRole
+	phase Phase
+	round *int
+	text  string
+}
+
+func newRunnerSpyPersister() *runnerSpyPersister {
+	return &runnerSpyPersister{
+		runs:      make(map[uuid.UUID]domain.PipelineRun),
+		decisions: make(map[uuid.UUID][]persistedDecision),
+	}
+}
+
+func (p *runnerSpyPersister) RecordRunStart(_ context.Context, run *domain.PipelineRun) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	cp := *run
+	p.runs[run.ID] = cp
+	return nil
+}
+
+func (p *runnerSpyPersister) RecordRunComplete(_ context.Context, runID uuid.UUID, _ time.Time, status domain.PipelineStatus, completedAt time.Time, errMsg string, _ json.RawMessage) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	run := p.runs[runID]
+	run.Status = status
+	run.CompletedAt = &completedAt
+	run.ErrorMessage = errMsg
+	p.runs[runID] = run
+	return nil
+}
+
+func (*runnerSpyPersister) SupportsSnapshots() bool { return false }
+func (*runnerSpyPersister) PersistSnapshot(context.Context, *domain.PipelineRunSnapshot) error {
+	return nil
+}
+func (*runnerSpyPersister) PersistEvent(context.Context, *domain.AgentEvent) error { return nil }
+func (p *runnerSpyPersister) PersistDecision(_ context.Context, runID uuid.UUID, node Node, roundNumber *int, output string, _ *DecisionLLMResponse) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.decisions[runID] = append(p.decisions[runID], persistedDecision{role: node.Role(), phase: node.Phase(), round: cloneRoundNumber(roundNumber), text: output})
+	return nil
+}
+
+func (p *runnerSpyPersister) decisionCount(runID uuid.UUID) int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return len(p.decisions[runID])
+}
+
+type stubAnalysisAgent struct {
+	name string
+	role AgentRole
+	fn   func(context.Context, AnalysisInput) (AnalysisOutput, error)
+}
+
+func (a stubAnalysisAgent) Name() string    { return a.name }
+func (a stubAnalysisAgent) Role() AgentRole { return a.role }
+func (a stubAnalysisAgent) Analyze(ctx context.Context, input AnalysisInput) (AnalysisOutput, error) {
+	return a.fn(ctx, input)
+}
+
+type stubDebateAgent struct {
+	name string
+	role AgentRole
+	fn   func(context.Context, DebateInput) (DebateOutput, error)
+}
+
+func (a stubDebateAgent) Name() string    { return a.name }
+func (a stubDebateAgent) Role() AgentRole { return a.role }
+func (a stubDebateAgent) Debate(ctx context.Context, input DebateInput) (DebateOutput, error) {
+	return a.fn(ctx, input)
+}
+
+type stubResearchJudge struct {
+	name string
+	role AgentRole
+	fn   func(context.Context, DebateInput) (ResearchJudgeOutput, error)
+}
+
+func (j stubResearchJudge) Name() string    { return j.name }
+func (j stubResearchJudge) Role() AgentRole { return j.role }
+func (j stubResearchJudge) JudgeResearch(ctx context.Context, input DebateInput) (ResearchJudgeOutput, error) {
+	return j.fn(ctx, input)
+}
+
+type stubTradeAgent struct {
+	name string
+	role AgentRole
+	fn   func(context.Context, TradingInput) (TradingOutput, error)
+}
+
+func (a stubTradeAgent) Name() string    { return a.name }
+func (a stubTradeAgent) Role() AgentRole { return a.role }
+func (a stubTradeAgent) Trade(ctx context.Context, input TradingInput) (TradingOutput, error) {
+	return a.fn(ctx, input)
+}
+
+type stubRiskJudge struct {
+	name string
+	role AgentRole
+	fn   func(context.Context, RiskJudgeInput) (RiskJudgeOutput, error)
+}
+
+func (j stubRiskJudge) Name() string    { return j.name }
+func (j stubRiskJudge) Role() AgentRole { return j.role }
+func (j stubRiskJudge) JudgeRisk(ctx context.Context, input RiskJudgeInput) (RiskJudgeOutput, error) {
+	return j.fn(ctx, input)
+}
+
+func defaultRunnerDefinition() Definition {
+	return Definition{
+		Analysis: []AnalysisAgent{
+			stubAnalysisAgent{name: "market", role: AgentRoleMarketAnalyst, fn: func(context.Context, AnalysisInput) (AnalysisOutput, error) {
+				return AnalysisOutput{Report: "market-report"}, nil
+			}},
+		},
+		Research: ResearchDebateStage{
+			Debaters: []DebateAgent{
+				stubDebateAgent{name: "bull", role: AgentRoleBullResearcher, fn: func(_ context.Context, input DebateInput) (DebateOutput, error) {
+					return DebateOutput{Contribution: input.Ticker + "-bull"}, nil
+				}},
+			},
+			Judge: stubResearchJudge{name: "judge", role: AgentRoleInvestJudge, fn: func(_ context.Context, input DebateInput) (ResearchJudgeOutput, error) {
+				return ResearchJudgeOutput{InvestmentPlan: input.Ticker + "-plan"}, nil
+			}},
+		},
+		Trader: stubTradeAgent{name: "trader", role: AgentRoleTrader, fn: func(_ context.Context, input TradingInput) (TradingOutput, error) {
+			plan := TradingPlan{Action: PipelineSignalBuy, Ticker: input.Ticker, EntryType: "market", EntryPrice: 100, PositionSize: 10, StopLoss: 95, TakeProfit: 110, TimeHorizon: "swing", Confidence: 0.8, Rationale: "test", RiskReward: 2}
+			payload, _ := json.Marshal(plan)
+			return TradingOutput{Plan: plan, StoredOutput: string(payload)}, nil
+		}},
+		Risk: RiskDebateStage{
+			Debaters: []DebateAgent{
+				stubDebateAgent{name: "risk", role: AgentRoleAggressiveAnalyst, fn: func(_ context.Context, input DebateInput) (DebateOutput, error) {
+					return DebateOutput{Contribution: input.Ticker + "-risk"}, nil
+				}},
+			},
+			Judge: stubRiskJudge{name: "risk-manager", role: AgentRoleRiskManager, fn: func(_ context.Context, input RiskJudgeInput) (RiskJudgeOutput, error) {
+				plan := input.TradingPlan
+				plan.PositionSize = 5
+				return RiskJudgeOutput{FinalSignal: FinalSignal{Signal: PipelineSignalBuy, Confidence: 0.9}, StoredSignal: `{"action":"buy"}`, TradingPlan: plan}, nil
+			}},
+		},
+	}
+}
+
+func strategyWithDebateRounds(t *testing.T, ticker string, rounds int) domain.Strategy {
+	t.Helper()
+	cfg, err := json.Marshal(StrategyConfig{PipelineConfig: &StrategyPipelineConfig{DebateRounds: &rounds}})
+	if err != nil {
+		t.Fatalf("marshal strategy config: %v", err)
+	}
+	return domain.Strategy{ID: uuid.New(), Ticker: ticker, Config: cfg}
+}
+
+func TestRunnerPrepare_ResolvesRuntimeFromStrategyConfig(t *testing.T) {
+	persister := newRunnerSpyPersister()
+	runner := NewRunner(defaultRunnerDefinition(), Dependencies{Persister: persister})
+	strategy := strategyWithDebateRounds(t, "AAPL", 4)
+
+	prepared, err := runner.Prepare(strategy, GlobalSettings{})
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+	if prepared.Runtime.ResearchRounds != 4 || prepared.Runtime.RiskRounds != 4 {
+		t.Fatalf("prepared.Runtime rounds = %+v, want 4/4", prepared.Runtime)
+	}
+	if len(prepared.ConfigSnapshot) == 0 {
+		t.Fatal("expected config snapshot to be populated")
+	}
+}
+
+func TestRunnerRunStrategy_ConcurrentRunsKeepConfigIsolated(t *testing.T) {
+	persister := newRunnerSpyPersister()
+	runner := NewRunner(defaultRunnerDefinition(), Dependencies{Persister: persister})
+
+	strategyOne := strategyWithDebateRounds(t, "AAPL", 1)
+	strategyThree := strategyWithDebateRounds(t, "MSFT", 3)
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	results := make(chan *RunResult, 2)
+	errs := make(chan error, 2)
+	for _, strategy := range []domain.Strategy{strategyOne, strategyThree} {
+		strategy := strategy
+		go func() {
+			defer wg.Done()
+			result, err := runner.RunStrategy(context.Background(), strategy, GlobalSettings{})
+			if err != nil {
+				errs <- err
+				return
+			}
+			results <- result
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Fatalf("RunStrategy() error = %v", err)
+	}
+	close(results)
+
+	counts := []int{}
+	for result := range results {
+		counts = append(counts, persister.decisionCount(result.Run.ID))
+	}
+	sort.Ints(counts)
+	want := []int{6, 10}
+	if len(counts) != len(want) || counts[0] != want[0] || counts[1] != want[1] {
+		t.Fatalf("decision counts = %v, want %v", counts, want)
+	}
+}
+
+func TestRunnerRunStrategy_AnalysisFailureReturnsWarningButCompletes(t *testing.T) {
+	persister := newRunnerSpyPersister()
+	def := defaultRunnerDefinition()
+	def.Analysis = []AnalysisAgent{
+		stubAnalysisAgent{name: "market", role: AgentRoleMarketAnalyst, fn: func(context.Context, AnalysisInput) (AnalysisOutput, error) {
+			return AnalysisOutput{Report: "market-report"}, nil
+		}},
+		stubAnalysisAgent{name: "news", role: AgentRoleNewsAnalyst, fn: func(context.Context, AnalysisInput) (AnalysisOutput, error) {
+			return AnalysisOutput{}, errors.New("news provider down")
+		}},
+	}
+	runner := NewRunner(def, Dependencies{Persister: persister})
+
+	result, err := runner.RunStrategy(context.Background(), strategyWithDebateRounds(t, "AAPL", 1), GlobalSettings{})
+	if err != nil {
+		t.Fatalf("RunStrategy() error = %v, want nil", err)
+	}
+	if len(result.Warnings) != 1 {
+		t.Fatalf("warnings = %d, want 1", len(result.Warnings))
+	}
+	if result.Warnings[0].Role != AgentRoleNewsAnalyst {
+		t.Fatalf("warning role = %s, want %s", result.Warnings[0].Role, AgentRoleNewsAnalyst)
+	}
+	if result.Run.Status != domain.PipelineStatusCompleted {
+		t.Fatalf("run status = %s, want completed", result.Run.Status)
+	}
+	if got := result.State.AnalystReports[AgentRoleMarketAnalyst]; got != "market-report" {
+		t.Fatalf("market report = %q, want market-report", got)
+	}
+}
+
+func TestRunnerRunStrategy_RiskJudgeUpdatesCanonicalSignalAndPlan(t *testing.T) {
+	persister := newRunnerSpyPersister()
+	runner := NewRunner(defaultRunnerDefinition(), Dependencies{Persister: persister})
+
+	result, err := runner.RunStrategy(context.Background(), strategyWithDebateRounds(t, "AAPL", 1), GlobalSettings{})
+	if err != nil {
+		t.Fatalf("RunStrategy() error = %v", err)
+	}
+	if result.Signal != domain.PipelineSignalBuy {
+		t.Fatalf("signal = %s, want buy", result.Signal)
+	}
+	if result.State.FinalSignal.Confidence != 0.9 {
+		t.Fatalf("final confidence = %v, want 0.9", result.State.FinalSignal.Confidence)
+	}
+	if result.State.TradingPlan.PositionSize != 5 {
+		t.Fatalf("position size = %v, want 5", result.State.TradingPlan.PositionSize)
+	}
+	if result.State.RiskDebate.FinalSignal == "" {
+		t.Fatal("expected stored risk signal to be populated")
+	}
+}

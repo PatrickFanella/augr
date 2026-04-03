@@ -34,6 +34,12 @@ type DebateOutput struct {
 	LLMResponse  *DecisionLLMResponse
 }
 
+// ResearchJudgeOutput is the result of the research judge's execution.
+type ResearchJudgeOutput struct {
+	InvestmentPlan string
+	LLMResponse    *DecisionLLMResponse
+}
+
 // TradingInput provides the research debate results for the trader node.
 type TradingInput struct {
 	Ticker         string
@@ -92,20 +98,38 @@ func debateInputFromState(state *PipelineState) DebateInput {
 	}
 }
 
-// ApplyDebateOutput maps a DebateOutput back to the appropriate debate round
-// in the pipeline state. It stores the contribution in the current (last) round
-// and records the decision.
-func ApplyDebateOutput(state *PipelineState, role AgentRole, phase Phase, rounds []DebateRound, output DebateOutput) {
-	if len(rounds) == 0 {
+// researchJudgeInputFromState constructs the research judge input from the pipeline state.
+func researchJudgeInputFromState(state *PipelineState) DebateInput {
+	return DebateInput{
+		Ticker:         state.Ticker,
+		Rounds:         state.ResearchDebate.Rounds,
+		ContextReports: state.AnalystReports,
+	}
+}
+
+// applyResearchJudgeOutput maps a research judge output back to the pipeline state.
+func applyResearchJudgeOutput(state *PipelineState, output ResearchJudgeOutput) {
+	state.ResearchDebate.InvestmentPlan = output.InvestmentPlan
+}
+
+// applyDebateOutput maps a DebateOutput back to the appropriate debate round in the pipeline state without recording a persisted decision.
+func applyDebateOutput(state *PipelineState, role AgentRole, phase Phase, roundNumber int, output DebateOutput) {
+	if roundNumber < 1 {
 		return
 	}
 
 	var current *DebateRound
 	switch phase {
 	case PhaseResearchDebate:
-		current = &state.ResearchDebate.Rounds[len(rounds)-1]
+		if roundNumber > len(state.ResearchDebate.Rounds) {
+			return
+		}
+		current = &state.ResearchDebate.Rounds[roundNumber-1]
 	case PhaseRiskDebate:
-		current = &state.RiskDebate.Rounds[len(rounds)-1]
+		if roundNumber > len(state.RiskDebate.Rounds) {
+			return
+		}
+		current = &state.RiskDebate.Rounds[roundNumber-1]
 	default:
 		return
 	}
@@ -114,8 +138,15 @@ func ApplyDebateOutput(state *PipelineState, role AgentRole, phase Phase, rounds
 		current.Contributions = make(map[AgentRole]string)
 	}
 	current.Contributions[role] = output.Contribution
+}
 
-	roundNumber := current.Number
+// ApplyDebateOutput maps a DebateOutput back to the appropriate debate round in the pipeline state and records the decision for persistence.
+func ApplyDebateOutput(state *PipelineState, role AgentRole, phase Phase, rounds []DebateRound, output DebateOutput) {
+	if len(rounds) == 0 {
+		return
+	}
+	roundNumber := rounds[len(rounds)-1].Number
+	applyDebateOutput(state, role, phase, roundNumber, output)
 	state.RecordDecision(role, phase, &roundNumber, output.Contribution, output.LLMResponse)
 }
 

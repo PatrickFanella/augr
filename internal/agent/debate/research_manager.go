@@ -61,6 +61,12 @@ type ResearchManager struct {
 	providerName string
 }
 
+// Compile-time checks: *ResearchManager implements both the legacy node contract and the runner-facing research judge contract.
+var (
+	_ agent.Node          = (*ResearchManager)(nil)
+	_ agent.ResearchJudge = (*ResearchManager)(nil)
+)
+
 // NewResearchManager returns a ResearchManager wired to the given LLM provider
 // and model. providerName (e.g. "openai") is recorded in decision metadata.
 // A nil logger is replaced with the default logger.
@@ -86,27 +92,33 @@ func (r *ResearchManager) Role() agent.AgentRole { return agent.AgentRoleInvestJ
 // Phase returns the pipeline phase this node belongs to.
 func (r *ResearchManager) Phase() agent.Phase { return agent.PhaseResearchDebate }
 
-// Execute calls the LLM with the research manager system prompt, all debate
-// rounds, and analyst reports. It parses the structured JSON output into an
-// InvestmentPlanOutput and stores a normalized JSON string in
-// state.ResearchDebate.InvestmentPlan when parsing succeeds. If parsing fails,
-// the raw LLM content is stored instead so the pipeline can proceed.
+// Execute preserves the legacy node contract by adapting the runner-facing research judge method onto PipelineState.
 func (r *ResearchManager) Execute(ctx context.Context, state *agent.PipelineState) error {
-	rounds := state.ResearchDebate.Rounds
-
-	content, promptText, usage, err := r.CallWithContext(
-		ctx,
-		ResearchManagerSystemPrompt,
-		rounds,
-		state.AnalystReports,
-	)
+	output, err := r.JudgeResearch(ctx, agent.DebateInput{
+		Ticker:         state.Ticker,
+		Rounds:         state.ResearchDebate.Rounds,
+		ContextReports: state.AnalystReports,
+	})
 	if err != nil {
 		return err
 	}
+	state.ResearchDebate.InvestmentPlan = output.InvestmentPlan
+	state.RecordDecision(agent.AgentRoleInvestJudge, agent.PhaseResearchDebate, nil, output.InvestmentPlan, output.LLMResponse)
+	return nil
+}
 
-	// Attempt to parse the structured output. When parsing succeeds we
-	// store a clean, re-marshaled JSON string. On failure we fall back to
-	// the raw LLM content so the pipeline can still proceed.
+// JudgeResearch implements the runner-facing research judge contract.
+func (r *ResearchManager) JudgeResearch(ctx context.Context, input agent.DebateInput) (agent.ResearchJudgeOutput, error) {
+	content, promptText, usage, err := r.CallWithContext(
+		ctx,
+		ResearchManagerSystemPrompt,
+		input.Rounds,
+		input.ContextReports,
+	)
+	if err != nil {
+		return agent.ResearchJudgeOutput{}, err
+	}
+
 	storedPlan := content
 	plan, parseErr := ParseInvestmentPlan(content)
 	if parseErr != nil {
@@ -123,17 +135,9 @@ func (r *ResearchManager) Execute(ctx context.Context, state *agent.PipelineStat
 		}
 	}
 
-	// Store the investment plan in the research debate state.
-	state.ResearchDebate.InvestmentPlan = storedPlan
-
-	// Record the decision so the pipeline can persist it with LLM metadata.
-	// The raw LLM content is kept in the decision for debugging purposes.
-	state.RecordDecision(
-		agent.AgentRoleInvestJudge,
-		agent.PhaseResearchDebate,
-		nil,
-		storedPlan,
-		&agent.DecisionLLMResponse{
+	return agent.ResearchJudgeOutput{
+		InvestmentPlan: storedPlan,
+		LLMResponse: &agent.DecisionLLMResponse{
 			Provider:   r.providerName,
 			PromptText: promptText,
 			Response: &llm.CompletionResponse{
@@ -142,9 +146,7 @@ func (r *ResearchManager) Execute(ctx context.Context, state *agent.PipelineStat
 				Usage:   usage,
 			},
 		},
-	)
-
-	return nil
+	}, nil
 }
 
 // ParseInvestmentPlan attempts to parse the LLM response content into a

@@ -98,8 +98,9 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 	var sched *scheduler.Scheduler
 	if strings.EqualFold(cfg.Environment, "smoke") {
 		pipeline := newSmokePipeline(runRepo, snapshotRepo, decisionRepo, eventRepo, logger)
+		runner := newSmokeRunner(runRepo, snapshotRepo, decisionRepo, eventRepo, logger)
 		notificationManager := newNotificationManager(cfg)
-		deps.Runner = newSmokeStrategyRunner(pipeline, runRepo, decisionRepo, orderRepo, positionRepo, tradeRepo, auditLogRepo, eventRepo, riskEngine, notificationManager, logger)
+		deps.Runner = newSmokeStrategyRunner(runner, runRepo, decisionRepo, orderRepo, positionRepo, tradeRepo, auditLogRepo, eventRepo, riskEngine, notificationManager, logger)
 		sched = scheduler.NewScheduler(strategyRepo, pipeline, riskEngine, logger)
 	}
 
@@ -255,7 +256,7 @@ func newRedisHealthCheck(cfg config.Config) (api.HealthCheck, func()) {
 }
 
 type smokeStrategyRunner struct {
-	pipeline            *agent.Pipeline
+	runner              *agent.Runner
 	runRepo             repository.PipelineRunRepository
 	decisionRepo        repository.AgentDecisionRepository
 	orderRepo           repository.OrderRepository
@@ -265,7 +266,7 @@ type smokeStrategyRunner struct {
 }
 
 func newSmokeStrategyRunner(
-	pipeline *agent.Pipeline,
+	runner *agent.Runner,
 	runRepo repository.PipelineRunRepository,
 	decisionRepo repository.AgentDecisionRepository,
 	orderRepo repository.OrderRepository,
@@ -301,7 +302,7 @@ func newSmokeStrategyRunner(
 	)
 
 	return &smokeStrategyRunner{
-		pipeline:            pipeline,
+		runner:              runner,
 		runRepo:             runRepo,
 		decisionRepo:        decisionRepo,
 		orderRepo:           orderRepo,
@@ -312,24 +313,17 @@ func newSmokeStrategyRunner(
 }
 
 func (r *smokeStrategyRunner) RunStrategy(ctx context.Context, strategy domain.Strategy) (*api.StrategyRunResult, error) {
-	state, err := r.pipeline.ExecuteStrategy(ctx, strategy, agent.GlobalSettings{})
+	result, err := r.runner.RunStrategy(ctx, strategy, agent.GlobalSettings{})
 	if err != nil {
 		return nil, err
 	}
 
-	run, err := r.findRun(ctx, state.PipelineRunID)
+	run, err := r.findRun(ctx, result.Run.ID)
 	if err != nil {
 		return nil, err
 	}
 
-	signal := state.FinalSignal.Signal
-	if signal == "" {
-		signal = state.TradingPlan.Action
-	}
-	if signal == "" {
-		signal = domain.PipelineSignalHold
-	}
-
+	signal := result.Signal
 	update := repository.PipelineRunStatusUpdate{
 		Status:       run.Status,
 		Signal:       &signal,
@@ -341,6 +335,7 @@ func (r *smokeStrategyRunner) RunStrategy(ctx context.Context, strategy domain.S
 	}
 	run.Signal = signal
 
+	state := pipelineStateFromView(result.State)
 	if err := r.dispatchNotifications(ctx, strategy, run, state); err != nil {
 		return nil, err
 	}
@@ -610,6 +605,159 @@ type smokeNode struct {
 	role  agent.AgentRole
 	phase agent.Phase
 	exec  func(state *agent.PipelineState) error
+}
+
+func newSmokeRunner(
+	runRepo repository.PipelineRunRepository,
+	snapshotRepo repository.PipelineRunSnapshotRepository,
+	decisionRepo repository.AgentDecisionRepository,
+	eventRepo repository.AgentEventRepository,
+	logger *slog.Logger,
+) *agent.Runner {
+	return agent.NewRunner(
+		agent.Definition{
+			Analysis: []agent.AnalysisAgent{
+				smokeAnalysisAgent{
+					name:   "smoke-market-analyst",
+					role:   agent.AgentRoleMarketAnalyst,
+					report: "Smoke test market analysis indicates bullish momentum.",
+				},
+			},
+			Research: agent.ResearchDebateStage{
+				Debaters: []agent.DebateAgent{
+					smokeDebateAgent{name: "smoke-bull-researcher", role: agent.AgentRoleBullResearcher, contribution: "Bull case: strong setup for a paper-trade entry."},
+					smokeDebateAgent{name: "smoke-bear-researcher", role: agent.AgentRoleBearResearcher, contribution: "Bear case: downside risk is bounded by the configured stop."},
+				},
+				Judge: smokeResearchJudge{name: "smoke-invest-judge", role: agent.AgentRoleInvestJudge, plan: "Proceed with a small paper buy to validate the execution path."},
+			},
+			Trader: smokeTradeAgent{name: "smoke-trader", role: agent.AgentRoleTrader},
+			Risk: agent.RiskDebateStage{
+				Debaters: []agent.DebateAgent{
+					smokeDebateAgent{name: "smoke-aggressive-risk", role: agent.AgentRoleAggressiveAnalyst, contribution: "Aggressive view: approve the trade."},
+					smokeDebateAgent{name: "smoke-conservative-risk", role: agent.AgentRoleConservativeAnalyst, contribution: "Conservative view: size is acceptable for smoke validation."},
+					smokeDebateAgent{name: "smoke-neutral-risk", role: agent.AgentRoleNeutralAnalyst, contribution: "Neutral view: proceed and observe the paper execution."},
+				},
+				Judge: smokeRiskJudge{name: "smoke-risk-manager", role: agent.AgentRoleRiskManager},
+			},
+		},
+		agent.Dependencies{
+			Persister: agent.NewRepoPersister(runRepo, snapshotRepo, decisionRepo, eventRepo, logger),
+			Logger:    logger,
+		},
+	)
+}
+
+func pipelineStateFromView(view agent.StateView) *agent.PipelineState {
+	state := &agent.PipelineState{
+		PipelineRunID:  view.PipelineRunID,
+		StrategyID:     view.StrategyID,
+		Ticker:         view.Ticker,
+		AnalystReports: make(map[agent.AgentRole]string, len(view.AnalystReports)),
+		ResearchDebate: view.ResearchDebate,
+		TradingPlan:    view.TradingPlan,
+		RiskDebate:     view.RiskDebate,
+		FinalSignal:    view.FinalSignal,
+		LLMCacheStats:  view.LLMCacheStats,
+	}
+	for role, report := range view.AnalystReports {
+		state.AnalystReports[role] = report
+	}
+	return state
+}
+
+type smokeAnalysisAgent struct {
+	name   string
+	role   agent.AgentRole
+	report string
+}
+
+func (a smokeAnalysisAgent) Name() string          { return a.name }
+func (a smokeAnalysisAgent) Role() agent.AgentRole { return a.role }
+func (a smokeAnalysisAgent) Analyze(context.Context, agent.AnalysisInput) (agent.AnalysisOutput, error) {
+	return agent.AnalysisOutput{Report: a.report}, nil
+}
+
+type smokeDebateAgent struct {
+	name         string
+	role         agent.AgentRole
+	contribution string
+}
+
+func (a smokeDebateAgent) Name() string          { return a.name }
+func (a smokeDebateAgent) Role() agent.AgentRole { return a.role }
+func (a smokeDebateAgent) Debate(context.Context, agent.DebateInput) (agent.DebateOutput, error) {
+	return agent.DebateOutput{Contribution: a.contribution}, nil
+}
+
+type smokeResearchJudge struct {
+	name string
+	role agent.AgentRole
+	plan string
+}
+
+func (j smokeResearchJudge) Name() string          { return j.name }
+func (j smokeResearchJudge) Role() agent.AgentRole { return j.role }
+func (j smokeResearchJudge) JudgeResearch(context.Context, agent.DebateInput) (agent.ResearchJudgeOutput, error) {
+	return agent.ResearchJudgeOutput{InvestmentPlan: j.plan}, nil
+}
+
+type smokeTradeAgent struct {
+	name string
+	role agent.AgentRole
+}
+
+func (a smokeTradeAgent) Name() string          { return a.name }
+func (a smokeTradeAgent) Role() agent.AgentRole { return a.role }
+func (a smokeTradeAgent) Trade(_ context.Context, input agent.TradingInput) (agent.TradingOutput, error) {
+	plan := agent.TradingPlan{
+		Action:       domain.PipelineSignalBuy,
+		Ticker:       input.Ticker,
+		EntryType:    "market",
+		EntryPrice:   100,
+		PositionSize: 0.05,
+		StopLoss:     95,
+		TakeProfit:   110,
+		TimeHorizon:  "1d",
+		Confidence:   0.92,
+		Rationale:    "Smoke test deterministic trading plan",
+		RiskReward:   2,
+	}
+	payload, err := json.Marshal(plan)
+	if err != nil {
+		return agent.TradingOutput{}, err
+	}
+	return agent.TradingOutput{Plan: plan, StoredOutput: string(payload)}, nil
+}
+
+type smokeRiskJudge struct {
+	name string
+	role agent.AgentRole
+}
+
+func (j smokeRiskJudge) Name() string          { return j.name }
+func (j smokeRiskJudge) Role() agent.AgentRole { return j.role }
+func (j smokeRiskJudge) JudgeRisk(_ context.Context, input agent.RiskJudgeInput) (agent.RiskJudgeOutput, error) {
+	plan := input.TradingPlan
+	plan.Action = domain.PipelineSignalBuy
+	plan.Confidence = 0.92
+	if plan.Ticker == "" {
+		plan.Ticker = input.Ticker
+	}
+	if plan.EntryType == "" {
+		plan.EntryType = "market"
+		plan.EntryPrice = 100
+		plan.PositionSize = 0.05
+		plan.StopLoss = 95
+		plan.TakeProfit = 110
+		plan.TimeHorizon = "1d"
+		plan.Rationale = "Smoke test deterministic trading plan"
+		plan.RiskReward = 2
+	}
+	return agent.RiskJudgeOutput{
+		FinalSignal:  agent.FinalSignal{Signal: domain.PipelineSignalBuy, Confidence: 0.92},
+		StoredSignal: `{"action":"buy","confidence":0.92}`,
+		TradingPlan:  plan,
+	}, nil
 }
 
 func (n smokeNode) Name() string          { return n.name }
