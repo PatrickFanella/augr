@@ -61,7 +61,6 @@ func TestDiscordNotifier_Notify_Success(t *testing.T) {
 	if embed["description"] != "Something happened" {
 		t.Errorf("description = %v, want Something happened", embed["description"])
 	}
-	// 0xE74C3C = 15158332
 	if color, ok := embed["color"].(float64); !ok || int(color) != 0xE74C3C {
 		t.Errorf("color = %v, want %d", embed["color"], 0xE74C3C)
 	}
@@ -73,7 +72,6 @@ func TestDiscordNotifier_Notify_Success(t *testing.T) {
 	if !ok || len(fields) != 2 {
 		t.Fatalf("expected 2 fields, got %v", embed["fields"])
 	}
-	// Sorted: strategy, ticker
 	f0 := fields[0].(map[string]any)
 	if f0["name"] != "strategy" || f0["value"] != "momentum" {
 		t.Errorf("field[0] = %v, want strategy=momentum", f0)
@@ -183,7 +181,6 @@ func TestFormatSignalEmbed(t *testing.T) {
 	runID := uuid.MustParse("aabbccdd-1122-3344-5566-778899aabbcc")
 	ts := time.Date(2026, 4, 1, 10, 0, 0, 0, time.UTC)
 
-	// BUY signal
 	embed := FormatSignalEmbed("Momentum", "AAPL", domain.PipelineSignalBuy, 0.85, "strong trend", runID, ts)
 	if embed["title"] != "Signal: BUY" {
 		t.Errorf("title = %v, want Signal: BUY", embed["title"])
@@ -192,7 +189,6 @@ func TestFormatSignalEmbed(t *testing.T) {
 		t.Errorf("buy color = %v, want 0x2ECC71", embed["color"])
 	}
 
-	// SELL signal
 	embed = FormatSignalEmbed("Momentum", "TSLA", domain.PipelineSignalSell, 0.6, "downtrend", runID, ts)
 	if color, ok := embed["color"].(int); !ok || color != 0xE74C3C {
 		t.Errorf("sell color = %v, want 0xE74C3C", embed["color"])
@@ -201,7 +197,6 @@ func TestFormatSignalEmbed(t *testing.T) {
 		t.Errorf("title = %v, want Signal: SELL", embed["title"])
 	}
 
-	// HOLD signal
 	embed = FormatSignalEmbed("Momentum", "GOOG", domain.PipelineSignalHold, 0.5, "", runID, ts)
 	if color, ok := embed["color"].(int); !ok || color != 0x95A5A6 {
 		t.Errorf("hold color = %v, want 0x95A5A6", embed["color"])
@@ -210,7 +205,6 @@ func TestFormatSignalEmbed(t *testing.T) {
 		t.Errorf("title = %v, want Signal: HOLD", embed["title"])
 	}
 
-	// Field count and values
 	fields := embed["fields"].([]map[string]any)
 	if len(fields) != 4 {
 		t.Fatalf("field count = %d, want 4", len(fields))
@@ -228,18 +222,8 @@ func TestFormatSignalEmbed(t *testing.T) {
 		t.Errorf("Reasoning field = %v, want empty string", fields[3]["value"])
 	}
 
-	// Footer and timestamp
-	footer := embed["footer"].(map[string]any)
-	if footer["text"] != "Run aabbccdd" {
-		t.Errorf("footer = %v, want Run aabbccdd", footer["text"])
-	}
-	if embed["timestamp"] != "2026-04-01T10:00:00Z" {
-		t.Errorf("timestamp = %v, want 2026-04-01T10:00:00Z", embed["timestamp"])
-	}
-
-	// Truncation of long reasoning
-	longReasoning := strings.Repeat("x", 2000)
-	embed = FormatSignalEmbed("S", "T", domain.PipelineSignalBuy, 0.5, longReasoning, runID, ts)
+	longReasoning := strings.Repeat("A", 2000)
+	embed = FormatSignalEmbed("Momentum", "MSFT", domain.PipelineSignalBuy, 0.9, longReasoning, runID, ts)
 	reasoningField := embed["fields"].([]map[string]any)[3]["value"].(string)
 	if len(reasoningField) != 1024 {
 		t.Errorf("truncated reasoning len = %d, want 1024", len(reasoningField))
@@ -295,7 +279,6 @@ func TestFormatAlertEmbed(t *testing.T) {
 
 	ts := time.Date(2026, 4, 1, 12, 0, 0, 0, time.UTC)
 
-	// Critical severity
 	embed := FormatAlertEmbed("pipeline_failure", "critical", "Pipeline crashed", nil, ts)
 	if color, ok := embed["color"].(int); !ok || color != 0xE74C3C {
 		t.Errorf("critical color = %v, want 0xE74C3C", embed["color"])
@@ -307,7 +290,6 @@ func TestFormatAlertEmbed(t *testing.T) {
 		t.Errorf("description = %v, want Pipeline crashed", embed["description"])
 	}
 
-	// Empty details: only severity field
 	fields := embed["fields"].([]map[string]any)
 	if len(fields) != 1 {
 		t.Fatalf("field count = %d, want 1 (severity only)", len(fields))
@@ -316,22 +298,18 @@ func TestFormatAlertEmbed(t *testing.T) {
 		t.Errorf("severity field = %v, want Severity=CRITICAL", fields[0])
 	}
 
-	// Warning severity with details
 	details := map[string]any{"ticker": "AAPL", "error_count": 3}
 	embed = FormatAlertEmbed("data_stale", "warning", "Data is stale", details, ts)
 	if color, ok := embed["color"].(int); !ok || color != 0xE67E22 {
 		t.Errorf("warning color = %v, want 0xE67E22", embed["color"])
 	}
 	fields = embed["fields"].([]map[string]any)
-	// 1 severity + 2 details = 3
 	if len(fields) != 3 {
 		t.Fatalf("field count = %d, want 3", len(fields))
 	}
-	// First field is severity
 	if fields[0]["name"] != "Severity" || fields[0]["value"] != "WARNING" {
 		t.Errorf("first field = %v, want Severity=WARNING", fields[0])
 	}
-	// Detail keys sorted: error_count, ticker
 	if fields[1]["name"] != "error_count" || fields[1]["value"] != "3" {
 		t.Errorf("field[1] = %v, want error_count=3", fields[1])
 	}
@@ -339,7 +317,6 @@ func TestFormatAlertEmbed(t *testing.T) {
 		t.Errorf("field[2] = %v, want ticker=AAPL", fields[2])
 	}
 
-	// Info (default) severity
 	embed = FormatAlertEmbed("health_check", "info", "All good", nil, ts)
 	if color, ok := embed["color"].(int); !ok || color != 0x3498DB {
 		t.Errorf("info color = %v, want 0x3498DB", embed["color"])

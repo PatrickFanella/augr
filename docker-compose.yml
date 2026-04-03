@@ -50,7 +50,6 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
-
   # NOTE: This compose file is intended for local development only.
   # Do not expose Grafana's anonymous viewer access or the default admin
   # credentials in a shared or production environment.
