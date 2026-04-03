@@ -1034,6 +1034,9 @@ func TestGetRunIncludesPhaseTimings(t *testing.T) {
 }
 
 func timePtr(v time.Time) *time.Time { return &v }
+func intPtr(v int) *int              { return &v }
+
+func float64Ptr(v float64) *float64 { return &v }
 
 // ---------------------------------------------------------------------------
 // Portfolio
@@ -1370,8 +1373,8 @@ func TestRiskStatus(t *testing.T) {
 					MaxTotalPct:             0.80,
 					MaxConcurrent:           5,
 					MaxPerMarketPct:         0.40,
-					CurrentOpenPositions:    4,
-					CurrentTotalExposurePct: 0.76,
+					CurrentOpenPositions:    intPtr(4),
+					CurrentTotalExposurePct: float64Ptr(0.76),
 				},
 				UpdatedAt: time.Now(),
 			}, nil

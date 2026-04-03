@@ -54,7 +54,7 @@ export function Dialog({ open, onOpenChange, children }: DialogProps) {
     <DialogContext.Provider value={{ titleId, descriptionId }}>
       <div className="fixed inset-0 z-50 flex items-center justify-center">
         <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm"
+          className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm"
           onClick={() => onOpenChange(false)}
           data-testid="dialog-overlay"
         />
@@ -87,7 +87,7 @@ const DialogContent = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>
       <div
         ref={ref}
         className={cn(
-          'mx-4 rounded-lg border bg-card p-6 shadow-lg sm:mx-0',
+          'mx-4 rounded-lg border border-white/10 bg-card/95 p-5 shadow-[0_0_0_1px_rgba(255,255,255,0.03),0_20px_48px_rgba(2,6,23,0.42)] backdrop-blur-lg sm:mx-0',
           className,
         )}
         onClick={handleClick}

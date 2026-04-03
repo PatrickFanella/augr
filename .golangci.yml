@@ -12,7 +12,9 @@ linters:
     - ineffassign
     - gocritic
     - revive
-
+  exclusions:
+    paths:
+      - web/node_modules/
   settings:
     revive:
       enable-default-rules: true
@@ -29,6 +31,9 @@ linters:
 formatters:
   enable:
     - gofumpt
+  exclusions:
+    paths:
+      - web/node_modules/
   settings:
     gofumpt:
       extra-rules: true

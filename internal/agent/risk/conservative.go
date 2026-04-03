@@ -32,6 +32,7 @@ Be data-driven and persuasive. Reference the trading plan specifics and analyst 
 type ConservativeRisk struct {
 	debate.BaseDebater
 	providerName string
+	systemPrompt string
 }
 
 // Compile-time check: *ConservativeRisk implements agent.DebaterNode.
@@ -41,6 +42,16 @@ var _ agent.DebaterNode = (*ConservativeRisk)(nil)
 // provider and model. providerName (e.g. "openai") is recorded in decision
 // metadata. A nil logger is replaced with the default logger.
 func NewConservativeRisk(provider llm.Provider, providerName, model string, logger *slog.Logger) *ConservativeRisk {
+	return NewConservativeRiskWithPrompt(provider, providerName, model, "", logger)
+}
+
+// NewConservativeRiskWithPrompt returns a ConservativeRisk wired to the given
+// LLM provider and model, using systemPrompt when provided.
+func NewConservativeRiskWithPrompt(provider llm.Provider, providerName, model, systemPrompt string, logger *slog.Logger) *ConservativeRisk {
+	if systemPrompt == "" {
+		systemPrompt = ConservativeRiskSystemPrompt
+	}
+
 	return &ConservativeRisk{
 		BaseDebater: debate.NewBaseDebater(
 			agent.AgentRoleConservativeAnalyst,
@@ -50,6 +61,7 @@ func NewConservativeRisk(provider llm.Provider, providerName, model string, logg
 			logger,
 		),
 		providerName: providerName,
+		systemPrompt: systemPrompt,
 	}
 }
 
@@ -67,11 +79,11 @@ func (c *ConservativeRisk) Phase() agent.Phase { return agent.PhaseRiskDebate }
 // contribution in the current debate round and records the decision for
 // persistence.
 func (c *ConservativeRisk) Execute(ctx context.Context, state *agent.PipelineState) error {
-	return executeRiskDebate(ctx, state, c.BaseDebater, agent.AgentRoleConservativeAnalyst, ConservativeRiskSystemPrompt, c.providerName)
+	return executeRiskDebate(ctx, state, c.BaseDebater, agent.AgentRoleConservativeAnalyst, c.systemPrompt, c.providerName)
 }
 
 // Debate implements the DebaterNode interface. It calls the LLM with the
 // conservative risk system prompt and returns the debate contribution.
 func (c *ConservativeRisk) Debate(ctx context.Context, input agent.DebateInput) (agent.DebateOutput, error) {
-	return debateRiskFromInput(ctx, c.BaseDebater, ConservativeRiskSystemPrompt, c.providerName, input)
+	return debateRiskFromInput(ctx, c.BaseDebater, c.systemPrompt, c.providerName, input)
 }

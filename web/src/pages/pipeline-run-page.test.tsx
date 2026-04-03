@@ -1,15 +1,15 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, screen } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { cleanup, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { PipelineRunPage } from '@/pages/pipeline-run-page'
+import { PipelineRunPage } from '@/pages/pipeline-run-page';
 
-const runId = '00000000-0000-0000-0000-000000000099'
+const runId = '00000000-0000-0000-0000-000000000099';
 
 function Wrapper({ children }: { children: React.ReactNode }) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return (
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[`/runs/${runId}`]}>
@@ -18,7 +18,7 @@ function Wrapper({ children }: { children: React.ReactNode }) {
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>
-  )
+  );
 }
 
 const mockRun = {
@@ -27,10 +27,9 @@ const mockRun = {
   ticker: 'AAPL',
   trade_date: '2025-06-15',
   status: 'completed' as const,
-  signal: 'buy' as const,
   started_at: '2025-06-15T09:00:00Z',
   completed_at: '2025-06-15T09:05:00Z',
-}
+};
 
 const mockDecisions = {
   data: [
@@ -106,7 +105,7 @@ const mockDecisions = {
     {
       id: 'd8',
       pipeline_run_id: runId,
-      agent_role: 'aggressive_risk',
+      agent_role: 'aggressive_analyst',
       phase: 'risk_debate',
       round_number: 1,
       output_text: 'Risk is acceptable, position size can be increased.',
@@ -116,7 +115,7 @@ const mockDecisions = {
     {
       id: 'd9',
       pipeline_run_id: runId,
-      agent_role: 'conservative_risk',
+      agent_role: 'conservative_analyst',
       phase: 'risk_debate',
       round_number: 1,
       output_text: 'Reduce position size by 50% due to volatility.',
@@ -126,7 +125,7 @@ const mockDecisions = {
     {
       id: 'd10',
       pipeline_run_id: runId,
-      agent_role: 'neutral_risk',
+      agent_role: 'neutral_analyst',
       phase: 'risk_debate',
       round_number: 1,
       output_text: 'Current position size is appropriate.',
@@ -136,167 +135,201 @@ const mockDecisions = {
     {
       id: 'd11',
       pipeline_run_id: runId,
-      agent_role: 'invest_judge',
+      agent_role: 'risk_manager',
       phase: 'risk_debate',
-      output_text: 'Final decision: BUY with confidence: 78%.',
-      output_structured: { confidence: 78 },
+      output_text: '{"action":"buy","confidence":0.78,"reasoning":"Final decision: BUY."}',
+      output_structured: { action: 'buy', confidence: 0.78 },
       latency_ms: 600,
       created_at: '2025-06-15T09:04:00Z',
     },
   ],
   limit: 100,
   offset: 0,
-}
+};
 
 afterEach(() => {
-  cleanup()
-  vi.unstubAllGlobals()
-})
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 describe('PipelineRunPage', () => {
   it('renders pipeline run visualization on successful fetch', async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
-      const url = typeof input === 'string' ? input : input.toString()
+      const url = typeof input === 'string' ? input : input.toString();
       if (url.includes('/decisions')) {
-        return Promise.resolve({ ok: true, status: 200, json: async () => mockDecisions })
+        return Promise.resolve({ ok: true, status: 200, json: async () => mockDecisions });
       }
-      return Promise.resolve({ ok: true, status: 200, json: async () => mockRun })
-    })
-    vi.stubGlobal('fetch', fetchMock)
+      return Promise.resolve({ ok: true, status: 200, json: async () => mockRun });
+    });
+    vi.stubGlobal('fetch', fetchMock);
 
-    render(<PipelineRunPage />, { wrapper: Wrapper })
+    render(<PipelineRunPage />, { wrapper: Wrapper });
 
-    expect(await screen.findByTestId('pipeline-run-page')).toBeInTheDocument()
-    expect(screen.getByText('AAPL — Pipeline Run')).toBeInTheDocument()
-    expect(screen.getByTestId('phase-progress')).toBeInTheDocument()
-    expect(screen.getByTestId('analyst-cards')).toBeInTheDocument()
-    expect(screen.getAllByTestId('debate-view')).toHaveLength(2)
-    expect(screen.getByTestId('trader-plan')).toBeInTheDocument()
-    expect(screen.getByTestId('final-signal')).toBeInTheDocument()
-  })
+    expect(await screen.findByTestId('pipeline-run-page')).toBeInTheDocument();
+    expect(screen.getByText('AAPL — Pipeline Run')).toBeInTheDocument();
+    expect(screen.getByTestId('phase-progress')).toBeInTheDocument();
+    expect(screen.getByTestId('analyst-cards')).toBeInTheDocument();
+    expect(screen.getAllByTestId('debate-view')).toHaveLength(2);
+    expect(screen.getByTestId('trader-plan')).toBeInTheDocument();
+    expect(screen.getByTestId('final-signal')).toBeInTheDocument();
+    expect(screen.getByText('Risk Manager Verdict')).toBeInTheDocument();
+  });
 
   it('shows error state when run fetch fails', async () => {
-    const fetchMock = vi.fn().mockRejectedValue(new Error('Network error'))
-    vi.stubGlobal('fetch', fetchMock)
+    const fetchMock = vi.fn().mockRejectedValue(new Error('Network error'));
+    vi.stubGlobal('fetch', fetchMock);
 
-    render(<PipelineRunPage />, { wrapper: Wrapper })
+    render(<PipelineRunPage />, { wrapper: Wrapper });
 
-    expect(await screen.findByTestId('pipeline-run-error')).toBeInTheDocument()
-  })
+    expect(await screen.findByTestId('pipeline-run-error')).toBeInTheDocument();
+  });
 
   it('displays analyst cards with completed decisions', async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
-      const url = typeof input === 'string' ? input : input.toString()
+      const url = typeof input === 'string' ? input : input.toString();
       if (url.includes('/decisions')) {
-        return Promise.resolve({ ok: true, status: 200, json: async () => mockDecisions })
+        return Promise.resolve({ ok: true, status: 200, json: async () => mockDecisions });
       }
-      return Promise.resolve({ ok: true, status: 200, json: async () => mockRun })
-    })
-    vi.stubGlobal('fetch', fetchMock)
+      return Promise.resolve({ ok: true, status: 200, json: async () => mockRun });
+    });
+    vi.stubGlobal('fetch', fetchMock);
 
-    render(<PipelineRunPage />, { wrapper: Wrapper })
+    render(<PipelineRunPage />, { wrapper: Wrapper });
 
-    expect(await screen.findByTestId('analyst-card-market_analyst')).toBeInTheDocument()
-    expect(screen.getByTestId('analyst-card-fundamentals_analyst')).toBeInTheDocument()
-    expect(screen.getByTestId('analyst-card-news_analyst')).toBeInTheDocument()
-    expect(screen.getByTestId('analyst-card-social_media_analyst')).toBeInTheDocument()
-    expect(screen.getByText(/Market conditions are bullish/)).toBeInTheDocument()
-  })
+    expect(await screen.findByTestId('analyst-card-market_analyst')).toBeInTheDocument();
+    expect(screen.getByTestId('analyst-card-fundamentals_analyst')).toBeInTheDocument();
+    expect(screen.getByTestId('analyst-card-news_analyst')).toBeInTheDocument();
+    expect(screen.getByTestId('analyst-card-social_media_analyst')).toBeInTheDocument();
+    expect(screen.getByText(/Market conditions are bullish/)).toBeInTheDocument();
+  });
 
   it('opens decision inspector when clicking an analyst card', async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
-      const url = typeof input === 'string' ? input : input.toString()
+      const url = typeof input === 'string' ? input : input.toString();
       if (url.includes('/decisions')) {
-        return Promise.resolve({ ok: true, status: 200, json: async () => mockDecisions })
+        return Promise.resolve({ ok: true, status: 200, json: async () => mockDecisions });
       }
-      return Promise.resolve({ ok: true, status: 200, json: async () => mockRun })
-    })
-    vi.stubGlobal('fetch', fetchMock)
+      return Promise.resolve({ ok: true, status: 200, json: async () => mockRun });
+    });
+    vi.stubGlobal('fetch', fetchMock);
 
-    const user = userEvent.setup()
-    render(<PipelineRunPage />, { wrapper: Wrapper })
+    const user = userEvent.setup();
+    render(<PipelineRunPage />, { wrapper: Wrapper });
 
-    const card = await screen.findByTestId('analyst-card-market_analyst')
-    await user.click(card)
+    const card = await screen.findByTestId('analyst-card-market_analyst');
+    await user.click(card);
 
-    const inspector = screen.getByTestId('decision-inspector')
-    expect(inspector).toBeInTheDocument()
-    expect(inspector).toHaveTextContent('Market Analyst')
+    const inspector = screen.getByTestId('decision-inspector');
+    expect(inspector).toBeInTheDocument();
+    expect(inspector).toHaveTextContent('Market Analyst');
     expect(screen.getByTestId('inspector-response')).toHaveTextContent(
       'Market conditions are bullish with strong momentum.',
-    )
-  })
+    );
+  });
 
   it('closes decision inspector when close button is clicked', async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
-      const url = typeof input === 'string' ? input : input.toString()
+      const url = typeof input === 'string' ? input : input.toString();
       if (url.includes('/decisions')) {
-        return Promise.resolve({ ok: true, status: 200, json: async () => mockDecisions })
+        return Promise.resolve({ ok: true, status: 200, json: async () => mockDecisions });
       }
-      return Promise.resolve({ ok: true, status: 200, json: async () => mockRun })
-    })
-    vi.stubGlobal('fetch', fetchMock)
+      return Promise.resolve({ ok: true, status: 200, json: async () => mockRun });
+    });
+    vi.stubGlobal('fetch', fetchMock);
 
-    const user = userEvent.setup()
-    render(<PipelineRunPage />, { wrapper: Wrapper })
+    const user = userEvent.setup();
+    render(<PipelineRunPage />, { wrapper: Wrapper });
 
-    const card = await screen.findByTestId('analyst-card-market_analyst')
-    await user.click(card)
+    const card = await screen.findByTestId('analyst-card-market_analyst');
+    await user.click(card);
 
-    expect(screen.getByTestId('decision-inspector')).toBeInTheDocument()
+    expect(screen.getByTestId('decision-inspector')).toBeInTheDocument();
 
-    await user.click(screen.getByTestId('inspector-close'))
-    expect(screen.queryByTestId('decision-inspector')).not.toBeInTheDocument()
-  })
+    await user.click(screen.getByTestId('inspector-close'));
+    expect(screen.queryByTestId('decision-inspector')).not.toBeInTheDocument();
+  });
 
   it('shows confidence score in final signal', async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
-      const url = typeof input === 'string' ? input : input.toString()
+      const url = typeof input === 'string' ? input : input.toString();
       if (url.includes('/decisions')) {
-        return Promise.resolve({ ok: true, status: 200, json: async () => mockDecisions })
+        return Promise.resolve({ ok: true, status: 200, json: async () => mockDecisions });
       }
-      return Promise.resolve({ ok: true, status: 200, json: async () => mockRun })
-    })
-    vi.stubGlobal('fetch', fetchMock)
+      return Promise.resolve({ ok: true, status: 200, json: async () => mockRun });
+    });
+    vi.stubGlobal('fetch', fetchMock);
 
-    render(<PipelineRunPage />, { wrapper: Wrapper })
+    render(<PipelineRunPage />, { wrapper: Wrapper });
 
-    expect(await screen.findByTestId('confidence-score')).toHaveTextContent('78% confidence')
-  })
+    expect(await screen.findByTestId('confidence-score')).toHaveTextContent('78% confidence');
+  });
 
   it('shows buy signal badge', async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
-      const url = typeof input === 'string' ? input : input.toString()
+      const url = typeof input === 'string' ? input : input.toString();
       if (url.includes('/decisions')) {
-        return Promise.resolve({ ok: true, status: 200, json: async () => mockDecisions })
+        return Promise.resolve({ ok: true, status: 200, json: async () => mockDecisions });
       }
-      return Promise.resolve({ ok: true, status: 200, json: async () => mockRun })
-    })
-    vi.stubGlobal('fetch', fetchMock)
+      return Promise.resolve({ ok: true, status: 200, json: async () => mockRun });
+    });
+    vi.stubGlobal('fetch', fetchMock);
 
-    render(<PipelineRunPage />, { wrapper: Wrapper })
+    render(<PipelineRunPage />, { wrapper: Wrapper });
 
-    expect(await screen.findByText('buy')).toBeInTheDocument()
-  })
+    expect(await screen.findByText('buy')).toBeInTheDocument();
+  });
+
+  it('renders risk debate contributions from legacy risk role names', async () => {
+    const legacyRiskDecisions = {
+      ...mockDecisions,
+      data: mockDecisions.data.map((decision) => {
+        if (decision.agent_role === 'aggressive_analyst') {
+          return { ...decision, agent_role: 'aggressive_risk' as const };
+        }
+        if (decision.agent_role === 'conservative_analyst') {
+          return { ...decision, agent_role: 'conservative_risk' as const };
+        }
+        if (decision.agent_role === 'neutral_analyst') {
+          return { ...decision, agent_role: 'neutral_risk' as const };
+        }
+        return decision;
+      }),
+    };
+
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.includes('/decisions')) {
+        return Promise.resolve({ ok: true, status: 200, json: async () => legacyRiskDecisions });
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => mockRun });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<PipelineRunPage />, { wrapper: Wrapper });
+
+    expect(await screen.findByText(/Risk is acceptable/)).toBeInTheDocument();
+    expect(screen.getByText(/Reduce position size by 50%/)).toBeInTheDocument();
+    expect(screen.getByText(/Current position size is appropriate/)).toBeInTheDocument();
+  });
 
   it('renders safely when the decisions data array is null', async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
-      const url = typeof input === 'string' ? input : input.toString()
+      const url = typeof input === 'string' ? input : input.toString();
       if (url.includes('/decisions')) {
         return Promise.resolve({
           ok: true,
           status: 200,
           json: async () => ({ ...mockDecisions, data: null }),
-        })
+        });
       }
-      return Promise.resolve({ ok: true, status: 200, json: async () => mockRun })
-    })
-    vi.stubGlobal('fetch', fetchMock)
+      return Promise.resolve({ ok: true, status: 200, json: async () => mockRun });
+    });
+    vi.stubGlobal('fetch', fetchMock);
 
-    render(<PipelineRunPage />, { wrapper: Wrapper })
+    render(<PipelineRunPage />, { wrapper: Wrapper });
 
-    expect(await screen.findByTestId('pipeline-run-page')).toBeInTheDocument()
-    expect(screen.getAllByText('Waiting for result…')).toHaveLength(4)
-    expect(screen.getAllByText('Waiting for debate to begin…')).toHaveLength(2)
-  })
-})
+    expect(await screen.findByTestId('pipeline-run-page')).toBeInTheDocument();
+    expect(screen.getAllByText('No result recorded for this run.')).toHaveLength(4);
+    expect(screen.getAllByText('No debate recorded for this run.')).toHaveLength(2);
+  });
+});

@@ -32,6 +32,7 @@ Be data-driven and impartial. Reference the trading plan specifics and analyst d
 type NeutralRisk struct {
 	debate.BaseDebater
 	providerName string
+	systemPrompt string
 }
 
 // Compile-time check: *NeutralRisk implements agent.DebaterNode.
@@ -41,6 +42,16 @@ var _ agent.DebaterNode = (*NeutralRisk)(nil)
 // model. providerName (e.g. "openai") is recorded in decision metadata. A nil
 // logger is replaced with the default logger.
 func NewNeutralRisk(provider llm.Provider, providerName, model string, logger *slog.Logger) *NeutralRisk {
+	return NewNeutralRiskWithPrompt(provider, providerName, model, "", logger)
+}
+
+// NewNeutralRiskWithPrompt returns a NeutralRisk wired to the given LLM
+// provider and model, using systemPrompt when provided.
+func NewNeutralRiskWithPrompt(provider llm.Provider, providerName, model, systemPrompt string, logger *slog.Logger) *NeutralRisk {
+	if systemPrompt == "" {
+		systemPrompt = NeutralRiskSystemPrompt
+	}
+
 	return &NeutralRisk{
 		BaseDebater: debate.NewBaseDebater(
 			agent.AgentRoleNeutralAnalyst,
@@ -50,6 +61,7 @@ func NewNeutralRisk(provider llm.Provider, providerName, model string, logger *s
 			logger,
 		),
 		providerName: providerName,
+		systemPrompt: systemPrompt,
 	}
 }
 
@@ -67,11 +79,11 @@ func (n *NeutralRisk) Phase() agent.Phase { return agent.PhaseRiskDebate }
 // contribution in the current debate round and records the decision for
 // persistence.
 func (n *NeutralRisk) Execute(ctx context.Context, state *agent.PipelineState) error {
-	return executeRiskDebate(ctx, state, n.BaseDebater, agent.AgentRoleNeutralAnalyst, NeutralRiskSystemPrompt, n.providerName)
+	return executeRiskDebate(ctx, state, n.BaseDebater, agent.AgentRoleNeutralAnalyst, n.systemPrompt, n.providerName)
 }
 
 // Debate implements the DebaterNode interface. It calls the LLM with the
 // neutral risk system prompt and returns the debate contribution.
 func (n *NeutralRisk) Debate(ctx context.Context, input agent.DebateInput) (agent.DebateOutput, error) {
-	return debateRiskFromInput(ctx, n.BaseDebater, NeutralRiskSystemPrompt, n.providerName, input)
+	return debateRiskFromInput(ctx, n.BaseDebater, n.systemPrompt, n.providerName, input)
 }

@@ -16,7 +16,7 @@ describe('AppShell', () => {
       </MemoryRouter>,
     )
 
-    expect(screen.getByRole('heading', { name: 'Frontend scaffold' })).toBeInTheDocument()
+    expect(screen.getByText('Trading command center')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /memories/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /settings/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /portfolio/i })).toHaveAttribute('aria-current', 'page')

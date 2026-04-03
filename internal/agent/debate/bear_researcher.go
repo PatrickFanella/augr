@@ -29,6 +29,7 @@ Be thorough, skeptical, and data-driven. Challenge the bull's thesis point by po
 type BearResearcher struct {
 	BaseDebater
 	providerName string
+	systemPrompt string
 }
 
 // Compile-time check: *BearResearcher implements agent.DebaterNode.
@@ -38,6 +39,16 @@ var _ agent.DebaterNode = (*BearResearcher)(nil)
 // and model. providerName (e.g. "openai") is recorded in decision metadata.
 // A nil logger is replaced with the default logger.
 func NewBearResearcher(provider llm.Provider, providerName, model string, logger *slog.Logger) *BearResearcher {
+	return NewBearResearcherWithPrompt(provider, providerName, model, "", logger)
+}
+
+// NewBearResearcherWithPrompt returns a BearResearcher wired to the given LLM
+// provider and model, using systemPrompt when provided.
+func NewBearResearcherWithPrompt(provider llm.Provider, providerName, model, systemPrompt string, logger *slog.Logger) *BearResearcher {
+	if systemPrompt == "" {
+		systemPrompt = BearResearcherSystemPrompt
+	}
+
 	return &BearResearcher{
 		BaseDebater: NewBaseDebater(
 			agent.AgentRoleBearResearcher,
@@ -47,6 +58,7 @@ func NewBearResearcher(provider llm.Provider, providerName, model string, logger
 			logger,
 		),
 		providerName: providerName,
+		systemPrompt: systemPrompt,
 	}
 }
 
@@ -82,7 +94,7 @@ func (b *BearResearcher) Execute(ctx context.Context, state *agent.PipelineState
 func (b *BearResearcher) Debate(ctx context.Context, input agent.DebateInput) (agent.DebateOutput, error) {
 	content, promptText, usage, err := b.CallWithContext(
 		ctx,
-		BearResearcherSystemPrompt,
+		b.systemPrompt,
 		input.Rounds,
 		input.ContextReports,
 	)

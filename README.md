@@ -99,8 +99,8 @@ task dev
 docker compose logs -f        # all services
 task dev:logs                  # shortcut
 
-# Run database migrations (set DB_URL to match Docker Compose credentials)
-DB_URL="postgres://postgres:postgres@localhost:5432/tradingagent?sslmode=disable" task migrate:up
+# Run database migrations
+task migrate:up
 
 # Open a PostgreSQL shell (default Compose user is postgres)
 docker compose exec postgres psql -U postgres -d tradingagent

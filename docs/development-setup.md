@@ -85,12 +85,10 @@ curl http://localhost:8080/healthz
 
 ### 1.4 Run Migrations
 
-Migrations are managed with [golang-migrate](https://github.com/golang-migrate/migrate). With Docker Compose running:
-
-The Taskfile default `DB_URL` uses `tradingagent:tradingagent` credentials, but Docker Compose defaults the PostgreSQL user/password to `postgres`/`postgres`. Override `DB_URL` to match:
+Migrations are managed with [golang-migrate](https://github.com/golang-migrate/migrate). With Docker Compose running, the Taskfile default `DB_URL` already matches the local PostgreSQL credentials:
 
 ```bash
-DB_URL="postgres://postgres:postgres@localhost:5432/tradingagent?sslmode=disable" task migrate:up
+task migrate:up
 ```
 
 ### 1.5 Useful Docker Compose Commands
@@ -175,11 +173,13 @@ REDIS_URL=redis://localhost:6379/0
 
 ### 2.6 Run Migrations
 
-Ensure `DB_URL` matches your database credentials (it defaults to `tradingagent:tradingagent` in the Taskfile):
+If you are using the default local Docker Compose PostgreSQL service, run:
 
 ```bash
-DB_URL="postgres://postgres:postgres@localhost:5432/tradingagent?sslmode=disable" task migrate:up
+task migrate:up
 ```
+
+Override `DB_URL` only if your local database uses different credentials or host settings.
 
 To create a new migration:
 

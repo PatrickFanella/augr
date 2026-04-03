@@ -1,16 +1,11 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Brain, ChevronLeft, ChevronRight, Search, Trash2 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Brain, ChevronLeft, ChevronRight, Search, Trash2 } from 'lucide-react';
+import { useMemo, useState } from 'react';
 
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
+import { PageHeader } from '@/components/layout/page-header';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Dialog,
   DialogContent,
@@ -18,14 +13,16 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
-import { apiClient } from '@/lib/api/client'
-import type { AgentMemory, AgentRole } from '@/lib/api/types'
-import { AGENT_ROLE_OPTIONS, formatAgentRole } from '@/lib/agent-roles'
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { apiClient } from '@/lib/api/client';
+import type { AgentMemory, AgentRole } from '@/lib/api/types';
+import { AGENT_ROLE_OPTIONS, formatAgentRole } from '@/lib/agent-roles';
 
-const PAGE_SIZE = 10
-const PAGE_REQUEST_SIZE = PAGE_SIZE + 1
+const PAGE_SIZE = 10;
+const PAGE_REQUEST_SIZE = PAGE_SIZE + 1;
+const denseSelectClassName =
+  'flex h-9 w-full rounded-md border border-input bg-card/70 px-3 py-1 text-sm text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
 
 function formatDate(date: string) {
   return new Date(date).toLocaleString(undefined, {
@@ -34,25 +31,25 @@ function formatDate(date: string) {
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
-  })
+  });
 }
 
 function summarize(text: string, maxLength = 160) {
   if (text.length <= maxLength) {
-    return text
+    return text;
   }
 
-  return `${text.slice(0, maxLength - 1).trimEnd()}…`
+  return `${text.slice(0, maxLength - 1).trimEnd()}…`;
 }
 
 export function MemoriesPage() {
-  const queryClient = useQueryClient()
-  const [draftQuery, setDraftQuery] = useState('')
-  const [draftRole, setDraftRole] = useState<AgentRole | ''>('')
-  const [query, setQuery] = useState('')
-  const [agentRole, setAgentRole] = useState<AgentRole | ''>('')
-  const [offset, setOffset] = useState(0)
-  const [selectedMemory, setSelectedMemory] = useState<AgentMemory | null>(null)
+  const queryClient = useQueryClient();
+  const [draftQuery, setDraftQuery] = useState('');
+  const [draftRole, setDraftRole] = useState<AgentRole | ''>('');
+  const [query, setQuery] = useState('');
+  const [agentRole, setAgentRole] = useState<AgentRole | ''>('');
+  const [offset, setOffset] = useState(0);
+  const [selectedMemory, setSelectedMemory] = useState<AgentMemory | null>(null);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['memories', query, agentRole, offset],
@@ -63,59 +60,60 @@ export function MemoriesPage() {
         limit: PAGE_REQUEST_SIZE,
         offset,
       }),
-  })
+  });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => apiClient.deleteMemory(id),
     onSuccess: (_, id) => {
-      queryClient.invalidateQueries({ queryKey: ['memories'] })
+      queryClient.invalidateQueries({ queryKey: ['memories'] });
       if (selectedMemory?.id === id) {
-        setSelectedMemory(null)
+        setSelectedMemory(null);
       }
     },
-  })
+  });
 
-  const visibleMemories = (data?.data ?? []).slice(0, PAGE_SIZE)
-  const visibleCount = visibleMemories.length
-  const hasNextPage = (data?.data?.length ?? 0) > PAGE_SIZE
-  const pageLabel = useMemo(() => Math.floor(offset / PAGE_SIZE) + 1, [offset])
+  const visibleMemories = (data?.data ?? []).slice(0, PAGE_SIZE);
+  const visibleCount = visibleMemories.length;
+  const hasNextPage = (data?.data?.length ?? 0) > PAGE_SIZE;
+  const pageLabel = useMemo(() => Math.floor(offset / PAGE_SIZE) + 1, [offset]);
 
   function applyFilters() {
-    setOffset(0)
-    setQuery(draftQuery.trim())
-    setAgentRole(draftRole)
+    setOffset(0);
+    setQuery(draftQuery.trim());
+    setAgentRole(draftRole);
   }
 
   function clearFilters() {
-    setDraftQuery('')
-    setDraftRole('')
-    setQuery('')
-    setAgentRole('')
-    setOffset(0)
+    setDraftQuery('');
+    setDraftRole('');
+    setQuery('');
+    setAgentRole('');
+    setOffset(0);
   }
 
   return (
     <div className="space-y-6" data-testid="memories-page">
-      <div className="space-y-1">
-        <h2 className="text-2xl font-semibold tracking-tight">Memories</h2>
-        <p className="text-sm text-muted-foreground">
-          Search the shared memory store by situation text and filter by agent role.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Knowledge base"
+        title="Memories"
+        description="Search the shared memory store, inspect stored situations, and prune stale operating context."
+        meta={<Badge variant="outline">{visibleCount} visible</Badge>}
+      />
 
       <Card>
         <CardHeader>
           <CardTitle>Search memories</CardTitle>
           <CardDescription>
-            Full-text search runs through the API and returns the most relevant stored situations first.
+            Full-text search runs through the API and returns the most relevant stored situations
+            first.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form
-            className="grid gap-3 md:grid-cols-[minmax(0,1fr)_220px_auto]"
+            className="grid gap-3 md:grid-cols-[minmax(0,1.15fr)_240px_auto]"
             onSubmit={(event) => {
-              event.preventDefault()
-              applyFilters()
+              event.preventDefault();
+              applyFilters();
             }}
           >
             <Input
@@ -128,7 +126,7 @@ export function MemoriesPage() {
               value={draftRole}
               onChange={(event) => setDraftRole(event.target.value as AgentRole | '')}
               aria-label="Agent role"
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              className={denseSelectClassName}
             >
               <option value="">All agents</option>
               {AGENT_ROLE_OPTIONS.map((role) => (
@@ -138,11 +136,11 @@ export function MemoriesPage() {
               ))}
             </select>
             <div className="flex gap-2">
-              <Button type="submit" data-testid="apply-memory-filters">
+              <Button type="submit" size="dense" data-testid="apply-memory-filters">
                 <Search className="size-4" />
                 Search
               </Button>
-              <Button type="button" variant="outline" onClick={clearFilters}>
+              <Button type="button" variant="outline" size="dense" onClick={clearFilters}>
                 Clear
               </Button>
             </div>
@@ -164,7 +162,7 @@ export function MemoriesPage() {
             <Button
               type="button"
               variant="outline"
-              size="sm"
+              size="dense"
               onClick={() => setOffset((current) => Math.max(0, current - PAGE_SIZE))}
               disabled={offset === 0}
             >
@@ -174,7 +172,7 @@ export function MemoriesPage() {
             <Button
               type="button"
               variant="outline"
-              size="sm"
+              size="dense"
               onClick={() => setOffset((current) => current + PAGE_SIZE)}
               disabled={!hasNextPage}
             >
@@ -187,7 +185,10 @@ export function MemoriesPage() {
           {isLoading ? (
             <div className="space-y-3" data-testid="memories-loading">
               {Array.from({ length: 3 }).map((_, index) => (
-                <div key={index} className="space-y-2 rounded-lg border p-4">
+                <div
+                  key={index}
+                  className="space-y-2 rounded-lg border border-white/8 bg-background/45 p-4"
+                >
                   <div className="h-4 w-32 animate-pulse rounded bg-muted" />
                   <div className="h-4 w-full animate-pulse rounded bg-muted" />
                   <div className="h-4 w-4/5 animate-pulse rounded bg-muted" />
@@ -196,11 +197,12 @@ export function MemoriesPage() {
             </div>
           ) : isError ? (
             <p className="text-sm text-muted-foreground" data-testid="memories-error">
-              Unable to load memories right now. Start the API server to browse stored agent context.
+              Unable to load memories right now. Start the API server to browse stored agent
+              context.
             </p>
           ) : !visibleMemories.length ? (
             <div
-              className="flex flex-col items-center gap-2 py-8 text-center"
+              className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-white/10 bg-background/35 py-10 text-center"
               data-testid="memories-empty"
             >
               <Brain className="size-8 text-muted-foreground" />
@@ -212,7 +214,7 @@ export function MemoriesPage() {
             <ul className="space-y-3" data-testid="memories-list">
               {visibleMemories.map((memory) => (
                 <li key={memory.id}>
-                  <article className="rounded-lg border p-4">
+                  <article className="rounded-lg border border-white/8 bg-background/45 p-4 transition-colors hover:border-primary/15 hover:bg-accent/45">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div className="space-y-3">
                         <div className="flex flex-wrap items-center gap-2">
@@ -222,30 +224,32 @@ export function MemoriesPage() {
                               relevance {memory.relevance_score.toFixed(2)}
                             </Badge>
                           ) : null}
-                          <span className="text-xs text-muted-foreground">
+                          <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
                             {formatDate(memory.created_at)}
                           </span>
                         </div>
-                        <div className="space-y-2">
-                          <div>
-                            <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                        <div className="grid gap-2 lg:grid-cols-3">
+                          <div className="rounded-md border border-white/8 bg-background/55 p-3">
+                            <p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
                               Situation
                             </p>
-                            <p className="text-sm">{summarize(memory.situation)}</p>
+                            <p className="mt-2 text-sm text-foreground">
+                              {summarize(memory.situation)}
+                            </p>
                           </div>
-                          <div>
-                            <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                          <div className="rounded-md border border-white/8 bg-background/55 p-3">
+                            <p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
                               Recommendation
                             </p>
-                            <p className="text-sm text-muted-foreground">
+                            <p className="mt-2 text-sm text-muted-foreground">
                               {summarize(memory.recommendation)}
                             </p>
                           </div>
-                          <div>
-                            <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                          <div className="rounded-md border border-white/8 bg-background/55 p-3">
+                            <p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
                               Outcome
                             </p>
-                            <p className="text-sm text-muted-foreground">
+                            <p className="mt-2 text-sm text-muted-foreground">
                               {memory.outcome ? summarize(memory.outcome) : 'Pending outcome'}
                             </p>
                           </div>
@@ -255,16 +259,15 @@ export function MemoriesPage() {
                         <Button
                           type="button"
                           variant="outline"
-                          size="sm"
+                          size="dense"
                           onClick={() => setSelectedMemory(memory)}
                         >
                           View details
                         </Button>
                         <Button
                           type="button"
-                          variant="outline"
-                          size="sm"
-                          className="text-destructive hover:text-destructive"
+                          variant="destructive"
+                          size="dense"
                           onClick={() => deleteMutation.mutate(memory.id)}
                           disabled={deleteMutation.isPending}
                           data-testid={`delete-memory-${memory.id}`}
@@ -282,7 +285,10 @@ export function MemoriesPage() {
         </CardContent>
       </Card>
 
-      <Dialog open={selectedMemory !== null} onOpenChange={(open) => !open && setSelectedMemory(null)}>
+      <Dialog
+        open={selectedMemory !== null}
+        onOpenChange={(open) => !open && setSelectedMemory(null)}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Memory detail</DialogTitle>
@@ -294,38 +300,53 @@ export function MemoriesPage() {
             <div className="space-y-4" data-testid="memory-detail-dialog">
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant="outline">{formatAgentRole(selectedMemory.agent_role)}</Badge>
-                <span className="text-xs text-muted-foreground">
+                <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
                   {formatDate(selectedMemory.created_at)}
                 </span>
               </div>
-              <section className="space-y-1">
-                <h3 className="text-sm font-medium">Situation</h3>
+              <section className="space-y-1 rounded-md border border-white/8 bg-background/55 p-3">
+                <h3 className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                  Situation
+                </h3>
                 <p className="text-sm text-muted-foreground">{selectedMemory.situation}</p>
               </section>
-              <section className="space-y-1">
-                <h3 className="text-sm font-medium">Recommendation</h3>
+              <section className="space-y-1 rounded-md border border-white/8 bg-background/55 p-3">
+                <h3 className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                  Recommendation
+                </h3>
                 <p className="text-sm text-muted-foreground">{selectedMemory.recommendation}</p>
               </section>
-              <section className="space-y-1">
-                <h3 className="text-sm font-medium">Outcome</h3>
+              <section className="space-y-1 rounded-md border border-white/8 bg-background/55 p-3">
+                <h3 className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                  Outcome
+                </h3>
                 <p className="text-sm text-muted-foreground">
                   {selectedMemory.outcome || 'Pending outcome'}
                 </p>
               </section>
               {selectedMemory.pipeline_run_id ? (
-                <section className="space-y-1">
-                  <h3 className="text-sm font-medium">Pipeline run</h3>
-                  <p className="text-sm text-muted-foreground">{selectedMemory.pipeline_run_id}</p>
+                <section className="space-y-1 rounded-md border border-white/8 bg-background/55 p-3">
+                  <h3 className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                    Pipeline run
+                  </h3>
+                  <p className="font-mono text-sm text-muted-foreground">
+                    {selectedMemory.pipeline_run_id}
+                  </p>
                 </section>
               ) : null}
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setSelectedMemory(null)}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="dense"
+                  onClick={() => setSelectedMemory(null)}
+                >
                   Close
                 </Button>
                 <Button
                   type="button"
-                  variant="outline"
-                  className="text-destructive hover:text-destructive"
+                  variant="destructive"
+                  size="dense"
                   onClick={() => deleteMutation.mutate(selectedMemory.id)}
                   disabled={deleteMutation.isPending}
                 >
@@ -338,5 +359,5 @@ export function MemoriesPage() {
         </DialogContent>
       </Dialog>
     </div>
-  )
+  );
 }

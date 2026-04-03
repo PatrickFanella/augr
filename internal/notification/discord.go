@@ -18,9 +18,11 @@ import (
 )
 
 // Compile-time interface checks.
-var _ Notifier = (*DiscordNotifier)(nil)
-var _ SignalNotifier = (*DiscordNotifier)(nil)
-var _ DecisionNotifier = (*DiscordNotifier)(nil)
+var (
+	_ Notifier         = (*DiscordNotifier)(nil)
+	_ SignalNotifier   = (*DiscordNotifier)(nil)
+	_ DecisionNotifier = (*DiscordNotifier)(nil)
+)
 
 // DiscordNotifier delivers alerts as Discord embeds via webhooks.
 type DiscordNotifier struct {

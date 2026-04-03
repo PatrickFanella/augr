@@ -1,48 +1,49 @@
-import { type FormEvent, useEffect, useState } from 'react'
+import { type FormEvent, useEffect, useState } from 'react';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Cpu, Power, Save, Settings2, ShieldAlert } from 'lucide-react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Cpu, Power, Save, ShieldAlert } from 'lucide-react';
 
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { apiClient, ApiClientError } from '@/lib/api/client'
+import { PageHeader } from '@/components/layout/page-header';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { apiClient, ApiClientError } from '@/lib/api/client';
 import type {
   EngineStatus,
   LLMProviderSettingsGroup,
   LLMProviderUpdateRequest,
   Settings,
   SettingsUpdateRequest,
-} from '@/lib/api/types'
+} from '@/lib/api/types';
 
-type ProviderKey = Exclude<keyof LLMProviderSettingsGroup, 'ollama'>
+type ProviderKey = Exclude<keyof LLMProviderSettingsGroup, 'ollama'>;
 
 interface EditableProviderState {
-  api_key: string
-  base_url: string
-  model: string
+  api_key: string;
+  base_url: string;
+  model: string;
 }
 
 interface SettingsFormState {
   llm: {
-    default_provider: string
-    deep_think_model: string
-    quick_think_model: string
+    default_provider: string;
+    deep_think_model: string;
+    quick_think_model: string;
     providers: {
-      openai: EditableProviderState
-      anthropic: EditableProviderState
-      google: EditableProviderState
-      openrouter: EditableProviderState
-      xai: EditableProviderState
+      openai: EditableProviderState;
+      anthropic: EditableProviderState;
+      google: EditableProviderState;
+      openrouter: EditableProviderState;
+      xai: EditableProviderState;
       ollama: {
-        base_url: string
-        model: string
-      }
-    }
-  }
-  risk: Settings['risk']
+        base_url: string;
+        model: string;
+      };
+    };
+  };
+  risk: Settings['risk'];
 }
 
 const providerDefinitions: Array<{ key: ProviderKey; label: string; supportsBaseUrl?: boolean }> = [
@@ -51,7 +52,10 @@ const providerDefinitions: Array<{ key: ProviderKey; label: string; supportsBase
   { key: 'google', label: 'Google' },
   { key: 'openrouter', label: 'OpenRouter', supportsBaseUrl: true },
   { key: 'xai', label: 'xAI', supportsBaseUrl: true },
-]
+];
+
+const denseSelectClassName =
+  'flex h-9 w-full rounded-md border border-input bg-card/70 px-3 py-1 text-sm text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
 
 function toFormState(settings: Settings): SettingsFormState {
   return {
@@ -92,94 +96,113 @@ function toFormState(settings: Settings): SettingsFormState {
       },
     },
     risk: settings.risk,
-  }
+  };
 }
 
 function buildProviderUpdate(provider: EditableProviderState): LLMProviderUpdateRequest {
-  const apiKey = provider.api_key.trim()
+  const apiKey = provider.api_key.trim();
 
   return {
     model: provider.model.trim(),
     base_url: provider.base_url.trim() || undefined,
     ...(apiKey ? { api_key: apiKey } : {}),
-  }
+  };
 }
 
 function formatUptime(totalSeconds: number) {
-  const days = Math.floor(totalSeconds / 86_400)
-  const hours = Math.floor((totalSeconds % 86_400) / 3_600)
-  const minutes = Math.floor((totalSeconds % 3_600) / 60)
+  const days = Math.floor(totalSeconds / 86_400);
+  const hours = Math.floor((totalSeconds % 86_400) / 3_600);
+  const minutes = Math.floor((totalSeconds % 3_600) / 60);
 
   if (days > 0) {
-    return `${days}d ${hours}h`
+    return `${days}d ${hours}h`;
   }
   if (hours > 0) {
-    return `${hours}h ${minutes}m`
+    return `${hours}h ${minutes}m`;
   }
-  return `${Math.max(minutes, 0)}m`
+  return `${Math.max(minutes, 0)}m`;
 }
 
 function RiskStatusSummary({ riskStatus }: { riskStatus: EngineStatus }) {
+  const riskVariant =
+    riskStatus.risk_status === 'breached'
+      ? 'destructive'
+      : riskStatus.risk_status === 'warning'
+        ? 'warning'
+        : 'success';
+
   return (
-    <div className="grid gap-3 rounded-lg border p-4 text-sm sm:grid-cols-3">
-      <div>
-        <p className="text-muted-foreground">Risk status</p>
-        <p className="font-medium capitalize">{riskStatus.risk_status}</p>
+    <div className="grid gap-3 text-sm sm:grid-cols-3">
+      <div className="rounded-lg border border-white/8 bg-background/45 p-3">
+        <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+          Risk status
+        </p>
+        <div className="mt-2">
+          <Badge variant={riskVariant}>{riskStatus.risk_status}</Badge>
+        </div>
       </div>
-      <div>
-        <p className="text-muted-foreground">Circuit breaker</p>
-        <p className="font-medium capitalize">{riskStatus.circuit_breaker.state.replace('_', ' ')}</p>
+      <div className="rounded-lg border border-white/8 bg-background/45 p-3">
+        <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+          Circuit breaker
+        </p>
+        <p className="mt-2 font-mono text-[13px] font-medium capitalize text-foreground">
+          {riskStatus.circuit_breaker.state.replace('_', ' ')}
+        </p>
       </div>
-      <div>
-        <p className="text-muted-foreground">Live position cap</p>
-        <p className="font-medium">{riskStatus.position_limits.max_per_position_pct}%</p>
+      <div className="rounded-lg border border-white/8 bg-background/45 p-3">
+        <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+          Live position cap
+        </p>
+        <p className="mt-2 font-mono text-[13px] font-medium text-foreground">
+          {riskStatus.position_limits.max_per_position_pct}%
+        </p>
       </div>
     </div>
-  )
+  );
 }
 
 export function SettingsPage() {
-  const queryClient = useQueryClient()
-  const [formState, setFormState] = useState<SettingsFormState | null>(null)
-  const [saveMessage, setSaveMessage] = useState<string | null>(null)
-  const [saveError, setSaveError] = useState<string | null>(null)
+  const queryClient = useQueryClient();
+  const [formState, setFormState] = useState<SettingsFormState | null>(null);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const settingsQuery = useQuery({
     queryKey: ['settings'],
     queryFn: () => apiClient.getSettings(),
-  })
+  });
 
   const riskQuery = useQuery({
     queryKey: ['risk', 'status'],
     queryFn: () => apiClient.getRiskStatus(),
     refetchInterval: 15_000,
-  })
+  });
 
   useEffect(() => {
     if (settingsQuery.data) {
-      setFormState(toFormState(settingsQuery.data))
+      setFormState(toFormState(settingsQuery.data));
     }
-  }, [settingsQuery.data])
+  }, [settingsQuery.data]);
 
   function updateFormState(updater: (current: SettingsFormState) => SettingsFormState) {
-    setFormState((current) => (current ? updater(current) : current))
-    setSaveMessage(null)
-    setSaveError(null)
+    setFormState((current) => (current ? updater(current) : current));
+    setSaveMessage(null);
+    setSaveError(null);
   }
 
   const saveMutation = useMutation({
     mutationFn: (payload: SettingsUpdateRequest) => apiClient.updateSettings(payload),
     onSuccess: (updatedSettings) => {
-      queryClient.setQueryData(['settings'], updatedSettings)
-      setFormState(toFormState(updatedSettings))
-      setSaveMessage('Settings saved.')
-      setSaveError(null)
+      queryClient.setQueryData(['settings'], updatedSettings);
+      setFormState(toFormState(updatedSettings));
+      setSaveMessage('Settings saved.');
+      setSaveError(null);
     },
     onError: (error) => {
-      setSaveMessage(null)
-      setSaveError(error instanceof ApiClientError ? error.message : 'Unable to save settings.')
+      setSaveMessage(null);
+      setSaveError(error instanceof ApiClientError ? error.message : 'Unable to save settings.');
     },
-  })
+  });
 
   const killSwitchMutation = useMutation({
     mutationFn: (active: boolean) =>
@@ -188,9 +211,9 @@ export function SettingsPage() {
         reason: active ? 'Activated from settings page' : 'Deactivated from settings page',
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['risk', 'status'] })
+      queryClient.invalidateQueries({ queryKey: ['risk', 'status'] });
     },
-  })
+  });
 
   if (settingsQuery.isError || (!settingsQuery.isLoading && !settingsQuery.data)) {
     return (
@@ -200,7 +223,7 @@ export function SettingsPage() {
           <CardDescription>Unable to load the current system configuration.</CardDescription>
         </CardHeader>
       </Card>
-    )
+    );
   }
 
   if (settingsQuery.isLoading || !formState) {
@@ -212,11 +235,11 @@ export function SettingsPage() {
           <div className="h-72 animate-pulse rounded-2xl border bg-card" />
         </div>
       </div>
-    )
+    );
   }
 
-  const settingsData = settingsQuery.data!
-  const connectedBrokers = settingsData.system.connected_brokers ?? []
+  const settingsData = settingsQuery.data!;
+  const connectedBrokers = settingsData.system.connected_brokers ?? [];
 
   function handleProviderChange<K extends ProviderKey>(
     providerKey: K,
@@ -235,13 +258,13 @@ export function SettingsPage() {
           },
         },
       },
-    }))
+    }));
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
+    event.preventDefault();
     if (!formState) {
-      return
+      return;
     }
 
     const payload: SettingsUpdateRequest = {
@@ -262,34 +285,37 @@ export function SettingsPage() {
         },
       },
       risk: formState.risk,
-    }
+    };
 
-    saveMutation.mutate(payload)
+    saveMutation.mutate(payload);
   }
 
   return (
     <form className="space-y-6" onSubmit={handleSubmit} data-testid="settings-page">
-      <Card>
-        <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="space-y-1">
-            <CardTitle className="flex items-center gap-2">
-              <Settings2 className="size-5" />
-              Settings
-            </CardTitle>
-            <CardDescription>
-              Configure LLM providers, risk guardrails, and runtime controls.
-            </CardDescription>
+      <PageHeader
+        eyebrow="Control room"
+        title="Settings"
+        description="Configure provider routing, risk guardrails, and runtime control surfaces for the trading stack."
+        meta={
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline">{settingsData.system.environment || 'unknown'}</Badge>
           </div>
+        }
+        actions={
           <div className="flex flex-col items-start gap-2 sm:items-end">
-            <Button type="submit" disabled={saveMutation.isPending} data-testid="settings-save-button">
+            <Button
+              type="submit"
+              disabled={saveMutation.isPending}
+              data-testid="settings-save-button"
+            >
               <Save className="size-4" />
               {saveMutation.isPending ? 'Saving…' : 'Save settings'}
             </Button>
-            {saveMessage ? <p className="text-sm text-emerald-600">{saveMessage}</p> : null}
+            {saveMessage ? <p className="text-sm text-success">{saveMessage}</p> : null}
             {saveError ? <p className="text-sm text-destructive">{saveError}</p> : null}
           </div>
-        </CardHeader>
-      </Card>
+        }
+      />
 
       <div className="grid gap-6 xl:grid-cols-[1.4fr_0.9fr]">
         <div className="space-y-6">
@@ -303,7 +329,7 @@ export function SettingsPage() {
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="grid gap-4 md:grid-cols-3">
-                <div className="space-y-2">
+                <div className="space-y-2 rounded-lg border border-white/8 bg-background/45 p-4">
                   <Label htmlFor="default-provider">Default provider</Label>
                   <select
                     id="default-provider"
@@ -314,7 +340,7 @@ export function SettingsPage() {
                         llm: { ...current.llm, default_provider: event.target.value },
                       }))
                     }
-                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    className={denseSelectClassName}
                   >
                     {providerDefinitions.map(({ key, label }) => (
                       <option key={key} value={key}>
@@ -325,7 +351,7 @@ export function SettingsPage() {
                   </select>
                 </div>
 
-                <div className="space-y-2">
+                <div className="space-y-2 rounded-lg border border-white/8 bg-background/45 p-4">
                   <Label htmlFor="deep-think-model">Deep think model</Label>
                   <Input
                     id="deep-think-model"
@@ -339,7 +365,7 @@ export function SettingsPage() {
                   />
                 </div>
 
-                <div className="space-y-2">
+                <div className="space-y-2 rounded-lg border border-white/8 bg-background/45 p-4">
                   <Label htmlFor="quick-think-model">Quick think model</Label>
                   <Input
                     id="quick-think-model"
@@ -356,25 +382,37 @@ export function SettingsPage() {
 
               <div className="space-y-4">
                 {providerDefinitions.map(({ key, label, supportsBaseUrl }) => {
-                  const provider = formState.llm.providers[key]
-                  const savedProvider = settingsData.llm.providers[key]
-                  const hasSavedLast4 = Boolean(savedProvider.api_key_last4)
+                  const provider = formState.llm.providers[key];
+                  const savedProvider = settingsData.llm.providers[key];
+                  const hasSavedLast4 = Boolean(savedProvider.api_key_last4);
                   const keyStatus = provider.api_key.trim()
                     ? 'New key ready'
                     : savedProvider.api_key_configured
                       ? hasSavedLast4
                         ? `Configured ••••${savedProvider.api_key_last4}`
                         : 'Configured'
-                      : 'Not set'
+                      : 'Not set';
 
                   return (
-                    <div key={key} className="rounded-xl border p-4" data-testid={`provider-${key}`}>
+                    <div
+                      key={key}
+                      className="rounded-xl border border-white/8 bg-background/45 p-4"
+                      data-testid={`provider-${key}`}
+                    >
                       <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                           <p className="font-medium">{label}</p>
-                          <p className="text-sm text-muted-foreground">Provider-specific connection details.</p>
+                          <p className="text-sm text-muted-foreground">
+                            Provider-specific connection details.
+                          </p>
                         </div>
-                        <Badge variant={provider.api_key.trim() || savedProvider.api_key_configured ? 'success' : 'outline'}>
+                        <Badge
+                          variant={
+                            provider.api_key.trim() || savedProvider.api_key_configured
+                              ? 'success'
+                              : 'outline'
+                          }
+                        >
                           {keyStatus}
                         </Badge>
                       </div>
@@ -386,8 +424,14 @@ export function SettingsPage() {
                             id={`${key}-api-key`}
                             type="password"
                             value={provider.api_key}
-                            placeholder={savedProvider.api_key_last4 ? `••••${savedProvider.api_key_last4}` : 'Enter new API key'}
-                            onChange={(event) => handleProviderChange(key, 'api_key', event.target.value)}
+                            placeholder={
+                              savedProvider.api_key_last4
+                                ? `••••${savedProvider.api_key_last4}`
+                                : 'Enter new API key'
+                            }
+                            onChange={(event) =>
+                              handleProviderChange(key, 'api_key', event.target.value)
+                            }
                           />
                         </div>
 
@@ -397,13 +441,20 @@ export function SettingsPage() {
                             <Input
                               id={`${key}-base-url`}
                               value={provider.base_url}
-                              onChange={(event) => handleProviderChange(key, 'base_url', event.target.value)}
+                              onChange={(event) =>
+                                handleProviderChange(key, 'base_url', event.target.value)
+                              }
                             />
                           </div>
                         ) : (
                           <div className="space-y-2">
                             <Label htmlFor={`${key}-base-url`}>Base URL</Label>
-                            <Input id={`${key}-base-url`} value={provider.base_url} disabled placeholder="Provider default" />
+                            <Input
+                              id={`${key}-base-url`}
+                              value={provider.base_url}
+                              disabled
+                              placeholder="Provider default"
+                            />
                           </div>
                         )}
 
@@ -412,18 +463,25 @@ export function SettingsPage() {
                           <Input
                             id={`${key}-model`}
                             value={provider.model}
-                            onChange={(event) => handleProviderChange(key, 'model', event.target.value)}
+                            onChange={(event) =>
+                              handleProviderChange(key, 'model', event.target.value)
+                            }
                           />
                         </div>
                       </div>
                     </div>
-                  )
+                  );
                 })}
 
-                <div className="rounded-xl border p-4" data-testid="provider-ollama">
+                <div
+                  className="rounded-xl border border-white/8 bg-background/45 p-4"
+                  data-testid="provider-ollama"
+                >
                   <div className="mb-4">
                     <p className="font-medium">Ollama</p>
-                    <p className="text-sm text-muted-foreground">Local model endpoint configuration.</p>
+                    <p className="text-sm text-muted-foreground">
+                      Local model endpoint configuration.
+                    </p>
                   </div>
 
                   <div className="grid gap-4 md:grid-cols-2">
@@ -484,7 +542,9 @@ export function SettingsPage() {
                 <ShieldAlert className="size-5" />
                 Risk limits
               </CardTitle>
-              <CardDescription>Adjust circuit breaker thresholds and portfolio exposure caps.</CardDescription>
+              <CardDescription>
+                Adjust circuit breaker thresholds and portfolio exposure caps.
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
@@ -546,7 +606,10 @@ export function SettingsPage() {
                     step: '1',
                   },
                 ].map(({ id, label, value, field, step }) => (
-                  <div key={id} className="space-y-2">
+                  <div
+                    key={id}
+                    className="space-y-2 rounded-lg border border-white/8 bg-background/45 p-4"
+                  >
                     <Label htmlFor={id}>{label}</Label>
                     <Input
                       id={id}
@@ -559,7 +622,8 @@ export function SettingsPage() {
                           risk: {
                             ...current.risk,
                             [field]:
-                              field === 'max_open_positions' || field === 'circuit_breaker_cooldown_min'
+                              field === 'max_open_positions' ||
+                              field === 'circuit_breaker_cooldown_min'
                                 ? Number.parseInt(event.target.value || '0', 10)
                                 : Number.parseFloat(event.target.value || '0'),
                           },
@@ -586,13 +650,13 @@ export function SettingsPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               {riskQuery.isLoading ? (
-                <div className="h-24 animate-pulse rounded-lg border bg-muted/40" />
+                <div className="h-24 animate-pulse rounded-lg border border-white/8 bg-muted/40" />
               ) : riskQuery.isError || !riskQuery.data ? (
                 <p className="text-sm text-muted-foreground">
                   Unable to load the live risk engine status.
                 </p>
               ) : (
-                <div className="rounded-lg border p-4">
+                <div className="rounded-lg border border-white/8 bg-background/45 p-4">
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <p className="font-medium">
@@ -600,7 +664,8 @@ export function SettingsPage() {
                       </p>
                       <p className="mt-1 text-sm text-muted-foreground">
                         {riskQuery.data.kill_switch.active
-                          ? (riskQuery.data.kill_switch.reason && riskQuery.data.kill_switch.reason.trim()) ||
+                          ? (riskQuery.data.kill_switch.reason &&
+                              riskQuery.data.kill_switch.reason.trim()) ||
                             'All orders are blocked.'
                           : 'The engine can submit orders normally.'}
                       </p>
@@ -609,6 +674,7 @@ export function SettingsPage() {
                     <Button
                       type="button"
                       variant={riskQuery.data.kill_switch.active ? 'outline' : 'default'}
+                      size="dense"
                       disabled={killSwitchMutation.isPending}
                       onClick={() => killSwitchMutation.mutate(!riskQuery.data.kill_switch.active)}
                       data-testid="settings-kill-switch-button"
@@ -632,30 +698,47 @@ export function SettingsPage() {
             </CardHeader>
             <CardContent className="space-y-4" data-testid="system-info">
               <div className="grid gap-4 sm:grid-cols-3">
-                <div>
-                  <p className="text-sm text-muted-foreground">Environment</p>
-                  <p className="font-medium capitalize">{settingsData.system.environment || 'unknown'}</p>
+                <div className="rounded-lg border border-white/8 bg-background/45 p-4">
+                  <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+                    Environment
+                  </p>
+                  <p className="mt-2 font-mono text-[13px] font-medium capitalize text-foreground">
+                    {settingsData.system.environment || 'unknown'}
+                  </p>
                 </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Version</p>
-                  <p className="font-medium">{settingsData.system.version}</p>
+                <div className="rounded-lg border border-white/8 bg-background/45 p-4">
+                  <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+                    Version
+                  </p>
+                  <p className="mt-2 font-mono text-[13px] font-medium text-foreground">
+                    {settingsData.system.version}
+                  </p>
                 </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Uptime</p>
-                  <p className="font-medium">{formatUptime(settingsData.system.uptime_seconds)}</p>
+                <div className="rounded-lg border border-white/8 bg-background/45 p-4">
+                  <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+                    Uptime
+                  </p>
+                  <p className="mt-2 font-mono text-[13px] font-medium text-foreground">
+                    {formatUptime(settingsData.system.uptime_seconds)}
+                  </p>
                 </div>
               </div>
 
               <div className="space-y-3">
-                <p className="text-sm font-medium">Connected brokers</p>
+                <p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                  Connected brokers
+                </p>
                 <div className="space-y-2">
                   {connectedBrokers.length === 0 ? (
-                    <p className="rounded-lg border px-3 py-2 text-sm text-muted-foreground">
+                    <p className="rounded-lg border border-white/8 bg-background/45 px-3 py-3 text-sm text-muted-foreground">
                       No connected brokers reported.
                     </p>
                   ) : (
                     connectedBrokers.map((broker) => (
-                      <div key={broker.name} className="flex items-center justify-between rounded-lg border px-3 py-2">
+                      <div
+                        key={broker.name}
+                        className="flex items-center justify-between rounded-lg border border-white/8 bg-background/45 px-3 py-3"
+                      >
                         <div>
                           <p className="font-medium capitalize">{broker.name}</p>
                           <p className="text-xs text-muted-foreground">
@@ -675,5 +758,5 @@ export function SettingsPage() {
         </div>
       </div>
     </form>
-  )
+  );
 }

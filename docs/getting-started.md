@@ -64,7 +64,7 @@ docker compose up -d postgres redis
 ## 4. Apply migrations
 
 ```bash
-DB_URL="postgres://postgres:postgres@localhost:5432/tradingagent?sslmode=disable" task migrate:up
+task migrate:up
 ```
 
 ## 5. Build and start the backend
@@ -191,12 +191,12 @@ VITE_API_BASE_URL=http://localhost:9090 npm run dev
 
 ### Migration errors
 
-If `DB_URL="postgres://postgres:postgres@localhost:5432/tradingagent?sslmode=disable" task migrate:up` fails:
+If `task migrate:up` fails:
 
 ```bash
 docker compose ps postgres
 docker compose logs postgres --tail=50
-DB_URL="postgres://postgres:postgres@localhost:5432/tradingagent?sslmode=disable" task migrate:status
+task migrate:status
 ```
 
 - `migrate: not found`: run `task tools`.
@@ -206,7 +206,7 @@ DB_URL="postgres://postgres:postgres@localhost:5432/tradingagent?sslmode=disable
 ```bash
 docker compose down -v
 docker compose up -d postgres redis
-DB_URL="postgres://postgres:postgres@localhost:5432/tradingagent?sslmode=disable" task migrate:up
+task migrate:up
 ```
 
 - Native host commands must use `localhost:5432`. `postgres:5432` only works from inside Compose containers.

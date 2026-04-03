@@ -59,6 +59,7 @@ type InvestmentPlanOutput struct {
 type ResearchManager struct {
 	BaseDebater
 	providerName string
+	systemPrompt string
 }
 
 // Compile-time checks: *ResearchManager implements both the legacy node contract and the runner-facing research judge contract.
@@ -71,6 +72,16 @@ var (
 // and model. providerName (e.g. "openai") is recorded in decision metadata.
 // A nil logger is replaced with the default logger.
 func NewResearchManager(provider llm.Provider, providerName, model string, logger *slog.Logger) *ResearchManager {
+	return NewResearchManagerWithPrompt(provider, providerName, model, "", logger)
+}
+
+// NewResearchManagerWithPrompt returns a ResearchManager wired to the given
+// LLM provider and model, using systemPrompt when provided.
+func NewResearchManagerWithPrompt(provider llm.Provider, providerName, model, systemPrompt string, logger *slog.Logger) *ResearchManager {
+	if systemPrompt == "" {
+		systemPrompt = ResearchManagerSystemPrompt
+	}
+
 	return &ResearchManager{
 		BaseDebater: NewBaseDebater(
 			agent.AgentRoleInvestJudge,
@@ -80,6 +91,7 @@ func NewResearchManager(provider llm.Provider, providerName, model string, logge
 			logger,
 		),
 		providerName: providerName,
+		systemPrompt: systemPrompt,
 	}
 }
 
@@ -111,7 +123,7 @@ func (r *ResearchManager) Execute(ctx context.Context, state *agent.PipelineStat
 func (r *ResearchManager) JudgeResearch(ctx context.Context, input agent.DebateInput) (agent.ResearchJudgeOutput, error) {
 	content, promptText, usage, err := r.CallWithContext(
 		ctx,
-		ResearchManagerSystemPrompt,
+		r.systemPrompt,
 		input.Rounds,
 		input.ContextReports,
 	)

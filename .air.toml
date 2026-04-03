@@ -7,7 +7,7 @@ tmp_dir = "tmp"
 [build]
   cmd = "go build -o ./tmp/main ./cmd/tradingagent"
   bin = "./tmp/main"
-  full_bin = "./tmp/main"
+  full_bin = "./tmp/main serve"
   include_ext = ["go", "tpl", "tmpl", "html"]
   exclude_dir = ["assets", "tmp", "vendor", "node_modules"]
   exclude_file = []

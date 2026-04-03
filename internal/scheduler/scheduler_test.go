@@ -122,6 +122,36 @@ func (m *mockPipeline) firstContext() (context.Context, bool) {
 	return m.ctxs[0], true
 }
 
+type mockStrategyExecutor struct {
+	mu         sync.Mutex
+	calls      []domain.Strategy
+	err        error
+	contexts   []context.Context
+}
+
+func (m *mockStrategyExecutor) execute(ctx context.Context, strategy domain.Strategy) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.calls = append(m.calls, strategy)
+	m.contexts = append(m.contexts, ctx)
+	return m.err
+}
+
+func (m *mockStrategyExecutor) callCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.calls)
+}
+
+func (m *mockStrategyExecutor) firstCall() (domain.Strategy, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(m.calls) == 0 {
+		return domain.Strategy{}, false
+	}
+	return m.calls[0], true
+}
+
 type mockBacktestConfigRepo struct {
 	mu      sync.Mutex
 	configs []domain.BacktestConfig
@@ -709,6 +739,50 @@ func TestRunStrategy_ActiveRunsNormally(t *testing.T) {
 
 	if got := pipeline.callCount(); got != 1 {
 		t.Fatalf("pipeline calls = %d, want 1 for active strategy", got)
+	}
+}
+
+func TestRunStrategy_UsesStrategyExecutorWhenConfigured(t *testing.T) {
+	strategyID := uuid.New()
+	repo := &mockStrategyRepo{
+		strategies: []domain.Strategy{
+			{
+				ID:           strategyID,
+				Ticker:       "BTCUSD",
+				MarketType:   domain.MarketTypeCrypto,
+				ScheduleCron: testScheduleSpec,
+				Status:       domain.StrategyStatusActive,
+			},
+		},
+	}
+	pipeline := &mockPipeline{}
+	executor := &mockStrategyExecutor{}
+	s := NewScheduler(
+		repo,
+		pipeline,
+		&mockRiskEngine{},
+		testLogger(),
+		WithStrategyExecution(executor.execute),
+	)
+	s.ctx = context.Background()
+
+	s.runStrategy(repo.strategies[0])
+
+	if got := executor.callCount(); got != 1 {
+		t.Fatalf("strategy executor calls = %d, want 1", got)
+	}
+	if got := pipeline.callCount(); got != 0 {
+		t.Fatalf("pipeline calls = %d, want 0 when strategy executor is configured", got)
+	}
+	call, ok := executor.firstCall()
+	if !ok {
+		t.Fatal("expected strategy executor call to be recorded")
+	}
+	if call.ID != strategyID {
+		t.Fatalf("strategy executor strategy ID = %s, want %s", call.ID, strategyID)
+	}
+	if call.Ticker != "BTCUSD" {
+		t.Fatalf("strategy executor ticker = %q, want %q", call.Ticker, "BTCUSD")
 	}
 }
 

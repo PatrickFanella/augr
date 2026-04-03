@@ -41,7 +41,17 @@ type backtestRunner interface {
 	Run(ctx context.Context, config domain.BacktestConfig) (*backtest.OrchestratorResult, error)
 }
 
+type strategyExecutor func(ctx context.Context, strategy domain.Strategy) error
+
 type Option func(*Scheduler)
+
+// WithStrategyExecution routes scheduled strategy triggers through a full
+// strategy execution path instead of calling the raw pipeline directly.
+func WithStrategyExecution(execute strategyExecutor) Option {
+	return func(s *Scheduler) {
+		s.strategyExecution = execute
+	}
+}
 
 // WithBacktestScheduling enables cron-triggered backtest runs and persistence.
 func WithBacktestScheduling(
@@ -62,6 +72,7 @@ type Scheduler struct {
 	cron               cronEngine
 	strategyRepo       repository.StrategyRepository
 	pipeline           pipelineExecutor
+	strategyExecution  strategyExecutor
 	riskEngine         risk.RiskEngine
 	backtestConfigRepo repository.BacktestConfigRepository
 	backtestPersister  backtest.BacktestPersister
@@ -378,18 +389,35 @@ func (s *Scheduler) runStrategy(strategy domain.Strategy) {
 	monCtx, monCancel := s.riskMonitor.monitorContext(ctx)
 	defer monCancel()
 
-	if _, err := s.pipeline.Execute(monCtx, strategy.ID, strategy.Ticker); err != nil {
+	if s.strategyExecution != nil {
+		if err := s.strategyExecution(monCtx, *current); err != nil {
+			s.logger.Error("scheduler: strategy execution failed",
+				slog.String("strategy_id", current.ID.String()),
+				slog.String("ticker", current.Ticker),
+				slog.Any("error", err),
+			)
+			return
+		}
+
+		s.logger.Info("scheduler: strategy execution completed",
+			slog.String("strategy_id", current.ID.String()),
+			slog.String("ticker", current.Ticker),
+		)
+		return
+	}
+
+	if _, err := s.pipeline.Execute(monCtx, current.ID, current.Ticker); err != nil {
 		s.logger.Error("scheduler: pipeline execution failed",
-			slog.String("strategy_id", strategy.ID.String()),
-			slog.String("ticker", strategy.Ticker),
+			slog.String("strategy_id", current.ID.String()),
+			slog.String("ticker", current.Ticker),
 			slog.Any("error", err),
 		)
 		return
 	}
 
 	s.logger.Info("scheduler: pipeline execution completed",
-		slog.String("strategy_id", strategy.ID.String()),
-		slog.String("ticker", strategy.Ticker),
+		slog.String("strategy_id", current.ID.String()),
+		slog.String("ticker", current.Ticker),
 	)
 }
 

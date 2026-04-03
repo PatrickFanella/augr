@@ -16,7 +16,7 @@ import (
 )
 
 func TestConversationsUpMigrationDefinesExpectedSchema(t *testing.T) {
-	upSQL := normalizeSQL(t, readMigrationFile(t, "000009_conversations.up.sql"))
+	upSQL := normalizeSQL(t, readMigrationFile(t, "000014_conversations.up.sql"))
 
 	expectedFragments := []string{
 		"create table conversations (",
@@ -49,7 +49,7 @@ func TestConversationsUpMigrationDefinesExpectedSchema(t *testing.T) {
 }
 
 func TestConversationsDownMigrationDropsConversationTables(t *testing.T) {
-	downSQL := normalizeSQL(t, readMigrationFile(t, "000009_conversations.down.sql"))
+	downSQL := normalizeSQL(t, readMigrationFile(t, "000014_conversations.down.sql"))
 
 	for _, fragment := range []string{
 		"drop trigger if exists trg_conversation_messages_created_at_immutable on conversation_messages;",
@@ -121,7 +121,7 @@ func TestConversationsMigrationAppliesAgainstExistingSchema(t *testing.T) {
 		"000006_api_keys.up.sql",
 		"000007_users.up.sql",
 		"000008_agent_decisions_prompt_cost.up.sql",
-		"000009_conversations.up.sql",
+		"000014_conversations.up.sql",
 	} {
 		if _, err := pool.Exec(ctx, readMigrationFile(t, filename)); err != nil {
 			t.Fatalf("failed to apply %s: %v", filename, err)
@@ -280,8 +280,8 @@ func TestConversationsMigrationAppliesAgainstExistingSchema(t *testing.T) {
 		t.Fatalf("expected conversation message to be cascade-deleted, got count=%d", messageCount)
 	}
 
-	if _, err := pool.Exec(ctx, readMigrationFile(t, "000009_conversations.down.sql")); err != nil {
-		t.Fatalf("failed to apply 000009_conversations.down.sql: %v", err)
+	if _, err := pool.Exec(ctx, readMigrationFile(t, "000014_conversations.down.sql")); err != nil {
+		t.Fatalf("failed to apply 000014_conversations.down.sql: %v", err)
 	}
 
 	assertTableDropped(t, ctx, pool, "conversation_messages")

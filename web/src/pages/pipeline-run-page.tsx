@@ -1,55 +1,101 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { ArrowLeft } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
 
-import { AnalystCards } from '@/components/pipeline/analyst-cards'
-import { DebateView } from '@/components/pipeline/debate-view'
-import { DecisionInspector } from '@/components/pipeline/decision-inspector'
-import { FinalSignal } from '@/components/pipeline/final-signal'
-import { type PhaseInfo, PhaseProgress } from '@/components/pipeline/phase-progress'
-import { TraderPlan } from '@/components/pipeline/trader-plan'
-import { Badge } from '@/components/ui/badge'
-import { Card, CardContent } from '@/components/ui/card'
-import { apiClient } from '@/lib/api/client'
-import type { AgentDecision, AgentRole, WebSocketMessage, WebSocketServerMessage } from '@/lib/api/types'
-import { useWebSocketClient } from '@/hooks/use-websocket-client'
+import { PageHeader } from '@/components/layout/page-header';
+import { AnalystCards } from '@/components/pipeline/analyst-cards';
+import { DebateView } from '@/components/pipeline/debate-view';
+import { DecisionInspector } from '@/components/pipeline/decision-inspector';
+import { FinalSignal } from '@/components/pipeline/final-signal';
+import { type PhaseInfo, PhaseProgress } from '@/components/pipeline/phase-progress';
+import { TraderPlan } from '@/components/pipeline/trader-plan';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
+import { apiClient } from '@/lib/api/client';
+import type {
+  AgentDecision,
+  AgentRole,
+  WebSocketMessage,
+  WebSocketServerMessage,
+} from '@/lib/api/types';
+import { useWebSocketClient } from '@/hooks/use-websocket-client';
 
 const analysisRoles: AgentRole[] = [
   'market_analyst',
   'fundamentals_analyst',
   'news_analyst',
   'social_media_analyst',
-]
-const debateRoles: AgentRole[] = ['bull_researcher', 'bear_researcher']
-const riskDebateRoles: AgentRole[] = ['aggressive_risk', 'conservative_risk', 'neutral_risk']
+];
+const debateRoles: AgentRole[] = ['bull_researcher', 'bear_researcher'];
+const riskDebateRoles: AgentRole[] = [
+  'aggressive_analyst',
+  'conservative_analyst',
+  'neutral_analyst',
+];
 
-function computePhases(decisions: AgentDecision[], isCompleted: boolean): PhaseInfo[] {
-  const analysisDecisions = decisions.filter((d) => analysisRoles.includes(d.agent_role))
-  const debateDecisions = decisions.filter((d) => debateRoles.includes(d.agent_role))
-  const traderDecision = decisions.find((d) => d.agent_role === 'trader')
-  const riskDecisions = decisions.filter((d) => riskDebateRoles.includes(d.agent_role))
-  const judgeDecision = decisions.find((d) => d.agent_role === 'invest_judge')
+const legacyRiskRoleMap: Partial<Record<AgentRole, AgentRole>> = {
+  aggressive_risk: 'aggressive_analyst',
+  conservative_risk: 'conservative_analyst',
+  neutral_risk: 'neutral_analyst',
+};
+
+function normalizeAgentRole(role: AgentRole): AgentRole {
+  return legacyRiskRoleMap[role] ?? role;
+}
+
+function normalizeDecision(decision: AgentDecision): AgentDecision {
+  const normalizedRole = normalizeAgentRole(decision.agent_role);
+  if (normalizedRole === decision.agent_role) {
+    return decision;
+  }
+
+  return {
+    ...decision,
+    agent_role: normalizedRole,
+  };
+}
+
+function getLatestDecision(
+  decisions: AgentDecision[],
+  roles: AgentRole[],
+): AgentDecision | undefined {
+  for (let i = decisions.length - 1; i >= 0; i--) {
+    if (roles.includes(decisions[i].agent_role)) {
+      return decisions[i];
+    }
+  }
+  return undefined;
+}
+
+function computePhases(
+  decisions: AgentDecision[],
+  isCompleted: boolean,
+  hasSignal: boolean,
+): PhaseInfo[] {
+  const analysisDecisions = decisions.filter((d) => analysisRoles.includes(d.agent_role));
+  const debateDecisions = decisions.filter((d) => debateRoles.includes(d.agent_role));
+  const traderDecision = getLatestDecision(decisions, ['trader']);
+  const riskDecisions = decisions.filter((d) => riskDebateRoles.includes(d.agent_role));
+  const signalDecision = getLatestDecision(decisions, ['risk_manager']);
 
   function phaseLatency(phaseDecisions: AgentDecision[]): number | undefined {
-    if (phaseDecisions.length === 0) return undefined
-    return Math.max(...phaseDecisions.map((d) => d.latency_ms ?? 0))
+    if (phaseDecisions.length === 0) return undefined;
+    return Math.max(...phaseDecisions.map((d) => d.latency_ms ?? 0));
   }
 
   function status(done: boolean, hasAny: boolean): PhaseInfo['status'] {
-    if (done) return 'completed'
-    if (hasAny) return 'active'
-    return 'pending'
+    if (done || (isCompleted && hasAny)) return 'completed';
+    if (hasAny) return 'active';
+    return 'pending';
   }
 
   const analysisDone =
-    new Set(analysisDecisions.map((d) => d.agent_role)).size >= analysisRoles.length
-  const debateDone =
-    new Set(debateDecisions.map((d) => d.agent_role)).size >= debateRoles.length
-  const traderDone = !!traderDecision
-  const riskDone =
-    new Set(riskDecisions.map((d) => d.agent_role)).size >= riskDebateRoles.length
-  const judgeDone = !!judgeDecision
+    new Set(analysisDecisions.map((d) => d.agent_role)).size >= analysisRoles.length;
+  const debateDone = new Set(debateDecisions.map((d) => d.agent_role)).size >= debateRoles.length;
+  const traderDone = !!traderDecision;
+  const riskDone = new Set(riskDecisions.map((d) => d.agent_role)).size >= riskDebateRoles.length;
+  const signalDone = !!signalDecision || hasSignal;
 
   return [
     {
@@ -64,7 +110,7 @@ function computePhases(decisions: AgentDecision[], isCompleted: boolean): PhaseI
     },
     {
       label: 'Trading',
-      status: status(traderDone, false),
+      status: status(traderDone, traderDone),
       latencyMs: traderDecision?.latency_ms,
     },
     {
@@ -74,21 +120,21 @@ function computePhases(decisions: AgentDecision[], isCompleted: boolean): PhaseI
     },
     {
       label: 'Signal',
-      status: status(judgeDone || isCompleted, false),
-      latencyMs: judgeDecision?.latency_ms,
+      status: status(signalDone, signalDone),
+      latencyMs: signalDecision?.latency_ms,
     },
-  ]
+  ];
 }
 
 function isWebSocketMessage(msg: WebSocketServerMessage): msg is WebSocketMessage {
-  return 'type' in msg && !('status' in msg)
+  return 'type' in msg && !('status' in msg);
 }
 
 export function PipelineRunPage() {
-  const { id } = useParams<{ id: string }>()
-  const queryClient = useQueryClient()
-  const [selectedDecision, setSelectedDecision] = useState<AgentDecision | null>(null)
-  const subscribedRef = useRef(false)
+  const { id } = useParams<{ id: string }>();
+  const queryClient = useQueryClient();
+  const [selectedDecision, setSelectedDecision] = useState<AgentDecision | null>(null);
+  const subscribedRef = useRef(false);
 
   const {
     data: run,
@@ -99,68 +145,61 @@ export function PipelineRunPage() {
     queryFn: () => apiClient.getRun(id!),
     enabled: !!id,
     refetchInterval: (query) => {
-      const status = query.state.data?.status
-      return status === 'running' ? 3_000 : false
+      const status = query.state.data?.status;
+      return status === 'running' ? 3_000 : false;
     },
-  })
+  });
 
   const { data: decisionsData } = useQuery({
     queryKey: ['run-decisions', id],
     queryFn: () => apiClient.getRunDecisions(id!, { limit: 10_000 }),
     enabled: !!id,
     refetchInterval: () => {
-      return run?.status === 'running' ? 3_000 : false
+      return run?.status === 'running' ? 3_000 : false;
     },
-  })
+  });
 
-  const decisions = useMemo(() => decisionsData?.data ?? [], [decisionsData])
+  const decisions = useMemo(
+    () => (Array.isArray(decisionsData?.data) ? decisionsData.data.map(normalizeDecision) : []),
+    [decisionsData],
+  );
 
   const handleWebSocketMessage = useCallback(
     (msg: WebSocketServerMessage) => {
-      if (!isWebSocketMessage(msg)) return
-      if (msg.run_id !== id) return
+      if (!isWebSocketMessage(msg)) return;
+      if (msg.run_id !== id) return;
 
-      queryClient.invalidateQueries({ queryKey: ['run', id] })
-      queryClient.invalidateQueries({ queryKey: ['run-decisions', id] })
+      queryClient.invalidateQueries({ queryKey: ['run', id] });
+      queryClient.invalidateQueries({ queryKey: ['run-decisions', id] });
     },
     [id, queryClient],
-  )
+  );
 
   const { status: wsStatus, subscribe } = useWebSocketClient({
     enabled: run?.status === 'running',
     onMessage: handleWebSocketMessage,
-  })
+  });
 
-  const isWsConnected = wsStatus === 'open'
+  const isWsConnected = wsStatus === 'open';
 
   useEffect(() => {
     if (isWsConnected && !subscribedRef.current && id) {
-      subscribe({ run_ids: [id] })
-      subscribedRef.current = true
+      subscribe({ run_ids: [id] });
+      subscribedRef.current = true;
     }
     if (!isWsConnected) {
-      subscribedRef.current = false
+      subscribedRef.current = false;
     }
-  }, [isWsConnected, subscribe, id])
+  }, [isWsConnected, subscribe, id]);
 
-  const traderDecision = useMemo(() => {
-    for (let i = decisions.length - 1; i >= 0; i--) {
-      if (decisions[i].agent_role === 'trader') return decisions[i]
-    }
-    return undefined
-  }, [decisions])
+  const traderDecision = useMemo(() => getLatestDecision(decisions, ['trader']), [decisions]);
 
-  const judgeDecision = useMemo(() => {
-    for (let i = decisions.length - 1; i >= 0; i--) {
-      if (decisions[i].agent_role === 'invest_judge') return decisions[i]
-    }
-    return undefined
-  }, [decisions])
+  const signalDecision = useMemo(() => getLatestDecision(decisions, ['risk_manager']), [decisions]);
 
   const phases = useMemo(
-    () => computePhases(decisions, run?.status === 'completed'),
-    [decisions, run?.status],
-  )
+    () => computePhases(decisions, run?.status === 'completed', Boolean(run?.signal)),
+    [decisions, run?.signal, run?.status],
+  );
 
   if (runLoading) {
     return (
@@ -168,7 +207,7 @@ export function PipelineRunPage() {
         <div className="h-8 w-48 animate-pulse rounded bg-muted" />
         <div className="h-64 animate-pulse rounded-lg border bg-muted" />
       </div>
-    )
+    );
   }
 
   if (runError || !run) {
@@ -189,24 +228,17 @@ export function PipelineRunPage() {
           </CardContent>
         </Card>
       </div>
-    )
+    );
   }
 
   return (
     <div className="space-y-6" data-testid="pipeline-run-page">
-      <div className="flex items-center justify-between">
-        <div className="space-y-1">
-          <Link
-            to="/runs"
-            className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-          >
-            <ArrowLeft className="size-4" />
-            Back to runs
-          </Link>
-          <h2 className="text-2xl font-semibold tracking-tight">
-            {run.ticker} — Pipeline Run
-          </h2>
-          <div className="flex items-center gap-2">
+      <PageHeader
+        eyebrow="Run detail"
+        title={`${run.ticker} pipeline run`}
+        description="Replay the agent pipeline, inspect decisions by phase, and verify the final trading signal."
+        meta={(
+          <>
             <Badge
               variant={
                 run.status === 'completed'
@@ -220,23 +252,37 @@ export function PipelineRunPage() {
             >
               {run.status}
             </Badge>
-            <span className="text-xs text-muted-foreground">
+            <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
               {new Date(run.started_at).toLocaleString()}
             </span>
-          </div>
-        </div>
-      </div>
+          </>
+        )}
+        actions={(
+          <Link
+            to="/runs"
+            className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-background/80 px-3 py-2 text-sm text-muted-foreground transition-colors hover:border-primary/25 hover:text-foreground"
+          >
+            <ArrowLeft className="size-4" />
+            Back to runs
+          </Link>
+        )}
+      />
 
       <PhaseProgress phases={phases} />
 
       <div className="space-y-6">
-        <AnalystCards decisions={decisions} onSelectDecision={setSelectedDecision} />
+        <AnalystCards
+          decisions={decisions}
+          onSelectDecision={setSelectedDecision}
+          isCompleted={run.status === 'completed'}
+        />
 
         <DebateView
           title="Phase 2 — Bull vs Bear Debate"
           roles={debateRoles}
           decisions={decisions}
           onSelectDecision={setSelectedDecision}
+          isCompleted={run.status === 'completed'}
         />
 
         <TraderPlan decision={traderDecision} onSelectDecision={setSelectedDecision} />
@@ -246,21 +292,19 @@ export function PipelineRunPage() {
           roles={riskDebateRoles}
           decisions={decisions}
           onSelectDecision={setSelectedDecision}
+          isCompleted={run.status === 'completed'}
         />
 
         <FinalSignal
           signal={run.signal}
-          judgeDecision={judgeDecision}
+          signalDecision={signalDecision}
           onSelectDecision={setSelectedDecision}
         />
       </div>
 
       {selectedDecision && (
-        <DecisionInspector
-          decision={selectedDecision}
-          onClose={() => setSelectedDecision(null)}
-        />
+        <DecisionInspector decision={selectedDecision} onClose={() => setSelectedDecision(null)} />
       )}
     </div>
-  )
+  );
 }

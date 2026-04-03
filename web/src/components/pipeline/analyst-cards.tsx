@@ -1,33 +1,38 @@
-import { CheckCircle2, Loader2 } from 'lucide-react'
+import { CheckCircle2, Circle, Loader2 } from 'lucide-react';
 
-import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import type { AgentDecision, AgentRole } from '@/lib/api/types'
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import type { AgentDecision, AgentRole } from '@/lib/api/types';
 
 const analystRoles: AgentRole[] = [
   'market_analyst',
   'fundamentals_analyst',
   'news_analyst',
   'social_media_analyst',
-]
+];
 
 const analystLabels: Record<string, string> = {
   market_analyst: 'Market Analyst',
   fundamentals_analyst: 'Fundamentals Analyst',
   news_analyst: 'News Analyst',
   social_media_analyst: 'Social Media Analyst',
-}
+};
 
 interface AnalystCardsProps {
-  decisions: AgentDecision[]
-  onSelectDecision: (decision: AgentDecision) => void
+  decisions: AgentDecision[];
+  onSelectDecision: (decision: AgentDecision) => void;
+  isCompleted?: boolean;
 }
 
-export function AnalystCards({ decisions, onSelectDecision }: AnalystCardsProps) {
-  const decisionsByRole = new Map<AgentRole, AgentDecision>()
+export function AnalystCards({
+  decisions,
+  onSelectDecision,
+  isCompleted = false,
+}: AnalystCardsProps) {
+  const decisionsByRole = new Map<AgentRole, AgentDecision>();
   for (const d of decisions) {
     if (analystRoles.includes(d.agent_role)) {
-      decisionsByRole.set(d.agent_role, d)
+      decisionsByRole.set(d.agent_role, d);
     }
   }
 
@@ -36,7 +41,7 @@ export function AnalystCards({ decisions, onSelectDecision }: AnalystCardsProps)
       <h3 className="mb-3 text-sm font-semibold text-muted-foreground">Phase 1 — Analysis</h3>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {analystRoles.map((role) => {
-          const decision = decisionsByRole.get(role)
+          const decision = decisionsByRole.get(role);
           return (
             <Card
               key={role}
@@ -46,10 +51,10 @@ export function AnalystCards({ decisions, onSelectDecision }: AnalystCardsProps)
               tabIndex={decision ? 0 : -1}
               aria-disabled={!decision}
               onKeyDown={(event) => {
-                if (!decision) return
+                if (!decision) return;
                 if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault()
-                  onSelectDecision(decision)
+                  event.preventDefault();
+                  onSelectDecision(decision);
                 }
               }}
               data-testid={`analyst-card-${role}`}
@@ -59,6 +64,8 @@ export function AnalystCards({ decisions, onSelectDecision }: AnalystCardsProps)
                   {analystLabels[role]}
                   {decision ? (
                     <CheckCircle2 className="size-4 text-primary" />
+                  ) : isCompleted ? (
+                    <Circle className="size-4 text-muted-foreground" />
                   ) : (
                     <Loader2 className="size-4 animate-spin text-muted-foreground" />
                   )}
@@ -77,13 +84,15 @@ export function AnalystCards({ decisions, onSelectDecision }: AnalystCardsProps)
                     )}
                   </>
                 ) : (
-                  <p className="text-xs text-muted-foreground">Waiting for result…</p>
+                  <p className="text-xs text-muted-foreground">
+                    {isCompleted ? 'No result recorded for this run.' : 'Waiting for result…'}
+                  </p>
                 )}
               </CardContent>
             </Card>
-          )
+          );
         })}
       </div>
     </div>
-  )
+  );
 }

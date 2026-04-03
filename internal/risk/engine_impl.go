@@ -52,6 +52,7 @@ type RiskEngineImpl struct {
 	ksMu                  sync.RWMutex
 	fileExistsFunc        func(string) bool   // for testability; defaults to defaultFileExists
 	getEnvFunc            func(string) string // for testability; defaults to os.Getenv
+	portfolioSnapshotMu   sync.RWMutex
 	portfolioSnapshotFunc func(context.Context) (Portfolio, error)
 }
 
@@ -133,6 +134,8 @@ func (e *RiskEngineImpl) SetPortfolioSnapshotFunc(fn func(context.Context) (Port
 	if e == nil {
 		return
 	}
+	e.portfolioSnapshotMu.Lock()
+	defer e.portfolioSnapshotMu.Unlock()
 	e.portfolioSnapshotFunc = fn
 }
 
@@ -330,8 +333,12 @@ func (e *RiskEngineImpl) GetStatus(ctx context.Context) (EngineStatus, error) {
 	limits := e.limits
 	e.state.mu.Unlock()
 
-	if e.portfolioSnapshotFunc != nil {
-		portfolio, err := e.portfolioSnapshotFunc(ctx)
+	e.portfolioSnapshotMu.RLock()
+	portfolioSnapshotFunc := e.portfolioSnapshotFunc
+	e.portfolioSnapshotMu.RUnlock()
+
+	if portfolioSnapshotFunc != nil {
+		portfolio, err := portfolioSnapshotFunc(ctx)
 		if err != nil {
 			return EngineStatus{}, fmt.Errorf("risk: portfolio snapshot: %w", err)
 		}

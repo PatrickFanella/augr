@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/PatrickFanella/get-rich-quick/internal/data"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/llm"
 )
@@ -90,12 +91,22 @@ type RuntimeConfig struct {
 	RiskRounds      int
 }
 
+// InitialStateSeed captures pre-fetched pipeline inputs that should be loaded
+// into a run before phase execution starts.
+type InitialStateSeed struct {
+	Market       *MarketData
+	News         []data.NewsArticle
+	Fundamentals *data.Fundamentals
+	Social       *data.SocialSentiment
+}
+
 // PreparedRun is the immutable execution plan for one strategy run.
 type PreparedRun struct {
 	Strategy       domain.Strategy
 	Config         ResolvedConfig
 	Runtime        RuntimeConfig
 	ConfigSnapshot json.RawMessage
+	InitialState   InitialStateSeed
 }
 
 // RunWarning captures non-fatal execution warnings surfaced to callers.
@@ -241,6 +252,7 @@ func (r *Runner) Run(ctx context.Context, prepared PreparedRun) (*RunResult, err
 		Ticker:        prepared.Strategy.Ticker,
 		mu:            &sync.Mutex{},
 	}
+	applyInitialStateSeed(state, prepared.InitialState)
 
 	r.persistStructuredEvent(ctx, r.newStructuredEvent(
 		run.ID,
@@ -352,6 +364,57 @@ func (r *Runner) Run(ctx context.Context, prepared PreparedRun) (*RunResult, err
 	run.CompletedAt = &completedAt
 
 	return &RunResult{Run: run, Signal: r.canonicalSignal(state), State: snapshotState(state), Warnings: warnings}, nil
+}
+
+func applyInitialStateSeed(state *PipelineState, seed InitialStateSeed) {
+	if state == nil {
+		return
+	}
+
+	if seed.Market != nil {
+		state.Market = &MarketData{
+			Bars:       cloneOHLCV(seed.Market.Bars),
+			Indicators: cloneIndicators(seed.Market.Indicators),
+		}
+	}
+	if len(seed.News) > 0 {
+		state.News = cloneNewsArticles(seed.News)
+	}
+	if seed.Fundamentals != nil {
+		fundamentals := *seed.Fundamentals
+		state.Fundamentals = &fundamentals
+	}
+	if seed.Social != nil {
+		social := *seed.Social
+		state.Social = &social
+	}
+}
+
+func cloneOHLCV(src []domain.OHLCV) []domain.OHLCV {
+	if len(src) == 0 {
+		return nil
+	}
+	dst := make([]domain.OHLCV, len(src))
+	copy(dst, src)
+	return dst
+}
+
+func cloneIndicators(src []domain.Indicator) []domain.Indicator {
+	if len(src) == 0 {
+		return nil
+	}
+	dst := make([]domain.Indicator, len(src))
+	copy(dst, src)
+	return dst
+}
+
+func cloneNewsArticles(src []data.NewsArticle) []data.NewsArticle {
+	if len(src) == 0 {
+		return nil
+	}
+	dst := make([]data.NewsArticle, len(src))
+	copy(dst, src)
+	return dst
 }
 
 func (r *Runner) runAnalysis(ctx context.Context, state *PipelineState, prepared PreparedRun, warnings *[]RunWarning, warningsMu *sync.Mutex) error {
@@ -622,7 +685,7 @@ func (r *Runner) persistStructuredTerminalEvent(event *domain.AgentEvent) {
 	r.persistStructuredEvent(dbCtx, event)
 }
 
-func (r *Runner) newStructuredEvent(runID uuid.UUID, strategyID uuid.UUID, kind AgentEventKind, agentRole AgentRole, title string, summary string, metadata map[string]any, tags []string) *domain.AgentEvent {
+func (r *Runner) newStructuredEvent(runID, strategyID uuid.UUID, kind AgentEventKind, agentRole AgentRole, title, summary string, metadata map[string]any, tags []string) *domain.AgentEvent {
 	event := &domain.AgentEvent{PipelineRunID: &runID, StrategyID: &strategyID, EventKind: kind.String(), Title: title, Summary: summary, Tags: append([]string(nil), tags...), Metadata: r.marshalStructuredEventMetadata(metadata)}
 	if agentRole != "" {
 		event.AgentRole = agentRole

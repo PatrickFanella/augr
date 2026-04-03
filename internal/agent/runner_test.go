@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/PatrickFanella/get-rich-quick/internal/data"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 )
 
@@ -285,5 +286,83 @@ func TestRunnerRunStrategy_RiskJudgeUpdatesCanonicalSignalAndPlan(t *testing.T) 
 	}
 	if result.State.RiskDebate.FinalSignal == "" {
 		t.Fatal("expected stored risk signal to be populated")
+	}
+}
+
+func TestRunnerRun_SeedsInitialStateBeforeAnalysis(t *testing.T) {
+	persister := newRunnerSpyPersister()
+	var captured AnalysisInput
+	runner := NewRunner(Definition{
+		Analysis: []AnalysisAgent{
+			stubAnalysisAgent{name: "market", role: AgentRoleMarketAnalyst, fn: func(_ context.Context, input AnalysisInput) (AnalysisOutput, error) {
+				captured = input
+				return AnalysisOutput{Report: "seeded-market"}, nil
+			}},
+		},
+		Research: ResearchDebateStage{
+			Debaters: []DebateAgent{
+				stubDebateAgent{name: "bull", role: AgentRoleBullResearcher, fn: func(_ context.Context, input DebateInput) (DebateOutput, error) {
+					return DebateOutput{Contribution: input.Ticker + "-bull"}, nil
+				}},
+				stubDebateAgent{name: "bear", role: AgentRoleBearResearcher, fn: func(_ context.Context, input DebateInput) (DebateOutput, error) {
+					return DebateOutput{Contribution: input.Ticker + "-bear"}, nil
+				}},
+			},
+			Judge: stubResearchJudge{name: "judge", role: AgentRoleInvestJudge, fn: func(_ context.Context, input DebateInput) (ResearchJudgeOutput, error) {
+				return ResearchJudgeOutput{InvestmentPlan: input.Ticker + "-plan"}, nil
+			}},
+		},
+		Trader: stubTradeAgent{name: "trader", role: AgentRoleTrader, fn: func(_ context.Context, input TradingInput) (TradingOutput, error) {
+			plan := TradingPlan{Action: PipelineSignalHold, Ticker: input.Ticker, Rationale: "seed test"}
+			payload, _ := json.Marshal(plan)
+			return TradingOutput{Plan: plan, StoredOutput: string(payload)}, nil
+		}},
+		Risk: RiskDebateStage{
+			Debaters: []DebateAgent{
+				stubDebateAgent{name: "aggressive", role: AgentRoleAggressiveAnalyst, fn: func(_ context.Context, input DebateInput) (DebateOutput, error) {
+					return DebateOutput{Contribution: input.Ticker + "-risk"}, nil
+				}},
+			},
+			Judge: stubRiskJudge{name: "risk-manager", role: AgentRoleRiskManager, fn: func(_ context.Context, input RiskJudgeInput) (RiskJudgeOutput, error) {
+				return RiskJudgeOutput{FinalSignal: FinalSignal{Signal: PipelineSignalHold, Confidence: 0.7}, StoredSignal: `{"action":"hold"}`, TradingPlan: input.TradingPlan}, nil
+			}},
+		},
+	}, Dependencies{Persister: persister})
+
+	strategy := strategyWithDebateRounds(t, "AAPL", 1)
+	prepped, err := runner.Prepare(strategy, GlobalSettings{})
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+
+	now := time.Date(2026, 4, 5, 14, 30, 0, 0, time.UTC)
+	prepped.InitialState = InitialStateSeed{
+		Market: &MarketData{
+			Bars: []domain.OHLCV{{Timestamp: now, Open: 100, High: 110, Low: 95, Close: 108, Volume: 2_500}},
+			Indicators: []domain.Indicator{{Name: "rsi_14", Value: 62.5, Timestamp: now}},
+		},
+		News: []data.NewsArticle{{Title: "AAPL rallies", Summary: "Revenue beats expectations.", PublishedAt: now, Sentiment: 0.8}},
+		Fundamentals: &data.Fundamentals{Ticker: "AAPL", MarketCap: 3_000_000_000_000, FetchedAt: now},
+		Social: &data.SocialSentiment{Ticker: "AAPL", Score: 0.71, MeasuredAt: now},
+	}
+
+	if _, err := runner.Run(context.Background(), prepped); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	if captured.Market == nil || len(captured.Market.Bars) != 1 {
+		t.Fatalf("captured market bars = %+v, want seeded market data", captured.Market)
+	}
+	if got := captured.Market.Indicators[0].Name; got != "rsi_14" {
+		t.Fatalf("captured indicator = %q, want rsi_14", got)
+	}
+	if len(captured.News) != 1 || captured.News[0].Title != "AAPL rallies" {
+		t.Fatalf("captured news = %+v, want seeded news", captured.News)
+	}
+	if captured.Fundamentals == nil || captured.Fundamentals.Ticker != "AAPL" {
+		t.Fatalf("captured fundamentals = %+v, want seeded fundamentals", captured.Fundamentals)
+	}
+	if captured.Social == nil || captured.Social.Score != 0.71 {
+		t.Fatalf("captured social = %+v, want seeded social", captured.Social)
 	}
 }

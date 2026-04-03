@@ -60,6 +60,32 @@ func TestPipelineRunSnapshotsOrderingIndexDownMigrationDropsCompositeIndex(t *te
 	}
 }
 
+func TestMigrationUpFilesUseUniqueVersions(t *testing.T) {
+	t.Helper()
+
+	entries, err := os.ReadDir(migrationsDir(t))
+	if err != nil {
+		t.Fatalf("failed to read migrations directory: %v", err)
+	}
+
+	versions := make(map[string]string, len(entries))
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".up.sql") {
+			continue
+		}
+
+		version, _, ok := strings.Cut(name, "_")
+		if !ok {
+			t.Fatalf("migration filename %q is missing version separator", name)
+		}
+		if previous, exists := versions[version]; exists {
+			t.Fatalf("duplicate migration version %s in %s and %s", version, previous, name)
+		}
+		versions[version] = name
+	}
+}
+
 func TestPipelineRunSnapshotsMigrationAppliesAgainstExistingSchema(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping migration integration test in short mode")

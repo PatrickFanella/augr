@@ -1,6 +1,6 @@
-import { type FormEvent, useState } from 'react'
+import { type FormEvent, useState } from 'react';
 
-import { Button } from '@/components/ui/button'
+import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -8,26 +8,28 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
-import type { MarketType, StrategyCreateRequest } from '@/lib/api/types'
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import type { MarketType, StrategyCreateRequest } from '@/lib/api/types';
 
 import {
   analystOptions,
   buildStructuredStrategyConfig,
   defaultAnalysts,
-} from './strategy-structured-config'
+} from './strategy-structured-config';
 
 interface CreateStrategyDialogProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  onSubmit: (data: StrategyCreateRequest) => void
-  isSubmitting?: boolean
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSubmit: (data: StrategyCreateRequest) => void;
+  isSubmitting?: boolean;
 }
 
-const marketTypes: MarketType[] = ['stock', 'crypto', 'polymarket']
+const marketTypes: MarketType[] = ['stock', 'crypto', 'polymarket'];
+const denseSelectClassName =
+  'flex h-9 w-full rounded-md border border-input bg-card/70 px-3 py-1 text-sm text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
 
 export function CreateStrategyDialog({
   open,
@@ -35,68 +37,68 @@ export function CreateStrategyDialog({
   onSubmit,
   isSubmitting,
 }: CreateStrategyDialogProps) {
-  const [name, setName] = useState('')
-  const [description, setDescription] = useState('')
-  const [ticker, setTicker] = useState('')
-  const [marketType, setMarketType] = useState<MarketType>('stock')
-  const [scheduleCron, setScheduleCron] = useState('')
-  const [isPaper, setIsPaper] = useState(true)
-  const [isActive, setIsActive] = useState(false)
-  const [researchDebateRounds, setResearchDebateRounds] = useState('')
-  const [riskDebateRounds, setRiskDebateRounds] = useState('')
-  const [phaseTimeout, setPhaseTimeout] = useState('')
-  const [pipelineTimeout, setPipelineTimeout] = useState('')
-  const [maxPositionSizePct, setMaxPositionSizePct] = useState('')
-  const [stopLossAtrMultiplier, setStopLossAtrMultiplier] = useState('')
-  const [takeProfitAtrMultiplier, setTakeProfitAtrMultiplier] = useState('')
-  const [minConfidenceThreshold, setMinConfidenceThreshold] = useState('')
-  const [selectedAnalysts, setSelectedAnalysts] = useState(defaultAnalysts)
-  const [showAdvanced, setShowAdvanced] = useState(false)
-  const [promptOverrides, setPromptOverrides] = useState('{}')
-  const [configError, setConfigError] = useState<string | null>(null)
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [ticker, setTicker] = useState('');
+  const [marketType, setMarketType] = useState<MarketType>('stock');
+  const [scheduleCron, setScheduleCron] = useState('');
+  const [isPaper, setIsPaper] = useState(true);
+  const [isActive, setIsActive] = useState(false);
+  const [researchDebateRounds, setResearchDebateRounds] = useState('');
+  const [riskDebateRounds, setRiskDebateRounds] = useState('');
+  const [phaseTimeout, setPhaseTimeout] = useState('');
+  const [pipelineTimeout, setPipelineTimeout] = useState('');
+  const [maxPositionSizePct, setMaxPositionSizePct] = useState('');
+  const [stopLossAtrMultiplier, setStopLossAtrMultiplier] = useState('');
+  const [takeProfitAtrMultiplier, setTakeProfitAtrMultiplier] = useState('');
+  const [minConfidenceThreshold, setMinConfidenceThreshold] = useState('');
+  const [selectedAnalysts, setSelectedAnalysts] = useState(defaultAnalysts);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [promptOverrides, setPromptOverrides] = useState('{}');
+  const [configError, setConfigError] = useState<string | null>(null);
 
   function resetForm() {
-    setName('')
-    setDescription('')
-    setTicker('')
-    setMarketType('stock')
-    setScheduleCron('')
-    setIsPaper(true)
-    setIsActive(false)
-    setResearchDebateRounds('')
-    setRiskDebateRounds('')
-    setPhaseTimeout('')
-    setPipelineTimeout('')
-    setMaxPositionSizePct('')
-    setStopLossAtrMultiplier('')
-    setTakeProfitAtrMultiplier('')
-    setMinConfidenceThreshold('')
-    setSelectedAnalysts(defaultAnalysts)
-    setShowAdvanced(false)
-    setPromptOverrides('{}')
-    setConfigError(null)
+    setName('');
+    setDescription('');
+    setTicker('');
+    setMarketType('stock');
+    setScheduleCron('');
+    setIsPaper(true);
+    setIsActive(false);
+    setResearchDebateRounds('');
+    setRiskDebateRounds('');
+    setPhaseTimeout('');
+    setPipelineTimeout('');
+    setMaxPositionSizePct('');
+    setStopLossAtrMultiplier('');
+    setTakeProfitAtrMultiplier('');
+    setMinConfidenceThreshold('');
+    setSelectedAnalysts(defaultAnalysts);
+    setShowAdvanced(false);
+    setPromptOverrides('{}');
+    setConfigError(null);
   }
 
   function handleOpenChange(nextOpen: boolean) {
     if (!nextOpen) {
-      resetForm()
+      resetForm();
     }
-    onOpenChange(nextOpen)
+    onOpenChange(nextOpen);
   }
 
   function toggleAnalyst(analyst: (typeof defaultAnalysts)[number], checked: boolean) {
     setSelectedAnalysts((prev) => {
       if (checked) {
-        return prev.includes(analyst) ? prev : [...prev, analyst]
+        return prev.includes(analyst) ? prev : [...prev, analyst];
       }
 
-      return prev.filter((value) => value !== analyst)
-    })
-    setConfigError(null)
+      return prev.filter((value) => value !== analyst);
+    });
+    setConfigError(null);
   }
 
   function handleSubmit(e: FormEvent) {
-    e.preventDefault()
+    e.preventDefault();
 
     const result = buildStructuredStrategyConfig({
       researchDebateRounds,
@@ -109,14 +111,14 @@ export function CreateStrategyDialog({
       minConfidenceThreshold,
       selectedAnalysts,
       promptOverrides,
-    })
+    });
 
     if (result.error || !result.config) {
-      setConfigError(result.error ?? 'Invalid configuration')
-      return
+      setConfigError(result.error ?? 'Invalid configuration');
+      return;
     }
 
-    setConfigError(null)
+    setConfigError(null);
     onSubmit({
       name,
       description: description || undefined,
@@ -126,7 +128,7 @@ export function CreateStrategyDialog({
       config: result.config,
       status: isActive ? 'active' : 'inactive',
       is_paper: isPaper,
-    })
+    });
   }
 
   return (
@@ -141,7 +143,7 @@ export function CreateStrategyDialog({
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
+            <div className="space-y-2 rounded-lg border border-white/8 bg-background/45 p-4">
               <Label htmlFor="strategy-name">Name *</Label>
               <Input
                 id="strategy-name"
@@ -153,7 +155,7 @@ export function CreateStrategyDialog({
               />
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-2 rounded-lg border border-white/8 bg-background/45 p-4">
               <Label htmlFor="strategy-ticker">Ticker *</Label>
               <Input
                 id="strategy-ticker"
@@ -166,7 +168,7 @@ export function CreateStrategyDialog({
             </div>
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-2 rounded-lg border border-white/8 bg-background/45 p-4">
             <Label htmlFor="strategy-description">Description</Label>
             <Input
               id="strategy-description"
@@ -177,13 +179,13 @@ export function CreateStrategyDialog({
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
+            <div className="space-y-2 rounded-lg border border-white/8 bg-background/45 p-4">
               <Label htmlFor="strategy-market-type">Market type *</Label>
               <select
                 id="strategy-market-type"
                 value={marketType}
                 onChange={(e) => setMarketType(e.target.value as MarketType)}
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                className={denseSelectClassName}
                 data-testid="strategy-market-type-select"
               >
                 {marketTypes.map((mt) => (
@@ -194,7 +196,7 @@ export function CreateStrategyDialog({
               </select>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-2 rounded-lg border border-white/8 bg-background/45 p-4">
               <Label htmlFor="strategy-schedule">Schedule (cron)</Label>
               <Input
                 id="strategy-schedule"
@@ -205,8 +207,8 @@ export function CreateStrategyDialog({
             </div>
           </div>
 
-          <div className="flex gap-6">
-            <label className="flex items-center gap-2 text-sm">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="flex items-center gap-2 rounded-lg border border-white/8 bg-background/45 px-4 py-3 text-sm">
               <input
                 type="checkbox"
                 checked={isPaper}
@@ -216,7 +218,7 @@ export function CreateStrategyDialog({
               />
               Paper trading
             </label>
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex items-center gap-2 rounded-lg border border-white/8 bg-background/45 px-4 py-3 text-sm">
               <input
                 type="checkbox"
                 checked={isActive}
@@ -228,8 +230,10 @@ export function CreateStrategyDialog({
             </label>
           </div>
 
-          <div className="space-y-4 rounded-lg border p-4">
-            <h4 className="text-sm font-medium">Pipeline</h4>
+          <div className="space-y-4 rounded-lg border border-white/8 bg-background/45 p-4">
+            <h4 className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+              Pipeline
+            </h4>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="create-research-debate-rounds">Research Debate Rounds</Label>
@@ -240,8 +244,8 @@ export function CreateStrategyDialog({
                   max={10}
                   value={researchDebateRounds}
                   onChange={(e) => {
-                    setResearchDebateRounds(e.target.value)
-                    setConfigError(null)
+                    setResearchDebateRounds(e.target.value);
+                    setConfigError(null);
                   }}
                 />
               </div>
@@ -254,8 +258,8 @@ export function CreateStrategyDialog({
                   max={10}
                   value={riskDebateRounds}
                   onChange={(e) => {
-                    setRiskDebateRounds(e.target.value)
-                    setConfigError(null)
+                    setRiskDebateRounds(e.target.value);
+                    setConfigError(null);
                   }}
                 />
               </div>
@@ -269,8 +273,8 @@ export function CreateStrategyDialog({
                   min={1}
                   value={phaseTimeout}
                   onChange={(e) => {
-                    setPhaseTimeout(e.target.value)
-                    setConfigError(null)
+                    setPhaseTimeout(e.target.value);
+                    setConfigError(null);
                   }}
                   placeholder="120"
                 />
@@ -283,8 +287,8 @@ export function CreateStrategyDialog({
                   min={1}
                   value={pipelineTimeout}
                   onChange={(e) => {
-                    setPipelineTimeout(e.target.value)
-                    setConfigError(null)
+                    setPipelineTimeout(e.target.value);
+                    setConfigError(null);
                   }}
                   placeholder="600"
                 />
@@ -292,8 +296,10 @@ export function CreateStrategyDialog({
             </div>
           </div>
 
-          <div className="space-y-4 rounded-lg border p-4">
-            <h4 className="text-sm font-medium">Risk</h4>
+          <div className="space-y-4 rounded-lg border border-white/8 bg-background/45 p-4">
+            <h4 className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+              Risk
+            </h4>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="create-max-position-size-pct">Max Position Size %</Label>
@@ -305,8 +311,8 @@ export function CreateStrategyDialog({
                   max={1}
                   value={maxPositionSizePct}
                   onChange={(e) => {
-                    setMaxPositionSizePct(e.target.value)
-                    setConfigError(null)
+                    setMaxPositionSizePct(e.target.value);
+                    setConfigError(null);
                   }}
                 />
               </div>
@@ -318,23 +324,25 @@ export function CreateStrategyDialog({
                   step="0.1"
                   value={stopLossAtrMultiplier}
                   onChange={(e) => {
-                    setStopLossAtrMultiplier(e.target.value)
-                    setConfigError(null)
+                    setStopLossAtrMultiplier(e.target.value);
+                    setConfigError(null);
                   }}
                 />
               </div>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="create-take-profit-atr-multiplier">Take Profit ATR Multiplier</Label>
+                <Label htmlFor="create-take-profit-atr-multiplier">
+                  Take Profit ATR Multiplier
+                </Label>
                 <Input
                   id="create-take-profit-atr-multiplier"
                   type="number"
                   step="0.1"
                   value={takeProfitAtrMultiplier}
                   onChange={(e) => {
-                    setTakeProfitAtrMultiplier(e.target.value)
-                    setConfigError(null)
+                    setTakeProfitAtrMultiplier(e.target.value);
+                    setConfigError(null);
                   }}
                 />
               </div>
@@ -348,19 +356,24 @@ export function CreateStrategyDialog({
                   max={1}
                   value={minConfidenceThreshold}
                   onChange={(e) => {
-                    setMinConfidenceThreshold(e.target.value)
-                    setConfigError(null)
+                    setMinConfidenceThreshold(e.target.value);
+                    setConfigError(null);
                   }}
                 />
               </div>
             </div>
           </div>
 
-          <div className="space-y-4 rounded-lg border p-4">
-            <h4 className="text-sm font-medium">Analysts</h4>
+          <div className="space-y-4 rounded-lg border border-white/8 bg-background/45 p-4">
+            <h4 className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+              Analysts
+            </h4>
             <div className="grid gap-3 sm:grid-cols-2">
               {analystOptions.map(({ role, label }) => (
-                <label key={role} className="flex items-center gap-2 text-sm">
+                <label
+                  key={role}
+                  className="flex items-center gap-2 rounded-md border border-white/8 bg-background/55 px-3 py-2 text-sm"
+                >
                   <input
                     type="checkbox"
                     checked={selectedAnalysts.includes(role)}
@@ -373,10 +386,17 @@ export function CreateStrategyDialog({
             </div>
           </div>
 
-          <div className="space-y-3 rounded-lg border p-4">
+          <div className="space-y-3 rounded-lg border border-white/8 bg-background/45 p-4">
             <div className="flex items-center justify-between">
-              <h4 className="text-sm font-medium">Advanced</h4>
-              <Button type="button" variant="outline" size="sm" onClick={() => setShowAdvanced((prev) => !prev)}>
+              <h4 className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                Advanced
+              </h4>
+              <Button
+                type="button"
+                variant="outline"
+                size="dense"
+                onClick={() => setShowAdvanced((prev) => !prev)}
+              >
                 {showAdvanced ? 'Hide' : 'Show'}
               </Button>
             </div>
@@ -387,8 +407,8 @@ export function CreateStrategyDialog({
                   id="create-prompt-overrides"
                   value={promptOverrides}
                   onChange={(e) => {
-                    setPromptOverrides(e.target.value)
-                    setConfigError(null)
+                    setPromptOverrides(e.target.value);
+                    setConfigError(null);
                   }}
                   rows={6}
                   className="font-mono text-xs"
@@ -398,7 +418,10 @@ export function CreateStrategyDialog({
           </div>
 
           {configError ? (
-            <p className="text-xs text-destructive" data-testid="config-error">
+            <p
+              className="rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2 text-xs text-destructive"
+              data-testid="config-error"
+            >
               {configError}
             </p>
           ) : null}
@@ -407,16 +430,17 @@ export function CreateStrategyDialog({
             <Button
               type="button"
               variant="outline"
+              size="dense"
               onClick={() => onOpenChange(false)}
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={isSubmitting || !name || !ticker}>
+            <Button type="submit" size="dense" disabled={isSubmitting || !name || !ticker}>
               {isSubmitting ? 'Creating…' : 'Create strategy'}
             </Button>
           </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
-  )
+  );
 }

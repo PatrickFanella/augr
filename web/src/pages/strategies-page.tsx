@@ -3,6 +3,7 @@ import { Activity, Clock, Pause, Play, Plus } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 
+import { PageHeader } from '@/components/layout/page-header'
 import { CreateStrategyDialog } from '@/components/strategies/create-strategy-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -74,32 +75,29 @@ export function StrategiesPage() {
   })
 
   return (
-    <div className="space-y-6" data-testid="strategies-page">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-semibold tracking-tight">Strategies</h2>
-          <p className="text-sm text-muted-foreground">
-            Create, configure, and monitor your trading strategies.
-          </p>
-        </div>
-        <Button onClick={() => setCreateOpen(true)} data-testid="create-strategy-button">
-          <Plus className="mr-2 size-4" />
-          New strategy
-        </Button>
-      </div>
+    <div className="space-y-4" data-testid="strategies-page">
+      <PageHeader
+        eyebrow="Execution"
+        title="Strategies"
+        description="Create, schedule, run, and inspect strategy lifecycles from a single dense workspace."
+        actions={(
+          <Button onClick={() => setCreateOpen(true)} data-testid="create-strategy-button">
+            <Plus className="mr-2 size-4" />
+            New strategy
+          </Button>
+        )}
+      />
 
       <Card>
         <CardHeader>
           <CardTitle>All strategies</CardTitle>
           <CardDescription>
-            {data != null
-              ? `${data.total ?? data.data?.length ?? 0} strategies`
-              : 'Loading…'}
+            {data != null ? `${data.total ?? data.data?.length ?? 0} total tracked strategies` : 'Loading…'}
           </CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="space-y-3" data-testid="strategies-loading">
+            <div className="space-y-2.5" data-testid="strategies-loading">
               {Array.from({ length: 3 }).map((_, i) => (
                 <div key={i} className="flex items-center gap-3 rounded-lg border p-3">
                   <div className="h-4 w-32 animate-pulse rounded bg-muted" />
@@ -128,45 +126,46 @@ export function StrategiesPage() {
 
                 return (
                   <li key={strategy.id}>
-                    <div className="flex items-center gap-3 rounded-lg border p-3 transition-colors hover:bg-secondary/40">
-                      <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-                        <Activity className="size-4" />
-                      </div>
-                      <Link
-                        to={`/strategies/${strategy.id}`}
-                        className="min-w-0 flex-1"
-                        data-testid={`strategy-link-${strategy.id}`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <p className="truncate font-medium hover:underline">
-                            {strategy.name}
-                          </p>
-                          <Badge variant={statusVariant(strategyStatus)} data-testid={`strategy-status-${strategy.id}`}>
-                            {strategyStatus}
-                          </Badge>
-                          {strategy.skip_next_run ? <Badge variant="outline">skip next</Badge> : null}
+                    <div className="grid gap-3 rounded-lg border border-white/8 bg-background/45 p-3 transition-colors hover:border-primary/20 hover:bg-accent/45 xl:grid-cols-[minmax(0,1.6fr)_auto] xl:items-center">
+                      <div className="flex min-w-0 gap-3">
+                        <div className="flex size-9 shrink-0 items-center justify-center rounded-md border border-primary/15 bg-primary/10 text-primary">
+                          <Activity className="size-4" />
                         </div>
-                        <p className="text-xs text-muted-foreground">
-                          {strategy.ticker}
-                          {strategy.schedule_cron ? (
-                            <span className="ml-2 inline-flex items-center gap-1">
-                              <Clock className="size-3" />
-                              scheduled
-                            </span>
-                          ) : null}
-                          <span className="ml-2">
-                            Updated {formatDate(strategy.updated_at)}
-                          </span>
-                        </p>
-                      </Link>
-                      <div className="flex items-center gap-2">
-                        <MarketTypeBadge type={strategy.market_type} />
-                        {strategy.is_paper ? (
-                          <Badge variant="warning">paper</Badge>
-                        ) : null}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Link
+                              to={`/strategies/${strategy.id}`}
+                              className="truncate font-medium hover:text-primary"
+                              data-testid={`strategy-link-${strategy.id}`}
+                            >
+                              {strategy.name}
+                            </Link>
+                            <Badge variant={statusVariant(strategyStatus)} data-testid={`strategy-status-${strategy.id}`}>
+                              {strategyStatus}
+                            </Badge>
+                            <MarketTypeBadge type={strategy.market_type} />
+                            {strategy.is_paper ? <Badge variant="warning">paper</Badge> : null}
+                            {strategy.skip_next_run ? <Badge variant="outline">skip next</Badge> : null}
+                          </div>
+                          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
+                            <span>{strategy.ticker}</span>
+                            {strategy.schedule_cron ? (
+                              <span className="inline-flex items-center gap-1">
+                                <Clock className="size-3" />
+                                {strategy.schedule_cron}
+                              </span>
+                            ) : (
+                              <span>manual only</span>
+                            )}
+                            <span>updated {formatDate(strategy.updated_at)}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 xl:justify-end">
                         <Button
                           variant="outline"
-                          size="sm"
+                          size="dense"
                           onClick={() => runMutation.mutate(strategy.id)}
                           disabled={runMutation.isPending}
                           data-testid={`run-strategy-${strategy.id}`}

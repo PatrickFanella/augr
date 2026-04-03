@@ -1,9 +1,9 @@
-import { X } from 'lucide-react'
+import { X } from 'lucide-react';
 
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import type { AgentDecision } from '@/lib/api/types'
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import type { AgentDecision } from '@/lib/api/types';
 
 const roleLabels: Record<string, string> = {
   market_analyst: 'Market Analyst',
@@ -21,15 +21,15 @@ const roleLabels: Record<string, string> = {
   aggressive_risk: 'Aggressive Risk',
   conservative_risk: 'Conservative Risk',
   neutral_risk: 'Neutral Risk',
-}
+};
 
 interface DecisionInspectorProps {
-  decision: AgentDecision
-  onClose: () => void
+  decision: AgentDecision;
+  onClose: () => void;
 }
 
 export function DecisionInspector({ decision, onClose }: DecisionInspectorProps) {
-  const totalTokens = (decision.prompt_tokens ?? 0) + (decision.completion_tokens ?? 0)
+  const totalTokens = (decision.prompt_tokens ?? 0) + (decision.completion_tokens ?? 0);
 
   return (
     <Card data-testid="decision-inspector">
@@ -38,7 +38,7 @@ export function DecisionInspector({ decision, onClose }: DecisionInspectorProps)
           <CardTitle className="text-base">
             {roleLabels[decision.agent_role] ?? decision.agent_role}
           </CardTitle>
-          <p className="text-xs text-muted-foreground">
+          <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
             Phase: {decision.phase}
             {decision.round_number ? ` · Round ${decision.round_number}` : ''}
           </p>
@@ -55,9 +55,7 @@ export function DecisionInspector({ decision, onClose }: DecisionInspectorProps)
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex flex-wrap gap-2">
-          {decision.llm_model && (
-            <Badge variant="outline">{decision.llm_model}</Badge>
-          )}
+          {decision.llm_model && <Badge variant="outline">{decision.llm_model}</Badge>}
           {decision.latency_ms !== undefined && (
             <Badge variant="outline">{decision.latency_ms}ms</Badge>
           )}
@@ -75,21 +73,31 @@ export function DecisionInspector({ decision, onClose }: DecisionInspectorProps)
         </div>
 
         {decision.input_summary && (
-          <div>
-            <h4 className="mb-1 text-xs font-semibold text-muted-foreground">Prompt Summary</h4>
-            <p className="whitespace-pre-wrap rounded-md border bg-muted/50 p-3 text-xs" data-testid="inspector-prompt">
+          <section className="space-y-1.5">
+            <h4 className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+              Prompt Summary
+            </h4>
+            <pre
+              className="overflow-x-auto whitespace-pre-wrap rounded-md border border-white/8 bg-background/60 p-3 font-mono text-[12px] leading-5 text-muted-foreground"
+              data-testid="inspector-prompt"
+            >
               {decision.input_summary}
-            </p>
-          </div>
+            </pre>
+          </section>
         )}
 
-        <div>
-          <h4 className="mb-1 text-xs font-semibold text-muted-foreground">Response</h4>
-          <p className="whitespace-pre-wrap rounded-md border bg-muted/50 p-3 text-xs" data-testid="inspector-response">
+        <section className="space-y-1.5">
+          <h4 className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+            Response
+          </h4>
+          <pre
+            className="overflow-x-auto whitespace-pre-wrap rounded-md border border-white/8 bg-background/60 p-3 font-mono text-[12px] leading-5 text-foreground"
+            data-testid="inspector-response"
+          >
             {decision.output_text}
-          </p>
-        </div>
+          </pre>
+        </section>
       </CardContent>
     </Card>
-  )
+  );
 }

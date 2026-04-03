@@ -81,6 +81,7 @@ type Trader struct {
 	provider     llm.Provider
 	providerName string
 	model        string
+	systemPrompt string
 	logger       *slog.Logger
 }
 
@@ -91,13 +92,23 @@ var _ agent.TraderNode = (*Trader)(nil)
 // providerName (e.g. "openai") is recorded in decision metadata.
 // A nil logger is replaced with the default logger.
 func NewTrader(provider llm.Provider, providerName, model string, logger *slog.Logger) *Trader {
+	return NewTraderWithPrompt(provider, providerName, model, "", logger)
+}
+
+// NewTraderWithPrompt returns a Trader wired to the given LLM provider and
+// model, using systemPrompt when provided.
+func NewTraderWithPrompt(provider llm.Provider, providerName, model, systemPrompt string, logger *slog.Logger) *Trader {
 	if logger == nil {
 		logger = slog.Default()
+	}
+	if systemPrompt == "" {
+		systemPrompt = TraderSystemPrompt
 	}
 	return &Trader{
 		provider:     provider,
 		providerName: providerName,
 		model:        model,
+		systemPrompt: systemPrompt,
 		logger:       logger,
 	}
 }
@@ -140,7 +151,7 @@ func (t *Trader) Trade(ctx context.Context, input agent.TradingInput) (agent.Tra
 
 	userContent := buildUserPromptFromInput(input)
 	messages := []llm.Message{
-		{Role: "system", Content: TraderSystemPrompt},
+		{Role: "system", Content: t.systemPrompt},
 		{Role: "user", Content: userContent},
 	}
 	promptText := agent.PromptTextFromMessages(messages)

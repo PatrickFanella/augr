@@ -60,6 +60,7 @@ type FinalSignalOutput struct {
 type RiskManager struct {
 	debate.BaseDebater
 	providerName string
+	systemPrompt string
 	logger       *slog.Logger
 }
 
@@ -70,8 +71,17 @@ var _ agent.RiskJudgeNode = (*RiskManager)(nil)
 // model. providerName (e.g. "openai") is recorded in decision metadata.
 // A nil logger is replaced with the default logger.
 func NewRiskManager(provider llm.Provider, providerName, model string, logger *slog.Logger) *RiskManager {
+	return NewRiskManagerWithPrompt(provider, providerName, model, "", logger)
+}
+
+// NewRiskManagerWithPrompt returns a RiskManager wired to the given LLM
+// provider and model, using systemPrompt when provided.
+func NewRiskManagerWithPrompt(provider llm.Provider, providerName, model, systemPrompt string, logger *slog.Logger) *RiskManager {
 	if logger == nil {
 		logger = slog.Default()
+	}
+	if systemPrompt == "" {
+		systemPrompt = RiskManagerSystemPrompt
 	}
 	return &RiskManager{
 		BaseDebater: debate.NewBaseDebater(
@@ -82,6 +92,7 @@ func NewRiskManager(provider llm.Provider, providerName, model string, logger *s
 			logger,
 		),
 		providerName: providerName,
+		systemPrompt: systemPrompt,
 		logger:       logger,
 	}
 }
@@ -136,7 +147,7 @@ func (r *RiskManager) JudgeRisk(ctx context.Context, input agent.RiskJudgeInput)
 
 	content, promptText, usage, err := r.CallWithContext(
 		ctx,
-		RiskManagerSystemPrompt,
+		r.systemPrompt,
 		input.Rounds,
 		contextReports,
 	)

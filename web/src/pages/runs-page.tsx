@@ -3,6 +3,7 @@ import { Activity, ChevronLeft, ChevronRight, Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
+import { PageHeader } from '@/components/layout/page-header'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -148,14 +149,12 @@ export function RunsPage() {
   }
 
   return (
-    <div className="space-y-6" data-testid="runs-page">
-      <div className="space-y-1">
-        <h2 className="text-2xl font-semibold tracking-tight">Pipeline runs</h2>
-        <p className="text-sm text-muted-foreground">
-          Review recent executions, narrow the list by strategy and status, and jump into run
-          details.
-        </p>
-      </div>
+    <div className="space-y-4" data-testid="runs-page">
+      <PageHeader
+        eyebrow="Observability"
+        title="Pipeline runs"
+        description="Filter execution history, inspect outcomes, and jump into detailed run traces."
+      />
 
       <Card>
         <CardHeader>
@@ -174,7 +173,7 @@ export function RunsPage() {
               value={draftStrategyId}
               onChange={(event) => setDraftStrategyId(event.target.value as UUID | '')}
               aria-label="Strategy"
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              className="flex h-9 w-full rounded-md border border-input bg-card/70 px-3 py-1 text-sm text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             >
               <option value="">All strategies</option>
               {strategies.map((strategy) => (
@@ -187,7 +186,7 @@ export function RunsPage() {
               value={draftStatus}
               onChange={(event) => setDraftStatus(event.target.value as PipelineStatus | '')}
               aria-label="Status"
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              className="flex h-9 w-full rounded-md border border-input bg-card/70 px-3 py-1 text-sm text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             >
               <option value="">All statuses</option>
               {STATUS_OPTIONS.map((option) => (
@@ -291,7 +290,7 @@ export function RunsPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm" data-testid="runs-table">
                 <thead>
-                  <tr className="border-b text-left text-muted-foreground">
+                  <tr className="border-b border-white/8 text-left font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
                     <th className="pb-2 font-medium">Ticker</th>
                     <th className="pb-2 font-medium">Strategy</th>
                     <th className="pb-2 font-medium">Status</th>
@@ -307,7 +306,7 @@ export function RunsPage() {
                     return (
                       <tr
                         key={run.id}
-                        className="cursor-pointer border-b transition-colors hover:bg-secondary/40 focus-within:bg-secondary/40 last:border-0"
+                        className="cursor-pointer border-b border-white/6 transition-colors hover:bg-accent/45 focus-within:bg-accent/45 last:border-0"
                         data-testid={`run-row-${run.id}`}
                         tabIndex={0}
                         onClick={(event) => {
@@ -342,7 +341,7 @@ export function RunsPage() {
                         <td className="py-0 font-medium">
                           <Link
                             to={`/runs/${run.id}`}
-                            className="block w-full cursor-pointer py-3 hover:underline focus-visible:underline"
+                            className="block w-full cursor-pointer py-3 font-mono text-[13px] tracking-[0.02em] hover:text-primary focus-visible:text-primary"
                             data-testid={`run-link-${run.id}`}
                           >
                             {run.ticker}
@@ -357,8 +356,8 @@ export function RunsPage() {
                         <td className="py-3">
                           {run.signal ? <RunSignalBadge signal={run.signal} /> : '—'}
                         </td>
-                        <td className="py-3">{formatRunDate(run.started_at)}</td>
-                        <td className="py-3">{formatDuration(run.started_at, run.completed_at)}</td>
+                        <td className="py-3 font-mono text-[13px] text-muted-foreground">{formatRunDate(run.started_at)}</td>
+                        <td className="py-3 font-mono text-[13px]">{formatDuration(run.started_at, run.completed_at)}</td>
                       </tr>
                     )
                   })}

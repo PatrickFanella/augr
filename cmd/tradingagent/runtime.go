@@ -16,6 +16,7 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/api"
 	"github.com/PatrickFanella/get-rich-quick/internal/cli"
 	"github.com/PatrickFanella/get-rich-quick/internal/config"
+	"github.com/PatrickFanella/get-rich-quick/internal/data"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution/paper"
@@ -55,6 +56,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 	auditLogRepo := pgrepo.NewAuditLogRepo(db.Pool)
 	userRepo := pgrepo.NewUserRepo(db.Pool)
 	conversationRepo := pgrepo.NewConversationRepo(db.Pool)
+	marketDataCacheRepo := pgrepo.NewMarketDataCacheRepo(db.Pool)
 
 	riskEngine := risk.NewRiskEngine(
 		risk.PositionLimits{
@@ -94,14 +96,54 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 		Snapshots:      snapshotRepo,
 		LLMProvider:    newLLMProviderFromConfig(cfg.LLM, logger),
 	}
+	notificationManager := newNotificationManager(cfg)
 
 	var sched *scheduler.Scheduler
 	if strings.EqualFold(cfg.Environment, "smoke") {
 		pipeline := newSmokePipeline(runRepo, snapshotRepo, decisionRepo, eventRepo, logger)
 		runner := newSmokeRunner(runRepo, snapshotRepo, decisionRepo, eventRepo, logger)
-		notificationManager := newNotificationManager(cfg)
-		deps.Runner = newSmokeStrategyRunner(runner, runRepo, decisionRepo, orderRepo, positionRepo, tradeRepo, auditLogRepo, eventRepo, riskEngine, notificationManager, logger)
-		sched = scheduler.NewScheduler(strategyRepo, pipeline, riskEngine, logger)
+		strategyRunner := newSmokeStrategyRunner(runner, runRepo, decisionRepo, orderRepo, positionRepo, tradeRepo, auditLogRepo, eventRepo, riskEngine, notificationManager, logger)
+		deps.Runner = strategyRunner
+		sched = scheduler.NewScheduler(
+			strategyRepo,
+			pipeline,
+			riskEngine,
+			logger,
+			scheduler.WithStrategyExecution(func(ctx context.Context, strategy domain.Strategy) error {
+				_, err := strategyRunner.RunStrategy(ctx, strategy)
+				return err
+			}),
+		)
+	} else {
+		dataService := data.NewDataService(cfg, marketDataCacheRepo, logger)
+		strategyRunner := newRealStrategyRunner(
+			cfg,
+			dataService,
+			runRepo,
+			snapshotRepo,
+			decisionRepo,
+			eventRepo,
+			orderRepo,
+			positionRepo,
+			tradeRepo,
+			auditLogRepo,
+			riskEngine,
+			notificationManager,
+			logger,
+		)
+		deps.Runner = strategyRunner
+		if cfg.Features.EnableScheduler {
+			sched = scheduler.NewScheduler(
+				strategyRepo,
+				nil,
+				riskEngine,
+				logger,
+				scheduler.WithStrategyExecution(func(ctx context.Context, strategy domain.Strategy) error {
+					_, err := strategyRunner.RunStrategy(ctx, strategy)
+					return err
+				}),
+			)
+		}
 	}
 
 	apiCfg := api.DefaultServerConfig()
@@ -135,55 +177,68 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 // required credentials are missing so callers can handle the absent provider
 // gracefully (e.g. returning 501 from the conversations endpoint).
 func newLLMProviderFromConfig(cfg config.LLMConfig, logger *slog.Logger) llm.Provider {
-	providerName := strings.ToLower(strings.TrimSpace(cfg.DefaultProvider))
-	// resolveModel prefers the global QuickThink model (suitable for interactive
-	// chat) and falls back to the provider-specific model field.
+	p, err := newLLMProviderForSelection(cfg, cfg.DefaultProvider, cfg.QuickThinkModel, logger)
+	if err != nil {
+		providerName := strings.ToLower(strings.TrimSpace(cfg.DefaultProvider))
+		logger.Warn("LLM provider not available", slog.String("provider", providerName), slog.Any("error", err))
+		return nil
+	}
+	return p
+}
+
+func newLLMProviderForSelection(cfg config.LLMConfig, providerName, model string, logger *slog.Logger) (llm.Provider, error) {
+	providerName = strings.ToLower(strings.TrimSpace(providerName))
+	// resolveModel prefers the explicit runtime model and then falls back to the
+	// provider-specific configured model.
 	resolveModel := func(providerModel string) string {
-		if m := strings.TrimSpace(cfg.QuickThinkModel); m != "" {
+		if m := strings.TrimSpace(model); m != "" {
 			return m
 		}
 		return strings.TrimSpace(providerModel)
 	}
 
-	var (
-		p   llm.Provider
-		err error
-	)
 	switch providerName {
 	case "openai":
-		p, err = openaiProvider.NewProvider(openaiProvider.Config{
+		return openaiProvider.NewProvider(openaiProvider.Config{
 			APIKey:  cfg.Providers.OpenAI.APIKey,
 			BaseURL: cfg.Providers.OpenAI.BaseURL,
 			Model:   resolveModel(cfg.Providers.OpenAI.Model),
 		})
 	case "anthropic":
-		p, err = anthropic.NewProvider(anthropic.Config{
+		return anthropic.NewProvider(anthropic.Config{
 			APIKey:  cfg.Providers.Anthropic.APIKey,
 			BaseURL: cfg.Providers.Anthropic.BaseURL,
 			Model:   resolveModel(cfg.Providers.Anthropic.Model),
 		})
 	case "google":
-		p, err = google.NewProvider(google.Config{
+		return google.NewProvider(google.Config{
 			APIKey:  cfg.Providers.Google.APIKey,
 			BaseURL: cfg.Providers.Google.BaseURL,
 			Model:   resolveModel(cfg.Providers.Google.Model),
 		})
+	case "openrouter":
+		return openaiProvider.NewProvider(openaiProvider.Config{
+			APIKey:  cfg.Providers.OpenRouter.APIKey,
+			BaseURL: cfg.Providers.OpenRouter.BaseURL,
+			Model:   resolveModel(cfg.Providers.OpenRouter.Model),
+		})
+	case "xai":
+		return openaiProvider.NewProvider(openaiProvider.Config{
+			APIKey:  cfg.Providers.XAI.APIKey,
+			BaseURL: cfg.Providers.XAI.BaseURL,
+			Model:   resolveModel(cfg.Providers.XAI.Model),
+		})
 	case "ollama":
-		p, err = ollama.NewProvider(ollama.Config{
+		return ollama.NewProvider(ollama.Config{
 			BaseURL: cfg.Providers.Ollama.BaseURL,
 			Model:   resolveModel(cfg.Providers.Ollama.Model),
 		})
 	default:
-		if providerName != "" {
-			logger.Warn("LLM provider not available", slog.String("provider", providerName), slog.String("reason", "unsupported provider name"))
+		if providerName == "" {
+			return nil, errors.New("llm provider name is required")
 		}
-		return nil
+		return nil, fmt.Errorf("unsupported provider name %q", providerName)
 	}
-	if err != nil {
-		logger.Warn("LLM provider not available", slog.String("provider", providerName), slog.Any("error", err))
-		return nil
-	}
-	return p
 }
 
 func newNotificationManager(cfg config.Config) *notification.Manager {

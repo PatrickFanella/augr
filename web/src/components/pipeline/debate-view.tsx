@@ -1,45 +1,55 @@
-import { ChevronLeft, ChevronRight } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useMemo, useState } from 'react';
 
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import type { AgentDecision, AgentRole } from '@/lib/api/types'
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import type { AgentDecision, AgentRole } from '@/lib/api/types';
 
 const debateLabels: Record<string, string> = {
   bull_researcher: 'Bull',
   bear_researcher: 'Bear',
+  aggressive_analyst: 'Aggressive',
+  conservative_analyst: 'Conservative',
+  neutral_analyst: 'Neutral',
   aggressive_risk: 'Aggressive',
   conservative_risk: 'Conservative',
   neutral_risk: 'Neutral',
-}
+};
 
 interface DebateViewProps {
-  title: string
-  roles: AgentRole[]
-  decisions: AgentDecision[]
-  onSelectDecision: (decision: AgentDecision) => void
+  title: string;
+  roles: AgentRole[];
+  decisions: AgentDecision[];
+  onSelectDecision: (decision: AgentDecision) => void;
+  isCompleted?: boolean;
 }
 
-export function DebateView({ title, roles, decisions, onSelectDecision }: DebateViewProps) {
+export function DebateView({
+  title,
+  roles,
+  decisions,
+  onSelectDecision,
+  isCompleted = false,
+}: DebateViewProps) {
   const rounds = useMemo(() => {
-    const roundMap = new Map<number, AgentDecision[]>()
+    const roundMap = new Map<number, AgentDecision[]>();
     for (const d of decisions) {
       if (roles.includes(d.agent_role)) {
-        const round = d.round_number ?? 1
-        const existing = roundMap.get(round) ?? []
-        existing.push(d)
-        roundMap.set(round, existing)
+        const round = d.round_number ?? 1;
+        const existing = roundMap.get(round) ?? [];
+        existing.push(d);
+        roundMap.set(round, existing);
       }
     }
     return Array.from(roundMap.entries())
       .sort(([a], [b]) => a - b)
-      .map(([round, entries]) => ({ round, entries }))
-  }, [decisions, roles])
+      .map(([round, entries]) => ({ round, entries }));
+  }, [decisions, roles]);
 
-  const [currentRoundIdx, setCurrentRoundIdx] = useState(0)
+  const [currentRoundIdx, setCurrentRoundIdx] = useState(0);
 
-  const maxIdx = Math.max(0, rounds.length - 1)
-  const activeRound = rounds[currentRoundIdx] ?? null
+  const maxIdx = Math.max(0, rounds.length - 1);
+  const activeRound = rounds[currentRoundIdx] ?? null;
 
   return (
     <div data-testid="debate-view">
@@ -56,7 +66,10 @@ export function DebateView({ title, roles, decisions, onSelectDecision }: Debate
             >
               <ChevronLeft className="size-4" />
             </Button>
-            <span className="px-2 text-xs text-muted-foreground" data-testid="debate-round-indicator">
+            <span
+              className="px-2 text-xs text-muted-foreground"
+              data-testid="debate-round-indicator"
+            >
               Round {activeRound?.round ?? currentRoundIdx + 1} / {rounds.length}
             </span>
             <Button
@@ -75,7 +88,9 @@ export function DebateView({ title, roles, decisions, onSelectDecision }: Debate
       {!activeRound ? (
         <Card>
           <CardContent className="py-8">
-            <p className="text-center text-sm text-muted-foreground">Waiting for debate to begin…</p>
+            <p className="text-center text-sm text-muted-foreground">
+              {isCompleted ? 'No debate recorded for this run.' : 'Waiting for debate to begin…'}
+            </p>
           </CardContent>
         </Card>
       ) : (
@@ -83,7 +98,9 @@ export function DebateView({ title, roles, decisions, onSelectDecision }: Debate
           {roles.map((role) => {
             const entry = activeRound.entries
               .filter((e) => e.agent_role === role)
-              .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
+              .sort(
+                (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+              )[0];
             return (
               <Card
                 key={role}
@@ -92,10 +109,10 @@ export function DebateView({ title, roles, decisions, onSelectDecision }: Debate
                 role={entry ? 'button' : undefined}
                 tabIndex={entry ? 0 : undefined}
                 onKeyDown={(event) => {
-                  if (!entry) return
+                  if (!entry) return;
                   if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault()
-                    onSelectDecision(entry)
+                    event.preventDefault();
+                    onSelectDecision(entry);
                   }
                 }}
                 data-testid={`debate-card-${role}`}
@@ -109,14 +126,16 @@ export function DebateView({ title, roles, decisions, onSelectDecision }: Debate
                       {entry.output_text.slice(0, 400)}
                     </p>
                   ) : (
-                    <p className="text-xs text-muted-foreground">Waiting…</p>
+                    <p className="text-xs text-muted-foreground">
+                      {isCompleted ? 'No contribution recorded.' : 'Waiting…'}
+                    </p>
                   )}
                 </CardContent>
               </Card>
-            )
+            );
           })}
         </div>
       )}
     </div>
-  )
+  );
 }

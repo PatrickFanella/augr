@@ -3,6 +3,7 @@ import { ArrowLeft, Pause, Play, SkipForward, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
+import { PageHeader } from '@/components/layout/page-header'
 import { StrategyConfigEditor } from '@/components/strategies/strategy-config-editor'
 import { StrategyRunHistory } from '@/components/strategies/strategy-run-history'
 import { Badge } from '@/components/ui/badge'
@@ -151,30 +152,29 @@ export function StrategyDetailPage() {
   }
 
   return (
-    <div className="space-y-6" data-testid="strategy-detail-page">
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="space-y-1">
+    <div className="space-y-4" data-testid="strategy-detail-page">
+      <PageHeader
+        eyebrow="Strategy detail"
+        title={strategy.name}
+        description={strategy.description || 'Execution settings, recent runs, and lifecycle controls for this strategy.'}
+        meta={(
+          <>
+            <Badge variant={statusBadgeVariant(strategyStatus)} data-testid="strategy-status-badge">
+              {strategyStatus}
+            </Badge>
+            {strategy.is_paper ? <Badge variant="warning">paper</Badge> : null}
+            {strategy.skip_next_run ? <Badge variant="outline">skip next queued</Badge> : null}
+          </>
+        )}
+        actions={(
+          <>
             <Link
               to="/strategies"
-              className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+              className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-background/80 px-3 py-2 text-sm text-muted-foreground transition-colors hover:border-primary/25 hover:text-foreground"
             >
               <ArrowLeft className="size-4" />
-              Back to strategies
+              Back
             </Link>
-            <div className="flex items-center gap-2">
-              <h2 className="text-2xl font-semibold tracking-tight">{strategy.name}</h2>
-              <Badge variant={statusBadgeVariant(strategyStatus)} data-testid="strategy-status-badge">
-                {strategyStatus}
-              </Badge>
-              {strategy.is_paper ? <Badge variant="warning">paper</Badge> : null}
-              {strategy.skip_next_run ? <Badge variant="outline">skip next queued</Badge> : null}
-            </div>
-            {strategy.description ? (
-              <p className="text-sm text-muted-foreground">{strategy.description}</p>
-            ) : null}
-          </div>
-          <div className="flex items-center gap-2">
             <Button
               variant="outline"
               onClick={() => runMutation.mutate()}
@@ -212,7 +212,7 @@ export function StrategyDetailPage() {
               {skipMutation.isPending ? 'Skipping…' : 'Skip next'}
             </Button>
             <Button
-              variant="outline"
+              variant="destructive"
               onClick={() => deleteMutation.mutate()}
               disabled={deleteMutation.isPending}
               data-testid="delete-strategy-button"
@@ -220,12 +220,12 @@ export function StrategyDetailPage() {
               <Trash2 className="mr-2 size-4" />
               Delete
             </Button>
-          </div>
-        </div>
-        {actionError ? (
-          <p className="text-sm text-destructive" data-testid="strategy-action-error">{actionError}</p>
-        ) : null}
-      </div>
+          </>
+        )}
+      />
+      {actionError ? (
+        <p className="text-sm text-destructive" data-testid="strategy-action-error">{actionError}</p>
+      ) : null}
 
       <Card>
         <CardHeader>
@@ -235,11 +235,11 @@ export function StrategyDetailPage() {
         <CardContent>
           <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div>
-              <dt className="text-xs text-muted-foreground">Ticker</dt>
-              <dd className="text-sm font-medium">{strategy.ticker}</dd>
+              <dt className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Ticker</dt>
+              <dd className="mt-1 text-sm font-medium">{strategy.ticker}</dd>
             </div>
             <div>
-              <dt className="text-xs text-muted-foreground">Market type</dt>
+              <dt className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Market type</dt>
               <dd>
                 <Badge variant={strategy.market_type === 'stock' ? 'default' : strategy.market_type === 'crypto' ? 'secondary' : 'outline'}>
                   {strategy.market_type}
@@ -247,15 +247,15 @@ export function StrategyDetailPage() {
               </dd>
             </div>
             <div>
-              <dt className="text-xs text-muted-foreground">Status</dt>
+              <dt className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Status</dt>
               <dd className="flex items-center gap-2">
                 <Badge variant={statusBadgeVariant(strategyStatus)}>{strategyStatus}</Badge>
                 {strategy.is_paper ? <Badge variant="warning">paper</Badge> : null}
               </dd>
             </div>
             <div>
-              <dt className="text-xs text-muted-foreground">Schedule</dt>
-              <dd className="text-sm font-medium">
+              <dt className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Schedule</dt>
+              <dd className="mt-1 font-mono text-[13px] font-medium">
                 {strategy.schedule_cron || 'Manual only'}
               </dd>
             </div>
@@ -263,7 +263,7 @@ export function StrategyDetailPage() {
         </CardContent>
       </Card>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
         <StrategyRunHistory strategyId={strategy.id} />
         <StrategyConfigEditor
           strategy={strategy}

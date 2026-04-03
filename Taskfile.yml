@@ -11,7 +11,7 @@ vars:
   DOCKER_IMAGE: tradingagent
   DOCKER_TAG: latest
   MIGRATE_DIR: ./migrations
-  DB_URL: '{{.DB_URL | default "postgres://tradingagent:tradingagent@localhost:5432/tradingagent?sslmode=disable"}}'
+  DB_URL: '{{.DB_URL | default "postgres://postgres:postgres@localhost:5432/tradingagent?sslmode=disable"}}'
   COVERAGE_DIR: ./coverage
   VERSION:
     sh: git describe --tags --always --dirty 2>/dev/null || echo "dev"

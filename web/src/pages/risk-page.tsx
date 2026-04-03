@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 
+import { PageHeader } from '@/components/layout/page-header'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -130,7 +131,13 @@ export function RiskPage() {
 
   return (
     <div className="space-y-4" data-testid="risk-page">
-      <div className="grid gap-4 md:grid-cols-2">
+      <PageHeader
+        eyebrow="Controls"
+        title="Risk engine"
+        description="Review circuit breaker state, kill switch controls, exposure utilization, and recent audit events."
+      />
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <Card>
           <CardHeader>
             <CardTitle>Circuit Breaker</CardTitle>
@@ -298,7 +305,7 @@ export function RiskPage() {
               <div className="max-h-96 overflow-y-auto">
                 <table className="w-full text-sm" data-testid="audit-log-table">
                   <thead>
-                    <tr className="border-b text-left text-muted-foreground">
+                    <tr className="border-b border-white/8 text-left font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
                       <th className="pb-2 font-medium">Event</th>
                       <th className="pb-2 font-medium">Entity</th>
                       <th className="pb-2 font-medium">Details</th>
@@ -307,7 +314,7 @@ export function RiskPage() {
                   </thead>
                   <tbody>
                     {auditEntries.map((entry: AuditLogEntry) => (
-                      <tr key={entry.id} className="border-b last:border-0">
+                      <tr key={entry.id} className="border-b border-white/6 last:border-0">
                         <td className="py-2">
                           <Badge variant="outline">{entry.event_type}</Badge>
                         </td>
