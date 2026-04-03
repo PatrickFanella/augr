@@ -55,7 +55,7 @@ const providerDefinitions: Array<{ key: ProviderKey; label: string; supportsBase
 ];
 
 const denseSelectClassName =
-  'flex h-9 w-full rounded-md border border-input bg-card/70 px-3 py-1 text-sm text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
+  'flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-sm text-foreground transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
 
 function toFormState(settings: Settings): SettingsFormState {
   return {
@@ -133,7 +133,7 @@ function RiskStatusSummary({ riskStatus }: { riskStatus: EngineStatus }) {
 
   return (
     <div className="grid gap-3 text-sm sm:grid-cols-3">
-      <div className="rounded-lg border border-white/8 bg-background/45 p-3">
+      <div className="rounded-lg border border-border bg-background p-3">
         <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
           Risk status
         </p>
@@ -141,7 +141,7 @@ function RiskStatusSummary({ riskStatus }: { riskStatus: EngineStatus }) {
           <Badge variant={riskVariant}>{riskStatus.risk_status}</Badge>
         </div>
       </div>
-      <div className="rounded-lg border border-white/8 bg-background/45 p-3">
+      <div className="rounded-lg border border-border bg-background p-3">
         <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
           Circuit breaker
         </p>
@@ -149,7 +149,7 @@ function RiskStatusSummary({ riskStatus }: { riskStatus: EngineStatus }) {
           {riskStatus.circuit_breaker.state.replace('_', ' ')}
         </p>
       </div>
-      <div className="rounded-lg border border-white/8 bg-background/45 p-3">
+      <div className="rounded-lg border border-border bg-background p-3">
         <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
           Live position cap
         </p>
@@ -329,7 +329,7 @@ export function SettingsPage() {
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="grid gap-4 md:grid-cols-3">
-                <div className="space-y-2 rounded-lg border border-white/8 bg-background/45 p-4">
+                <div className="space-y-2 rounded-lg border border-border bg-background p-4">
                   <Label htmlFor="default-provider">Default provider</Label>
                   <select
                     id="default-provider"
@@ -351,7 +351,7 @@ export function SettingsPage() {
                   </select>
                 </div>
 
-                <div className="space-y-2 rounded-lg border border-white/8 bg-background/45 p-4">
+                <div className="space-y-2 rounded-lg border border-border bg-background p-4">
                   <Label htmlFor="deep-think-model">Deep think model</Label>
                   <Input
                     id="deep-think-model"
@@ -365,7 +365,7 @@ export function SettingsPage() {
                   />
                 </div>
 
-                <div className="space-y-2 rounded-lg border border-white/8 bg-background/45 p-4">
+                <div className="space-y-2 rounded-lg border border-border bg-background p-4">
                   <Label htmlFor="quick-think-model">Quick think model</Label>
                   <Input
                     id="quick-think-model"
@@ -396,7 +396,7 @@ export function SettingsPage() {
                   return (
                     <div
                       key={key}
-                      className="rounded-xl border border-white/8 bg-background/45 p-4"
+                      className="rounded-xl border border-border bg-background p-4"
                       data-testid={`provider-${key}`}
                     >
                       <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -474,7 +474,7 @@ export function SettingsPage() {
                 })}
 
                 <div
-                  className="rounded-xl border border-white/8 bg-background/45 p-4"
+                  className="rounded-xl border border-border bg-background p-4"
                   data-testid="provider-ollama"
                 >
                   <div className="mb-4">
@@ -608,7 +608,7 @@ export function SettingsPage() {
                 ].map(({ id, label, value, field, step }) => (
                   <div
                     key={id}
-                    className="space-y-2 rounded-lg border border-white/8 bg-background/45 p-4"
+                    className="space-y-2 rounded-lg border border-border bg-background p-4"
                   >
                     <Label htmlFor={id}>{label}</Label>
                     <Input
@@ -650,13 +650,13 @@ export function SettingsPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               {riskQuery.isLoading ? (
-                <div className="h-24 animate-pulse rounded-lg border border-white/8 bg-muted/40" />
+                <div className="h-24 animate-pulse rounded-lg border border-border bg-muted/40" />
               ) : riskQuery.isError || !riskQuery.data ? (
                 <p className="text-sm text-muted-foreground">
                   Unable to load the live risk engine status.
                 </p>
               ) : (
-                <div className="rounded-lg border border-white/8 bg-background/45 p-4">
+                <div className="rounded-lg border border-border bg-background p-4">
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <p className="font-medium">
@@ -698,7 +698,7 @@ export function SettingsPage() {
             </CardHeader>
             <CardContent className="space-y-4" data-testid="system-info">
               <div className="grid gap-4 sm:grid-cols-3">
-                <div className="rounded-lg border border-white/8 bg-background/45 p-4">
+                <div className="rounded-lg border border-border bg-background p-4">
                   <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
                     Environment
                   </p>
@@ -706,7 +706,7 @@ export function SettingsPage() {
                     {settingsData.system.environment || 'unknown'}
                   </p>
                 </div>
-                <div className="rounded-lg border border-white/8 bg-background/45 p-4">
+                <div className="rounded-lg border border-border bg-background p-4">
                   <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
                     Version
                   </p>
@@ -714,7 +714,7 @@ export function SettingsPage() {
                     {settingsData.system.version}
                   </p>
                 </div>
-                <div className="rounded-lg border border-white/8 bg-background/45 p-4">
+                <div className="rounded-lg border border-border bg-background p-4">
                   <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
                     Uptime
                   </p>
@@ -730,14 +730,14 @@ export function SettingsPage() {
                 </p>
                 <div className="space-y-2">
                   {connectedBrokers.length === 0 ? (
-                    <p className="rounded-lg border border-white/8 bg-background/45 px-3 py-3 text-sm text-muted-foreground">
+                    <p className="rounded-lg border border-border bg-background px-3 py-3 text-sm text-muted-foreground">
                       No connected brokers reported.
                     </p>
                   ) : (
                     connectedBrokers.map((broker) => (
                       <div
                         key={broker.name}
-                        className="flex items-center justify-between rounded-lg border border-white/8 bg-background/45 px-3 py-3"
+                        className="flex items-center justify-between rounded-lg border border-border bg-background px-3 py-3"
                       >
                         <div>
                           <p className="font-medium capitalize">{broker.name}</p>

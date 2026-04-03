@@ -81,11 +81,11 @@ export function PortfolioSummary() {
             <CardTitle className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
               {label}
             </CardTitle>
-            <div className="flex size-8 items-center justify-center rounded-md border border-white/8 bg-background/55 text-muted-foreground">
+            <div className="flex size-8 items-center justify-center rounded-md bg-muted text-muted-foreground">
               <Icon className="size-4" />
             </div>
           </CardHeader>
-          <CardContent className="space-y-1">
+          <CardContent>
             <p
               className={cn(
                 'font-mono text-2xl font-semibold tracking-tight',
@@ -94,9 +94,6 @@ export function PortfolioSummary() {
               )}
             >
               {value}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Updated from the current portfolio snapshot.
             </p>
           </CardContent>
         </Card>

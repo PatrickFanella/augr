@@ -16,10 +16,11 @@ describe('AppShell', () => {
       </MemoryRouter>,
     )
 
-    expect(screen.getByText('Trading command center')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /memories/i })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /settings/i })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /portfolio/i })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getAllByText('Get Rich Quick').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByRole('link', { name: /memories/i }).length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByRole('link', { name: /settings/i }).length).toBeGreaterThanOrEqual(1)
+    const portfolioLinks = screen.getAllByRole('link', { name: /portfolio/i })
+    expect(portfolioLinks.some((link) => link.getAttribute('aria-current') === 'page')).toBe(true)
     expect(screen.getByText('Portfolio page')).toBeInTheDocument()
   })
 })

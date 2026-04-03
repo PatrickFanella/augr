@@ -32,7 +32,7 @@ describe('AppRoutes auth guards', () => {
       </MemoryRouter>,
     )
 
-    expect(screen.getByRole('heading', { name: 'Login' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Sign in' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Frontend scaffold' })).not.toBeInTheDocument()
   })
 

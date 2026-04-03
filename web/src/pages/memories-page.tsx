@@ -22,7 +22,7 @@ import { AGENT_ROLE_OPTIONS, formatAgentRole } from '@/lib/agent-roles';
 const PAGE_SIZE = 10;
 const PAGE_REQUEST_SIZE = PAGE_SIZE + 1;
 const denseSelectClassName =
-  'flex h-9 w-full rounded-md border border-input bg-card/70 px-3 py-1 text-sm text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
+  'flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-sm text-foreground transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
 
 function formatDate(date: string) {
   return new Date(date).toLocaleString(undefined, {
@@ -187,7 +187,7 @@ export function MemoriesPage() {
               {Array.from({ length: 3 }).map((_, index) => (
                 <div
                   key={index}
-                  className="space-y-2 rounded-lg border border-white/8 bg-background/45 p-4"
+                  className="space-y-2 rounded-lg border border-border bg-background p-4"
                 >
                   <div className="h-4 w-32 animate-pulse rounded bg-muted" />
                   <div className="h-4 w-full animate-pulse rounded bg-muted" />
@@ -202,7 +202,7 @@ export function MemoriesPage() {
             </p>
           ) : !visibleMemories.length ? (
             <div
-              className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-white/10 bg-background/35 py-10 text-center"
+              className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border bg-background py-10 text-center"
               data-testid="memories-empty"
             >
               <Brain className="size-8 text-muted-foreground" />
@@ -214,7 +214,7 @@ export function MemoriesPage() {
             <ul className="space-y-3" data-testid="memories-list">
               {visibleMemories.map((memory) => (
                 <li key={memory.id}>
-                  <article className="rounded-lg border border-white/8 bg-background/45 p-4 transition-colors hover:border-primary/15 hover:bg-accent/45">
+                  <article className="rounded-lg border border-border bg-background p-4 transition-colors hover:border-primary/15 hover:bg-accent/45">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div className="space-y-3">
                         <div className="flex flex-wrap items-center gap-2">
@@ -229,7 +229,7 @@ export function MemoriesPage() {
                           </span>
                         </div>
                         <div className="grid gap-2 lg:grid-cols-3">
-                          <div className="rounded-md border border-white/8 bg-background/55 p-3">
+                          <div className="rounded-md border border-border bg-background p-3">
                             <p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
                               Situation
                             </p>
@@ -237,7 +237,7 @@ export function MemoriesPage() {
                               {summarize(memory.situation)}
                             </p>
                           </div>
-                          <div className="rounded-md border border-white/8 bg-background/55 p-3">
+                          <div className="rounded-md border border-border bg-background p-3">
                             <p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
                               Recommendation
                             </p>
@@ -245,7 +245,7 @@ export function MemoriesPage() {
                               {summarize(memory.recommendation)}
                             </p>
                           </div>
-                          <div className="rounded-md border border-white/8 bg-background/55 p-3">
+                          <div className="rounded-md border border-border bg-background p-3">
                             <p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
                               Outcome
                             </p>
@@ -304,19 +304,19 @@ export function MemoriesPage() {
                   {formatDate(selectedMemory.created_at)}
                 </span>
               </div>
-              <section className="space-y-1 rounded-md border border-white/8 bg-background/55 p-3">
+              <section className="space-y-1 rounded-md border border-border bg-background p-3">
                 <h3 className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
                   Situation
                 </h3>
                 <p className="text-sm text-muted-foreground">{selectedMemory.situation}</p>
               </section>
-              <section className="space-y-1 rounded-md border border-white/8 bg-background/55 p-3">
+              <section className="space-y-1 rounded-md border border-border bg-background p-3">
                 <h3 className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
                   Recommendation
                 </h3>
                 <p className="text-sm text-muted-foreground">{selectedMemory.recommendation}</p>
               </section>
-              <section className="space-y-1 rounded-md border border-white/8 bg-background/55 p-3">
+              <section className="space-y-1 rounded-md border border-border bg-background p-3">
                 <h3 className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
                   Outcome
                 </h3>
@@ -325,7 +325,7 @@ export function MemoriesPage() {
                 </p>
               </section>
               {selectedMemory.pipeline_run_id ? (
-                <section className="space-y-1 rounded-md border border-white/8 bg-background/55 p-3">
+                <section className="space-y-1 rounded-md border border-border bg-background p-3">
                   <h3 className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
                     Pipeline run
                   </h3>

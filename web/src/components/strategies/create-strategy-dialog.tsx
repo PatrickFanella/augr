@@ -29,7 +29,7 @@ interface CreateStrategyDialogProps {
 
 const marketTypes: MarketType[] = ['stock', 'crypto', 'polymarket'];
 const denseSelectClassName =
-  'flex h-9 w-full rounded-md border border-input bg-card/70 px-3 py-1 text-sm text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
+  'flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-sm text-foreground transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
 
 export function CreateStrategyDialog({
   open,
@@ -143,7 +143,7 @@ export function CreateStrategyDialog({
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2 rounded-lg border border-white/8 bg-background/45 p-4">
+            <div className="space-y-2 rounded-lg border border-border bg-background p-4">
               <Label htmlFor="strategy-name">Name *</Label>
               <Input
                 id="strategy-name"
@@ -155,7 +155,7 @@ export function CreateStrategyDialog({
               />
             </div>
 
-            <div className="space-y-2 rounded-lg border border-white/8 bg-background/45 p-4">
+            <div className="space-y-2 rounded-lg border border-border bg-background p-4">
               <Label htmlFor="strategy-ticker">Ticker *</Label>
               <Input
                 id="strategy-ticker"
@@ -168,7 +168,7 @@ export function CreateStrategyDialog({
             </div>
           </div>
 
-          <div className="space-y-2 rounded-lg border border-white/8 bg-background/45 p-4">
+          <div className="space-y-2 rounded-lg border border-border bg-background p-4">
             <Label htmlFor="strategy-description">Description</Label>
             <Input
               id="strategy-description"
@@ -179,7 +179,7 @@ export function CreateStrategyDialog({
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2 rounded-lg border border-white/8 bg-background/45 p-4">
+            <div className="space-y-2 rounded-lg border border-border bg-background p-4">
               <Label htmlFor="strategy-market-type">Market type *</Label>
               <select
                 id="strategy-market-type"
@@ -196,7 +196,7 @@ export function CreateStrategyDialog({
               </select>
             </div>
 
-            <div className="space-y-2 rounded-lg border border-white/8 bg-background/45 p-4">
+            <div className="space-y-2 rounded-lg border border-border bg-background p-4">
               <Label htmlFor="strategy-schedule">Schedule (cron)</Label>
               <Input
                 id="strategy-schedule"
@@ -208,7 +208,7 @@ export function CreateStrategyDialog({
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
-            <label className="flex items-center gap-2 rounded-lg border border-white/8 bg-background/45 px-4 py-3 text-sm">
+            <label className="flex items-center gap-2 rounded-lg border border-border bg-background px-4 py-3 text-sm">
               <input
                 type="checkbox"
                 checked={isPaper}
@@ -218,7 +218,7 @@ export function CreateStrategyDialog({
               />
               Paper trading
             </label>
-            <label className="flex items-center gap-2 rounded-lg border border-white/8 bg-background/45 px-4 py-3 text-sm">
+            <label className="flex items-center gap-2 rounded-lg border border-border bg-background px-4 py-3 text-sm">
               <input
                 type="checkbox"
                 checked={isActive}
@@ -230,7 +230,7 @@ export function CreateStrategyDialog({
             </label>
           </div>
 
-          <div className="space-y-4 rounded-lg border border-white/8 bg-background/45 p-4">
+          <div className="space-y-4 rounded-lg border border-border bg-background p-4">
             <h4 className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
               Pipeline
             </h4>
@@ -296,7 +296,7 @@ export function CreateStrategyDialog({
             </div>
           </div>
 
-          <div className="space-y-4 rounded-lg border border-white/8 bg-background/45 p-4">
+          <div className="space-y-4 rounded-lg border border-border bg-background p-4">
             <h4 className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
               Risk
             </h4>
@@ -364,7 +364,7 @@ export function CreateStrategyDialog({
             </div>
           </div>
 
-          <div className="space-y-4 rounded-lg border border-white/8 bg-background/45 p-4">
+          <div className="space-y-4 rounded-lg border border-border bg-background p-4">
             <h4 className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
               Analysts
             </h4>
@@ -372,7 +372,7 @@ export function CreateStrategyDialog({
               {analystOptions.map(({ role, label }) => (
                 <label
                   key={role}
-                  className="flex items-center gap-2 rounded-md border border-white/8 bg-background/55 px-3 py-2 text-sm"
+                  className="flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm"
                 >
                   <input
                     type="checkbox"
@@ -386,7 +386,7 @@ export function CreateStrategyDialog({
             </div>
           </div>
 
-          <div className="space-y-3 rounded-lg border border-white/8 bg-background/45 p-4">
+          <div className="space-y-3 rounded-lg border border-border bg-background p-4">
             <div className="flex items-center justify-between">
               <h4 className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
                 Advanced

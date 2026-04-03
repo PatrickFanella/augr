@@ -40,10 +40,10 @@ export function ChatPanel({ messages, onSendMessage, isLoading = false, header }
   }
 
   return (
-    <div className="flex h-full flex-1 flex-col bg-card/55" data-testid="chat-panel">
+    <div className="flex h-full flex-1 flex-col bg-card" data-testid="chat-panel">
       {header ? (
         <div
-          className="border-b border-white/8 bg-background/35 px-4 py-3"
+          className="border-b border-border bg-background px-4 py-3"
           data-testid="chat-panel-header"
         >
           {header}
@@ -72,8 +72,8 @@ export function ChatPanel({ messages, onSendMessage, isLoading = false, header }
                   msg.role === 'user'
                     ? 'max-w-[80%] border border-primary/20 bg-primary text-primary-foreground'
                     : msg.role === 'system'
-                      ? 'max-w-full border border-white/8 bg-background/55 text-center text-muted-foreground'
-                      : 'max-w-[80%] border border-white/8 bg-background/70 text-foreground',
+                      ? 'max-w-full border border-border bg-background text-center text-muted-foreground'
+                      : 'max-w-[80%] border border-border bg-background text-foreground',
                 )}
               >
                 {msg.role === 'assistant' && msg.agent_role ? (
@@ -94,7 +94,7 @@ export function ChatPanel({ messages, onSendMessage, isLoading = false, header }
 
       {isLoading ? (
         <div
-          className="flex items-center gap-1 border-t border-white/8 px-4 py-2 text-xs text-muted-foreground"
+          className="flex items-center gap-1 border-t border-border px-4 py-2 text-xs text-muted-foreground"
           data-testid="typing-indicator"
         >
           <span className="animate-pulse">●</span>
@@ -109,7 +109,7 @@ export function ChatPanel({ messages, onSendMessage, isLoading = false, header }
 
       {onSendMessage ? (
         <div
-          className="flex gap-2 border-t border-white/8 bg-background/35 p-3"
+          className="flex gap-2 border-t border-border bg-background p-3"
           data-testid="chat-input-bar"
         >
           <textarea
@@ -124,7 +124,7 @@ export function ChatPanel({ messages, onSendMessage, isLoading = false, header }
             placeholder="Type a message..."
             disabled={isLoading}
             rows={1}
-            className="flex-1 resize-none rounded-md border border-input bg-card/70 px-3 py-2 text-sm text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50"
+            className="flex-1 resize-none rounded-md border border-input bg-card px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50"
             data-testid="chat-input"
           />
           <Button

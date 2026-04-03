@@ -37,7 +37,7 @@ export function PositionsTable() {
             {Array.from({ length: 5 }).map((_, i) => (
               <div
                 key={i}
-                className="flex items-center gap-3 rounded-lg border border-white/8 bg-background/45 p-3"
+                className="flex items-center gap-3 rounded-lg border border-border bg-background p-3"
               >
                 <div className="h-4 w-16 animate-pulse rounded bg-muted" />
                 <div className="h-5 w-14 animate-pulse rounded-full bg-muted" />
@@ -63,7 +63,7 @@ export function PositionsTable() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-white/8 text-left font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+                <tr className="border-b border-border text-left font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
                   <th className="px-4 py-3 font-medium">Ticker</th>
                   <th className="px-4 py-3 font-medium">Side</th>
                   <th className="px-4 py-3 font-medium text-right">Qty</th>
@@ -78,7 +78,7 @@ export function PositionsTable() {
                 {positions.map((position) => (
                   <tr
                     key={position.id}
-                    className="cursor-pointer border-b border-white/6 transition-colors hover:bg-accent/45 last:border-0"
+                    className="cursor-pointer border-b border-border transition-colors hover:bg-accent/45 last:border-0"
                     tabIndex={0}
                     role="button"
                     onClick={() => setSelectedPosition(position)}

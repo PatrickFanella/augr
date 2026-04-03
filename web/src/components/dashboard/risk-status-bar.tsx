@@ -47,7 +47,7 @@ function CircuitBreakerDisplay({ status }: { status: EngineStatus }) {
   };
 
   return (
-    <div className="rounded-lg border border-white/8 bg-background/45 p-3">
+    <div className="rounded-lg border border-border p-3">
       <div className="flex items-center justify-between">
         <p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
           Circuit breaker
@@ -72,7 +72,7 @@ function PositionLimitsDisplay({ status }: { status: EngineStatus }) {
   ];
 
   return (
-    <div className="rounded-lg border border-white/8 bg-background/45 p-3">
+    <div className="rounded-lg border border-border p-3">
       <p className="mb-3 font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
         Position limits
       </p>
@@ -164,7 +164,7 @@ export function RiskStatusBar() {
         <CircuitBreakerDisplay status={data} />
         <PositionLimitsDisplay status={data} />
 
-        <div className="rounded-lg border border-white/8 bg-background/45 p-3">
+        <div className="rounded-lg border border-border p-3">
           <div className="flex items-center justify-between">
             <div>
               <p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">

@@ -90,7 +90,7 @@ export function TradeHistory() {
             {Array.from({ length: 5 }).map((_, i) => (
               <div
                 key={i}
-                className="flex items-center gap-3 rounded-lg border border-white/8 bg-background/45 p-3"
+                className="flex items-center gap-3 rounded-lg border border-border bg-background p-3"
               >
                 <div className="h-4 w-20 animate-pulse rounded bg-muted" />
                 <div className="h-5 w-12 animate-pulse rounded-full bg-muted" />
@@ -115,7 +115,7 @@ export function TradeHistory() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-white/8 text-left font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+                <tr className="border-b border-border text-left font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
                   <th className="px-4 py-3 font-medium">Date</th>
                   <th className="px-4 py-3 font-medium">Ticker</th>
                   <th className="px-4 py-3 font-medium">Side</th>
@@ -137,7 +137,7 @@ export function TradeHistory() {
                   return (
                     <tr
                       key={getTradeKey(trade, index)}
-                      className="border-b border-white/6 transition-colors hover:bg-accent/45 last:border-0"
+                      className="border-b border-border transition-colors hover:bg-accent/45 last:border-0"
                     >
                       <td className="px-4 py-3 font-mono text-[13px] text-muted-foreground">
                         {formatExecutedAt(trade.executed_at)}

@@ -173,7 +173,7 @@ export function RunsPage() {
               value={draftStrategyId}
               onChange={(event) => setDraftStrategyId(event.target.value as UUID | '')}
               aria-label="Strategy"
-              className="flex h-9 w-full rounded-md border border-input bg-card/70 px-3 py-1 text-sm text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              className="flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-sm text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             >
               <option value="">All strategies</option>
               {strategies.map((strategy) => (
@@ -186,7 +186,7 @@ export function RunsPage() {
               value={draftStatus}
               onChange={(event) => setDraftStatus(event.target.value as PipelineStatus | '')}
               aria-label="Status"
-              className="flex h-9 w-full rounded-md border border-input bg-card/70 px-3 py-1 text-sm text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              className="flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-sm text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             >
               <option value="">All statuses</option>
               {STATUS_OPTIONS.map((option) => (
@@ -290,7 +290,7 @@ export function RunsPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm" data-testid="runs-table">
                 <thead>
-                  <tr className="border-b border-white/8 text-left font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+                  <tr className="border-b border-border text-left font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
                     <th className="pb-2 font-medium">Ticker</th>
                     <th className="pb-2 font-medium">Strategy</th>
                     <th className="pb-2 font-medium">Status</th>
@@ -306,7 +306,7 @@ export function RunsPage() {
                     return (
                       <tr
                         key={run.id}
-                        className="cursor-pointer border-b border-white/6 transition-colors hover:bg-accent/45 focus-within:bg-accent/45 last:border-0"
+                        className="cursor-pointer border-b border-border transition-colors hover:bg-accent/45 focus-within:bg-accent/45 last:border-0"
                         data-testid={`run-row-${run.id}`}
                         tabIndex={0}
                         onClick={(event) => {

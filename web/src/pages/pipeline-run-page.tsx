@@ -260,7 +260,7 @@ export function PipelineRunPage() {
         actions={(
           <Link
             to="/runs"
-            className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-background/80 px-3 py-2 text-sm text-muted-foreground transition-colors hover:border-primary/25 hover:text-foreground"
+            className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-3 py-2 text-sm text-muted-foreground transition-colors hover:border-primary/25 hover:text-foreground"
           >
             <ArrowLeft className="size-4" />
             Back to runs

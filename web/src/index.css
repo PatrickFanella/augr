@@ -79,23 +79,6 @@
     margin: 0;
     min-width: 320px;
     font-family: var(--font-sans);
-    background:
-      radial-gradient(circle at top, rgba(96, 165, 250, 0.12) 0%, transparent 28%),
-      radial-gradient(circle at 85% 15%, rgba(34, 211, 238, 0.08) 0%, transparent 18%),
-      linear-gradient(180deg, #0a0f19 0%, #06080d 35%, #04060b 100%);
-    background-attachment: fixed;
-  }
-
-  body::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    background-image:
-      linear-gradient(rgba(148, 163, 184, 0.03) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(148, 163, 184, 0.03) 1px, transparent 1px);
-    background-size: 48px 48px;
-    mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.5), transparent 85%);
   }
 
   a {

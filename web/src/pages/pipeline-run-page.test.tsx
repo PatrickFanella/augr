@@ -166,7 +166,7 @@ describe('PipelineRunPage', () => {
     render(<PipelineRunPage />, { wrapper: Wrapper });
 
     expect(await screen.findByTestId('pipeline-run-page')).toBeInTheDocument();
-    expect(screen.getByText('AAPL — Pipeline Run')).toBeInTheDocument();
+    expect(screen.getByText('AAPL pipeline run')).toBeInTheDocument();
     expect(screen.getByTestId('phase-progress')).toBeInTheDocument();
     expect(screen.getByTestId('analyst-cards')).toBeInTheDocument();
     expect(screen.getAllByTestId('debate-view')).toHaveLength(2);

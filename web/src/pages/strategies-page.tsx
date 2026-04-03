@@ -126,9 +126,9 @@ export function StrategiesPage() {
 
                 return (
                   <li key={strategy.id}>
-                    <div className="grid gap-3 rounded-lg border border-white/8 bg-background/45 p-3 transition-colors hover:border-primary/20 hover:bg-accent/45 xl:grid-cols-[minmax(0,1.6fr)_auto] xl:items-center">
+                    <div className="grid gap-3 rounded-lg border border-border p-3 transition-colors hover:bg-accent/45 xl:grid-cols-[minmax(0,1.6fr)_auto] xl:items-center">
                       <div className="flex min-w-0 gap-3">
-                        <div className="flex size-9 shrink-0 items-center justify-center rounded-md border border-primary/15 bg-primary/10 text-primary">
+                        <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
                           <Activity className="size-4" />
                         </div>
                         <div className="min-w-0 flex-1">

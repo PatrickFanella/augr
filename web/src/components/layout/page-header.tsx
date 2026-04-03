@@ -11,29 +11,22 @@ interface PageHeaderProps {
   className?: string
 }
 
-export function PageHeader({ eyebrow, title, description, meta, actions, className }: PageHeaderProps) {
+export function PageHeader({ title, description, meta, actions, className }: PageHeaderProps) {
   return (
     <section
       className={cn(
-        'rounded-lg border border-white/10 bg-card/85 px-4 py-4 shadow-[0_0_0_1px_rgba(255,255,255,0.02),0_14px_40px_rgba(2,6,23,0.34)] backdrop-blur-sm',
+        'rounded-lg border border-border bg-card px-4 py-3',
         className,
       )}
     >
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-        <div className="space-y-2">
-          {eyebrow ? (
-            <p className="font-mono text-[11px] font-medium uppercase tracking-[0.22em] text-primary/80">
-              {eyebrow}
-            </p>
-          ) : null}
-          <div className="flex flex-wrap items-center gap-2.5">
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-[1.75rem]">
-              {title}
-            </h1>
-            {meta}
-          </div>
+      <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <h1 className="text-lg font-semibold tracking-tight text-foreground">
+            {title}
+          </h1>
+          {meta}
           {description ? (
-            <p className="max-w-3xl text-sm leading-6 text-muted-foreground">{description}</p>
+            <span className="text-sm text-muted-foreground">{description}</span>
           ) : null}
         </div>
         {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}

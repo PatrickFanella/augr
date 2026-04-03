@@ -39,7 +39,7 @@ const MESSAGE_PAGE_SIZE = 100;
 const RUN_PAGE_SIZE = 50;
 const NEW_CONVERSATION_VALUE = '__new__';
 const denseSelectClassName =
-  'flex h-9 w-full rounded-md border border-input bg-card/70 px-3 py-1 text-sm text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
+  'flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-sm text-foreground transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
 
 type FeedItem = AgentEvent & { live?: boolean };
 type ChatSelectionSource = 'event' | 'manual' | 'creating';
@@ -750,7 +750,7 @@ export function RealtimePage() {
 
       {selectedConversation ? (
         <div
-          className="rounded-md border border-white/8 bg-background/55 px-3 py-3 text-xs text-muted-foreground"
+          className="rounded-md border border-border bg-background px-3 py-3 text-xs text-muted-foreground"
           data-testid="conversation-summary"
         >
           <p className="font-medium text-foreground">
@@ -770,7 +770,7 @@ export function RealtimePage() {
 
       {chatSelectionSource === 'creating' ? (
         <form
-          className="space-y-3 rounded-md border border-white/8 bg-background/45 p-3"
+          className="space-y-3 rounded-md border border-border bg-background p-3"
           onSubmit={handleCreateConversation}
           data-testid="new-conversation-form"
         >
@@ -889,7 +889,7 @@ export function RealtimePage() {
       />
 
       <div className="grid gap-4 xl:h-[calc(100vh-15rem)] xl:grid-cols-[minmax(360px,0.92fr)_minmax(0,1.08fr)]">
-        <div className="flex min-h-115 min-w-0 flex-col rounded-lg border border-white/10 bg-card/90 p-4 shadow-[0_0_0_1px_rgba(255,255,255,0.02),0_16px_36px_rgba(2,6,23,0.32)] xl:min-h-0">
+        <div className="flex min-h-115 min-w-0 flex-col rounded-lg border border-border bg-card p-4 xl:min-h-0">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div className="space-y-1">
               <h3 className="text-lg font-semibold">Event feed</h3>
@@ -911,12 +911,12 @@ export function RealtimePage() {
                 {Array.from({ length: 4 }).map((_, index) => (
                   <div
                     key={index}
-                    className="h-24 animate-pulse rounded-lg border border-white/8 bg-muted/40"
+                    className="h-24 animate-pulse rounded-lg border border-border bg-muted/40"
                   />
                 ))}
               </div>
             ) : events.length === 0 ? (
-              <div className="flex h-full min-h-48 items-center justify-center rounded-lg border border-dashed border-white/10 bg-background/35">
+              <div className="flex h-full min-h-48 items-center justify-center rounded-lg border border-dashed border-border bg-background">
                 <p className="text-sm text-muted-foreground" data-testid="realtime-empty">
                   No events yet.
                 </p>
@@ -931,7 +931,7 @@ export function RealtimePage() {
                     key={event.id}
                     type="button"
                     className={cn(
-                      'flex w-full flex-col gap-3 rounded-lg border border-white/8 bg-background/45 p-3 text-left transition-colors hover:border-primary/15 hover:bg-accent/45',
+                      'flex w-full flex-col gap-3 rounded-lg border border-border bg-background p-3 text-left transition-colors hover:border-primary/15 hover:bg-accent/45',
                       isSelected &&
                         'border-primary/40 bg-accent/55 shadow-[0_0_0_1px_rgba(96,165,250,0.22)]',
                     )}
@@ -943,7 +943,7 @@ export function RealtimePage() {
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex min-w-0 items-center gap-2">
-                        <div className="flex size-8 shrink-0 items-center justify-center rounded-md border border-white/8 bg-card/85 text-muted-foreground">
+                        <div className="flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-card text-muted-foreground">
                           <Icon className="size-4" />
                         </div>
                         <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -982,13 +982,13 @@ export function RealtimePage() {
           </div>
         </div>
 
-        <div className="flex min-h-115 w-full flex-1 flex-col rounded-lg border border-white/10 bg-card/90 p-4 shadow-[0_0_0_1px_rgba(255,255,255,0.02),0_16px_36px_rgba(2,6,23,0.32)] xl:min-h-0">
+        <div className="flex min-h-115 w-full flex-1 flex-col rounded-lg border border-border bg-card p-4 xl:min-h-0">
           {selectedEvent ? (
             <div
               className="flex min-h-0 flex-1 flex-col space-y-4"
               data-testid="selected-event-panel"
             >
-              <div className="space-y-3 rounded-lg border border-white/8 bg-background/45 p-4">
+              <div className="space-y-3 rounded-lg border border-border bg-background p-4">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant={eventVariant(selectedEvent.event_kind)}>
                     {eventLabel(selectedEvent.event_kind)}
@@ -1006,7 +1006,7 @@ export function RealtimePage() {
                 </div>
 
                 {selectedEvent.summary ? (
-                  <div className="rounded-md border border-white/8 bg-background/55 p-3">
+                  <div className="rounded-md border border-border bg-background p-3">
                     <h4 className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
                       Summary
                     </h4>
@@ -1015,7 +1015,7 @@ export function RealtimePage() {
                 ) : null}
 
                 <dl className="grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-md border border-white/8 bg-background/55 p-3">
+                  <div className="rounded-md border border-border bg-background p-3">
                     <dt className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
                       Pipeline run
                     </dt>
@@ -1023,7 +1023,7 @@ export function RealtimePage() {
                       {selectedEvent.pipeline_run_id ?? '—'}
                     </dd>
                   </div>
-                  <div className="rounded-md border border-white/8 bg-background/55 p-3">
+                  <div className="rounded-md border border-border bg-background p-3">
                     <dt className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
                       Strategy
                     </dt>
@@ -1038,7 +1038,7 @@ export function RealtimePage() {
                     Event payload
                   </h4>
                   <pre
-                    className="max-h-56 overflow-x-auto rounded-md border border-white/8 bg-background/80 p-3 font-mono text-[12px] text-muted-foreground"
+                    className="max-h-56 overflow-x-auto rounded-md border border-border bg-background p-3 font-mono text-[12px] text-muted-foreground"
                     data-testid="selected-event-metadata"
                   >
                     {JSON.stringify(selectedEvent.metadata ?? selectedEvent, null, 2)}
@@ -1068,7 +1068,7 @@ export function RealtimePage() {
                     {resolvedChatError}
                   </p>
                 ) : null}
-                <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-white/8 bg-background/45">
+                <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-border bg-background">
                   <ChatPanel
                     header={chatHeader}
                     messages={visibleChatMessages}
@@ -1079,7 +1079,7 @@ export function RealtimePage() {
               </div>
             </div>
           ) : (
-            <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-white/10 bg-background/35">
+            <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-border bg-background">
               <p className="text-sm text-muted-foreground">
                 Select an event to start a conversation
               </p>

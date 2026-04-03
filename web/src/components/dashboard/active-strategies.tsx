@@ -46,7 +46,7 @@ export function ActiveStrategies() {
             {Array.from({ length: 3 }).map((_, i) => (
               <div
                 key={i}
-                className="flex items-center gap-3 rounded-lg border border-white/8 bg-background/45 p-3"
+                className="flex items-center gap-3 rounded-lg border border-border p-3"
               >
                 <div className="h-4 w-32 animate-pulse rounded bg-muted" />
                 <div className="ml-auto h-5 w-16 animate-pulse rounded-full bg-muted" />
@@ -70,10 +70,10 @@ export function ActiveStrategies() {
             {strategies.map((strategy) => (
               <li
                 key={strategy.id}
-                className="grid gap-3 rounded-lg border border-white/8 bg-background/45 p-3 transition-colors hover:border-primary/15 hover:bg-accent/45 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center"
+                className="grid gap-3 rounded-lg border border-border bg-background p-3 transition-colors hover:bg-accent/45 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center"
               >
                 <div className="flex min-w-0 gap-3">
-                  <div className="flex size-9 shrink-0 items-center justify-center rounded-md border border-primary/15 bg-primary/10 text-primary">
+                  <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
                     <Activity className="size-4" />
                   </div>
                   <div className="min-w-0 flex-1">

@@ -127,7 +127,7 @@ export function ActivityFeed() {
             {items.map((item) => (
               <li
                 key={item.id}
-                className="flex items-start gap-3 rounded-lg border border-white/8 bg-background/45 p-3 text-sm transition-colors hover:border-primary/15 hover:bg-accent/45"
+                className="flex items-start gap-3 rounded-lg border border-border p-3 text-sm transition-colors hover:bg-accent/45"
               >
                 <Badge variant={eventVariant(item.type)} className="mt-0.5 shrink-0">
                   {item.summary}

@@ -78,7 +78,7 @@ export function DecisionInspector({ decision, onClose }: DecisionInspectorProps)
               Prompt Summary
             </h4>
             <pre
-              className="overflow-x-auto whitespace-pre-wrap rounded-md border border-white/8 bg-background/60 p-3 font-mono text-[12px] leading-5 text-muted-foreground"
+              className="overflow-x-auto whitespace-pre-wrap rounded-md border border-border bg-background p-3 font-mono text-[12px] leading-5 text-muted-foreground"
               data-testid="inspector-prompt"
             >
               {decision.input_summary}
@@ -91,7 +91,7 @@ export function DecisionInspector({ decision, onClose }: DecisionInspectorProps)
             Response
           </h4>
           <pre
-            className="overflow-x-auto whitespace-pre-wrap rounded-md border border-white/8 bg-background/60 p-3 font-mono text-[12px] leading-5 text-foreground"
+            className="overflow-x-auto whitespace-pre-wrap rounded-md border border-border bg-background p-3 font-mono text-[12px] leading-5 text-foreground"
             data-testid="inspector-response"
           >
             {decision.output_text}

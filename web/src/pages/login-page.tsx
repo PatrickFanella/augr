@@ -45,35 +45,12 @@ export function LoginPage() {
   }
 
   return (
-    <div className="mx-auto grid min-h-screen max-w-6xl gap-6 px-4 py-8 lg:grid-cols-[minmax(0,1.1fr)_420px] lg:items-center">
-      <section className="hidden rounded-2xl border border-white/10 bg-card/80 p-8 shadow-[0_0_0_1px_rgba(255,255,255,0.02),0_24px_60px_rgba(2,6,23,0.35)] backdrop-blur-sm lg:block">
-        <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-primary/85">Get Rich Quick</p>
-        <h1 className="mt-4 max-w-xl text-4xl font-semibold tracking-tight text-foreground">
-          Dark-mode trading operations, without the wasted pixels.
-        </h1>
-        <p className="mt-4 max-w-2xl text-base leading-7 text-muted-foreground">
-          Monitor strategies, inspect pipeline runs, manage risk controls, and keep portfolio state in view from one dense operator console.
-        </p>
-        <div className="mt-8 grid gap-3 sm:grid-cols-2">
-          {[
-            ['Strategies', 'Create, schedule, pause, and run systems from one surface.'],
-            ['Pipeline runs', 'Inspect agent decisions, debate rounds, and final signals live.'],
-            ['Risk controls', 'Circuit breakers, kill switch controls, and utilization telemetry.'],
-            ['Portfolio state', 'Open positions, trades, and realized performance in one place.'],
-          ].map(([title, copy]) => (
-            <div key={title} className="rounded-lg border border-white/8 bg-background/70 p-4">
-              <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-primary/75">{title}</p>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">{copy}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
+    <div className="mx-auto grid min-h-screen max-w-md items-center px-4 py-8">
       <Card className="w-full">
         <CardHeader>
           <CardTitle>Sign in</CardTitle>
           <CardDescription>
-            Authenticate to access the trading command center.
+            Authenticate to access the trading console.
           </CardDescription>
         </CardHeader>
         <CardContent>

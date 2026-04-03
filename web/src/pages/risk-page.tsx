@@ -305,7 +305,7 @@ export function RiskPage() {
               <div className="max-h-96 overflow-y-auto">
                 <table className="w-full text-sm" data-testid="audit-log-table">
                   <thead>
-                    <tr className="border-b border-white/8 text-left font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+                    <tr className="border-b border-border text-left font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
                       <th className="pb-2 font-medium">Event</th>
                       <th className="pb-2 font-medium">Entity</th>
                       <th className="pb-2 font-medium">Details</th>
@@ -314,7 +314,7 @@ export function RiskPage() {
                   </thead>
                   <tbody>
                     {auditEntries.map((entry: AuditLogEntry) => (
-                      <tr key={entry.id} className="border-b border-white/6 last:border-0">
+                      <tr key={entry.id} className="border-b border-border last:border-0">
                         <td className="py-2">
                           <Badge variant="outline">{entry.event_type}</Badge>
                         </td>
