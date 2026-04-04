@@ -243,7 +243,7 @@ func (r *realStrategyRunner) loadInitialState(ctx context.Context, strategy doma
 	seed := agent.InitialStateSeed{
 		Market: &agent.MarketData{
 			Bars:       bars,
-			Indicators: indicatorSnapshotFromBars(bars),
+			Indicators: data.IndicatorSnapshotFromBars(bars),
 		},
 	}
 
@@ -637,54 +637,6 @@ func hasBrokerCredentials(cfg config.BrokerConfig) bool {
 }
 
 
-func indicatorSnapshotFromBars(bars []domain.OHLCV) []domain.Indicator {
-	if len(bars) == 0 {
-		return nil
-	}
-
-	timestamp := bars[len(bars)-1].Timestamp
-	indicators := make([]domain.Indicator, 0, 18)
-	appendLatestIndicator(&indicators, "sma_20", data.SMA(bars, 20), timestamp)
-	appendLatestIndicator(&indicators, "sma_50", data.SMA(bars, 50), timestamp)
-	appendLatestIndicator(&indicators, "sma_200", data.SMA(bars, 200), timestamp)
-	appendLatestIndicator(&indicators, "ema_12", data.EMA(bars, 12), timestamp)
-	appendLatestIndicator(&indicators, "rsi_14", data.RSI(bars, 14), timestamp)
-	appendLatestIndicator(&indicators, "mfi_14", data.MFI(bars, 14), timestamp)
-	appendLatestIndicator(&indicators, "williams_r_14", data.WilliamsR(bars, 14), timestamp)
-	appendLatestIndicator(&indicators, "cci_20", data.CCI(bars, 20), timestamp)
-	appendLatestIndicator(&indicators, "roc_12", data.ROC(bars, 12), timestamp)
-	appendLatestIndicator(&indicators, "atr_14", data.ATR(bars, 14), timestamp)
-	appendLatestIndicator(&indicators, "vwma_20", data.VWMA(bars, 20), timestamp)
-	appendLatestIndicator(&indicators, "obv", data.OBV(bars), timestamp)
-	appendLatestIndicator(&indicators, "adl", data.ADL(bars), timestamp)
-
-	macdLine, macdSignal, macdHistogram := data.MACD(bars, 12, 26, 9)
-	appendLatestIndicator(&indicators, "macd_line", macdLine, timestamp)
-	appendLatestIndicator(&indicators, "macd_signal", macdSignal, timestamp)
-	appendLatestIndicator(&indicators, "macd_histogram", macdHistogram, timestamp)
-
-	stochasticK, stochasticD := data.Stochastic(bars, 14, 3, 3)
-	appendLatestIndicator(&indicators, "stochastic_k", stochasticK, timestamp)
-	appendLatestIndicator(&indicators, "stochastic_d", stochasticD, timestamp)
-
-	bollingerUpper, bollingerMiddle, bollingerLower := data.BollingerBands(bars, 20, 2)
-	appendLatestIndicator(&indicators, "bollinger_upper", bollingerUpper, timestamp)
-	appendLatestIndicator(&indicators, "bollinger_middle", bollingerMiddle, timestamp)
-	appendLatestIndicator(&indicators, "bollinger_lower", bollingerLower, timestamp)
-
-	return indicators
-}
-
-func appendLatestIndicator(indicators *[]domain.Indicator, name string, series []float64, timestamp time.Time) {
-	if len(series) == 0 {
-		return
-	}
-	*indicators = append(*indicators, domain.Indicator{
-		Name:      name,
-		Value:     series[len(series)-1],
-		Timestamp: timestamp,
-	})
-}
 
 func latestSocialSnapshot(snapshots []data.SocialSentiment) *data.SocialSentiment {
 	if len(snapshots) == 0 {

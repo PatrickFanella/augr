@@ -21,6 +21,7 @@ type PipelineConfig struct {
 	PhaseTimeout         time.Duration
 	ResearchDebateRounds int
 	RiskDebateRounds     int
+	SkipPhases           map[Phase]bool
 }
 
 // Pipeline holds all dependencies and configuration needed by the executor.
@@ -516,18 +517,22 @@ func (p *Pipeline) Execute(ctx context.Context, strategyID uuid.UUID, ticker str
 
 	// Execute phases in order.
 	phases := []struct {
-		name string
-		fn   func(context.Context, *PipelineState) error
+		name  string
+		phase Phase
+		fn    func(context.Context, *PipelineState) error
 	}{
-		{"analysis", p.executeAnalysisPhase},
-		{"research_debate", p.executeResearchDebatePhase},
-		{"trading", p.executeTradingPhase},
-		{"risk_debate", p.executeRiskDebatePhase},
+		{"analysis", PhaseAnalysis, p.executeAnalysisPhase},
+		{"research_debate", PhaseResearchDebate, p.executeResearchDebatePhase},
+		{"trading", PhaseTrading, p.executeTradingPhase},
+		{"risk_debate", PhaseRiskDebate, p.executeRiskDebatePhase},
 	}
 
 	phaseTimingsMap := make(map[string]int64)
 
 	for _, phase := range phases {
+		if p.config.SkipPhases[phase.phase] {
+			continue
+		}
 		p.helper.persistStructuredEvent(ctx, p.helper.newStructuredEvent(
 			run.ID,
 			strategyID,

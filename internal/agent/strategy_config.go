@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -117,6 +118,10 @@ type StrategyConfig struct {
 	// PromptOverrides replaces the default system prompt for specific roles.
 	// A nil map means no overrides are applied.
 	PromptOverrides map[AgentRole]string `json:"prompt_overrides,omitempty"`
+	// RulesEngine, when non-nil, enables deterministic rules-based trading
+	// instead of LLM-driven pipeline execution. Used primarily for backtesting.
+	// Validated externally by the rules package to avoid an import cycle.
+	RulesEngine json.RawMessage `json:"rules_engine,omitempty"`
 }
 
 // ValidateStrategyConfig checks that all fields within cfg contain valid values.
