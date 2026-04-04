@@ -12,11 +12,13 @@ import (
 // RulesTraderNode is a trading-phase Node that evaluates deterministic rules
 // instead of calling an LLM. It reads indicators from state.Market.Indicators,
 // evaluates entry/exit conditions, and writes the result to state.TradingPlan.
+// It tracks whether a position is open to avoid re-entering immediately after exit.
 type RulesTraderNode struct {
-	config   RulesEngineConfig
-	prevSnap *Snapshot
-	equity   float64
-	logger   *slog.Logger
+	config     RulesEngineConfig
+	prevSnap   *Snapshot
+	equity     float64
+	inPosition bool
+	logger     *slog.Logger
 }
 
 // NewRulesTraderNode creates a rules-based trader node.
@@ -57,12 +59,15 @@ func (n *RulesTraderNode) Execute(_ context.Context, state *agent.PipelineState)
 		return nil
 	}
 
-	// Evaluate entry and exit conditions.
+	// Evaluate entry and exit conditions with position awareness.
+	// Only enter when flat, only exit when holding.
 	signal := domain.PipelineSignalHold
-	if EvaluateGroup(n.config.Entry, snap, n.prevSnap) {
+	if !n.inPosition && EvaluateGroup(n.config.Entry, snap, n.prevSnap) {
 		signal = domain.PipelineSignalBuy
-	} else if EvaluateGroup(n.config.Exit, snap, n.prevSnap) {
+		n.inPosition = true
+	} else if n.inPosition && EvaluateGroup(n.config.Exit, snap, n.prevSnap) {
 		signal = domain.PipelineSignalSell
+		n.inPosition = false
 	}
 
 	plan := BuildTradingPlan(&n.config, snap, signal, state.Ticker, n.equity)

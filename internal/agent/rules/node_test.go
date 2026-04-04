@@ -104,6 +104,7 @@ func TestRulesTraderNode_SellSignal(t *testing.T) {
 	}
 
 	node := NewRulesTraderNode(config, 100000, nil)
+	node.inPosition = true // simulate already holding a position
 	state := &agent.PipelineState{
 		Ticker: "AAPL",
 		Market: &agent.MarketData{
