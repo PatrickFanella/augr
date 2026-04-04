@@ -43,6 +43,7 @@ import type {
   BacktestConfigListParams,
   BacktestRun,
   BacktestRunListParams,
+  OptionSnapshot,
 } from '@/lib/api/types'
 
 interface ApiClientConfig {
@@ -432,6 +433,13 @@ export class ApiClient {
 
   async getBacktestRun(id: UUID) {
     return this.request<BacktestRun>(`/api/v1/backtests/runs/${id}`)
+  }
+
+  // Options
+  async getOptionsChain(underlying: string, params: { expiry?: string; type?: string } = {}) {
+    return this.request<OptionSnapshot[]>(`/api/v1/options/chain/${underlying}`, {
+      query: toQueryParams(params),
+    })
   }
 }
 

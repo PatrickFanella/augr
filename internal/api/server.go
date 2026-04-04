@@ -53,6 +53,9 @@ type Server struct {
 
 	auth *AuthManager
 
+	// Options data
+	optionsProvider data.OptionsDataProvider
+
 	// WebSocket hub for real-time event streaming.
 	hub            *Hub
 	wsUpgrader     websocket.Upgrader
@@ -128,9 +131,10 @@ type Deps struct {
 	Events          repository.AgentEventRepository
 	Snapshots       repository.PipelineRunSnapshotRepository
 	LLMProvider     llm.Provider
-	BacktestConfigs repository.BacktestConfigRepository
-	BacktestRuns    repository.BacktestRunRepository
-	DataService     *data.DataService
+	BacktestConfigs  repository.BacktestConfigRepository
+	BacktestRuns     repository.BacktestRunRepository
+	DataService      *data.DataService
+	OptionsProvider  data.OptionsDataProvider
 	Risk            risk.RiskEngine
 	Settings       SettingsService
 	Runner         StrategyRunner
@@ -220,8 +224,9 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 		events:         deps.Events,
 		backtestConfigs: deps.BacktestConfigs,
 		backtestRuns:    deps.BacktestRuns,
-		dataService:     deps.DataService,
-		risk:            deps.Risk,
+		dataService:      deps.DataService,
+		optionsProvider:  deps.OptionsProvider,
+		risk:             deps.Risk,
 		settings:        settingsService,
 		runner:          deps.Runner,
 		auth:           authManager,
@@ -336,6 +341,12 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 
 		// Audit log
 		v1.Get("/audit-log", s.handleListAuditLog)
+
+		// Options
+		v1.Route("/options", func(or chi.Router) {
+			or.Get("/chain/{underlying}", s.handleGetOptionsChain)
+			or.Get("/contracts/{symbol}/bars", s.handleGetOptionsContractBars)
+		})
 
 		// Backtests
 		v1.Route("/backtests", func(bt chi.Router) {

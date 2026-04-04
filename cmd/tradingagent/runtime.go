@@ -128,6 +128,9 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 		binance.Register(reg)
 		dataService := data.NewDataService(cfg, reg, marketDataCacheRepo, logger)
 		deps.DataService = dataService
+		if strings.TrimSpace(cfg.DataProviders.Polygon.APIKey) != "" {
+			deps.OptionsProvider = polygon.NewOptionsProvider(polygon.NewClient(cfg.DataProviders.Polygon.APIKey, logger))
+		}
 		strategyRunner := newRealStrategyRunner(
 			cfg,
 			dataService,

@@ -539,3 +539,35 @@ export interface BacktestConfigListParams {
 export interface BacktestRunListParams {
   backtest_config_id?: UUID
 }
+
+// ---------- Options ----------
+
+export interface OptionContract {
+  occ_symbol: string
+  underlying: string
+  option_type: 'call' | 'put'
+  strike: number
+  expiry: ISODateString
+  multiplier: number
+  style?: string
+}
+
+export interface OptionGreeks {
+  delta: number
+  gamma: number
+  theta: number
+  vega: number
+  rho?: number
+  iv: number
+}
+
+export interface OptionSnapshot {
+  contract: OptionContract
+  greeks: OptionGreeks
+  bid: number
+  ask: number
+  mid: number
+  last: number
+  volume: number
+  open_interest: number
+}

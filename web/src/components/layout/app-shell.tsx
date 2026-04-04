@@ -7,6 +7,7 @@ import {
   RadioTower,
   Settings2,
   ShieldAlert,
+  TrendingUp,
 } from 'lucide-react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 
@@ -17,6 +18,7 @@ const navigationItems = [
   { to: '/strategies', label: 'Strategies', icon: BriefcaseBusiness },
   { to: '/runs', label: 'Runs', icon: Activity },
   { to: '/portfolio', label: 'Portfolio', icon: BriefcaseBusiness },
+  { to: '/options', label: 'Options', icon: TrendingUp },
   { to: '/backtests', label: 'Backtests', icon: FlaskConical },
   { to: '/memories', label: 'Memories', icon: Brain },
   { to: '/settings', label: 'Settings', icon: Settings2 },
