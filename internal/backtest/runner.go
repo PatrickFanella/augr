@@ -40,6 +40,11 @@ type RunResult struct {
 	EquityCurveReport EquityCurveReport
 }
 
+// SignalReviewFunc is called when the rules engine triggers a buy/sell signal.
+// It receives the trading plan, indicators, and current bar. It returns true
+// to confirm the trade (possibly with modifications to the plan) or false to veto.
+type SignalReviewFunc func(ctx context.Context, plan *agent.TradingPlan, indicators []domain.Indicator, bar domain.OHLCV) bool
+
 // Runner orchestrates the backtest loop: it iterates over historical bars,
 // advances the simulated clock, feeds each bar to the BrokerAdapter, executes
 // the full analysis pipeline, and records equity snapshots.
@@ -49,6 +54,7 @@ type Runner struct {
 	broker   *BrokerAdapter
 	tracker  *PositionTracker
 	replay   *ReplayIterator
+	reviewer SignalReviewFunc
 	logger   *slog.Logger
 }
 
@@ -145,6 +151,12 @@ func (r *Runner) Run(ctx context.Context) (*RunResult, error) {
 		// Execute the full analysis pipeline for this bar.
 		state, pipeErr := r.pipeline.Execute(ctx, r.config.StrategyID, r.config.Ticker)
 
+		// If the pipeline produced a buy/sell signal, submit an order to the
+		// backtest broker so it is reflected in the equity curve.
+		if pipeErr == nil && state != nil {
+			r.submitOrderFromPlan(ctx, state, bar)
+		}
+
 		// Update position tracker marks to the latest bar close before
 		// recording an equity snapshot so unrealized P&L is accurate.
 		if err := r.tracker.UpdateMarketPrice(r.config.Ticker, bar.Close); err != nil {
@@ -165,4 +177,81 @@ func (r *Runner) Run(ctx context.Context) (*RunResult, error) {
 	result.EquityCurve = r.tracker.EquityCurve()
 	result.EquityCurveReport = GenerateEquityCurveReport(result.EquityCurve)
 	return result, nil
+}
+
+// SetReviewer attaches an optional LLM review function that is called when the
+// rules engine triggers a buy/sell signal. If the reviewer vetoes, the order is
+// skipped. If nil, all signals are executed without review.
+func (r *Runner) SetReviewer(fn SignalReviewFunc) { r.reviewer = fn }
+
+func (r *Runner) submitOrderFromPlan(ctx context.Context, state *agent.PipelineState, bar domain.OHLCV) {
+	plan := state.TradingPlan
+	if plan.Action != domain.PipelineSignalBuy && plan.Action != domain.PipelineSignalSell {
+		return
+	}
+	if plan.PositionSize <= 0 {
+		return
+	}
+
+	// If a reviewer is attached, let it confirm/modify/veto.
+	if r.reviewer != nil {
+		var indicators []domain.Indicator
+		if state.Market != nil {
+			indicators = state.Market.Indicators
+		}
+		if !r.reviewer(ctx, &plan, indicators, bar) {
+			r.logger.Info("backtest: signal vetoed by reviewer",
+				slog.String("ticker", r.config.Ticker),
+				slog.String("signal", plan.Action.String()),
+				slog.Time("bar", bar.Timestamp),
+			)
+			return
+		}
+	}
+
+	side := domain.OrderSideBuy
+	if plan.Action == domain.PipelineSignalSell {
+		side = domain.OrderSideSell
+	}
+
+	order := &domain.Order{
+		ID:        uuid.New(),
+		Ticker:    r.config.Ticker,
+		Side:      side,
+		OrderType: domain.OrderTypeMarket,
+		Quantity:  plan.PositionSize,
+	}
+	if plan.EntryPrice > 0 {
+		order.LimitPrice = &plan.EntryPrice
+	}
+	if plan.StopLoss > 0 {
+		order.StopPrice = &plan.StopLoss
+	}
+
+	externalID, err := r.broker.SubmitOrder(ctx, order)
+	if err != nil {
+		r.logger.Warn("backtest: order submission failed",
+			slog.String("ticker", r.config.Ticker),
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	if order.Status == domain.OrderStatusFilled && order.FilledAvgPrice != nil {
+		trade := domain.Trade{
+			ID:         uuid.New(),
+			Ticker:     r.config.Ticker,
+			Side:       side,
+			Quantity:   order.FilledQuantity,
+			Price:      *order.FilledAvgPrice,
+			ExecutedAt: bar.Timestamp,
+			CreatedAt:  bar.Timestamp,
+		}
+		if err := r.tracker.ApplyTrade(trade); err != nil {
+			r.logger.Warn("backtest: failed to apply trade to tracker",
+				slog.String("external_id", externalID),
+				slog.Any("error", err),
+			)
+		}
+	}
 }

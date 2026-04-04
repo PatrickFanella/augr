@@ -206,8 +206,8 @@ func (s *Server) handleRunBacktestConfig(w http.ResponseWriter, r *http.Request)
 	// 6. Build pipeline — indicator node gets ALL bars (including warmup) for SMA-200 etc.
 	pipeline := rules.NewRulesPipeline(*rulesConfig, allBars, config.StartDate, config.Simulation.InitialCapital, agent.NoopPersister{}, nil, s.logger)
 
-	// 7. Build orchestrator with default fill config
-	orch, err := backtest.NewOrchestrator(backtest.OrchestratorConfig{
+	// 7. Build orchestrator with default fill config + optional LLM reviewer
+	orchConfig := backtest.OrchestratorConfig{
 		StrategyID:  strategy.ID,
 		Ticker:      strategy.Ticker,
 		StartDate:   config.StartDate,
@@ -216,7 +216,12 @@ func (s *Server) handleRunBacktestConfig(w http.ResponseWriter, r *http.Request)
 		FillConfig: backtest.FillConfig{
 			Slippage: backtest.ProportionalSlippage{BasisPoints: 5},
 		},
-	}, allBars, pipeline, s.logger)
+	}
+	if s.llmProvider != nil {
+		reviewer := rules.NewSignalReviewer(s.llmProvider, "", s.logger)
+		orchConfig.ReviewFunc = reviewer.Review
+	}
+	orch, err := backtest.NewOrchestrator(orchConfig, allBars, pipeline, s.logger)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to create backtest orchestrator: "+err.Error(), ErrCodeInternal)
 		return

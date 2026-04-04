@@ -31,6 +31,10 @@ type OrchestratorConfig struct {
 	FillConfig        FillConfig
 	PromptVersion     string
 	PromptVersionHash string
+
+	// ReviewFunc, when set, is called on each buy/sell signal before order
+	// submission. It can confirm, modify, or veto the trade.
+	ReviewFunc SignalReviewFunc
 }
 
 // OrchestratorResult aggregates every output produced by a backtest run:
@@ -138,6 +142,9 @@ func (o *Orchestrator) Run(ctx context.Context) (*OrchestratorResult, error) {
 	)
 	if err != nil {
 		return nil, fmt.Errorf("backtest: creating runner: %w", err)
+	}
+	if o.config.ReviewFunc != nil {
+		runner.SetReviewer(o.config.ReviewFunc)
 	}
 
 	o.logger.Info("backtest: starting orchestrated run",
