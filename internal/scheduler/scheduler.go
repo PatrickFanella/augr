@@ -131,8 +131,8 @@ func (s *Scheduler) Start() error {
 	if s.strategyRepo == nil {
 		return fmt.Errorf("scheduler: strategy repository is required")
 	}
-	if s.pipeline == nil {
-		return fmt.Errorf("scheduler: pipeline is required")
+	if s.pipeline == nil && s.strategyExecution == nil {
+		return fmt.Errorf("scheduler: pipeline or strategy execution function is required")
 	}
 	if s.riskEngine == nil {
 		return fmt.Errorf("scheduler: risk engine is required")

@@ -389,6 +389,12 @@ func resolveReferencePrice(order *domain.Order) (float64, bool) {
 	if order.FilledAvgPrice != nil && *order.FilledAvgPrice > 0 {
 		return *order.FilledAvgPrice, true
 	}
+	// For market orders, LimitPrice carries the intended entry price set by the
+	// order manager. For limit orders it represents the limit itself and must
+	// NOT be used as the market reference (that would be a self-comparison).
+	if order.OrderType == domain.OrderTypeMarket && order.LimitPrice != nil && *order.LimitPrice > 0 {
+		return *order.LimitPrice, true
+	}
 	if order.StopPrice != nil && *order.StopPrice > 0 {
 		return *order.StopPrice, true
 	}

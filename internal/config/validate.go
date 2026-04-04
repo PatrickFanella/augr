@@ -110,9 +110,10 @@ func Validate(cfg Config) error {
 }
 
 func hasDataProvider(providers DataProviderConfigs) bool {
+	// NOTE: Finnhub is parsed into config but not wired into the runtime
+	// provider registry. Do not count it here until an implementation exists.
 	return strings.TrimSpace(providers.Polygon.APIKey) != "" ||
-		strings.TrimSpace(providers.AlphaVantage.APIKey) != "" ||
-		strings.TrimSpace(providers.Finnhub.APIKey) != ""
+		strings.TrimSpace(providers.AlphaVantage.APIKey) != ""
 }
 
 func hasLLMProvider(providers LLMProviderConfigs) bool {

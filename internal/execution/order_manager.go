@@ -242,7 +242,7 @@ func (m *OrderManager) ProcessSignal(
 		CreatedAt:     now,
 	}
 
-	if orderType == domain.OrderTypeLimit && plan.EntryPrice > 0 {
+	if plan.EntryPrice > 0 {
 		order.LimitPrice = &plan.EntryPrice
 	}
 

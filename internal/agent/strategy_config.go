@@ -156,9 +156,12 @@ func validateLLMConfig(c *StrategyLLMConfig) error {
 			return fmt.Errorf("llm_config.provider: unknown provider %q (valid: openai, anthropic, google, openrouter, xai, ollama)", provider)
 		}
 	}
+	// Providers not in providerModelAllowlist (ollama, openrouter, xai) are
+	// unconstrained — skip the global model check for them.
+	constrained := provider == "" || providerModelAllowlist[provider] != nil
 	if c.DeepThinkModel != nil {
 		model := strings.TrimSpace(*c.DeepThinkModel)
-		if !isKnownLLMModel(model) {
+		if constrained && !isKnownLLMModel(model) {
 			return fmt.Errorf("llm_config.deep_think_model: unknown model %q", model)
 		}
 		if provider != "" && !isModelValidForProvider(provider, model) {
@@ -167,7 +170,7 @@ func validateLLMConfig(c *StrategyLLMConfig) error {
 	}
 	if c.QuickThinkModel != nil {
 		model := strings.TrimSpace(*c.QuickThinkModel)
-		if !isKnownLLMModel(model) {
+		if constrained && !isKnownLLMModel(model) {
 			return fmt.Errorf("llm_config.quick_think_model: unknown model %q", model)
 		}
 		if provider != "" && !isModelValidForProvider(provider, model) {

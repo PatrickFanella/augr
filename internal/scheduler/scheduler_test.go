@@ -786,6 +786,46 @@ func TestRunStrategy_UsesStrategyExecutorWhenConfigured(t *testing.T) {
 	}
 }
 
+func TestSchedulerStartAllowsNilPipelineWithStrategyExecution(t *testing.T) {
+	strategyID := uuid.New()
+	repo := &mockStrategyRepo{
+		strategies: []domain.Strategy{
+			{
+				ID:           strategyID,
+				Ticker:       "BTCUSD",
+				MarketType:   domain.MarketTypeCrypto,
+				ScheduleCron: testScheduleSpec,
+				Status:       domain.StrategyStatusActive,
+			},
+		},
+	}
+	fakeCron := &fakeCronEngine{}
+	executor := &mockStrategyExecutor{}
+	s := NewScheduler(
+		repo,
+		nil, // pipeline is nil — production path
+		&mockRiskEngine{},
+		testLogger(),
+		WithStrategyExecution(executor.execute),
+	)
+	s.newCron = func() cronEngine { return fakeCron }
+
+	if err := s.Start(); err != nil {
+		t.Fatalf("Start() error = %v, want nil when strategyExecution is set", err)
+	}
+	defer s.Stop()
+
+	if got := fakeCron.jobCount(); got != 1 {
+		t.Fatalf("registered jobs = %d, want 1", got)
+	}
+
+	fakeCron.Run(0)
+
+	if got := executor.callCount(); got != 1 {
+		t.Fatalf("executor calls = %d, want 1", got)
+	}
+}
+
 func TestRunStrategy_SkipNextRunResetsAndSkips(t *testing.T) {
 	strategyID := uuid.New()
 	repo := &mockStrategyRepo{

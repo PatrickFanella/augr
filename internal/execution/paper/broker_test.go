@@ -375,6 +375,32 @@ func TestPaperBrokerGetAccountBalance_ReturnsSnapshot(t *testing.T) {
 	assertFloatClose(t, refetched.Cash, 850, 1e-9)
 }
 
+func TestPaperBrokerSubmitOrder_MarketOrderPrefersLimitPriceOverStopPrice(t *testing.T) {
+	t.Parallel()
+
+	broker := NewPaperBroker(100000, 0, 0)
+	entryPrice := 150.0
+	stopPrice := 145.0
+	order := &domain.Order{
+		Ticker:     "AAPL",
+		Side:       domain.OrderSideBuy,
+		OrderType:  domain.OrderTypeMarket,
+		Quantity:   1,
+		LimitPrice: &entryPrice,
+		StopPrice:  &stopPrice,
+	}
+
+	_, err := broker.SubmitOrder(context.Background(), order)
+	if err != nil {
+		t.Fatalf("SubmitOrder() error = %v", err)
+	}
+	if order.FilledAvgPrice == nil {
+		t.Fatal("FilledAvgPrice = nil, want non-nil")
+	}
+	// Should fill at entry price (150), not stop price (145).
+	assertFloatClose(t, *order.FilledAvgPrice, 150, 1e-9)
+}
+
 func assertFloatClose(t *testing.T, got, want, epsilon float64) {
 	t.Helper()
 	if math.Abs(got-want) > epsilon {
