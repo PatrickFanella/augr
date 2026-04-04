@@ -128,7 +128,7 @@ func TestIndicatorAnalystNode_AdvancesCursor(t *testing.T) {
 		{Timestamp: time.Date(2025, 1, 3, 0, 0, 0, 0, time.UTC), Close: 105, Open: 102, High: 106, Low: 101, Volume: 15000},
 	}
 
-	node := NewIndicatorAnalystNode(bars, nil)
+	node := NewIndicatorAnalystNode(bars, time.Time{}, nil)
 
 	// Bar 1
 	state := &agent.PipelineState{Ticker: "TEST"}

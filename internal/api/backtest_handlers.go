@@ -177,17 +177,18 @@ func (s *Server) handleRunBacktestConfig(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// 5. Load historical OHLCV bars
+	// 5. Load historical OHLCV bars — include 400 days before start for indicator warmup
 	if s.dataService == nil {
 		respondError(w, http.StatusInternalServerError, "data service not configured", ErrCodeInternal)
 		return
 	}
+	warmupStart := config.StartDate.AddDate(-1, -2, 0) // ~400 calendar days for SMA-200 warmup
 	barsMap, err := s.dataService.DownloadHistoricalOHLCV(
 		ctx,
 		strategy.MarketType,
 		[]string{strategy.Ticker},
 		data.Timeframe1d,
-		config.StartDate,
+		warmupStart,
 		config.EndDate,
 		true,
 	)
@@ -196,14 +197,14 @@ func (s *Server) handleRunBacktestConfig(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	bars := barsMap[strategy.Ticker]
-	if len(bars) == 0 {
+	allBars := barsMap[strategy.Ticker]
+	if len(allBars) == 0 {
 		respondError(w, http.StatusBadRequest, "no historical bars available for ticker "+strategy.Ticker, ErrCodeBadRequest)
 		return
 	}
 
-	// 6. Build pipeline
-	pipeline := rules.NewRulesPipeline(*rulesConfig, bars, config.Simulation.InitialCapital, agent.NoopPersister{}, nil, s.logger)
+	// 6. Build pipeline — indicator node gets ALL bars (including warmup) for SMA-200 etc.
+	pipeline := rules.NewRulesPipeline(*rulesConfig, allBars, config.StartDate, config.Simulation.InitialCapital, agent.NoopPersister{}, nil, s.logger)
 
 	// 7. Build orchestrator with default fill config
 	orch, err := backtest.NewOrchestrator(backtest.OrchestratorConfig{
@@ -215,7 +216,7 @@ func (s *Server) handleRunBacktestConfig(w http.ResponseWriter, r *http.Request)
 		FillConfig: backtest.FillConfig{
 			Slippage: backtest.ProportionalSlippage{BasisPoints: 5},
 		},
-	}, bars, pipeline, s.logger)
+	}, allBars, pipeline, s.logger)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to create backtest orchestrator: "+err.Error(), ErrCodeInternal)
 		return

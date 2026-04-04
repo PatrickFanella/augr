@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/agent"
 	"github.com/PatrickFanella/get-rich-quick/internal/data"
@@ -14,19 +15,32 @@ import (
 // IndicatorAnalystNode computes technical indicators from OHLCV bars without
 // calling an LLM. It is stateful: it holds the full bar slice and advances a
 // cursor on each Execute call (one call per bar in the backtest loop).
+// When startDate is provided, the cursor starts at the first bar on or after
+// that date, so earlier bars serve as indicator warmup (e.g., SMA-200 needs
+// 200 bars of history before the first signal can fire).
 type IndicatorAnalystNode struct {
 	bars   []domain.OHLCV
 	cursor int
 	logger *slog.Logger
 }
 
-// NewIndicatorAnalystNode creates an indicator node that will compute indicators
-// from the provided bars, advancing one bar per Execute call.
-func NewIndicatorAnalystNode(bars []domain.OHLCV, logger *slog.Logger) *IndicatorAnalystNode {
+// NewIndicatorAnalystNode creates an indicator node. If startDate is non-zero,
+// the cursor is positioned at the first bar on or after startDate so that
+// preceding bars provide indicator warmup history.
+func NewIndicatorAnalystNode(bars []domain.OHLCV, startDate time.Time, logger *slog.Logger) *IndicatorAnalystNode {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &IndicatorAnalystNode{bars: bars, logger: logger}
+	cursor := 0
+	if !startDate.IsZero() {
+		for i, bar := range bars {
+			if !bar.Timestamp.Before(startDate) {
+				cursor = i
+				break
+			}
+		}
+	}
+	return &IndicatorAnalystNode{bars: bars, cursor: cursor, logger: logger}
 }
 
 func (n *IndicatorAnalystNode) Name() string          { return "indicator_analyst" }
