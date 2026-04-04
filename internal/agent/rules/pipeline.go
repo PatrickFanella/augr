@@ -29,7 +29,8 @@ func NewRulesPipeline(
 		},
 	}, persister, events, logger)
 
+	journal := NewTradeJournal()
 	pipeline.RegisterNode(NewIndicatorAnalystNode(bars, startDate, logger))
-	pipeline.RegisterNode(NewRulesTraderNode(config, equity, logger))
+	pipeline.RegisterNode(NewRulesTraderNode(config, equity, journal, logger))
 	return pipeline
 }

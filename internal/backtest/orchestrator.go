@@ -11,6 +11,7 @@ import (
 
 	"github.com/PatrickFanella/get-rich-quick/internal/agent"
 	"github.com/PatrickFanella/get-rich-quick/internal/agent/analysts"
+	"github.com/PatrickFanella/get-rich-quick/internal/agent/rules"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 )
 
@@ -32,9 +33,10 @@ type OrchestratorConfig struct {
 	PromptVersion     string
 	PromptVersionHash string
 
-	// ReviewFunc, when set, is called on each buy/sell signal before order
-	// submission. It can confirm, modify, or veto the trade.
-	ReviewFunc SignalReviewFunc
+	// EntryReviewFunc, when set, is called on buy signals before order submission.
+	EntryReviewFunc EntryReviewFunc
+	// ExitReviewFunc, when set, is called on sell signals for held positions.
+	ExitReviewFunc ExitReviewFunc
 }
 
 // OrchestratorResult aggregates every output produced by a backtest run:
@@ -48,6 +50,7 @@ type OrchestratorResult struct {
 	EquityCurveReport EquityCurveReport
 	Metrics           Metrics
 	TradeAnalytics    TradeAnalytics
+	Journal           *rules.TradeJournal
 	PromptVersion     string
 	PromptVersionHash string
 }
@@ -143,8 +146,11 @@ func (o *Orchestrator) Run(ctx context.Context) (*OrchestratorResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("backtest: creating runner: %w", err)
 	}
-	if o.config.ReviewFunc != nil {
-		runner.SetReviewer(o.config.ReviewFunc)
+	if o.config.EntryReviewFunc != nil {
+		runner.SetEntryReview(o.config.EntryReviewFunc)
+	}
+	if o.config.ExitReviewFunc != nil {
+		runner.SetExitReview(o.config.ExitReviewFunc)
 	}
 
 	o.logger.Info("backtest: starting orchestrated run",
@@ -185,6 +191,7 @@ func (o *Orchestrator) Run(ctx context.Context) (*OrchestratorResult, error) {
 		EquityCurveReport: runResult.EquityCurveReport,
 		Metrics:           metrics,
 		TradeAnalytics:    tradeAnalytics,
+		Journal:           runner.Journal(),
 		PromptVersion:     o.config.PromptVersion,
 		PromptVersionHash: o.config.PromptVersionHash,
 	}, nil

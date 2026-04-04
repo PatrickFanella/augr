@@ -50,7 +50,7 @@ func TestSignalReviewer_Confirm(t *testing.T) {
 	}
 	bar := domain.OHLCV{Close: 150, Open: 148, High: 152, Low: 147, Volume: 100000}
 
-	ok := reviewer.Review(context.Background(), plan, testState(), bar, 50000)
+	ok, _ := reviewer.Review(context.Background(), plan, testState(), bar, 50000)
 	if !ok {
 		t.Fatal("expected confirm to return true")
 	}
@@ -71,7 +71,7 @@ func TestSignalReviewer_Veto(t *testing.T) {
 	}
 	bar := domain.OHLCV{Close: 150}
 
-	ok := reviewer.Review(context.Background(), plan, testState(), bar, 50000)
+	ok, _ := reviewer.Review(context.Background(), plan, testState(), bar, 50000)
 	if ok {
 		t.Fatal("expected veto to return false")
 	}
@@ -89,7 +89,7 @@ func TestSignalReviewer_Modify(t *testing.T) {
 	}
 	bar := domain.OHLCV{Close: 150}
 
-	ok := reviewer.Review(context.Background(), plan, testState(), bar, 50000)
+	ok, _ := reviewer.Review(context.Background(), plan, testState(), bar, 50000)
 	if !ok {
 		t.Fatal("expected modify to return true")
 	}
@@ -114,7 +114,7 @@ func TestSignalReviewer_LLMErrorConfirmsByDefault(t *testing.T) {
 	}
 	bar := domain.OHLCV{Close: 150}
 
-	ok := reviewer.Review(context.Background(), plan, testState(), bar, 50000)
+	ok, _ := reviewer.Review(context.Background(), plan, testState(), bar, 50000)
 	if !ok {
 		t.Fatal("expected LLM error to confirm by default")
 	}

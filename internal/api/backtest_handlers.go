@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"time"
@@ -219,7 +220,10 @@ func (s *Server) handleRunBacktestConfig(w http.ResponseWriter, r *http.Request)
 	}
 	if s.llmProvider != nil {
 		reviewer := rules.NewSignalReviewer(s.llmProvider, "", s.logger)
-		orchConfig.ReviewFunc = reviewer.Review
+		orchConfig.EntryReviewFunc = func(ctx context.Context, plan *agent.TradingPlan, state *agent.PipelineState, bar domain.OHLCV, cash float64) (bool, string) {
+			return reviewer.Review(ctx, plan, state, bar, cash)
+		}
+		orchConfig.ExitReviewFunc = reviewer.ReviewExit
 	}
 	orch, err := backtest.NewOrchestrator(orchConfig, allBars, pipeline, s.logger)
 	if err != nil {

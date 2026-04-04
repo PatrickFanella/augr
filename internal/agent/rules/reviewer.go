@@ -32,6 +32,7 @@ Respond with JSON only:
   "adjusted_position_size": <float, 0 to keep original>,
   "adjusted_stop_loss": <float, 0 to keep original>,
   "adjusted_take_profit": <float, 0 to keep original>,
+  "holding_strategy": "<for BUY signals: describe your holding thesis — what conditions would trigger exit, expected hold duration, key levels to watch>",
   "reasoning": "<2-3 sentences explaining your decision with specific reference to the data>"
 }
 
@@ -47,6 +48,7 @@ type ReviewVerdict struct {
 	AdjustedPositionSize float64 `json:"adjusted_position_size"`
 	AdjustedStopLoss     float64 `json:"adjusted_stop_loss"`
 	AdjustedTakeProfit   float64 `json:"adjusted_take_profit"`
+	HoldingStrategy      string  `json:"holding_strategy,omitempty"`
 	Reasoning            string  `json:"reasoning"`
 }
 
@@ -65,9 +67,10 @@ func NewSignalReviewer(provider llm.Provider, model string, logger *slog.Logger)
 	return &SignalReviewer{provider: provider, model: model, logger: logger}
 }
 
-// Review asks the LLM to evaluate a rules-engine signal with full market context.
-// Returns true if the trade should proceed (confirm or modify), false if vetoed.
-func (r *SignalReviewer) Review(ctx context.Context, plan *agent.TradingPlan, state *agent.PipelineState, bar domain.OHLCV, portfolioCash float64) bool {
+// Review asks the LLM to evaluate a rules-engine entry signal with full market context.
+// Returns (confirmed, holdingStrategy). holdingStrategy is the LLM's stated thesis
+// for how to manage the position if confirmed.
+func (r *SignalReviewer) Review(ctx context.Context, plan *agent.TradingPlan, state *agent.PipelineState, bar domain.OHLCV, portfolioCash float64) (bool, string) {
 	userPrompt := buildRichReviewPrompt(plan, state, bar, portfolioCash)
 
 	resp, err := r.provider.Complete(ctx, llm.CompletionRequest{
@@ -82,7 +85,7 @@ func (r *SignalReviewer) Review(ctx context.Context, plan *agent.TradingPlan, st
 		r.logger.Warn("rules/reviewer: LLM call failed, confirming signal by default",
 			slog.Any("error", err),
 		)
-		return true
+		return true, ""
 	}
 
 	var verdict ReviewVerdict
@@ -91,20 +94,21 @@ func (r *SignalReviewer) Review(ctx context.Context, plan *agent.TradingPlan, st
 			slog.String("content", resp.Content),
 			slog.Any("error", err),
 		)
-		return true
+		return true, ""
 	}
 
 	r.logger.Info("rules/reviewer: LLM verdict",
 		slog.String("verdict", verdict.Verdict),
 		slog.Float64("confidence", verdict.Confidence),
 		slog.String("reasoning", verdict.Reasoning),
+		slog.String("holding_strategy", verdict.HoldingStrategy),
 		slog.String("signal", plan.Action.String()),
 		slog.String("ticker", plan.Ticker),
 	)
 
 	switch strings.ToLower(verdict.Verdict) {
 	case "veto":
-		return false
+		return false, ""
 	case "modify":
 		if verdict.AdjustedPositionSize > 0 {
 			plan.PositionSize = verdict.AdjustedPositionSize
@@ -117,11 +121,77 @@ func (r *SignalReviewer) Review(ctx context.Context, plan *agent.TradingPlan, st
 		}
 		plan.Confidence = verdict.Confidence
 		plan.Rationale = plan.Rationale + " | LLM: " + verdict.Reasoning
-		return true
+		return true, verdict.HoldingStrategy
 	default: // "confirm"
 		plan.Confidence = verdict.Confidence
 		plan.Rationale = plan.Rationale + " | LLM: " + verdict.Reasoning
-		return true
+		return true, verdict.HoldingStrategy
+	}
+}
+
+const exitReviewSystemPrompt = `You are a senior trading signal reviewer. A rules engine has triggered an EXIT signal on a position you previously approved. You have access to the full position context: why you entered, your holding strategy, every decision made since entry, and the current market state.
+
+Your job: decide whether to CONFIRM the exit, MODIFY the exit parameters, or VETO the exit (continue holding).
+
+Consider:
+- Does the exit signal align with or contradict the original holding strategy?
+- Has the thesis that justified entry changed?
+- Is the position profitable? How much of the target has been reached?
+- Are the indicators showing exhaustion or continuation?
+- Would holding longer risk giving back gains or hit a stop?
+
+Respond with JSON only:
+{
+  "verdict": "confirm" | "modify" | "veto",
+  "confidence": <float 0.0 to 1.0>,
+  "reasoning": "<2-3 sentences referencing the position history and current conditions>"
+}
+
+- "confirm": close the position now
+- "modify": close but this is not implemented yet, use confirm
+- "veto": keep holding — the exit signal is premature or the thesis is intact`
+
+// ReviewExit asks the LLM to evaluate an exit signal with full position context
+// including decision history. Returns true if the exit should proceed.
+func (r *SignalReviewer) ReviewExit(ctx context.Context, pos *OpenPosition, state *agent.PipelineState, bar domain.OHLCV, portfolioCash float64) (bool, string) {
+	positionContext := FormatDecisionHistory(pos, bar.Close, bar.Timestamp)
+	marketContext := buildRichReviewPrompt(&agent.TradingPlan{
+		Action: domain.PipelineSignalSell, Ticker: pos.Ticker, EntryPrice: bar.Close,
+	}, state, bar, portfolioCash)
+
+	userPrompt := positionContext + "\n" + marketContext + "\n\nThe rules engine has triggered a SELL/EXIT signal. Should we close this position?"
+
+	resp, err := r.provider.Complete(ctx, llm.CompletionRequest{
+		Model: r.model,
+		Messages: []llm.Message{
+			{Role: "system", Content: exitReviewSystemPrompt},
+			{Role: "user", Content: userPrompt},
+		},
+		ResponseFormat: &llm.ResponseFormat{Type: llm.ResponseFormatJSONObject},
+	})
+	if err != nil {
+		r.logger.Warn("rules/reviewer: exit review LLM call failed, confirming exit by default", slog.Any("error", err))
+		return true, "LLM unavailable, confirming exit"
+	}
+
+	var verdict ReviewVerdict
+	if err := json.Unmarshal([]byte(resp.Content), &verdict); err != nil {
+		r.logger.Warn("rules/reviewer: failed to parse exit review response, confirming exit", slog.String("content", resp.Content), slog.Any("error", err))
+		return true, "LLM parse error, confirming exit"
+	}
+
+	r.logger.Info("rules/reviewer: exit verdict",
+		slog.String("verdict", verdict.Verdict),
+		slog.Float64("confidence", verdict.Confidence),
+		slog.String("reasoning", verdict.Reasoning),
+		slog.String("ticker", pos.Ticker),
+	)
+
+	switch strings.ToLower(verdict.Verdict) {
+	case "veto":
+		return false, verdict.Reasoning
+	default:
+		return true, verdict.Reasoning
 	}
 }
 

@@ -12,21 +12,25 @@ import (
 // RulesTraderNode is a trading-phase Node that evaluates deterministic rules
 // instead of calling an LLM. It reads indicators from state.Market.Indicators,
 // evaluates entry/exit conditions, and writes the result to state.TradingPlan.
-// It tracks whether a position is open to avoid re-entering immediately after exit.
+// It uses the TradeJournal for position awareness.
 type RulesTraderNode struct {
-	config     RulesEngineConfig
-	prevSnap   *Snapshot
-	equity     float64
-	inPosition bool
-	logger     *slog.Logger
+	config   RulesEngineConfig
+	prevSnap *Snapshot
+	equity   float64
+	journal  *TradeJournal
+	logger   *slog.Logger
 }
 
-// NewRulesTraderNode creates a rules-based trader node.
-func NewRulesTraderNode(config RulesEngineConfig, equity float64, logger *slog.Logger) *RulesTraderNode {
+// NewRulesTraderNode creates a rules-based trader node. If journal is nil, a
+// new empty journal is created.
+func NewRulesTraderNode(config RulesEngineConfig, equity float64, journal *TradeJournal, logger *slog.Logger) *RulesTraderNode {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &RulesTraderNode{config: config, equity: equity, logger: logger}
+	if journal == nil {
+		journal = NewTradeJournal()
+	}
+	return &RulesTraderNode{config: config, equity: equity, journal: journal, logger: logger}
 }
 
 func (n *RulesTraderNode) Name() string          { return "rules_trader" }
@@ -59,15 +63,13 @@ func (n *RulesTraderNode) Execute(_ context.Context, state *agent.PipelineState)
 		return nil
 	}
 
-	// Evaluate entry and exit conditions with position awareness.
-	// Only enter when flat, only exit when holding.
+	// Evaluate entry and exit conditions with journal-based position awareness.
 	signal := domain.PipelineSignalHold
-	if !n.inPosition && EvaluateGroup(n.config.Entry, snap, n.prevSnap) {
+	holding := n.journal.IsHolding(state.Ticker)
+	if !holding && EvaluateGroup(n.config.Entry, snap, n.prevSnap) {
 		signal = domain.PipelineSignalBuy
-		n.inPosition = true
-	} else if n.inPosition && EvaluateGroup(n.config.Exit, snap, n.prevSnap) {
+	} else if holding && EvaluateGroup(n.config.Exit, snap, n.prevSnap) {
 		signal = domain.PipelineSignalSell
-		n.inPosition = false
 	}
 
 	plan := BuildTradingPlan(&n.config, snap, signal, state.Ticker, n.equity)

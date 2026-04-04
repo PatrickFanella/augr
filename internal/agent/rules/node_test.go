@@ -26,7 +26,7 @@ func TestRulesTraderNode_BuySignal(t *testing.T) {
 		TakeProfit:     TakeProfitConfig{Method: "risk_reward", Ratio: 2},
 	}
 
-	node := NewRulesTraderNode(config, 100000, nil)
+	node := NewRulesTraderNode(config, 100000, nil, nil)
 	state := &agent.PipelineState{
 		Ticker: "AAPL",
 		Market: &agent.MarketData{
@@ -69,7 +69,7 @@ func TestRulesTraderNode_HoldWhenNoConditionsMet(t *testing.T) {
 		TakeProfit:     TakeProfitConfig{Method: "risk_reward", Ratio: 2},
 	}
 
-	node := NewRulesTraderNode(config, 100000, nil)
+	node := NewRulesTraderNode(config, 100000, nil, nil)
 	state := &agent.PipelineState{
 		Ticker: "AAPL",
 		Market: &agent.MarketData{
@@ -103,8 +103,9 @@ func TestRulesTraderNode_SellSignal(t *testing.T) {
 		TakeProfit:     TakeProfitConfig{Method: "risk_reward", Ratio: 2},
 	}
 
-	node := NewRulesTraderNode(config, 100000, nil)
-	node.inPosition = true // simulate already holding a position
+	journal := NewTradeJournal()
+	journal.OpenNewPosition(OpenPosition{Ticker: "AAPL", Side: domain.PositionSideLong, EntryPrice: 140, Quantity: 10})
+	node := NewRulesTraderNode(config, 100000, journal, nil)
 	state := &agent.PipelineState{
 		Ticker: "AAPL",
 		Market: &agent.MarketData{

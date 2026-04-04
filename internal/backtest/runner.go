@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/agent"
+	"github.com/PatrickFanella/get-rich-quick/internal/agent/rules"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 )
 
@@ -41,23 +42,30 @@ type RunResult struct {
 	EquityCurveReport EquityCurveReport
 }
 
-// SignalReviewFunc is called when the rules engine triggers a buy/sell signal.
-// It receives the trading plan and full pipeline state (including all bars-to-date,
-// indicators, and market data). It returns true to confirm the trade (possibly
-// with modifications to the plan) or false to veto.
-type SignalReviewFunc func(ctx context.Context, plan *agent.TradingPlan, state *agent.PipelineState, bar domain.OHLCV, portfolioCash float64) bool
+// EntryReviewFunc is called when the rules engine triggers a buy signal.
+// It receives the trading plan and full pipeline state. Returns true to
+// confirm (possibly with modifications), false to veto. On confirm, it
+// may set plan fields and return the LLM's holding strategy.
+type EntryReviewFunc func(ctx context.Context, plan *agent.TradingPlan, state *agent.PipelineState, bar domain.OHLCV, portfolioCash float64) (confirmed bool, holdingStrategy string)
+
+// ExitReviewFunc is called when the rules engine triggers an exit signal on a
+// held position. It receives the open position with full journal history.
+// Returns true to confirm exit, false to veto (keep holding).
+type ExitReviewFunc func(ctx context.Context, pos *rules.OpenPosition, state *agent.PipelineState, bar domain.OHLCV, portfolioCash float64) (confirmed bool, reasoning string)
 
 // Runner orchestrates the backtest loop: it iterates over historical bars,
 // advances the simulated clock, feeds each bar to the BrokerAdapter, executes
 // the full analysis pipeline, and records equity snapshots.
 type Runner struct {
-	config   RunnerConfig
-	pipeline *agent.Pipeline
-	broker   *BrokerAdapter
-	tracker  *PositionTracker
-	replay   *ReplayIterator
-	reviewer SignalReviewFunc
-	logger   *slog.Logger
+	config       RunnerConfig
+	pipeline     *agent.Pipeline
+	broker       *BrokerAdapter
+	tracker      *PositionTracker
+	replay       *ReplayIterator
+	entryReview  EntryReviewFunc
+	exitReview   ExitReviewFunc
+	journal      *rules.TradeJournal
+	logger       *slog.Logger
 }
 
 // NewRunner constructs a Runner from the given configuration, historical bars,
@@ -111,6 +119,7 @@ func NewRunner(
 		broker:   broker,
 		tracker:  tracker,
 		replay:   replay,
+		journal:  rules.NewTradeJournal(),
 		logger:   logger,
 	}, nil
 }
@@ -150,13 +159,16 @@ func (r *Runner) Run(ctx context.Context) (*RunResult, error) {
 			return result, fmt.Errorf("backtest: setting market bar: %w", err)
 		}
 
+		// Check hard stops and trailing stops BEFORE the pipeline runs.
+		r.checkMechanicalStops(ctx, bar)
+
 		// Execute the full analysis pipeline for this bar.
 		state, pipeErr := r.pipeline.Execute(ctx, r.config.StrategyID, r.config.Ticker)
 
-		// If the pipeline produced a buy/sell signal, submit an order to the
-		// backtest broker so it is reflected in the equity curve.
+		// If the pipeline produced a buy/sell signal, process it through
+		// the journal-aware order flow.
 		if pipeErr == nil && state != nil {
-			r.submitOrderFromPlan(ctx, state, bar)
+			r.processSignal(ctx, state, bar)
 		}
 
 		// Update position tracker marks to the latest bar close before
@@ -181,89 +193,222 @@ func (r *Runner) Run(ctx context.Context) (*RunResult, error) {
 	return result, nil
 }
 
-// SetReviewer attaches an optional LLM review function that is called when the
-// rules engine triggers a buy/sell signal. If the reviewer vetoes, the order is
-// skipped. If nil, all signals are executed without review.
-func (r *Runner) SetReviewer(fn SignalReviewFunc) { r.reviewer = fn }
+// SetEntryReview attaches an LLM review for entry signals.
+func (r *Runner) SetEntryReview(fn EntryReviewFunc) { r.entryReview = fn }
 
-func (r *Runner) submitOrderFromPlan(ctx context.Context, state *agent.PipelineState, bar domain.OHLCV) {
+// SetExitReview attaches an LLM review for exit signals.
+func (r *Runner) SetExitReview(fn ExitReviewFunc) { r.exitReview = fn }
+
+// Journal returns the trade journal for inclusion in results.
+func (r *Runner) Journal() *rules.TradeJournal { return r.journal }
+
+// checkMechanicalStops checks hard stop-loss, trailing stop, and take-profit
+// levels on open positions. These execute immediately without LLM review.
+func (r *Runner) checkMechanicalStops(ctx context.Context, bar domain.OHLCV) {
+	pos := r.journal.GetOpen(r.config.Ticker)
+	if pos == nil {
+		return
+	}
+
+	// Update trailing stop
+	pos.UpdateTrailingStop(bar.Close)
+
+	// Check take-profit
+	if pos.IsTakeProfitHit(bar) {
+		exitPrice := pos.TakeProfit
+		pos.AddEntry(rules.JournalEntry{
+			Type: rules.EventTakeProfit, Timestamp: bar.Timestamp,
+			Price: exitPrice, Reasoning: "take-profit level hit",
+		})
+		r.logger.Info("backtest: take-profit hit",
+			slog.String("ticker", r.config.Ticker),
+			slog.Float64("level", exitPrice),
+		)
+		r.executeClose(ctx, exitPrice, bar, "take_profit")
+		return
+	}
+
+	// Check hard stop and trailing stop
+	if hit, reason := pos.IsStopHit(bar); hit {
+		exitPrice := pos.HardStopLoss
+		if pos.TrailingStopLevel > 0 && bar.Low <= pos.TrailingStopLevel {
+			exitPrice = pos.TrailingStopLevel
+		}
+		pos.AddEntry(rules.JournalEntry{
+			Type: rules.EventStopHit, Timestamp: bar.Timestamp,
+			Price: exitPrice, Reasoning: reason,
+		})
+		r.logger.Info("backtest: stop hit",
+			slog.String("ticker", r.config.Ticker),
+			slog.String("reason", reason),
+		)
+		r.executeClose(ctx, exitPrice, bar, "stop_hit")
+	}
+}
+
+// processSignal handles the rules engine output through the journal-aware flow.
+func (r *Runner) processSignal(ctx context.Context, state *agent.PipelineState, bar domain.OHLCV) {
 	plan := state.TradingPlan
-	if plan.Action != domain.PipelineSignalBuy && plan.Action != domain.PipelineSignalSell {
-		return
-	}
-	if plan.PositionSize <= 0 {
-		return
-	}
+	ticker := r.config.Ticker
 
-	// If a reviewer is attached, let it confirm/modify/veto.
-	if r.reviewer != nil {
-		bal, _ := r.broker.GetAccountBalance(context.Background())
-		if !r.reviewer(ctx, &plan, state, bar, bal.Cash) {
-			r.logger.Info("backtest: signal vetoed by reviewer",
+	if plan.Action == domain.PipelineSignalBuy && !r.journal.IsHolding(ticker) {
+		r.processEntry(ctx, state, plan, bar)
+	} else if plan.Action == domain.PipelineSignalSell && r.journal.IsHolding(ticker) {
+		r.processExit(ctx, state, bar)
+	}
+}
+
+func (r *Runner) processEntry(ctx context.Context, state *agent.PipelineState, plan agent.TradingPlan, bar domain.OHLCV) {
+	bal, _ := r.broker.GetAccountBalance(context.Background())
+	holdingStrategy := ""
+
+	// Entry LLM review
+	if r.entryReview != nil {
+		confirmed, strategy := r.entryReview(ctx, &plan, state, bar, bal.Cash)
+		if !confirmed {
+			r.logger.Info("backtest: entry vetoed by reviewer",
 				slog.String("ticker", r.config.Ticker),
-				slog.String("signal", plan.Action.String()),
 				slog.Time("bar", bar.Timestamp),
 			)
 			return
 		}
+		holdingStrategy = strategy
 	}
 
-	side := domain.OrderSideBuy
-	if plan.Action == domain.PipelineSignalSell {
-		side = domain.OrderSideSell
-	}
-
-	// Cap position size at available cash to prevent going negative.
+	// Cap at available cash
 	quantity := plan.PositionSize
-	if side == domain.OrderSideBuy && plan.EntryPrice > 0 {
-		bal, _ := r.broker.GetAccountBalance(context.Background())
+	if plan.EntryPrice > 0 {
 		maxShares := bal.Cash / plan.EntryPrice
 		if quantity > maxShares {
 			quantity = math.Floor(maxShares)
 		}
-		if quantity <= 0 {
-			return
-		}
+	}
+	if quantity <= 0 {
+		return
 	}
 
+	// Submit order
 	order := &domain.Order{
-		ID:        uuid.New(),
-		Ticker:    r.config.Ticker,
-		Side:      side,
-		OrderType: domain.OrderTypeMarket,
-		Quantity:  quantity,
+		ID: uuid.New(), Ticker: r.config.Ticker, Side: domain.OrderSideBuy,
+		OrderType: domain.OrderTypeMarket, Quantity: quantity,
 	}
 	if plan.EntryPrice > 0 {
 		order.LimitPrice = &plan.EntryPrice
 	}
-	if plan.StopLoss > 0 {
-		order.StopPrice = &plan.StopLoss
-	}
-
-	externalID, err := r.broker.SubmitOrder(ctx, order)
+	_, err := r.broker.SubmitOrder(ctx, order)
 	if err != nil {
-		r.logger.Warn("backtest: order submission failed",
-			slog.String("ticker", r.config.Ticker),
-			slog.Any("error", err),
-		)
+		r.logger.Warn("backtest: entry order failed", slog.Any("error", err))
+		return
+	}
+	if order.Status != domain.OrderStatusFilled || order.FilledAvgPrice == nil {
 		return
 	}
 
-	if order.Status == domain.OrderStatusFilled && order.FilledAvgPrice != nil {
-		trade := domain.Trade{
-			ID:         uuid.New(),
-			Ticker:     r.config.Ticker,
-			Side:       side,
-			Quantity:   order.FilledQuantity,
-			Price:      *order.FilledAvgPrice,
-			ExecutedAt: bar.Timestamp,
-			CreatedAt:  bar.Timestamp,
-		}
-		if err := r.tracker.ApplyTrade(trade); err != nil {
-			r.logger.Warn("backtest: failed to apply trade to tracker",
-				slog.String("external_id", externalID),
-				slog.Any("error", err),
-			)
+	fillPrice := *order.FilledAvgPrice
+
+	// Apply trade to tracker
+	trade := domain.Trade{
+		ID: uuid.New(), Ticker: r.config.Ticker, Side: domain.OrderSideBuy,
+		Quantity: order.FilledQuantity, Price: fillPrice,
+		ExecutedAt: bar.Timestamp, CreatedAt: bar.Timestamp,
+	}
+	_ = r.tracker.ApplyTrade(trade)
+
+	// Build indicator snapshot for journal
+	indSnap := make(map[string]float64)
+	if state.Market != nil {
+		for _, ind := range state.Market.Indicators {
+			indSnap[ind.Name] = ind.Value
 		}
 	}
+
+	// Open position in journal
+	r.journal.OpenNewPosition(rules.OpenPosition{
+		Ticker:          r.config.Ticker,
+		Side:            domain.PositionSideLong,
+		EntryPrice:      fillPrice,
+		EntryDate:       bar.Timestamp,
+		Quantity:        order.FilledQuantity,
+		HardStopLoss:    plan.StopLoss,
+		TakeProfit:      plan.TakeProfit,
+		HoldingStrategy: holdingStrategy,
+		TrailingStopPct: 0, // TODO: configurable
+	})
+
+	// Log entry in journal
+	r.journal.GetOpen(r.config.Ticker).AddEntry(rules.JournalEntry{
+		Type: rules.EventEntry, Timestamp: bar.Timestamp,
+		Signal: domain.PipelineSignalBuy, Verdict: "confirm",
+		Confidence: plan.Confidence, Reasoning: plan.Rationale,
+		Indicators: indSnap, Price: fillPrice,
+	})
+}
+
+func (r *Runner) processExit(ctx context.Context, state *agent.PipelineState, bar domain.OHLCV) {
+	pos := r.journal.GetOpen(r.config.Ticker)
+	if pos == nil {
+		return
+	}
+
+	// Build indicator snapshot
+	indSnap := make(map[string]float64)
+	if state.Market != nil {
+		for _, ind := range state.Market.Indicators {
+			indSnap[ind.Name] = ind.Value
+		}
+	}
+
+	// Exit LLM review
+	if r.exitReview != nil {
+		bal, _ := r.broker.GetAccountBalance(context.Background())
+		confirmed, reasoning := r.exitReview(ctx, pos, state, bar, bal.Cash)
+		if !confirmed {
+			pos.AddEntry(rules.JournalEntry{
+				Type: rules.EventSignalReview, Timestamp: bar.Timestamp,
+				Signal: domain.PipelineSignalSell, Verdict: "veto",
+				Reasoning: reasoning, Indicators: indSnap, Price: bar.Close,
+			})
+			r.logger.Info("backtest: exit vetoed by reviewer",
+				slog.String("ticker", r.config.Ticker),
+				slog.String("reasoning", reasoning),
+			)
+			return
+		}
+		pos.AddEntry(rules.JournalEntry{
+			Type: rules.EventSignalReview, Timestamp: bar.Timestamp,
+			Signal: domain.PipelineSignalSell, Verdict: "confirm",
+			Reasoning: reasoning, Indicators: indSnap, Price: bar.Close,
+		})
+	}
+
+	r.executeClose(ctx, bar.Close, bar, "signal_confirmed")
+}
+
+func (r *Runner) executeClose(ctx context.Context, exitPrice float64, bar domain.OHLCV, exitReason string) {
+	pos := r.journal.GetOpen(r.config.Ticker)
+	if pos == nil {
+		return
+	}
+
+	order := &domain.Order{
+		ID: uuid.New(), Ticker: r.config.Ticker, Side: domain.OrderSideSell,
+		OrderType: domain.OrderTypeMarket, Quantity: pos.Quantity,
+	}
+	order.LimitPrice = &exitPrice
+
+	_, err := r.broker.SubmitOrder(ctx, order)
+	if err != nil {
+		r.logger.Warn("backtest: exit order failed", slog.Any("error", err))
+		return
+	}
+	if order.Status == domain.OrderStatusFilled && order.FilledAvgPrice != nil {
+		trade := domain.Trade{
+			ID: uuid.New(), Ticker: r.config.Ticker, Side: domain.OrderSideSell,
+			Quantity: order.FilledQuantity, Price: *order.FilledAvgPrice,
+			ExecutedAt: bar.Timestamp, CreatedAt: bar.Timestamp,
+		}
+		_ = r.tracker.ApplyTrade(trade)
+	}
+
+	r.journal.ClosePosition(r.config.Ticker, exitPrice, bar.Timestamp, exitReason)
 }
