@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import type { MarketType, StrategyCreateRequest } from '@/lib/api/types';
+import { describeCron } from '@/lib/cron-describe';
 
 import {
   analystOptions,
@@ -204,6 +205,11 @@ export function CreateStrategyDialog({
                 onChange={(e) => setScheduleCron(e.target.value)}
                 placeholder="0 9 * * 1-5"
               />
+              {scheduleCron && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  {describeCron(scheduleCron)}
+                </p>
+              )}
             </div>
           </div>
 

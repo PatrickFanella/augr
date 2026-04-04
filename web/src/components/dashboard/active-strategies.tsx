@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { apiClient } from '@/lib/api/client';
 import type { Strategy, StrategyStatus } from '@/lib/api/types';
+import { describeCron } from '@/lib/cron-describe';
 
 function MarketTypeBadge({ type }: { type: Strategy['market_type'] }) {
   const variants: Record<Strategy['market_type'], 'default' | 'secondary' | 'outline'> = {
@@ -86,7 +87,7 @@ export function ActiveStrategies() {
                       {strategy.schedule_cron ? (
                         <span className="inline-flex items-center gap-1">
                           <Clock className="size-3" />
-                          {strategy.schedule_cron}
+                          {describeCron(strategy.schedule_cron)}
                         </span>
                       ) : (
                         <span>manual only</span>

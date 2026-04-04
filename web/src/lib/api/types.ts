@@ -63,6 +63,7 @@ export interface Strategy {
   ticker: string
   market_type: MarketType
   schedule_cron?: string
+  schedule_description?: string
   config: unknown
   status: StrategyStatus
   skip_next_run: boolean

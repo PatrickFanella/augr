@@ -6,7 +6,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: ${POSTGRES_DB:-tradingagent}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "${POSTGRES_PORT:-5434}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -19,7 +19,7 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "${REDIS_PORT:-6380}:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -35,7 +35,7 @@ services:
       dockerfile: Dockerfile
       target: dev
     ports:
-      - "${APP_PORT:-8080}:8080"
+      - "8081:${APP_PORT:-8080}"
     env_file:
       - .env
     environment:
@@ -58,7 +58,7 @@ services:
     volumes:
       - ./monitoring/prometheus:/etc/prometheus
     ports:
-      - '9090:9090'
+      - '9091:9090'
     depends_on:
       - app
     restart: unless-stopped
@@ -73,7 +73,7 @@ services:
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
       - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
     ports:
-      - '3001:3000'
+      - '3002:3000'
     depends_on:
       - prometheus
     restart: unless-stopped

@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { ApiClientError, apiClient } from '@/lib/api/client'
 import type { StrategyStatus, StrategyUpdateRequest } from '@/lib/api/types'
+import { describeCron } from '@/lib/cron-describe'
 
 function resolveStrategyStatus(strategy: { status?: StrategyStatus; is_active?: boolean }): StrategyStatus {
   if (strategy.status) {
@@ -256,7 +257,10 @@ export function StrategyDetailPage() {
             <div>
               <dt className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Schedule</dt>
               <dd className="mt-1 font-mono text-[13px] font-medium">
-                {strategy.schedule_cron || 'Manual only'}
+                {strategy.schedule_cron ? describeCron(strategy.schedule_cron) : 'Manual only'}
+                {strategy.schedule_cron && (
+                  <span className="ml-2 text-[11px] text-muted-foreground">{strategy.schedule_cron}</span>
+                )}
               </dd>
             </div>
           </dl>

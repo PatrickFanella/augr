@@ -43,6 +43,57 @@ func isUSEquityMarketOpen(t time.Time) bool {
 	return !et.Before(open) && et.Before(marketClose)
 }
 
+// IsPreMarket returns true during the 30-minute window before market open (9:00-9:30 ET).
+// Returns false on weekends and NYSE holidays.
+func IsPreMarket(t time.Time) bool {
+	et := t.In(newYorkLocation)
+	if et.Weekday() == time.Saturday || et.Weekday() == time.Sunday {
+		return false
+	}
+	if isNYSEHoliday(et) {
+		return false
+	}
+
+	start := time.Date(et.Year(), et.Month(), et.Day(), 9, 0, 0, 0, newYorkLocation)
+	end := time.Date(et.Year(), et.Month(), et.Day(), 9, 30, 0, 0, newYorkLocation)
+
+	return !et.Before(start) && et.Before(end)
+}
+
+// IsNearMarketClose returns true during the last 30 minutes before close (15:30-16:00 ET).
+// Returns false on weekends and NYSE holidays.
+func IsNearMarketClose(t time.Time) bool {
+	et := t.In(newYorkLocation)
+	if et.Weekday() == time.Saturday || et.Weekday() == time.Sunday {
+		return false
+	}
+	if isNYSEHoliday(et) {
+		return false
+	}
+
+	start := time.Date(et.Year(), et.Month(), et.Day(), 15, 30, 0, 0, newYorkLocation)
+	end := time.Date(et.Year(), et.Month(), et.Day(), 16, 0, 0, 0, newYorkLocation)
+
+	return !et.Before(start) && et.Before(end)
+}
+
+// IsAfterHours returns true during extended hours after close (16:00-20:00 ET).
+// Returns false on weekends and NYSE holidays.
+func IsAfterHours(t time.Time) bool {
+	et := t.In(newYorkLocation)
+	if et.Weekday() == time.Saturday || et.Weekday() == time.Sunday {
+		return false
+	}
+	if isNYSEHoliday(et) {
+		return false
+	}
+
+	start := time.Date(et.Year(), et.Month(), et.Day(), 16, 0, 0, 0, newYorkLocation)
+	end := time.Date(et.Year(), et.Month(), et.Day(), 20, 0, 0, 0, newYorkLocation)
+
+	return !et.Before(start) && et.Before(end)
+}
+
 func isNYSEHoliday(t time.Time) bool {
 	year := t.Year()
 
