@@ -42,9 +42,10 @@ type RunResult struct {
 }
 
 // SignalReviewFunc is called when the rules engine triggers a buy/sell signal.
-// It receives the trading plan, indicators, and current bar. It returns true
-// to confirm the trade (possibly with modifications to the plan) or false to veto.
-type SignalReviewFunc func(ctx context.Context, plan *agent.TradingPlan, indicators []domain.Indicator, bar domain.OHLCV) bool
+// It receives the trading plan and full pipeline state (including all bars-to-date,
+// indicators, and market data). It returns true to confirm the trade (possibly
+// with modifications to the plan) or false to veto.
+type SignalReviewFunc func(ctx context.Context, plan *agent.TradingPlan, state *agent.PipelineState, bar domain.OHLCV, portfolioCash float64) bool
 
 // Runner orchestrates the backtest loop: it iterates over historical bars,
 // advances the simulated clock, feeds each bar to the BrokerAdapter, executes
@@ -196,11 +197,8 @@ func (r *Runner) submitOrderFromPlan(ctx context.Context, state *agent.PipelineS
 
 	// If a reviewer is attached, let it confirm/modify/veto.
 	if r.reviewer != nil {
-		var indicators []domain.Indicator
-		if state.Market != nil {
-			indicators = state.Market.Indicators
-		}
-		if !r.reviewer(ctx, &plan, indicators, bar) {
+		bal, _ := r.broker.GetAccountBalance(context.Background())
+		if !r.reviewer(ctx, &plan, state, bar, bal.Cash) {
 			r.logger.Info("backtest: signal vetoed by reviewer",
 				slog.String("ticker", r.config.Ticker),
 				slog.String("signal", plan.Action.String()),
