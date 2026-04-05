@@ -125,6 +125,18 @@ export function StrategyDetailPage() {
   })
   const isLifecycleActionPending = pauseMutation.isPending || resumeMutation.isPending || skipMutation.isPending
 
+  const { data: ordersData } = useQuery({
+    queryKey: ['strategy-orders', id],
+    queryFn: () => apiClient.listOrders({ strategy_id: id, limit: 5 }),
+    enabled: !!id,
+  })
+
+  const { data: backtestsData } = useQuery({
+    queryKey: ['strategy-backtests', id],
+    queryFn: () => apiClient.listBacktestConfigs({ strategy_id: id }),
+    enabled: !!id,
+  })
+
   if (isLoading) {
     return (
       <div className="space-y-6" data-testid="strategy-detail-loading">
@@ -275,6 +287,75 @@ export function StrategyDetailPage() {
           isSaving={updateMutation.isPending}
         />
       </div>
+
+      {(ordersData?.data?.length ?? 0) > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Recent Orders</CardTitle>
+            <CardDescription>Last 5 orders placed by this strategy</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-left font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+                    <th className="pb-2 font-medium">Ticker</th>
+                    <th className="pb-2 font-medium">Side</th>
+                    <th className="pb-2 font-medium">Status</th>
+                    <th className="pb-2 font-medium">Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ordersData!.data.map((order) => (
+                    <tr key={order.id} className="border-b border-border last:border-0">
+                      <td className="py-2 font-mono text-[13px]">
+                        <Link to={`/orders/${order.id}`} className="text-primary hover:underline">
+                          {order.ticker}
+                        </Link>
+                      </td>
+                      <td className="py-2">
+                        <Badge variant={order.side === 'buy' ? 'success' : 'destructive'}>{order.side}</Badge>
+                      </td>
+                      <td className="py-2">
+                        <Badge variant="outline">{order.status}</Badge>
+                      </td>
+                      <td className="py-2 text-muted-foreground">{new Date(order.created_at).toLocaleDateString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {(backtestsData?.data?.length ?? 0) > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Backtests</CardTitle>
+            <CardDescription>Backtest configurations linked to this strategy</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ul className="space-y-2">
+              {backtestsData!.data.map((config) => (
+                <li key={config.id} className="flex items-center justify-between rounded-md border border-border p-3">
+                  <div>
+                    <Link to={`/backtests/${config.id}`} className="text-sm font-medium text-primary hover:underline">
+                      {config.name}
+                    </Link>
+                    {config.description && (
+                      <p className="text-xs text-muted-foreground">{config.description}</p>
+                    )}
+                  </div>
+                  <span className="text-xs text-muted-foreground">
+                    {new Date(config.start_date).toLocaleDateString()} &ndash; {new Date(config.end_date).toLocaleDateString()}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }

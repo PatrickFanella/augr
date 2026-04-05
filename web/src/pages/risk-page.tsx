@@ -89,6 +89,7 @@ export function RiskPage() {
   const { data, isLoading, isError, error } = useQuery<EngineStatus>({
     queryKey: ['riskStatus'],
     queryFn: () => apiClient.getRiskStatus(),
+    refetchInterval: 30_000,
   })
 
   const {

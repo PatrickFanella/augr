@@ -1,12 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Play } from 'lucide-react'
+import { ArrowLeft, Play, Trash2 } from 'lucide-react'
 import { useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { BacktestEquityChart } from '@/components/backtests/backtest-equity-chart'
 import { BacktestMetricsCard } from '@/components/backtests/backtest-metrics-card'
 import { BacktestRunHistory } from '@/components/backtests/backtest-run-history'
 import { PageHeader } from '@/components/layout/page-header'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { apiClient } from '@/lib/api/client'
@@ -14,8 +15,17 @@ import type { BacktestRun } from '@/lib/api/types'
 
 export function BacktestDetailPage() {
   const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [selectedRun, setSelectedRun] = useState<BacktestRun | null>(null)
+
+  const deleteMutation = useMutation({
+    mutationFn: () => apiClient.deleteBacktestConfig(id!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['backtest-configs'] })
+      navigate('/backtests')
+    },
+  })
 
   const { data: config, isLoading, isError } = useQuery({
     queryKey: ['backtest-config', id],
@@ -88,6 +98,19 @@ export function BacktestDetailPage() {
               <Play className="mr-2 size-4" />
               {runMutation.isPending ? 'Running...' : 'Run backtest'}
             </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (window.confirm('Delete this backtest config and all its runs?')) {
+                  deleteMutation.mutate()
+                }
+              }}
+              disabled={deleteMutation.isPending}
+              data-testid="delete-backtest-button"
+            >
+              <Trash2 className="mr-2 size-4" />
+              {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+            </Button>
           </>
         )}
       />
@@ -135,6 +158,32 @@ export function BacktestDetailPage() {
 
       {selectedRun ? (
         <>
+          <Card>
+            <CardHeader>
+              <CardTitle>Run metadata</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <div>
+                  <dt className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Duration</dt>
+                  <dd className="mt-1 text-sm font-medium">{selectedRun.duration}</dd>
+                </div>
+                <div>
+                  <dt className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Prompt Version</dt>
+                  <dd className="mt-1 text-sm font-medium font-mono">{selectedRun.prompt_version}</dd>
+                </div>
+                <div>
+                  <dt className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Prompt Hash</dt>
+                  <dd className="mt-1 text-sm font-medium font-mono text-muted-foreground">{selectedRun.prompt_version_hash.slice(0, 12)}</dd>
+                </div>
+                <div>
+                  <dt className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Run Date</dt>
+                  <dd className="mt-1 text-sm font-medium">{new Date(selectedRun.run_timestamp).toLocaleString()}</dd>
+                </div>
+              </dl>
+            </CardContent>
+          </Card>
+
           <BacktestMetricsCard metrics={selectedRun.metrics} />
 
           <Card>
@@ -148,6 +197,49 @@ export function BacktestDetailPage() {
               <BacktestEquityChart data={selectedRun.equity_curve ?? []} />
             </CardContent>
           </Card>
+
+          {selectedRun.trade_log && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Trade Log</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-left text-muted-foreground">
+                        <th className="p-2">Ticker</th>
+                        <th className="p-2">Side</th>
+                        <th className="p-2">Qty</th>
+                        <th className="p-2">Price</th>
+                        <th className="p-2">Date</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(Array.isArray(selectedRun.trade_log)
+                        ? selectedRun.trade_log
+                        : (() => { try { return JSON.parse(selectedRun.trade_log as string) ?? [] } catch { return [] } })()
+                      ).map((trade: Record<string, unknown>, i: number) => (
+                        <tr key={i} className="border-b border-border/50">
+                          <td className="p-2 font-mono">{String(trade.ticker ?? '')}</td>
+                          <td className="p-2">
+                            <Badge variant={trade.side === 'buy' ? 'success' : 'destructive'}>
+                              {String(trade.side ?? '')}
+                            </Badge>
+                          </td>
+                          <td className="p-2 text-right font-mono">{String(trade.quantity ?? '')}</td>
+                          <td className="p-2 text-right font-mono">${Number(trade.price).toFixed(2)}</td>
+                          <td className="p-2 text-muted-foreground">
+                            {trade.executed_at ? new Date(String(trade.executed_at)).toLocaleDateString() : '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </>
       ) : null}
     </div>

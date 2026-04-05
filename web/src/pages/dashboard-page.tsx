@@ -1,16 +1,31 @@
+import { useQuery } from '@tanstack/react-query'
+
 import { ActiveStrategies } from '@/components/dashboard/active-strategies'
 import { ActivityFeed } from '@/components/dashboard/activity-feed'
 import { PortfolioSummary } from '@/components/dashboard/portfolio-summary'
 import { PageHeader } from '@/components/layout/page-header'
 import { RiskStatusBar } from '@/components/dashboard/risk-status-bar'
+import { Badge } from '@/components/ui/badge'
+import { apiClient } from '@/lib/api/client'
 
 export function DashboardPage() {
+  const { data: health, isError: healthError } = useQuery({
+    queryKey: ['health'],
+    queryFn: () => apiClient.health(),
+    refetchInterval: 60_000,
+  })
+
   return (
     <div className="space-y-4" data-testid="dashboard-page">
       <PageHeader
         eyebrow="Overview"
         title="Trading overview"
         description="Live portfolio, strategy, and risk telemetry for the current operating session."
+        meta={
+          <Badge variant={healthError ? 'destructive' : health ? 'success' : 'secondary'}>
+            {healthError ? 'Degraded' : health ? 'System OK' : 'Checking...'}
+          </Badge>
+        }
       />
 
       <PortfolioSummary />

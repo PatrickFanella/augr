@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Brain, ChevronLeft, ChevronRight, Search, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 
 import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
@@ -332,6 +333,9 @@ export function MemoriesPage() {
                   <p className="font-mono text-sm text-muted-foreground">
                     {selectedMemory.pipeline_run_id}
                   </p>
+                  <Link to={`/runs/${selectedMemory.pipeline_run_id}`} className="text-primary hover:underline">
+                    View Run
+                  </Link>
                 </section>
               ) : null}
               <DialogFooter>

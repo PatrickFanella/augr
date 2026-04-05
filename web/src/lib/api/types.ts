@@ -397,6 +397,7 @@ export interface OrderListParams {
   ticker?: string
   status?: OrderStatus
   side?: OrderSide
+  strategy_id?: UUID
 }
 
 export interface TradeListParams {

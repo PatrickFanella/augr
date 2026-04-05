@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { BarChart3 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -72,6 +73,7 @@ export function PositionsTable() {
                   <th className="px-4 py-3 font-medium text-right">Unrealized P&L</th>
                   <th className="px-4 py-3 font-medium text-right">Stop Loss</th>
                   <th className="px-4 py-3 font-medium text-right">Take Profit</th>
+                  <th className="px-4 py-3 font-medium" />
                 </tr>
               </thead>
               <tbody>
@@ -128,6 +130,17 @@ export function PositionsTable() {
                     </td>
                     <td className="px-4 py-3 text-right font-mono text-[13px]">
                       {position.take_profit != null ? formatCurrency(position.take_profit) : '—'}
+                    </td>
+                    <td className="px-4 py-3">
+                      {position.strategy_id ? (
+                        <Link
+                          to={`/strategies/${position.strategy_id}`}
+                          className="text-primary hover:underline text-xs"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          Strategy
+                        </Link>
+                      ) : null}
                     </td>
                   </tr>
                 ))}

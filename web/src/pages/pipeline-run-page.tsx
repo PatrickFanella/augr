@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
@@ -11,6 +11,7 @@ import { FinalSignal } from '@/components/pipeline/final-signal';
 import { type PhaseInfo, PhaseProgress } from '@/components/pipeline/phase-progress';
 import { TraderPlan } from '@/components/pipeline/trader-plan';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { apiClient } from '@/lib/api/client';
 import type {
@@ -192,6 +193,14 @@ export function PipelineRunPage() {
     }
   }, [isWsConnected, subscribe, id]);
 
+  const cancelMutation = useMutation({
+    mutationFn: () => apiClient.cancelRun(id!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['run', id] });
+      queryClient.invalidateQueries({ queryKey: ['run-decisions', id] });
+    },
+  });
+
   const traderDecision = useMemo(() => getLatestDecision(decisions, ['trader']), [decisions]);
 
   const signalDecision = useMemo(() => getLatestDecision(decisions, ['risk_manager']), [decisions]);
@@ -258,17 +267,78 @@ export function PipelineRunPage() {
           </>
         )}
         actions={(
-          <Link
-            to="/runs"
-            className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-3 py-2 text-sm text-muted-foreground transition-colors hover:border-primary/25 hover:text-foreground"
-          >
-            <ArrowLeft className="size-4" />
-            Back to runs
-          </Link>
+          <>
+            <Link
+              to="/runs"
+              className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-3 py-2 text-sm text-muted-foreground transition-colors hover:border-primary/25 hover:text-foreground"
+            >
+              <ArrowLeft className="size-4" />
+              Back to runs
+            </Link>
+            {run.strategy_id && (
+              <Link
+                to={`/strategies/${run.strategy_id}`}
+                className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-3 py-2 text-sm text-muted-foreground transition-colors hover:border-primary/25 hover:text-foreground"
+              >
+                View Strategy &rarr;
+              </Link>
+            )}
+            {run.status === 'running' && (
+              <Button
+                variant="destructive"
+                onClick={() => cancelMutation.mutate()}
+                disabled={cancelMutation.isPending}
+              >
+                {cancelMutation.isPending ? 'Cancelling...' : 'Cancel Run'}
+              </Button>
+            )}
+          </>
         )}
       />
 
       <PhaseProgress phases={phases} />
+
+      {run.status === 'failed' && run.error_message && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+          <strong>Error:</strong> {run.error_message}
+        </div>
+      )}
+
+      {run.trade_date && (
+        <div className="text-sm text-muted-foreground">
+          <span className="font-medium">Trade date:</span>{' '}
+          {new Date(run.trade_date).toLocaleDateString()}
+        </div>
+      )}
+
+      {run.phase_timings && typeof run.phase_timings === 'object' && (
+        <Card>
+          <CardContent className="py-4">
+            <h3 className="mb-2 font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+              Phase Timings
+            </h3>
+            <ul className="space-y-1 text-sm">
+              {Object.entries(run.phase_timings as Record<string, unknown>).map(([phase, duration]) => (
+                <li key={phase} className="flex items-center justify-between">
+                  <span className="font-medium">{phase}</span>
+                  <span className="font-mono text-muted-foreground">{String(duration)}</span>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
+
+      {run.config_snapshot && (
+        <details className="rounded-lg border border-border bg-background">
+          <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-muted-foreground hover:text-foreground">
+            Config Snapshot
+          </summary>
+          <pre className="overflow-x-auto px-4 pb-4 font-mono text-xs text-muted-foreground">
+            {JSON.stringify(run.config_snapshot, null, 2)}
+          </pre>
+        </details>
+      )}
 
       <div className="space-y-6">
         <AnalystCards
