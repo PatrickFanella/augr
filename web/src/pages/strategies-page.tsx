@@ -191,7 +191,7 @@ export function StrategiesPage() {
                             {strategy.skip_next_run ? <Badge variant="outline">skip next</Badge> : null}
                           </div>
                           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
-                            <span>{strategy.ticker}</span>
+                            <Link to={`/stocks/${strategy.ticker}`} className="text-primary hover:underline">{strategy.ticker}</Link>
                             {strategy.schedule_cron ? (
                               <span className="inline-flex items-center gap-1">
                                 <Clock className="size-3" />

@@ -262,9 +262,10 @@ export function OrdersPage() {
                     >
                       <td className="py-0 font-medium">
                         <Link
-                          to={`/orders/${order.id}`}
-                          className="block w-full cursor-pointer py-3 font-mono text-[13px] tracking-[0.02em] hover:text-primary focus-visible:text-primary"
-                          data-testid={`order-link-${order.id}`}
+                          to={`/stocks/${order.ticker}`}
+                          className="block w-full cursor-pointer py-3 font-mono text-[13px] tracking-[0.02em] text-primary hover:underline focus-visible:text-primary"
+                          data-testid={`order-ticker-link-${order.id}`}
+                          onClick={(e) => e.stopPropagation()}
                         >
                           {order.ticker}
                         </Link>

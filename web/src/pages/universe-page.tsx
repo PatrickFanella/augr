@@ -1,6 +1,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { Globe, Loader2, RefreshCw, Search } from 'lucide-react'
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 
 import { PageHeader } from '@/components/layout/page-header'
 import { WatchlistTable } from '@/components/universe/watchlist-table'
@@ -177,7 +178,11 @@ export function UniversePage() {
                     <tbody>
                       {tickers.map((t) => (
                         <tr key={t.ticker} className="border-b border-border/50 hover:bg-accent/30">
-                          <td className="px-2 py-1.5 font-mono font-medium">{t.ticker}</td>
+                          <td className="px-2 py-1.5 font-mono font-medium">
+                            <Link to={`/stocks/${t.ticker}`} className="text-primary hover:underline">
+                              {t.ticker}
+                            </Link>
+                          </td>
                           <td className="max-w-48 truncate px-2 py-1.5 text-muted-foreground">
                             {t.name}
                           </td>

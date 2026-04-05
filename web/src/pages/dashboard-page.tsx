@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 
+import { UpcomingEventsWidget } from '@/components/calendar/upcoming-events-widget'
 import { ActiveStrategies } from '@/components/dashboard/active-strategies'
 import { ActivityFeed } from '@/components/dashboard/activity-feed'
 import { PortfolioSummary } from '@/components/dashboard/portfolio-summary'
@@ -38,6 +39,7 @@ export function DashboardPage() {
 
         <div className="space-y-4">
           <RiskStatusBar />
+          <UpcomingEventsWidget />
         </div>
       </div>
     </div>

@@ -23,6 +23,7 @@ import { DiscoveryPage } from '@/pages/discovery-page'
 import { AutomationPage } from '@/pages/automation-page'
 import { AutomationDetailPage } from '@/pages/automation-detail-page'
 import { CalendarPage } from '@/pages/calendar-page'
+import { StockDetailPage } from '@/pages/stock-detail-page'
 import { UniversePage } from '@/pages/universe-page'
 
 export function AppRoutes() {
@@ -41,6 +42,7 @@ export function AppRoutes() {
           <Route path="runs/:id" element={<PipelineRunPage />} />
           <Route path="backtests" element={<BacktestsPage />} />
           <Route path="backtests/:id" element={<BacktestDetailPage />} />
+          <Route path="stocks/:ticker" element={<StockDetailPage />} />
           <Route path="orders" element={<OrdersPage />} />
           <Route path="orders/:id" element={<OrderDetailPage />} />
           <Route path="options" element={<OptionsPage />} />

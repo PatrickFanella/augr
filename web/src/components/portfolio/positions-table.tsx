@@ -91,8 +91,14 @@ export function PositionsTable() {
                       }
                     }}
                   >
-                    <td className="px-4 py-3 font-mono text-[13px] font-medium tracking-[0.02em] text-foreground">
-                      {position.ticker}
+                    <td className="px-4 py-3 font-mono text-[13px] font-medium tracking-[0.02em]">
+                      <Link
+                        to={`/stocks/${position.ticker}`}
+                        className="text-primary hover:underline"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {position.ticker}
+                      </Link>
                     </td>
                     <td className="px-4 py-3">
                       <Badge variant={position.side === 'long' ? 'success' : 'destructive'}>

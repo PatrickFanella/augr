@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Receipt } from 'lucide-react';
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -167,8 +168,14 @@ export function TradeHistory() {
                         <td className="px-4 py-3 font-mono text-[13px] text-muted-foreground">
                           {formatExecutedAt(trade.executed_at)}
                         </td>
-                        <td className="px-4 py-3 font-mono text-[13px] font-medium tracking-[0.02em] text-foreground">
-                          {trade.ticker ?? '—'}
+                        <td className="px-4 py-3 font-mono text-[13px] font-medium tracking-[0.02em]">
+                          {trade.ticker ? (
+                            <Link to={`/stocks/${trade.ticker}`} className="text-primary hover:underline">
+                              {trade.ticker}
+                            </Link>
+                          ) : (
+                            '—'
+                          )}
                         </td>
                         <td className="px-4 py-3">
                           <Badge variant={sideVariant}>{trade.side ?? '—'}</Badge>
