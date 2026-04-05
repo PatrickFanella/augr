@@ -157,15 +157,74 @@ func (o *JobOrchestrator) Status() []JobStatus {
 	return statuses
 }
 
-// RunJob triggers a specific job by name immediately.
+// RunJob triggers a specific job by name immediately, bypassing the
+// schedule/market-hours check (but still respecting dedup and dependencies).
 func (o *JobOrchestrator) RunJob(ctx context.Context, name string) error {
 	job, ok := o.jobs[name]
 	if !ok {
 		return fmt.Errorf("automation: unknown job %q", name)
 	}
 	o.logger.Info("automation: manual trigger", slog.String("job", name))
-	go o.wrapAndRun(job)
+	go o.runDirect(job)
 	return nil
+}
+
+// runDirect runs a job immediately without checking ShouldFire (for manual triggers).
+func (o *JobOrchestrator) runDirect(job *RegisteredJob) {
+	job.mu.Lock()
+	if job.Running {
+		job.mu.Unlock()
+		o.logger.Warn("automation: skipping overlapping run", slog.String("job", job.Name))
+		return
+	}
+	job.Running = true
+	job.mu.Unlock()
+
+	// Check dependencies.
+	for _, dep := range job.DependsOn {
+		if depJob, ok := o.jobs[dep]; ok {
+			depJob.mu.Lock()
+			running := depJob.Running
+			depJob.mu.Unlock()
+			if running {
+				o.logger.Info("automation: skipping job, dependency still running",
+					slog.String("job", job.Name),
+					slog.String("blocked_by", dep),
+				)
+				job.mu.Lock()
+				job.Running = false
+				job.mu.Unlock()
+				return
+			}
+		}
+	}
+
+	defer func() {
+		job.mu.Lock()
+		job.Running = false
+		job.mu.Unlock()
+	}()
+
+	o.logger.Info("automation: job starting", slog.String("job", job.Name))
+	start := time.Now()
+	err := job.Fn(context.Background())
+	elapsed := time.Since(start)
+
+	job.mu.Lock()
+	now := time.Now()
+	job.LastRun = &now
+	job.RunCount++
+	if err != nil {
+		job.ErrorCount++
+		job.LastResult = "failed"
+		job.LastError = err.Error()
+		o.logger.Error("automation: job failed", slog.String("job", job.Name), slog.Duration("elapsed", elapsed), slog.Any("error", err))
+	} else {
+		job.LastResult = "success"
+		job.LastError = ""
+		o.logger.Info("automation: job completed", slog.String("job", job.Name), slog.Duration("elapsed", elapsed))
+	}
+	job.mu.Unlock()
 }
 
 // SetEnabled enables or disables a job.
