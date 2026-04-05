@@ -70,23 +70,27 @@ func RunPreMarketScreen(
 		return nil, nil
 	}
 
-	// 2. Extract ticker symbols.
-	symbols := make([]string, len(tickers))
-	for i, t := range tickers {
-		symbols[i] = t.Ticker
+	// 2. Build a set of known tickers for filtering.
+	knownTickers := make(map[string]bool, len(tickers))
+	for _, t := range tickers {
+		knownTickers[t.Ticker] = true
 	}
 
-	// 3. Call BulkSnapshot.
-	snapshots, err := polygonClient.BulkSnapshot(ctx, symbols)
+	// 3. Call BulkSnapshot with empty list to get ALL tickers in one call
+	// (avoids URL length limit when universe has thousands of tickers).
+	snapshots, err := polygonClient.BulkSnapshot(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("screener: bulk snapshot: %w", err)
 	}
 
 	logger.Info("screener: received snapshots", slog.Int("count", len(snapshots)))
 
-	// 4. Score each snapshot.
+	// 4. Score each snapshot (only tickers in our universe).
 	scored := make([]ScoredTicker, 0, len(snapshots))
 	for _, snap := range snapshots {
+		if !knownTickers[snap.Ticker] {
+			continue
+		}
 		dayVolume := snap.Day.Volume
 		dayClose := snap.Day.Close
 		dayOpen := snap.Day.Open
