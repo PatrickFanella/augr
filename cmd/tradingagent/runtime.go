@@ -202,6 +202,11 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 				Logger:       logger,
 			})
 			orch.RegisterAll()
+			if err := orch.Start(); err != nil {
+				logger.Warn("automation: failed to start job orchestrator", slog.Any("error", err))
+			} else {
+				logger.Info("automation: job orchestrator started", slog.Int("jobs", len(orch.Status())))
+			}
 			deps.Automation = orch
 		}
 	}
