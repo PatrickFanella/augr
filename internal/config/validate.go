@@ -31,16 +31,20 @@ func Validate(cfg Config) error {
 		errs = append(errs, "at least one LLM provider must be configured (OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_API_KEY, OPENROUTER_API_KEY, XAI_API_KEY, or OLLAMA_BASE_URL)")
 	}
 
-	if cfg.DataProviders.AlphaVantage.RateLimitPerMinute <= 0 {
+	if strings.TrimSpace(cfg.DataProviders.AlphaVantage.APIKey) != "" && cfg.DataProviders.AlphaVantage.RateLimitPerMinute <= 0 {
 		errs = append(errs, "ALPHA_VANTAGE_RATE_LIMIT_PER_MINUTE must be greater than 0")
 	}
 
-	if cfg.DataProviders.Finnhub.RateLimitPerMinute <= 0 {
+	if strings.TrimSpace(cfg.DataProviders.Finnhub.APIKey) != "" && cfg.DataProviders.Finnhub.RateLimitPerMinute <= 0 {
 		errs = append(errs, "FINNHUB_RATE_LIMIT_PER_MINUTE must be greater than 0")
 	}
 
+	if strings.TrimSpace(cfg.DataProviders.FMP.APIKey) != "" && cfg.DataProviders.FMP.RateLimitPerMinute <= 0 {
+		errs = append(errs, "FMP_RATE_LIMIT_PER_MINUTE must be greater than 0")
+	}
+
 	if !hasDataProvider(cfg.DataProviders) {
-		errs = append(errs, "at least one data provider must be configured (POLYGON_API_KEY, ALPHA_VANTAGE_API_KEY, or FINNHUB_API_KEY)")
+		errs = append(errs, "at least one data provider must be configured (POLYGON_API_KEY, ALPHA_VANTAGE_API_KEY, FINNHUB_API_KEY, or FMP_API_KEY)")
 	}
 
 	validateBrokerCredentials(&errs, "ALPACA_API_KEY", cfg.Brokers.Alpaca.APIKey, "ALPACA_API_SECRET", cfg.Brokers.Alpaca.APISecret)
@@ -110,10 +114,10 @@ func Validate(cfg Config) error {
 }
 
 func hasDataProvider(providers DataProviderConfigs) bool {
-	// NOTE: Finnhub is parsed into config but not wired into the runtime
-	// provider registry. Do not count it here until an implementation exists.
 	return strings.TrimSpace(providers.Polygon.APIKey) != "" ||
-		strings.TrimSpace(providers.AlphaVantage.APIKey) != ""
+		strings.TrimSpace(providers.AlphaVantage.APIKey) != "" ||
+		strings.TrimSpace(providers.Finnhub.APIKey) != "" ||
+		strings.TrimSpace(providers.FMP.APIKey) != ""
 }
 
 func hasLLMProvider(providers LLMProviderConfigs) bool {

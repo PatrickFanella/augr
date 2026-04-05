@@ -14,9 +14,9 @@ import (
 )
 
 func (o *JobOrchestrator) registerOvernightJobs() {
-	o.Register("overnight_backtest", "Heavy 5-year backtests on promising candidates", overnightBacktestSpec, o.overnightBacktest)
-	o.Register("overnight_sweep", "Parameter optimization on deployed strategies", overnightSweepSpec, o.overnightSweep)
-	o.Register("overnight_generate", "LLM generates new strategy ideas per sector", overnightGenerateSpec, o.overnightGenerate)
+	o.Register("overnight_backtest", "Heavy 5-year backtests on promising candidates", overnightBacktestSpec, o.overnightBacktest, "history_refresh")
+	o.Register("overnight_sweep", "Parameter optimization on deployed strategies", overnightSweepSpec, o.overnightSweep, "overnight_backtest")
+	o.Register("overnight_generate", "LLM generates new strategy ideas per sector", overnightGenerateSpec, o.overnightGenerate, "overnight_sweep")
 	o.Register("history_refresh", "Download latest OHLCV for all universe tickers", historyRefreshSpec, o.historyRefresh)
 }
 

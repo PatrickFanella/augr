@@ -29,7 +29,7 @@ var (
 
 func (o *JobOrchestrator) registerMarketJobs() {
 	o.Register("hot_scan", "Quick scan top 200 tickers by watch score", hotScanSpec, o.hotScan)
-	o.Register("deep_scan", "Full universe snapshot and score update", deepScanSpec, o.deepScan)
+	o.Register("deep_scan", "Full universe snapshot and score update", deepScanSpec, o.deepScan, "hot_scan")
 }
 
 // hotScan scans the top 200 watchlist tickers and updates their scores.

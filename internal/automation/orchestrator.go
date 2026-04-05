@@ -35,6 +35,7 @@ type RegisteredJob struct {
 	Description string
 	Schedule    scheduler.ScheduleSpec
 	Fn          func(ctx context.Context) error
+	DependsOn   []string // job names that must not be running
 	mu          sync.Mutex
 	LastRun     *time.Time
 	LastResult  string
@@ -82,12 +83,13 @@ func NewJobOrchestrator(deps OrchestratorDeps) *JobOrchestrator {
 }
 
 // Register adds a job to the registry.
-func (o *JobOrchestrator) Register(name, description string, spec scheduler.ScheduleSpec, fn func(ctx context.Context) error) {
+func (o *JobOrchestrator) Register(name, description string, spec scheduler.ScheduleSpec, fn func(ctx context.Context) error, dependsOn ...string) {
 	o.jobs[name] = &RegisteredJob{
 		Name:        name,
 		Description: description,
 		Schedule:    spec,
 		Fn:          fn,
+		DependsOn:   dependsOn,
 		Enabled:     true,
 	}
 }
@@ -202,6 +204,25 @@ func (o *JobOrchestrator) wrapAndRun(job *RegisteredJob) {
 	}
 	job.Running = true
 	job.mu.Unlock()
+
+	// Check dependencies — skip if any dependency is currently running.
+	for _, dep := range job.DependsOn {
+		if depJob, ok := o.jobs[dep]; ok {
+			depJob.mu.Lock()
+			running := depJob.Running
+			depJob.mu.Unlock()
+			if running {
+				o.logger.Info("automation: skipping job, dependency still running",
+					slog.String("job", job.Name),
+					slog.String("blocked_by", dep),
+				)
+				job.mu.Lock()
+				job.Running = false
+				job.mu.Unlock()
+				return
+			}
+		}
+	}
 
 	defer func() {
 		job.mu.Lock()

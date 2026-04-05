@@ -89,6 +89,7 @@ type DataProviderConfigs struct {
 	Polygon      DataProviderConfig
 	AlphaVantage DataProviderConfig
 	Finnhub      DataProviderConfig
+	FMP          DataProviderConfig
 }
 
 // DataProviderConfig contains settings for a market data provider.
@@ -259,6 +260,11 @@ func loadFromEnvironment() (Config, error) {
 		return Config{}, err
 	}
 
+	fmpRateLimit, err := getEnvInt("FMP_RATE_LIMIT_PER_MINUTE", 4)
+	if err != nil {
+		return Config{}, err
+	}
+
 	alpacaPaperMode, err := getEnvBool("ALPACA_PAPER_MODE", true)
 	if err != nil {
 		return Config{}, err
@@ -420,6 +426,10 @@ func loadFromEnvironment() (Config, error) {
 			Finnhub: DataProviderConfig{
 				APIKey:             os.Getenv("FINNHUB_API_KEY"),
 				RateLimitPerMinute: finnhubRateLimit,
+			},
+			FMP: DataProviderConfig{
+				APIKey:             os.Getenv("FMP_API_KEY"),
+				RateLimitPerMinute: fmpRateLimit,
 			},
 		},
 		Brokers: BrokerConfigs{

@@ -21,6 +21,8 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/discovery"
 	"github.com/PatrickFanella/get-rich-quick/internal/data/alphavantage"
 	"github.com/PatrickFanella/get-rich-quick/internal/data/binance"
+	"github.com/PatrickFanella/get-rich-quick/internal/data/finnhub"
+	"github.com/PatrickFanella/get-rich-quick/internal/data/fmp"
 	"github.com/PatrickFanella/get-rich-quick/internal/data/polygon"
 	"github.com/PatrickFanella/get-rich-quick/internal/data/yahoo"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
@@ -124,9 +126,14 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 			}),
 		)
 	} else {
+		// Global rate limiter: 50 req/min shared across all providers.
+		data.SetGlobalLimiter(data.NewRateLimiter(50, time.Minute))
+
 		reg := data.NewProviderRegistry()
 		polygon.Register(reg)
 		alphavantage.Register(reg)
+		finnhub.Register(reg)
+		fmp.Register(reg)
 		yahoo.Register(reg)
 		binance.Register(reg)
 		dataService := data.NewDataService(cfg, reg, marketDataCacheRepo, logger)

@@ -35,6 +35,8 @@ var ErrHistoricalOHLCVUnavailable = errors.New("data: historical ohlcv repositor
 type ProviderRegistry struct {
 	Polygon      func(apiKey string, logger *slog.Logger) DataProvider
 	AlphaVantage func(apiKey string, rateLimitPerMinute int, logger *slog.Logger) DataProvider
+	Finnhub      func(apiKey string, rateLimitPerMinute int, logger *slog.Logger) DataProvider
+	FMP          func(apiKey string, rateLimitPerMinute int, logger *slog.Logger) DataProvider
 	Yahoo        func(logger *slog.Logger) DataProvider
 	Binance      func(logger *slog.Logger) DataProvider
 }
@@ -73,6 +75,12 @@ func NewDataService(cfg config.Config, reg *ProviderRegistry, cacheRepo reposito
 	}
 	if apiKey := strings.TrimSpace(cfg.DataProviders.AlphaVantage.APIKey); apiKey != "" && reg.AlphaVantage != nil {
 		stockProviders = append(stockProviders, reg.AlphaVantage(apiKey, cfg.DataProviders.AlphaVantage.RateLimitPerMinute, logger))
+	}
+	if apiKey := strings.TrimSpace(cfg.DataProviders.Finnhub.APIKey); apiKey != "" && reg.Finnhub != nil {
+		stockProviders = append(stockProviders, reg.Finnhub(apiKey, cfg.DataProviders.Finnhub.RateLimitPerMinute, logger))
+	}
+	if apiKey := strings.TrimSpace(cfg.DataProviders.FMP.APIKey); apiKey != "" && reg.FMP != nil {
+		stockProviders = append(stockProviders, reg.FMP(apiKey, cfg.DataProviders.FMP.RateLimitPerMinute, logger))
 	}
 	if reg.Yahoo != nil {
 		stockProviders = append(stockProviders, reg.Yahoo(logger))
