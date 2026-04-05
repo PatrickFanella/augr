@@ -20,13 +20,14 @@ import (
 
 // OrchestratorDeps bundles external dependencies required by the orchestrator.
 type OrchestratorDeps struct {
-	Universe     *universe.Universe
-	Polygon      *polygon.Client
-	DataService  *data.DataService
-	LLMProvider  llm.Provider
-	StrategyRepo repository.StrategyRepository
-	RunRepo      repository.PipelineRunRepository
-	Logger       *slog.Logger
+	Universe       *universe.Universe
+	Polygon        *polygon.Client
+	DataService    *data.DataService
+	LLMProvider    llm.Provider
+	EventsProvider data.EventsProvider
+	StrategyRepo   repository.StrategyRepository
+	RunRepo        repository.PipelineRunRepository
+	Logger         *slog.Logger
 }
 
 // RegisteredJob tracks a single automated job and its runtime state.
@@ -99,6 +100,7 @@ func (o *JobOrchestrator) RegisterAll() {
 	o.registerMarketJobs()
 	o.registerPreMarketJobs()
 	o.registerPostMarketJobs()
+	o.registerEventJobs()
 	o.registerOvernightJobs()
 	o.registerWeeklyJobs()
 }

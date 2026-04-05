@@ -146,6 +146,11 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 		} else if strings.TrimSpace(cfg.DataProviders.Polygon.APIKey) != "" {
 			deps.OptionsProvider = polygon.NewOptionsProvider(polygon.NewClient(cfg.DataProviders.Polygon.APIKey, logger))
 		}
+		// Events provider: Finnhub provides earnings, filings, economic, IPO calendars.
+		if strings.TrimSpace(cfg.DataProviders.Finnhub.APIKey) != "" {
+			eventsClient := finnhub.NewClient(cfg.DataProviders.Finnhub.APIKey, logger)
+			deps.EventsProvider = finnhub.NewProvider(eventsClient)
+		}
 		deps.DiscoveryDeps = &discovery.DiscoveryDeps{
 			DataService: dataService,
 			LLMProvider: deps.LLMProvider,
@@ -205,13 +210,14 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 				polygonClientForAuto = polygon.NewClient(cfg.DataProviders.Polygon.APIKey, logger)
 			}
 			orch := automation.NewJobOrchestrator(automation.OrchestratorDeps{
-				Universe:     deps.Universe,
-				Polygon:      polygonClientForAuto,
-				DataService:  dataService,
-				LLMProvider:  deps.LLMProvider,
-				StrategyRepo: strategyRepo,
-				RunRepo:      runRepo,
-				Logger:       logger,
+				Universe:       deps.Universe,
+				Polygon:        polygonClientForAuto,
+				DataService:    dataService,
+				LLMProvider:    deps.LLMProvider,
+				EventsProvider: deps.EventsProvider,
+				StrategyRepo:   strategyRepo,
+				RunRepo:        runRepo,
+				Logger:         logger,
 			})
 			orch.RegisterAll()
 			if err := orch.Start(); err != nil {

@@ -5,9 +5,12 @@ import type {
   AgentEvent,
   AgentMemory,
   AuditLogEntry,
+  EarningsEvent,
+  EconomicEvent,
   EngineStatus,
   ErrorResponse,
   HealthStatus,
+  IPOEvent,
   LoginRequest,
   LoginResponse,
   KillSwitchToggleRequest,
@@ -24,6 +27,7 @@ import type {
   PortfolioSummary,
   RunListParams,
   ScoredTicker,
+  SECFiling,
   Settings,
   SettingsUpdateRequest,
   Strategy,
@@ -486,6 +490,23 @@ export class ApiClient {
       method: 'POST',
       body: { enabled },
     })
+  }
+
+  // Calendar
+  async getEarningsCalendar(params: { from?: string; to?: string } = {}) {
+    return this.request<EarningsEvent[]>('/api/v1/calendar/earnings', { query: toQueryParams(params) })
+  }
+
+  async getEconomicCalendar() {
+    return this.request<EconomicEvent[]>('/api/v1/calendar/economic')
+  }
+
+  async getFilings(params: { ticker?: string; form?: string } = {}) {
+    return this.request<SECFiling[]>('/api/v1/calendar/filings', { query: toQueryParams(params) })
+  }
+
+  async getIPOCalendar(params: { from?: string; to?: string } = {}) {
+    return this.request<IPOEvent[]>('/api/v1/calendar/ipo', { query: toQueryParams(params) })
   }
 }
 

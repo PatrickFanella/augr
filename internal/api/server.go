@@ -70,6 +70,9 @@ type Server struct {
 	// Options data
 	optionsProvider data.OptionsDataProvider
 
+	// Calendar / events data
+	eventsProvider data.EventsProvider
+
 	// WebSocket hub for real-time event streaming.
 	hub            *Hub
 	wsUpgrader     websocket.Upgrader
@@ -149,6 +152,7 @@ type Deps struct {
 	BacktestRuns     repository.BacktestRunRepository
 	DataService      *data.DataService
 	OptionsProvider  data.OptionsDataProvider
+	EventsProvider   data.EventsProvider
 	DiscoveryDeps    *discovery.DiscoveryDeps
 	DiscoveryRunRepo discovery.RunRepository
 	Universe         *universe.Universe
@@ -245,6 +249,7 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 		backtestRuns:    deps.BacktestRuns,
 		dataService:      deps.DataService,
 		optionsProvider:   deps.OptionsProvider,
+		eventsProvider:    deps.EventsProvider,
 		discoveryDeps:    deps.DiscoveryDeps,
 		discoveryRunRepo: deps.DiscoveryRunRepo,
 		universe:         deps.Universe,
@@ -370,6 +375,14 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 		v1.Route("/options", func(or chi.Router) {
 			or.Get("/chain/{underlying}", s.handleGetOptionsChain)
 			or.Get("/contracts/{symbol}/bars", s.handleGetOptionsContractBars)
+		})
+
+		// Calendar
+		v1.Route("/calendar", func(cr chi.Router) {
+			cr.Get("/earnings", s.handleGetEarningsCalendar)
+			cr.Get("/economic", s.handleGetEconomicCalendar)
+			cr.Get("/filings", s.handleGetFilings)
+			cr.Get("/ipo", s.handleGetIPOCalendar)
 		})
 
 		// Backtests

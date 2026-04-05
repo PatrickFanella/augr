@@ -22,6 +22,7 @@ import { PortfolioPage } from '@/pages/portfolio-page'
 import { DiscoveryPage } from '@/pages/discovery-page'
 import { AutomationPage } from '@/pages/automation-page'
 import { AutomationDetailPage } from '@/pages/automation-detail-page'
+import { CalendarPage } from '@/pages/calendar-page'
 import { UniversePage } from '@/pages/universe-page'
 
 export function AppRoutes() {
@@ -44,6 +45,7 @@ export function AppRoutes() {
           <Route path="orders/:id" element={<OrderDetailPage />} />
           <Route path="options" element={<OptionsPage />} />
           <Route path="discovery" element={<DiscoveryPage />} />
+          <Route path="calendar" element={<CalendarPage />} />
           <Route path="universe" element={<UniversePage />} />
           <Route path="automation" element={<AutomationPage />} />
           <Route path="automation/:name" element={<AutomationDetailPage />} />

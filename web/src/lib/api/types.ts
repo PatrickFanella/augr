@@ -630,6 +630,51 @@ export interface TrackedTicker {
   active: boolean
 }
 
+// ---------- Calendar ----------
+
+export interface EarningsEvent {
+  symbol: string
+  date: ISODateString
+  hour: string
+  eps_estimate?: number
+  eps_actual?: number
+  revenue_estimate?: number
+  revenue_actual?: number
+  quarter: number
+  year: number
+}
+
+export interface EconomicEvent {
+  event: string
+  country: string
+  time: ISODateString
+  impact: string
+  estimate?: number
+  actual?: number
+  previous?: number
+  unit: string
+}
+
+export interface SECFiling {
+  symbol: string
+  form: string
+  filed_date: ISODateString
+  accepted_date: ISODateString
+  report_date: ISODateString
+  url: string
+  access_number: string
+}
+
+export interface IPOEvent {
+  symbol: string
+  date: ISODateString
+  exchange: string
+  name: string
+  price_range: string
+  shares_offered: number
+  status: string
+}
+
 export interface ScoredTicker {
   ticker: string
   score: number
