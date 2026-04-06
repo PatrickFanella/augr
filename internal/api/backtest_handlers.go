@@ -283,6 +283,26 @@ func (s *Server) handleRunBacktestConfig(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// Auto-activate inactive strategies that pass backtesting.
+	// Criteria: positive Sharpe ratio and at least one trade executed.
+	if strategy.Status == domain.StrategyStatusInactive &&
+		result.Metrics.SharpeRatio > 0 &&
+		len(result.Trades) > 0 {
+		strategy.Status = domain.StrategyStatusActive
+		if err := s.strategies.Update(ctx, strategy); err != nil {
+			s.logger.Warn("backtest: failed to auto-activate strategy",
+				"strategy_id", strategy.ID,
+				"error", err,
+			)
+		} else {
+			s.logger.Info("backtest: auto-activated strategy after passing backtest",
+				"strategy_id", strategy.ID,
+				"sharpe_ratio", result.Metrics.SharpeRatio,
+				"total_trades", len(result.Trades),
+			)
+		}
+	}
+
 	respondJSON(w, http.StatusCreated, run)
 }
 

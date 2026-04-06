@@ -7,6 +7,16 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     host: '0.0.0.0', // Listen on all interfaces for LAN access
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8081',
+        changeOrigin: true,
+      },
+      '/ws': {
+        target: 'ws://localhost:8081',
+        ws: true,
+      },
+    },
   },
   resolve: {
     alias: {

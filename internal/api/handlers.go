@@ -931,8 +931,8 @@ func (s *Server) handleGetConversationMessages(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	// Verify conversation exists.
-	if _, err := s.conversations.GetConversation(r.Context(), id); err != nil {
+	conv, err := s.conversations.GetConversation(r.Context(), id)
+	if err != nil {
 		if isNotFound(err) {
 			respondError(w, http.StatusNotFound, "conversation not found", ErrCodeNotFound)
 			return
@@ -947,6 +947,34 @@ func (s *Server) handleGetConversationMessages(w http.ResponseWriter, r *http.Re
 		respondError(w, http.StatusInternalServerError, "failed to get messages", ErrCodeInternal)
 		return
 	}
+
+	// Inject agent pipeline decisions as synthetic assistant messages at the
+	// start of the conversation so the agent's analysis appears as if they
+	// were a participant in the chat.
+	if offset == 0 && s.decisions != nil {
+		decisions, decErr := s.decisions.GetByRun(r.Context(), conv.PipelineRunID, repository.AgentDecisionFilter{
+			AgentRole: conv.AgentRole,
+		}, 20, 0)
+		if decErr == nil && len(decisions) > 0 {
+			synthetic := make([]domain.ConversationMessage, 0, len(decisions)+len(messages))
+			for _, dec := range decisions {
+				content := dec.OutputText
+				if dec.Phase != "" {
+					content = fmt.Sprintf("[%s] %s", dec.Phase, content)
+				}
+				synthetic = append(synthetic, domain.ConversationMessage{
+					ID:             dec.ID,
+					ConversationID: id,
+					Role:           domain.ConversationMessageRoleAssistant,
+					Content:        content,
+					CreatedAt:      dec.CreatedAt,
+				})
+			}
+			synthetic = append(synthetic, messages...)
+			messages = synthetic
+		}
+	}
+
 	respondList(w, messages, limit, offset)
 }
 

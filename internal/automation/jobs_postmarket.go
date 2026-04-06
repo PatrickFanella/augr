@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math"
 	"time"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/agent/rules"
@@ -12,6 +13,7 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/discovery"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
+	pgrepo "github.com/PatrickFanella/get-rich-quick/internal/repository/postgres"
 	"github.com/PatrickFanella/get-rich-quick/internal/scheduler"
 )
 
@@ -209,13 +211,13 @@ func (o *JobOrchestrator) strategyResweep(ctx context.Context) error {
 	return nil
 }
 
-// optionsScan is a placeholder for scanning options chains. Requires
-// the Polygon client to be configured.
+// optionsScan fetches options chains for the top watchlist tickers and logs
+// setups with elevated IV, unusual volume, or favourable put/call skew.
 func (o *JobOrchestrator) optionsScan(ctx context.Context) error {
 	o.logger.Info("options_scan: starting")
 
-	if o.deps.Polygon == nil {
-		o.logger.Info("options_scan: skipped — Polygon client not configured")
+	if o.deps.OptionsProvider == nil {
+		o.logger.Info("options_scan: skipped — options data provider not configured")
 		return nil
 	}
 
@@ -224,21 +226,207 @@ func (o *JobOrchestrator) optionsScan(ctx context.Context) error {
 		return nil
 	}
 
-	watchlist, err := o.deps.Universe.GetWatchlist(ctx, 20)
+	// Fetch all active tickers and filter for optionable ones (price > $5).
+	allTickers, err := o.deps.Universe.GetActiveTickers(ctx, "", 0)
 	if err != nil {
-		return fmt.Errorf("options_scan: get watchlist: %w", err)
+		return fmt.Errorf("options_scan: get tickers: %w", err)
 	}
 
-	for _, ticker := range watchlist {
+	type optionable struct {
+		ticker string
+		close  float64
+	}
+	var candidates []optionable
+	for _, ticker := range allTickers {
+		if o.deps.DataService != nil {
+			bars, err := o.deps.DataService.GetOHLCV(ctx, domain.MarketTypeStock, ticker, data.Timeframe1d, time.Now().AddDate(0, 0, -5), time.Now())
+			if err != nil || len(bars) == 0 {
+				continue
+			}
+			close_ := bars[len(bars)-1].Close
+			if close_ < 5.0 {
+				continue
+			}
+			candidates = append(candidates, optionable{ticker: ticker, close: close_})
+		} else {
+			candidates = append(candidates, optionable{ticker: ticker})
+		}
+	}
+
+	o.logger.Info("options_scan: filtered optionable tickers",
+		slog.Int("universe", len(allTickers)),
+		slog.Int("optionable", len(candidates)),
+	)
+
+	// Target expiry window: 20-50 DTE (sweet spot for premium selling).
+	now := time.Now()
+	targetExpiry := now.AddDate(0, 0, 30) // ~30 DTE centre
+
+	var hits int
+	for _, candidate := range candidates {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		// Placeholder — actual options chain scanning will be wired later.
-		o.logger.Info(fmt.Sprintf("options_scan: would scan %s chain", ticker.Ticker))
+
+		chain, err := o.deps.OptionsProvider.GetOptionsChain(ctx, candidate.ticker, targetExpiry, "")
+		if err != nil {
+			o.logger.Warn("options_scan: chain fetch failed",
+				slog.String("ticker", candidate.ticker),
+				slog.Any("error", err),
+			)
+			continue
+		}
+		if len(chain) < 10 { // need at least 10 contracts for a meaningful chain
+			continue
+		}
+
+		o.logger.Info("options_scan: chain found",
+			slog.String("ticker", candidate.ticker),
+			slog.Int("contracts", len(chain)),
+		)
+
+		result := analyzeChain(candidate.ticker, chain, now)
+		if result == nil {
+			continue
+		}
+
+		hits++
+		o.logger.Info("options_scan: setup found",
+			slog.String("ticker", candidate.ticker),
+			slog.Float64("atm_iv", result.atmIV),
+			slog.Float64("put_call_ratio", result.putCallRatio),
+			slog.Float64("avg_spread_pct", result.avgSpreadPct),
+			slog.Int("total_contracts", result.totalContracts),
+			slog.Float64("total_volume", result.totalVolume),
+			slog.Float64("max_oi", result.maxOI),
+			slog.String("note", result.note),
+		)
+
+		// Persist scan result and IV history.
+		if o.deps.OptionsScanRepo != nil {
+			scanDate := now.Truncate(24 * time.Hour)
+			_ = o.deps.OptionsScanRepo.UpsertScanResult(ctx, &pgrepo.OptionsScanResult{
+				Ticker:       candidate.ticker,
+				ScanDate:     scanDate,
+				ATMIV:        result.atmIV,
+				PutCallRatio: result.putCallRatio,
+				ChainDepth:   result.totalContracts,
+				ATMOI:        result.maxOI,
+			})
+			_ = o.deps.OptionsScanRepo.UpsertIVHistory(ctx, &pgrepo.IVHistoryRecord{
+				Ticker: candidate.ticker,
+				Date:   scanDate,
+				ATMIV:  result.atmIV,
+			})
+		}
 	}
 
-	o.logger.Info("options_scan: completed", slog.Int("tickers", len(watchlist)))
+	o.logger.Info("options_scan: completed",
+		slog.Int("tickers_scanned", len(candidates)),
+		slog.Int("setups_found", hits),
+	)
 	return nil
+}
+
+type chainAnalysis struct {
+	atmIV          float64
+	putCallRatio   float64
+	avgSpreadPct   float64
+	totalContracts int
+	totalVolume    float64
+	maxOI          float64
+	note           string
+}
+
+// analyzeChain evaluates an options chain for actionable setups.
+// Returns nil if nothing interesting is found.
+func analyzeChain(ticker string, chain []domain.OptionSnapshot, now time.Time) *chainAnalysis {
+	if len(chain) == 0 {
+		return nil
+	}
+
+	// Find ATM IV: the contract with the narrowest bid/ask spread near the money.
+	// We approximate "near the money" by finding the strike closest to mid price.
+	var putVol, callVol, totalVol, totalOI float64
+	var spreadSum float64
+	var liquidContracts int
+	var maxOI float64
+
+	for _, snap := range chain {
+		totalVol += snap.Volume
+		totalOI += snap.OpenInterest
+		if snap.OpenInterest > maxOI {
+			maxOI = snap.OpenInterest
+		}
+		switch snap.Contract.OptionType {
+		case domain.OptionTypePut:
+			putVol += snap.Volume
+		case domain.OptionTypeCall:
+			callVol += snap.Volume
+		}
+		if snap.Bid > 0 && snap.Ask > 0 {
+			spreadPct := (snap.Ask - snap.Bid) / snap.Mid * 100
+			spreadSum += spreadPct
+			liquidContracts++
+		}
+	}
+
+	// Find ATM IV from the call with delta closest to 0.50.
+	var atmIV float64
+	bestDeltaDist := 999.0
+	for _, snap := range chain {
+		if snap.Contract.OptionType != domain.OptionTypeCall {
+			continue
+		}
+		dist := math.Abs(math.Abs(snap.Greeks.Delta) - 0.50)
+		if dist < bestDeltaDist {
+			bestDeltaDist = dist
+			atmIV = snap.Greeks.IV
+		}
+	}
+
+	var putCallRatio float64
+	if callVol > 0 {
+		putCallRatio = putVol / callVol
+	}
+
+	var avgSpread float64
+	if liquidContracts > 0 {
+		avgSpread = spreadSum / float64(liquidContracts)
+	}
+
+	// Flag setups: elevated IV (>40%), unusual put/call ratio, or high volume.
+	var notes []string
+	if atmIV > 0.40 {
+		notes = append(notes, fmt.Sprintf("elevated IV %.0f%%", atmIV*100))
+	}
+	if putCallRatio > 1.5 {
+		notes = append(notes, fmt.Sprintf("high put/call %.2f", putCallRatio))
+	} else if putCallRatio > 0 && putCallRatio < 0.5 {
+		notes = append(notes, fmt.Sprintf("low put/call %.2f (bullish)", putCallRatio))
+	}
+	if totalVol > 10000 {
+		notes = append(notes, fmt.Sprintf("high volume %.0f", totalVol))
+	}
+
+	if len(notes) == 0 {
+		return nil
+	}
+
+	note := notes[0]
+	for _, n := range notes[1:] {
+		note += "; " + n
+	}
+
+	return &chainAnalysis{
+		atmIV:          atmIV,
+		putCallRatio:   putCallRatio,
+		avgSpreadPct:   avgSpread,
+		totalContracts: len(chain),
+		totalVolume:    totalVol,
+		maxOI:          maxOI,
+		note:           note,
+	}
 }
 
 // extractRulesConfig parses the rules_engine config from a strategy's

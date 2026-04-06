@@ -1,23 +1,27 @@
-const DEFAULT_API_BASE_URL = 'http://localhost:8081'
-
 export function getApiBaseUrl() {
   const configuredBaseUrl = (import.meta.env.VITE_API_BASE_URL || '').trim()
   if (configuredBaseUrl) {
     return configuredBaseUrl.replace(/\/$/, '')
   }
 
-  // When accessed remotely, use the same hostname as the browser with the API port.
-  if (typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
-    return `http://${window.location.hostname}:8081`
-  }
-
-  return DEFAULT_API_BASE_URL
+  // Use same-origin: in dev Vite proxies /api and /ws to the backend,
+  // so this works over SSH port-forwarding, Tailscale, and direct localhost alike.
+  return window.location.origin
 }
 
 export function getWebSocketUrl(path = '/ws') {
-  const url = new URL(getApiBaseUrl())
+  const base = getApiBaseUrl()
+  const wsPath = path.startsWith('/') ? path : `/${path}`
+
+  // Same-origin mode (dev proxy): derive WS URL from current page location.
+  if (!base) {
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    return `${proto}//${window.location.host}${wsPath}`
+  }
+
+  const url = new URL(base)
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
-  url.pathname = path.startsWith('/') ? path : `/${path}`
+  url.pathname = wsPath
   url.search = ''
   url.hash = ''
   return url.toString()

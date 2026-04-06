@@ -90,6 +90,7 @@ type RuntimeConfig struct {
 	DebateTimeout   time.Duration
 	ResearchRounds  int
 	RiskRounds      int
+	SkipPhases      map[Phase]bool
 }
 
 // InitialStateSeed captures pre-fetched pipeline inputs that should be loaded
@@ -208,6 +209,7 @@ func (r *Runner) Prepare(strategy domain.Strategy, globals GlobalSettings) (Prep
 			DebateTimeout:   runtimeDebateTimeout(resolved),
 			ResearchRounds:  resolved.PipelineConfig.DebateRounds,
 			RiskRounds:      resolved.PipelineConfig.DebateRounds,
+			SkipPhases:      defaultSkipPhases(),
 		},
 		ConfigSnapshot: configSnapshot,
 	}, nil
@@ -281,16 +283,20 @@ func (r *Runner) Run(ctx context.Context, prepared PreparedRun) (*RunResult, err
 	warnings := make([]RunWarning, 0)
 	var warningsMu sync.Mutex
 	phases := []struct {
-		name string
-		fn   func(context.Context, *PipelineState, PreparedRun, *[]RunWarning, *sync.Mutex) error
+		name  string
+		phase Phase
+		fn    func(context.Context, *PipelineState, PreparedRun, *[]RunWarning, *sync.Mutex) error
 	}{
-		{"analysis", r.runAnalysis},
-		{"research_debate", r.runResearchDebate},
-		{"trading", r.runTrading},
-		{"risk_debate", r.runRiskDebate},
+		{"analysis", PhaseAnalysis, r.runAnalysis},
+		{"research_debate", PhaseResearchDebate, r.runResearchDebate},
+		{"trading", PhaseTrading, r.runTrading},
+		{"risk_debate", PhaseRiskDebate, r.runRiskDebate},
 	}
 
 	for _, phase := range phases {
+		if prepared.Runtime.SkipPhases[phase.phase] {
+			continue
+		}
 		r.helper.persistStructuredEvent(ctx, r.helper.newStructuredEvent(
 			run.ID,
 			prepared.Strategy.ID,
@@ -701,6 +707,13 @@ func snapshotState(state *PipelineState) StateView {
 		FinalSignal:    state.FinalSignal,
 		LLMCacheStats:  state.LLMCacheStats,
 	}
+}
+
+// defaultSkipPhases returns the phases to skip by default.
+// Risk debate is skipped because the research debate + trader already
+// incorporate risk assessment, and it doubles the pipeline time.
+func defaultSkipPhases() map[Phase]bool {
+	return map[Phase]bool{PhaseRiskDebate: true}
 }
 
 func runtimePipelineTimeout(_ ResolvedConfig) time.Duration {

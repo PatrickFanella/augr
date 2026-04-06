@@ -13,6 +13,11 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/llm"
 )
 
+// snapshotPersistTimeout is the deadline for persisting pipeline snapshots.
+// It is independent of the phase timeout so that slow data fetching doesn't
+// cause snapshot writes to fail. Overridden in tests.
+var snapshotPersistTimeout = 10 * time.Second
+
 // PhaseHelper encapsulates event emission, structured event persistence, and
 // snapshot persistence shared by both Pipeline and Runner. Both orchestrators
 // embed a PhaseHelper and delegate to it instead of carrying duplicate copies of
@@ -131,12 +136,17 @@ func (h *PhaseHelper) persistAnalysisSnapshots(ctx context.Context, state *Pipel
 		if err != nil {
 			return fmt.Errorf("agent: marshal %s snapshot: %w", snapshotData.dataType, err)
 		}
-		if err := h.persister.PersistSnapshot(ctx, &domain.PipelineRunSnapshot{
+		// Use a fresh context for DB writes so they don't fail when the
+		// analysis context is nearly exhausted from data fetching.
+		persistCtx, persistCancel := context.WithTimeout(context.WithoutCancel(ctx), snapshotPersistTimeout)
+		err = h.persister.PersistSnapshot(persistCtx, &domain.PipelineRunSnapshot{
 			PipelineRunID: state.PipelineRunID,
 			DataType:      snapshotData.dataType,
 			Payload:       payload,
-		}); err != nil {
-			return err
+		})
+		persistCancel()
+		if err != nil {
+			return fmt.Errorf("agent/pipeline: persist snapshot %s: %w", snapshotData.dataType, err)
 		}
 	}
 	return nil

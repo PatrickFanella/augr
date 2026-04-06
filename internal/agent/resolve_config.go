@@ -6,8 +6,8 @@ const (
 	defaultLLMDeepThinkModel      = "gpt-5.2"
 	defaultLLMQuickThinkModel     = "gpt-5-mini"
 	defaultPipelineDebateRounds   = 3
-	defaultAnalysisTimeoutSeconds = 30
-	defaultDebateTimeoutSeconds   = 60
+	defaultAnalysisTimeoutSeconds = 300
+	defaultDebateTimeoutSeconds   = 600
 	defaultPositionSizePct        = 5.0
 	defaultStopLossMultiplier     = 1.5
 	defaultTakeProfitMultiplier   = 2.0

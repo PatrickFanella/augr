@@ -25,6 +25,7 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/data/finnhub"
 	"github.com/PatrickFanella/get-rich-quick/internal/data/fmp"
 	"github.com/PatrickFanella/get-rich-quick/internal/data/polygon"
+	"github.com/PatrickFanella/get-rich-quick/internal/data/tradier"
 	"github.com/PatrickFanella/get-rich-quick/internal/data/yahoo"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution"
@@ -67,6 +68,9 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 	userRepo := pgrepo.NewUserRepo(db.Pool)
 	conversationRepo := pgrepo.NewConversationRepo(db.Pool)
 	marketDataCacheRepo := pgrepo.NewMarketDataCacheRepo(db.Pool)
+	jobRunRepo := pgrepo.NewJobRunRepo(db.Pool)
+	optionsScanRepo := pgrepo.NewOptionsScanRepo(db.Pool)
+	newsFeedRepo := pgrepo.NewNewsFeedRepo(db.Pool)
 
 	riskEngine := risk.NewRiskEngine(
 		risk.PositionLimits{
@@ -104,9 +108,10 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 		Events:          eventRepo,
 		MetricsHandler:  appMetrics.Handler(),
 		Snapshots:       snapshotRepo,
-		LLMProvider:     newLLMProviderFromConfig(cfg.LLM, logger),
+		LLMProvider:     throttleLLM(newLLMProviderFromConfig(cfg.LLM, logger)),
 		BacktestConfigs: pgrepo.NewBacktestConfigRepo(db.Pool),
 		BacktestRuns:    pgrepo.NewBacktestRunRepo(db.Pool),
+		NewsFeedRepo:    newsFeedRepo,
 	}
 	notificationManager := newNotificationManager(cfg)
 
@@ -139,13 +144,20 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 		binance.Register(reg)
 		dataService := data.NewDataService(cfg, reg, marketDataCacheRepo, logger)
 		deps.DataService = dataService
-		// Options data: prefer Alpaca (free with paper account, includes Greeks).
-		// Fall back to Polygon if Alpaca creds are not available.
-		if strings.TrimSpace(cfg.Brokers.Alpaca.APIKey) != "" && strings.TrimSpace(cfg.Brokers.Alpaca.APISecret) != "" {
-			deps.OptionsProvider = alpacaData.NewOptionsDataProvider(cfg.Brokers.Alpaca.APIKey, cfg.Brokers.Alpaca.APISecret, logger)
-		} else if strings.TrimSpace(cfg.DataProviders.Polygon.APIKey) != "" {
-			deps.OptionsProvider = polygon.NewOptionsProvider(polygon.NewClient(cfg.DataProviders.Polygon.APIKey, logger))
+		// Options data chain: Tradier (full Greeks from ORATS) → Yahoo (free, BS Greeks)
+		// → Alpaca (paper account) → Polygon (rate-limited).
+		optProviders := []data.OptionsDataProvider{}
+		if strings.TrimSpace(cfg.DataProviders.Tradier.APIKey) != "" {
+			optProviders = append(optProviders, tradier.NewOptionsProvider(cfg.DataProviders.Tradier.APIKey, cfg.DataProviders.Tradier.Sandbox, logger))
 		}
+		optProviders = append(optProviders, yahoo.NewOptionsProvider(logger))
+		if strings.TrimSpace(cfg.Brokers.Alpaca.APIKey) != "" && strings.TrimSpace(cfg.Brokers.Alpaca.APISecret) != "" {
+			optProviders = append(optProviders, alpacaData.NewOptionsDataProvider(cfg.Brokers.Alpaca.APIKey, cfg.Brokers.Alpaca.APISecret, logger))
+		}
+		if strings.TrimSpace(cfg.DataProviders.Polygon.APIKey) != "" {
+			optProviders = append(optProviders, polygon.NewOptionsProvider(polygon.NewClient(cfg.DataProviders.Polygon.APIKey, logger)))
+		}
+		deps.OptionsProvider = data.NewOptionsProviderChain(logger, optProviders...)
 		// Events provider: Finnhub provides earnings, filings, economic, IPO calendars.
 		if strings.TrimSpace(cfg.DataProviders.Finnhub.APIKey) != "" {
 			eventsClient := finnhub.NewClient(cfg.DataProviders.Finnhub.APIKey, logger)
@@ -210,14 +222,18 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 				polygonClientForAuto = polygon.NewClient(cfg.DataProviders.Polygon.APIKey, logger)
 			}
 			orch := automation.NewJobOrchestrator(automation.OrchestratorDeps{
-				Universe:       deps.Universe,
-				Polygon:        polygonClientForAuto,
-				DataService:    dataService,
-				LLMProvider:    deps.LLMProvider,
-				EventsProvider: deps.EventsProvider,
-				StrategyRepo:   strategyRepo,
-				RunRepo:        runRepo,
-				Logger:         logger,
+				Universe:        deps.Universe,
+				Polygon:         polygonClientForAuto,
+				DataService:     dataService,
+				OptionsProvider: deps.OptionsProvider,
+				LLMProvider:     deps.LLMProvider,
+				EventsProvider:  deps.EventsProvider,
+				StrategyRepo:    strategyRepo,
+				RunRepo:         runRepo,
+				JobRunRepo:      jobRunRepo,
+				OptionsScanRepo: optionsScanRepo,
+				NewsFeedRepo:    newsFeedRepo,
+				Logger:          logger,
 			})
 			orch.RegisterAll()
 			if err := orch.Start(); err != nil {
@@ -262,6 +278,15 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 		closeRedis()
 		db.Close()
 	}, nil
+}
+
+// throttleLLM wraps a provider with a global concurrency limiter so that
+// serial backends (Ollama) aren't overwhelmed by concurrent requests.
+func throttleLLM(p llm.Provider) llm.Provider {
+	if p == nil {
+		return nil
+	}
+	return llm.NewThrottledProvider(p, 4)
 }
 
 // newLLMProviderFromConfig builds an llm.Provider from application config.

@@ -235,10 +235,18 @@ func TestExecuteAnalysisPhase(t *testing.T) {
 	}
 }
 
-func TestExecuteAnalysisPhase_SnapshotPersistenceUsesPhaseTimeout(t *testing.T) {
+func TestExecuteAnalysisPhase_SnapshotPersistSurvivesExpiredPhaseContext(t *testing.T) {
+	// Shorten persist timeout for test speed.
+	origTimeout := snapshotPersistTimeout
+	snapshotPersistTimeout = 200 * time.Millisecond
+	t.Cleanup(func() { snapshotPersistTimeout = origTimeout })
+
 	runID := uuid.New()
 	stratID := uuid.New()
 	persister := &blockingSnapshotPersister{}
+
+	// Phase timeout is very short — analysts will complete but the phase
+	// context will be nearly expired by the time persist runs.
 	const phaseTimeout = 50 * time.Millisecond
 
 	pipeline := NewPipeline(
@@ -262,18 +270,17 @@ func TestExecuteAnalysisPhase_SnapshotPersistenceUsesPhaseTimeout(t *testing.T) 
 		Ticker:        "AAPL",
 	}
 
-	start := time.Now()
+	// The blocking persister blocks until its context is done. With the
+	// detached persist context (10s timeout), PersistSnapshot will be called
+	// and will eventually hit the 10s deadline — NOT the 50ms phase timeout.
+	// We just verify PersistSnapshot was called (proving it wasn't skipped
+	// due to an already-expired phase context).
 	err := pipeline.executeAnalysisPhase(context.Background(), state)
-	elapsed := time.Since(start)
-	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("executeAnalysisPhase() error = %v, want %v", err, context.DeadlineExceeded)
+	if err == nil {
+		t.Fatal("expected error from blocking persister")
 	}
-	if got := persister.calls.Load(); got != 1 {
-		t.Fatalf("PersistSnapshot() call count = %d, want 1", got)
-	}
-	const maxElapsed = phaseTimeout * 5
-	if elapsed > maxElapsed {
-		t.Fatalf("executeAnalysisPhase() took %v, want <= %v", elapsed, maxElapsed)
+	if got := persister.calls.Load(); got < 1 {
+		t.Fatalf("PersistSnapshot() call count = %d, want >= 1", got)
 	}
 }
 

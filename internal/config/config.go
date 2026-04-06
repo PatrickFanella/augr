@@ -90,6 +90,13 @@ type DataProviderConfigs struct {
 	AlphaVantage DataProviderConfig
 	Finnhub      DataProviderConfig
 	FMP          DataProviderConfig
+	Tradier      TradierConfig
+}
+
+// TradierConfig contains Tradier-specific settings.
+type TradierConfig struct {
+	APIKey  string
+	Sandbox bool
 }
 
 // DataProviderConfig contains settings for a market data provider.
@@ -275,6 +282,11 @@ func loadFromEnvironment() (Config, error) {
 		return Config{}, err
 	}
 
+	tradierSandbox, err := getEnvBool("TRADIER_SANDBOX", true)
+	if err != nil {
+		return Config{}, err
+	}
+
 	maxPositionSizePct, err := getEnvFloat64("RISK_MAX_POSITION_SIZE_PCT", 0.10)
 	if err != nil {
 		return Config{}, err
@@ -430,6 +442,10 @@ func loadFromEnvironment() (Config, error) {
 			FMP: DataProviderConfig{
 				APIKey:             os.Getenv("FMP_API_KEY"),
 				RateLimitPerMinute: fmpRateLimit,
+			},
+			Tradier: TradierConfig{
+				APIKey:  os.Getenv("TRADIER_API_KEY"),
+				Sandbox: tradierSandbox,
 			},
 		},
 		Brokers: BrokerConfigs{

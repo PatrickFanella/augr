@@ -210,7 +210,14 @@ func TestRunnerRunStrategy_ConcurrentRunsKeepConfigIsolated(t *testing.T) {
 		strategy := strategy
 		go func() {
 			defer wg.Done()
-			result, err := runner.RunStrategy(context.Background(), strategy, GlobalSettings{})
+			prepared, pErr := runner.Prepare(strategy, GlobalSettings{})
+			if pErr != nil {
+				errs <- pErr
+				return
+			}
+			// Enable risk debate for this test (default skips it).
+			prepared.Runtime.SkipPhases = nil
+			result, err := runner.Run(context.Background(), prepared)
 			if err != nil {
 				errs <- err
 				return
@@ -271,7 +278,14 @@ func TestRunnerRunStrategy_RiskJudgeUpdatesCanonicalSignalAndPlan(t *testing.T) 
 	persister := newRunnerSpyPersister()
 	runner := NewRunner(defaultRunnerDefinition(), Dependencies{Persister: persister})
 
-	result, err := runner.RunStrategy(context.Background(), strategyWithDebateRounds(t, "AAPL", 1), GlobalSettings{})
+	prepared, err := runner.Prepare(strategyWithDebateRounds(t, "AAPL", 1), GlobalSettings{})
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+	// Enable risk debate for this test (default skips it).
+	prepared.Runtime.SkipPhases = nil
+
+	result, err := runner.Run(context.Background(), prepared)
 	if err != nil {
 		t.Fatalf("RunStrategy() error = %v", err)
 	}

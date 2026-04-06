@@ -8,6 +8,7 @@ import (
 
 	"github.com/PatrickFanella/get-rich-quick/internal/data"
 	"github.com/PatrickFanella/get-rich-quick/internal/discovery"
+	optdiscovery "github.com/PatrickFanella/get-rich-quick/internal/discovery/options"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 	"github.com/PatrickFanella/get-rich-quick/internal/scheduler"
@@ -18,7 +19,10 @@ func (o *JobOrchestrator) registerOvernightJobs() {
 	o.Register("overnight_sweep", "Parameter optimization on deployed strategies", overnightSweepSpec, o.overnightSweep, "overnight_backtest")
 	o.Register("overnight_generate", "LLM generates new strategy ideas per sector", overnightGenerateSpec, o.overnightGenerate, "overnight_sweep")
 	o.Register("history_refresh", "Download latest OHLCV for all universe tickers", historyRefreshSpec, o.historyRefresh)
+	o.Register("options_discovery", "Full options strategy discovery pipeline", optionsDiscoverySpec, o.optionsDiscovery, "overnight_generate")
 }
+
+var optionsDiscoverySpec = scheduler.ScheduleSpec{Type: scheduler.ScheduleTypeCron, Cron: "30 3 * * 2-6", SkipWeekends: false, SkipHolidays: false}
 
 var overnightBacktestSpec = scheduler.ScheduleSpec{Type: scheduler.ScheduleTypeCron, Cron: "0 1 * * 2-6", SkipWeekends: false, SkipHolidays: false}
 var overnightSweepSpec = scheduler.ScheduleSpec{Type: scheduler.ScheduleTypeCron, Cron: "0 2 * * 2-6", SkipWeekends: false, SkipHolidays: false}
@@ -336,5 +340,76 @@ func (o *JobOrchestrator) historyRefresh(ctx context.Context) error {
 	}
 
 	o.logger.Info("history_refresh: completed", slog.Int("tickers", updated))
+	return nil
+}
+
+// optionsDiscovery runs the full options strategy discovery pipeline.
+func (o *JobOrchestrator) optionsDiscovery(ctx context.Context) error {
+	o.logger.Info("options_discovery: starting")
+
+	if o.deps.OptionsProvider == nil {
+		o.logger.Info("options_discovery: skipped — options provider not configured")
+		return nil
+	}
+	if o.deps.Universe == nil {
+		o.logger.Info("options_discovery: skipped — universe not configured")
+		return nil
+	}
+	if o.deps.LLMProvider == nil {
+		o.logger.Info("options_discovery: skipped — LLM provider not configured")
+		return nil
+	}
+
+	// Get top 100 from watchlist as candidates.
+	watchlist, err := o.deps.Universe.GetWatchlist(ctx, 100)
+	if err != nil {
+		return fmt.Errorf("options_discovery: get watchlist: %w", err)
+	}
+	tickers := make([]string, len(watchlist))
+	for i, t := range watchlist {
+		tickers[i] = t.Ticker
+	}
+
+	cfg := optdiscovery.OptionsDiscoveryConfig{
+		Screener: optdiscovery.OptionsScreenerConfig{
+			Tickers: tickers,
+		},
+		Scoring:    optdiscovery.DefaultOptionsScoringConfig(),
+		Generator:  discovery.GeneratorConfig{Provider: o.deps.LLMProvider},
+		BacktestCfg: discovery.DefaultScoringConfig(),
+		MaxWinners: 3,
+	}
+
+	deps := optdiscovery.OptionsDiscoveryDeps{
+		DataService:     o.deps.DataService,
+		OptionsProvider: o.deps.OptionsProvider,
+		Strategies:      o.deps.StrategyRepo,
+		Logger:          o.logger,
+	}
+
+	result, err := optdiscovery.RunOptionsDiscovery(ctx, cfg, deps)
+	if err != nil {
+		return fmt.Errorf("options_discovery: %w", err)
+	}
+
+	o.logger.Info("options_discovery: complete",
+		slog.Int("candidates", result.Candidates),
+		slog.Int("scored", result.Scored),
+		slog.Int("generated", result.Generated),
+		slog.Int("swept", result.Swept),
+		slog.Int("validated", result.Validated),
+		slog.Int("deployed", result.Deployed),
+		slog.Duration("duration", result.Duration),
+	)
+
+	for _, w := range result.Winners {
+		o.logger.Info("options_discovery: winner deployed",
+			slog.String("id", w.StrategyID.String()),
+			slog.String("ticker", w.Ticker),
+			slog.String("type", string(w.Config.StrategyType)),
+			slog.Float64("score", w.Score),
+		)
+	}
+
 	return nil
 }

@@ -18,6 +18,7 @@ import (
 	"github.com/gorilla/websocket"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
+	pgrepo "github.com/PatrickFanella/get-rich-quick/internal/repository/postgres"
 	"github.com/PatrickFanella/get-rich-quick/internal/risk"
 )
 
@@ -69,6 +70,9 @@ type Server struct {
 
 	// Options data
 	optionsProvider data.OptionsDataProvider
+
+	// News feed
+	newsFeedRepo *pgrepo.NewsFeedRepo
 
 	// Calendar / events data
 	eventsProvider data.EventsProvider
@@ -158,6 +162,7 @@ type Deps struct {
 	Universe         *universe.Universe
 	UniverseRepo     universe.UniverseRepository
 	Automation       *automation.JobOrchestrator
+	NewsFeedRepo     *pgrepo.NewsFeedRepo
 	Risk            risk.RiskEngine
 	Settings       SettingsService
 	Runner         StrategyRunner
@@ -255,6 +260,7 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 		universe:         deps.Universe,
 		universeRepo:     deps.UniverseRepo,
 		automation:       deps.Automation,
+		newsFeedRepo:     deps.NewsFeedRepo,
 		risk:             deps.Risk,
 		settings:        settingsService,
 		runner:          deps.Runner,
@@ -422,6 +428,8 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 			ar.Post("/jobs/{name}/run", s.handleRunAutomationJob)
 			ar.Post("/jobs/{name}/enable", s.handleSetAutomationJobEnabled)
 		})
+
+		v1.Get("/news", s.handleListNews)
 	})
 
 	s.router = r

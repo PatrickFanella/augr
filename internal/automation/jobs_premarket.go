@@ -10,25 +10,27 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 	"github.com/PatrickFanella/get-rich-quick/internal/scheduler"
+	"github.com/PatrickFanella/get-rich-quick/internal/universe"
 )
 
-// Schedule specs for pre-market jobs.
+// Schedule specs for pre-market jobs (all times Eastern via orchestrator cron).
+// Pre-market data available ~4 AM ET; market opens 9:30 AM ET.
 var (
 	gapScannerSpec = scheduler.ScheduleSpec{
 		Type:         scheduler.ScheduleTypePreMarket,
-		Cron:         "0 10 * * 1-5",
+		Cron:         "0 8 * * 1-5", // 8:00 AM ET
 		SkipWeekends: true,
 		SkipHolidays: true,
 	}
 	discoveryRunSpec = scheduler.ScheduleSpec{
 		Type:         scheduler.ScheduleTypePreMarket,
-		Cron:         "30 10 * * 1-5",
+		Cron:         "30 8 * * 1-5", // 8:30 AM ET
 		SkipWeekends: true,
 		SkipHolidays: true,
 	}
 	positionReviewSpec = scheduler.ScheduleSpec{
 		Type:         scheduler.ScheduleTypePreMarket,
-		Cron:         "0 13 * * 1-5",
+		Cron:         "0 9 * * 1-5", // 9:00 AM ET — 30 min before open
 		SkipWeekends: true,
 		SkipHolidays: true,
 	}
@@ -105,7 +107,7 @@ func (o *JobOrchestrator) gapScanner(ctx context.Context) error {
 
 				// Bonus score for gap stocks.
 				bonus := math.Abs(gapPct)*0.5 + math.Max(0, volRatio-1)*0.3
-				baseScore := scoreFromSnapshot(snap.TodaysChangePct, snap.Day.Volume, snap.PrevDay.Volume)
+				baseScore := scoreFromSnapshot(snap.TodaysChangePct, snap.Day.Volume, snap.PrevDay.Volume, snap.Day.Close) * universe.IndexBoost(snap.Ticker)
 				if err := o.deps.Universe.UpdateScore(ctx, snap.Ticker, baseScore+bonus); err != nil {
 					o.logger.Warn("gap_scanner: update score failed",
 						slog.String("ticker", snap.Ticker),

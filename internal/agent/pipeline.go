@@ -441,6 +441,12 @@ func (p *Pipeline) ExecuteStrategy(ctx context.Context, strategy domain.Strategy
 	// Apply resolved pipeline config to the pipeline's runtime config.
 	p.config.ResearchDebateRounds = resolved.PipelineConfig.DebateRounds
 	p.config.RiskDebateRounds = resolved.PipelineConfig.DebateRounds
+	// Skip the risk debate phase — the research debate + trader already
+	// incorporate risk assessment, and this phase doubles the pipeline time.
+	if p.config.SkipPhases == nil {
+		p.config.SkipPhases = make(map[Phase]bool)
+	}
+	p.config.SkipPhases[PhaseRiskDebate] = true
 	if resolved.PipelineConfig.AnalysisTimeoutSeconds > 0 {
 		p.config.PhaseTimeout = time.Duration(resolved.PipelineConfig.AnalysisTimeoutSeconds) * time.Second
 	}

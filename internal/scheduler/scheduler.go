@@ -121,6 +121,7 @@ type Scheduler struct {
 	backtestDedup      strategyDedup
 	discoveryDedup     strategyDedup
 	riskMonitor        *riskMonitor
+	strategySem        chan struct{} // limits concurrent strategy executions
 }
 
 // NewScheduler constructs a Scheduler with the supplied dependencies.
@@ -157,6 +158,10 @@ func NewScheduler(
 			opt(s)
 		}
 	}
+
+	// Allow at most 2 concurrent strategy executions to avoid overwhelming
+	// the LLM (Ollama processes requests serially).
+	s.strategySem = make(chan struct{}, 2)
 
 	return s
 }
@@ -355,6 +360,11 @@ func (s *Scheduler) loadScheduledBacktests(ctx context.Context) ([]domain.Backte
 }
 
 func (s *Scheduler) runStrategy(strategy domain.Strategy) {
+	// Concurrency gate: limit how many strategies run in parallel to avoid
+	// overwhelming the LLM backend (Ollama is single-threaded by default).
+	s.strategySem <- struct{}{}
+	defer func() { <-s.strategySem }()
+
 	// Dedup: skip if this strategy is already running.
 	if !s.dedup.TryAcquire(strategy.ID) {
 		s.logger.Warn("scheduler: skipping strategy; already in flight",

@@ -12,22 +12,40 @@ import (
 
 	"github.com/PatrickFanella/get-rich-quick/internal/data"
 	"github.com/PatrickFanella/get-rich-quick/internal/data/polygon"
+	"github.com/PatrickFanella/get-rich-quick/internal/data/rss"
 	"github.com/PatrickFanella/get-rich-quick/internal/llm"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
+	pgrepo "github.com/PatrickFanella/get-rich-quick/internal/repository/postgres"
 	"github.com/PatrickFanella/get-rich-quick/internal/scheduler"
 	"github.com/PatrickFanella/get-rich-quick/internal/universe"
 )
 
+// All cron expressions use Eastern time (America/New_York) so schedules
+// align with US equity market hours regardless of server timezone.
+var easternTime = mustLoadEastern()
+
+func mustLoadEastern() *time.Location {
+	loc, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		panic("automation: load America/New_York: " + err.Error())
+	}
+	return loc
+}
+
 // OrchestratorDeps bundles external dependencies required by the orchestrator.
 type OrchestratorDeps struct {
-	Universe       *universe.Universe
-	Polygon        *polygon.Client
-	DataService    *data.DataService
-	LLMProvider    llm.Provider
-	EventsProvider data.EventsProvider
-	StrategyRepo   repository.StrategyRepository
-	RunRepo        repository.PipelineRunRepository
-	Logger         *slog.Logger
+	Universe        *universe.Universe
+	Polygon         *polygon.Client
+	DataService     *data.DataService
+	OptionsProvider data.OptionsDataProvider
+	LLMProvider     llm.Provider
+	EventsProvider  data.EventsProvider
+	StrategyRepo    repository.StrategyRepository
+	RunRepo         repository.PipelineRunRepository
+	JobRunRepo      *pgrepo.JobRunRepo
+	OptionsScanRepo *pgrepo.OptionsScanRepo
+	NewsFeedRepo    *pgrepo.NewsFeedRepo
+	Logger          *slog.Logger
 }
 
 // RegisteredJob tracks a single automated job and its runtime state.
@@ -63,10 +81,11 @@ type JobStatus struct {
 
 // JobOrchestrator is the central registry and cron runner for all automated jobs.
 type JobOrchestrator struct {
-	jobs   map[string]*RegisteredJob
-	cron   *cron.Cron
-	deps   OrchestratorDeps
-	logger *slog.Logger
+	jobs          map[string]*RegisteredJob
+	cron          *cron.Cron
+	deps          OrchestratorDeps
+	logger        *slog.Logger
+	rssAggregator *rss.Aggregator
 }
 
 // NewJobOrchestrator constructs a new orchestrator.
@@ -77,7 +96,7 @@ func NewJobOrchestrator(deps OrchestratorDeps) *JobOrchestrator {
 	}
 	return &JobOrchestrator{
 		jobs:   make(map[string]*RegisteredJob),
-		cron:   cron.New(),
+		cron:   cron.New(cron.WithLocation(easternTime)),
 		deps:   deps,
 		logger: logger,
 	}
@@ -103,10 +122,14 @@ func (o *JobOrchestrator) RegisterAll() {
 	o.registerEventJobs()
 	o.registerOvernightJobs()
 	o.registerWeeklyJobs()
+	o.registerNewsJobs()
 }
 
 // Start starts the cron engine with all registered jobs.
+// It hydrates in-memory counters from the database first.
 func (o *JobOrchestrator) Start() error {
+	o.hydrateFromDB()
+
 	for _, job := range o.jobs {
 		j := job // capture for closure
 		_, err := o.cron.AddFunc(j.Schedule.Cron, func() {
@@ -227,6 +250,8 @@ func (o *JobOrchestrator) runDirect(job *RegisteredJob) {
 		o.logger.Info("automation: job completed", slog.String("job", job.Name), slog.Duration("elapsed", elapsed))
 	}
 	job.mu.Unlock()
+
+	o.persistRun(job.Name, start, elapsed, err)
 }
 
 // SetEnabled enables or disables a job.
@@ -312,6 +337,8 @@ func (o *JobOrchestrator) wrapAndRun(job *RegisteredJob) {
 	}
 	job.mu.Unlock()
 
+	o.persistRun(job.Name, start, elapsed, err)
+
 	if err != nil {
 		o.logger.Error("automation: job failed",
 			slog.String("job", job.Name),
@@ -324,4 +351,65 @@ func (o *JobOrchestrator) wrapAndRun(job *RegisteredJob) {
 			slog.Duration("elapsed", elapsed),
 		)
 	}
+}
+
+// persistRun writes a job run to the database.
+func (o *JobOrchestrator) persistRun(jobName string, start time.Time, elapsed time.Duration, jobErr error) {
+	if o.deps.JobRunRepo == nil {
+		return
+	}
+
+	completed := start.Add(elapsed)
+	status := "ok"
+	var errMsg string
+	if jobErr != nil {
+		status = "error"
+		errMsg = jobErr.Error()
+	}
+
+	run := &pgrepo.JobRun{
+		JobName:     jobName,
+		Status:      status,
+		StartedAt:   start.UTC(),
+		CompletedAt: &completed,
+		DurationNs:  elapsed.Nanoseconds(),
+		Error:       errMsg,
+	}
+
+	if err := o.deps.JobRunRepo.Create(context.Background(), run); err != nil {
+		o.logger.Warn("automation: failed to persist job run",
+			slog.String("job", jobName),
+			slog.Any("error", err),
+		)
+	}
+}
+
+// hydrateFromDB loads historical run stats from the database to restore
+// counters after a server restart.
+func (o *JobOrchestrator) hydrateFromDB() {
+	if o.deps.JobRunRepo == nil {
+		return
+	}
+
+	summaries, err := o.deps.JobRunRepo.Summaries(context.Background())
+	if err != nil {
+		o.logger.Warn("automation: failed to hydrate job stats from DB", slog.Any("error", err))
+		return
+	}
+
+	for _, s := range summaries {
+		job, ok := o.jobs[s.JobName]
+		if !ok {
+			continue
+		}
+		job.mu.Lock()
+		job.LastRun = s.LastRun
+		job.LastResult = s.LastResult
+		job.LastError = s.LastError
+		job.RunCount = s.RunCount
+		job.ErrorCount = s.ErrorCount
+		job.mu.Unlock()
+	}
+
+	o.logger.Info("automation: hydrated job stats from DB", slog.Int("jobs", len(summaries)))
 }

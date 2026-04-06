@@ -10,6 +10,7 @@ import (
 
 	"github.com/PatrickFanella/get-rich-quick/internal/data"
 	"github.com/PatrickFanella/get-rich-quick/internal/scheduler"
+	"github.com/PatrickFanella/get-rich-quick/internal/universe"
 )
 
 // Schedule specs for market-hours jobs.
@@ -66,7 +67,7 @@ func (o *JobOrchestrator) hotScan(ctx context.Context) error {
 			changePct = (lastBar.Close - prevBar.Close) / prevBar.Close * 100
 		}
 
-		score := scoreFromSnapshot(changePct, lastBar.Volume, prevBar.Volume)
+		score := scoreFromSnapshot(changePct, lastBar.Volume, prevBar.Volume, lastBar.Close) * universe.IndexBoost(t.Ticker)
 		if err := o.deps.Universe.UpdateScore(ctx, t.Ticker, score); err != nil {
 			o.logger.Warn("hot_scan: update score failed",
 				slog.String("ticker", t.Ticker),
@@ -134,7 +135,7 @@ func (o *JobOrchestrator) deepScan(ctx context.Context) error {
 			changePct = (lastBar.Close - prevBar.Close) / prevBar.Close * 100
 		}
 
-		score := scoreFromSnapshot(changePct, lastBar.Volume, prevBar.Volume)
+		score := scoreFromSnapshot(changePct, lastBar.Volume, prevBar.Volume, lastBar.Close) * universe.IndexBoost(ticker)
 		if err := o.deps.Universe.UpdateScore(ctx, ticker, score); err != nil {
 			o.logger.Warn("deep_scan: update score failed",
 				slog.String("ticker", ticker),
@@ -182,12 +183,20 @@ func (o *JobOrchestrator) deepScan(ctx context.Context) error {
 	return nil
 }
 
-// scoreFromSnapshot computes a simple watch score from snapshot data.
-// Higher absolute change and higher relative volume produce higher scores.
-func scoreFromSnapshot(changePct, todayVol, prevVol float64) float64 {
+// scoreFromSnapshot computes a watch score combining momentum, volume surge,
+// and dollar volume (liquidity). Dollar volume prevents penny stocks from
+// dominating — a $0.50 stock needs 400x the share volume of a $200 stock
+// to score equivalently on the liquidity component.
+func scoreFromSnapshot(changePct, todayVol, prevVol, closePrice float64) float64 {
 	volRatio := 1.0
 	if prevVol > 0 {
 		volRatio = todayVol / prevVol
 	}
-	return math.Abs(changePct) * math.Log1p(volRatio)
+
+	momentum := math.Abs(changePct)
+	volSurge := math.Log1p(math.Max(0, volRatio-1)) // only reward above-average volume
+	dollarVol := math.Log10(math.Max(1, closePrice*todayVol)) // log10 of dollar volume
+
+	// Weights: liquidity matters most, then momentum, then volume surge.
+	return 0.4*dollarVol + 0.35*momentum + 0.25*volSurge
 }
