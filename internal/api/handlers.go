@@ -125,7 +125,11 @@ func (s *Server) handleListStrategies(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to list strategies", ErrCodeInternal)
 		return
 	}
-	respondList(w, strategies, limit, offset)
+	total, err := s.strategies.Count(r.Context(), filter)
+	if err != nil {
+		s.logger.Warn("count strategies", slog.String("error", err.Error()))
+	}
+	respondListWithTotal(w, strategies, total, limit, offset)
 }
 
 func (s *Server) handleGetStrategy(w http.ResponseWriter, r *http.Request) {
@@ -303,7 +307,11 @@ func (s *Server) handleListRuns(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to list runs", ErrCodeInternal)
 		return
 	}
-	respondList(w, runs, limit, offset)
+	total, err := s.runs.Count(r.Context(), filter)
+	if err != nil {
+		s.logger.Warn("count pipeline runs", slog.String("error", err.Error()))
+	}
+	respondListWithTotal(w, runs, total, limit, offset)
 }
 
 // findRunByID looks up a pipeline run by ID. The PipelineRunRepository.Get

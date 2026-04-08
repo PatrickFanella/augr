@@ -111,6 +111,58 @@ func (r *PipelineRunRepo) List(ctx context.Context, filter repository.PipelineRu
 	return runs, nil
 }
 
+// Count returns the total number of pipeline runs matching the filter,
+// ignoring any pagination (limit/offset).
+func (r *PipelineRunRepo) Count(ctx context.Context, filter repository.PipelineRunFilter) (int, error) {
+	query, args := buildPipelineRunCountQuery(filter)
+	var total int
+	if err := r.pool.QueryRow(ctx, query, args...).Scan(&total); err != nil {
+		return 0, fmt.Errorf("postgres: count pipeline runs: %w", err)
+	}
+	return total, nil
+}
+
+// buildPipelineRunCountQuery constructs a SELECT COUNT(*) query for pipeline runs
+// with the same filter conditions used by buildPipelineRunListQuery.
+func buildPipelineRunCountQuery(filter repository.PipelineRunFilter) (string, []any) {
+	var (
+		conditions []string
+		args       []any
+		argIdx     int
+	)
+
+	nextArg := func(v any) string {
+		argIdx++
+		args = append(args, v)
+		return fmt.Sprintf("$%d", argIdx)
+	}
+
+	if filter.StrategyID != nil {
+		conditions = append(conditions, "strategy_id = "+nextArg(*filter.StrategyID))
+	}
+	if filter.Ticker != "" {
+		conditions = append(conditions, "ticker = "+nextArg(filter.Ticker))
+	}
+	if filter.Status != "" {
+		conditions = append(conditions, "status = "+nextArg(filter.Status))
+	}
+	if filter.TradeDate != nil {
+		conditions = append(conditions, "trade_date = "+nextArg(*filter.TradeDate)+"::date")
+	}
+	if filter.StartedAfter != nil {
+		conditions = append(conditions, "started_at >= "+nextArg(*filter.StartedAfter))
+	}
+	if filter.StartedBefore != nil {
+		conditions = append(conditions, "started_at <= "+nextArg(*filter.StartedBefore))
+	}
+
+	base := `SELECT COUNT(*) FROM pipeline_runs`
+	if len(conditions) > 0 {
+		base += " WHERE " + strings.Join(conditions, " AND ")
+	}
+	return base, args
+}
+
 // UpdateStatus updates the status fields for a pipeline run. It returns
 // ErrNotFound when no row matches the provided composite key.
 func (r *PipelineRunRepo) UpdateStatus(ctx context.Context, id uuid.UUID, tradeDate time.Time, update repository.PipelineRunStatusUpdate) error {

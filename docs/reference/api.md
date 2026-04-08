@@ -75,6 +75,7 @@ X-API-Key: <api_key>
 ```json
 {
   "data": [],
+  "total": 42,
   "limit": 50,
   "offset": 0
 }
@@ -84,7 +85,7 @@ Notes:
 
 - `limit` defaults to `50`
 - `limit` is capped at `100`
-- handlers generally omit `total` even though a shared list type can represent it
+- `total` is populated for `GET /strategies` and `GET /runs`; omitted (`0`) for other endpoints
 
 ## Route map
 
@@ -194,11 +195,11 @@ Response:
 - auth: required
 - filters:
   - `ticker`
-  - `market_type`
-  - `status`
-  - `is_paper`
-  - `limit`
-  - `offset`
+  - `market_type` (`stock`, `crypto`, `polymarket`)
+  - `status` (`active`, `paused`, `inactive`)
+  - `is_paper` (`true` / `false`)
+  - `limit` / `offset`
+- response includes `total` (total matching rows, regardless of pagination)
 
 #### `POST /api/v1/strategies`
 
@@ -255,8 +256,14 @@ Response:
 #### `GET /api/v1/runs`
 
 - auth: required
-- supports pagination and filters from the runs handlers
-- used heavily by the web UI run history page
+- filters:
+  - `strategy_id` (UUID)
+  - `ticker`
+  - `status` (`pending`, `running`, `completed`, `failed`, `cancelled`)
+  - `trade_date` (RFC3339 date)
+  - `start_date` / `end_date` (RFC3339 timestamp, filter on `started_at`)
+  - `limit` / `offset`
+- response includes `total` (total matching rows, regardless of pagination)
 
 #### `GET /api/v1/runs/{id}`
 
@@ -300,17 +307,18 @@ Response:
 #### `GET /api/v1/orders`
 
 - auth: required
-- list orders
+- filters: `ticker`, `status`, `side`, `limit` / `offset`
 
 #### `GET /api/v1/orders/{id}`
 
 - auth: required
-- get one order
+- returns the order record plus its fills (trades) in `fills`
 
 #### `GET /api/v1/trades`
 
 - auth: required
-- list trades
+- filters: `order_id`, `position_id`, `ticker`, `side`, `start_date`, `end_date`, `limit` / `offset`
+- `order_id` and `position_id` are mutually exclusive
 
 ### Memories
 
@@ -379,7 +387,7 @@ Response:
 #### `GET /api/v1/events`
 
 - auth: required
-- returns persisted event records
+- filters: `event_kind`, `pipeline_run_id`, `strategy_id`, `agent_role`, `after`, `before` (RFC3339), `limit` / `offset`
 
 ### Conversations
 
@@ -408,7 +416,38 @@ Response:
 #### `GET /api/v1/audit-log`
 
 - auth: required
-- lists audit entries for operational actions and state changes
+- lists audit log entries for critical operator actions
+- filters:
+  - `event_type` — e.g. `kill_switch.activated`, `strategy.manual_run`, `api_key.created`
+  - `entity_type` — e.g. `system`, `strategy`, `api_key`, `user`, `market`
+  - `after` / `before` — ISO 8601 timestamp bounds on `created_at`
+  - `limit` / `offset`
+
+Audited event types:
+
+| Event type | Trigger |
+| --- | --- |
+| `kill_switch.activated` / `.deactivated` | `POST /risk/killswitch` |
+| `market_kill_switch.activated` / `.deactivated` | `POST /risk/markets/{type}/stop\|resume` |
+| `settings.updated` | `PUT /settings` |
+| `strategy.manual_run` | `POST /strategies/{id}/run` |
+| `strategy.pausedd` / `.resumedd` | `POST /strategies/{id}/pause\|resume` |
+| `strategy.skip_next` | `POST /strategies/{id}/skip-next` |
+| `user.registered` | `POST /auth/register` |
+| `api_key.created` / `.revoked` | `POST/DELETE /api-keys` |
+
+Example entry:
+
+```json
+{
+  "id": "a1b2c3d4-...",
+  "event_type": "kill_switch.activated",
+  "entity_type": "system",
+  "actor": "admin",
+  "details": {"reason": "market volatility spike"},
+  "created_at": "2026-04-08T14:23:00Z"
+}
+```
 
 ## WebSocket reference
 

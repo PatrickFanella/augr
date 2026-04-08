@@ -172,6 +172,8 @@ type StrategyRepository interface {
 	Create(ctx context.Context, strategy *domain.Strategy) error
 	Get(ctx context.Context, id uuid.UUID) (*domain.Strategy, error)
 	List(ctx context.Context, filter StrategyFilter, limit, offset int) ([]domain.Strategy, error)
+	// Count returns the total number of strategies matching the filter (ignoring pagination).
+	Count(ctx context.Context, filter StrategyFilter) (int, error)
 	Update(ctx context.Context, strategy *domain.Strategy) error
 	Delete(ctx context.Context, id uuid.UUID) error
 	// UpdateThesis persists the serialised active thesis for the given strategy.
@@ -203,6 +205,8 @@ type PipelineRunRepository interface {
 	Create(ctx context.Context, run *domain.PipelineRun) error
 	Get(ctx context.Context, id uuid.UUID, tradeDate time.Time) (*domain.PipelineRun, error)
 	List(ctx context.Context, filter PipelineRunFilter, limit, offset int) ([]domain.PipelineRun, error)
+	// Count returns the total number of pipeline runs matching the filter (ignoring pagination).
+	Count(ctx context.Context, filter PipelineRunFilter) (int, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, tradeDate time.Time, update PipelineRunStatusUpdate) error
 }
 

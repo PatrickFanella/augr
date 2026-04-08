@@ -1820,6 +1820,12 @@ func (s *stubStrategyRepo) List(_ context.Context, filter repository.StrategyFil
 	return out, nil
 }
 
+func (s *stubStrategyRepo) Count(_ context.Context, _ repository.StrategyFilter) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.items), nil
+}
+
 func (s *stubStrategyRepo) Update(_ context.Context, strategy *domain.Strategy) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -1873,6 +1879,10 @@ func (s *stubRunRepo) Get(_ context.Context, _ uuid.UUID, _ time.Time) (*domain.
 func (s *stubRunRepo) List(_ context.Context, filter repository.PipelineRunFilter, _, _ int) ([]domain.PipelineRun, error) {
 	s.lastFilter = filter
 	return s.runs, nil
+}
+
+func (s *stubRunRepo) Count(_ context.Context, _ repository.PipelineRunFilter) (int, error) {
+	return len(s.runs), nil
 }
 
 func (*stubRunRepo) UpdateStatus(context.Context, uuid.UUID, time.Time, repository.PipelineRunStatusUpdate) error {

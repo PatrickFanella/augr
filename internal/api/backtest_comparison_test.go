@@ -321,6 +321,10 @@ func (f fakeStrategyRepo) List(context.Context, repository.StrategyFilter, int, 
 	return nil, fmt.Errorf("not implemented")
 }
 
+func (f fakeStrategyRepo) Count(context.Context, repository.StrategyFilter) (int, error) {
+	return 0, nil
+}
+
 func (f fakeStrategyRepo) Update(context.Context, *domain.Strategy) error {
 	return fmt.Errorf("not implemented")
 }

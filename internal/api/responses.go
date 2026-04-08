@@ -54,11 +54,22 @@ func respondError(w http.ResponseWriter, status int, msg, code string) {
 	respondJSON(w, status, ErrorResponse{Error: msg, Code: code})
 }
 
-// respondList writes a paginated JSON list response. Total is omitted because
+// respondList writes a paginated JSON list response. Total is omitted when
 // the repository layer does not return a count of all matching rows.
 func respondList(w http.ResponseWriter, data any, limit, offset int) {
 	respondJSON(w, http.StatusOK, ListResponse{
 		Data:   data,
+		Limit:  limit,
+		Offset: offset,
+	})
+}
+
+// respondListWithTotal writes a paginated JSON list response that includes the
+// total count of matching rows for proper client-side pagination.
+func respondListWithTotal(w http.ResponseWriter, data any, total, limit, offset int) {
+	respondJSON(w, http.StatusOK, ListResponse{
+		Data:   data,
+		Total:  total,
 		Limit:  limit,
 		Offset: offset,
 	})

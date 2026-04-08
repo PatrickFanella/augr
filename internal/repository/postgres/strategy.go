@@ -108,6 +108,52 @@ func (r *StrategyRepo) List(ctx context.Context, filter repository.StrategyFilte
 	return strategies, nil
 }
 
+// Count returns the total number of strategies that match the filter,
+// ignoring any pagination (limit/offset).
+func (r *StrategyRepo) Count(ctx context.Context, filter repository.StrategyFilter) (int, error) {
+	query, args := buildStrategyCountQuery(filter)
+	var total int
+	if err := r.pool.QueryRow(ctx, query, args...).Scan(&total); err != nil {
+		return 0, fmt.Errorf("postgres: count strategies: %w", err)
+	}
+	return total, nil
+}
+
+// buildStrategyCountQuery constructs a SELECT COUNT(*) query for strategies
+// with the same filter conditions used by buildListQuery.
+func buildStrategyCountQuery(filter repository.StrategyFilter) (string, []any) {
+	var (
+		conditions []string
+		args       []any
+		argIdx     int
+	)
+
+	nextArg := func(v any) string {
+		argIdx++
+		args = append(args, v)
+		return fmt.Sprintf("$%d", argIdx)
+	}
+
+	if filter.Ticker != "" {
+		conditions = append(conditions, "ticker = "+nextArg(filter.Ticker))
+	}
+	if filter.MarketType != "" {
+		conditions = append(conditions, "market_type = "+nextArg(filter.MarketType))
+	}
+	if filter.Status != "" {
+		conditions = append(conditions, "status = "+nextArg(filter.Status))
+	}
+	if filter.IsPaper != nil {
+		conditions = append(conditions, "is_paper = "+nextArg(*filter.IsPaper))
+	}
+
+	base := `SELECT COUNT(*) FROM strategies`
+	if len(conditions) > 0 {
+		base += " WHERE " + strings.Join(conditions, " AND ")
+	}
+	return base, args
+}
+
 // Update persists changes to an existing strategy. It returns ErrNotFound when
 // no row matches the strategy ID.
 func (r *StrategyRepo) Update(ctx context.Context, s *domain.Strategy) error {
