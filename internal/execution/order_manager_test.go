@@ -242,6 +242,10 @@ func (r *mockOrderRepo) GetByStrategy(ctx context.Context, strategyID uuid.UUID,
 	return nil, nil
 }
 
+func (r *mockOrderRepo) Count(_ context.Context, _ repository.OrderFilter) (int, error) {
+	return 0, nil
+}
+
 func (r *mockOrderRepo) GetByRun(ctx context.Context, runID uuid.UUID, filter repository.OrderFilter, limit, offset int) ([]domain.Order, error) {
 	if r.getByRunFn != nil {
 		return r.getByRunFn(ctx, runID, filter, limit, offset)
@@ -318,6 +322,14 @@ func (r *mockPositionRepo) GetOpen(ctx context.Context, filter repository.Positi
 	return nil, nil
 }
 
+func (r *mockPositionRepo) Count(_ context.Context, _ repository.PositionFilter) (int, error) {
+	return 0, nil
+}
+
+func (r *mockPositionRepo) CountOpen(_ context.Context, _ repository.PositionFilter) (int, error) {
+	return 0, nil
+}
+
 func (r *mockPositionRepo) GetByStrategy(ctx context.Context, strategyID uuid.UUID, filter repository.PositionFilter, limit, offset int) ([]domain.Position, error) {
 	if r.getByStrategyFn != nil {
 		return r.getByStrategyFn(ctx, strategyID, filter, limit, offset)
@@ -359,6 +371,10 @@ func (r *mockTradeRepo) List(ctx context.Context, filter repository.TradeFilter,
 	return nil, nil
 }
 
+func (r *mockTradeRepo) Count(_ context.Context, _ repository.TradeFilter) (int, error) {
+	return 0, nil
+}
+
 func (r *mockTradeRepo) GetByOrder(ctx context.Context, orderID uuid.UUID, filter repository.TradeFilter, limit, offset int) ([]domain.Trade, error) {
 	if r.getByOrderFn != nil {
 		return r.getByOrderFn(ctx, orderID, filter, limit, offset)
@@ -398,6 +414,10 @@ func (r *mockAuditLogRepo) Create(ctx context.Context, entry *domain.AuditLogEnt
 	return nil
 }
 
+func (r *mockAuditLogRepo) Count(_ context.Context, _ repository.AuditLogFilter) (int, error) {
+	return 0, nil
+}
+
 func (r *mockAuditLogRepo) Query(ctx context.Context, filter repository.AuditLogFilter, limit, offset int) ([]domain.AuditLogEntry, error) {
 	if r.queryFn != nil {
 		return r.queryFn(ctx, filter, limit, offset)
@@ -430,6 +450,10 @@ func (r *mockAgentEventRepo) Create(ctx context.Context, event *domain.AgentEven
 
 func (r *mockAgentEventRepo) List(_ context.Context, _ repository.AgentEventFilter, _, _ int) ([]domain.AgentEvent, error) {
 	return nil, nil
+}
+
+func (r *mockAgentEventRepo) Count(_ context.Context, _ repository.AgentEventFilter) (int, error) {
+	return 0, nil
 }
 
 // ---------------------------------------------------------------------------

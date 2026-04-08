@@ -1247,6 +1247,10 @@ func (m *mockAgentDecisionRepo) GetByRun(_ context.Context, _ uuid.UUID, _ repos
 	return nil, nil
 }
 
+func (m *mockAgentDecisionRepo) CountByRun(_ context.Context, _ uuid.UUID, _ repository.AgentDecisionFilter) (int, error) {
+	return 0, nil
+}
+
 func (m *mockAgentEventRepo) Create(_ context.Context, event *domain.AgentEvent) error {
 	if m.createErr != nil {
 		return m.createErr
@@ -1271,6 +1275,10 @@ func (m *mockAgentEventRepo) Create(_ context.Context, event *domain.AgentEvent)
 
 func (m *mockAgentEventRepo) List(_ context.Context, _ repository.AgentEventFilter, _, _ int) ([]domain.AgentEvent, error) {
 	return nil, nil
+}
+
+func (m *mockAgentEventRepo) Count(_ context.Context, _ repository.AgentEventFilter) (int, error) {
+	return 0, nil
 }
 
 func (m *mockPipelineRunSnapshotRepo) Create(_ context.Context, snapshot *domain.PipelineRunSnapshot) error {
@@ -1334,6 +1342,10 @@ func (m *mockPipelineRunRepo) Get(_ context.Context, _ uuid.UUID, _ time.Time) (
 
 func (m *mockPipelineRunRepo) List(_ context.Context, _ repository.PipelineRunFilter, _, _ int) ([]domain.PipelineRun, error) {
 	return nil, nil
+}
+
+func (m *mockPipelineRunRepo) Count(_ context.Context, _ repository.PipelineRunFilter) (int, error) {
+	return 0, nil
 }
 
 func (m *mockPipelineRunRepo) UpdateStatus(ctx context.Context, id uuid.UUID, tradeDate time.Time, update repository.PipelineRunStatusUpdate) error {

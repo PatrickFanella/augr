@@ -157,6 +157,10 @@ func (s *stubDecisionRepo) GetByRun(context.Context, uuid.UUID, repository.Agent
 	return s.decisions, nil
 }
 
+func (s *stubDecisionRepo) CountByRun(_ context.Context, _ uuid.UUID, _ repository.AgentDecisionFilter) (int, error) {
+	return len(s.decisions), nil
+}
+
 func TestSmokeStrategyRunnerDispatchNotifications_RoutesSignalAndDecisionsToN8NAndDiscord(t *testing.T) {
 	t.Parallel()
 
@@ -277,6 +281,12 @@ func (stubPositionRepo) GetOpen(context.Context, repository.PositionFilter, int,
 }
 func (stubPositionRepo) GetByStrategy(context.Context, uuid.UUID, repository.PositionFilter, int, int) ([]domain.Position, error) {
 	return nil, nil
+}
+func (stubPositionRepo) Count(context.Context, repository.PositionFilter) (int, error) {
+	return 0, nil
+}
+func (stubPositionRepo) CountOpen(context.Context, repository.PositionFilter) (int, error) {
+	return 0, nil
 }
 
 func TestSelectedAnalysisRoles_RejectsNonAnalysisRoles(t *testing.T) {

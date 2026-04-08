@@ -66,6 +66,10 @@ func (m *mockPipelineRunRepo) List(_ context.Context, _ repository.PipelineRunFi
 	return m.runs, m.err
 }
 
+func (m *mockPipelineRunRepo) Count(_ context.Context, _ repository.PipelineRunFilter) (int, error) {
+	return 0, nil
+}
+
 func (m *mockPipelineRunRepo) UpdateStatus(context.Context, uuid.UUID, time.Time, repository.PipelineRunStatusUpdate) error {
 	return nil
 }
@@ -79,6 +83,10 @@ func (m *mockDecisionRepo) Create(context.Context, *domain.AgentDecision) error 
 
 func (m *mockDecisionRepo) GetByRun(_ context.Context, _ uuid.UUID, _ repository.AgentDecisionFilter, _, _ int) ([]domain.AgentDecision, error) {
 	return m.decisions, m.err
+}
+
+func (m *mockDecisionRepo) CountByRun(_ context.Context, _ uuid.UUID, _ repository.AgentDecisionFilter) (int, error) {
+	return 0, nil
 }
 
 type mockPositionRepo struct {
@@ -104,6 +112,14 @@ func (m *mockPositionRepo) GetOpen(context.Context, repository.PositionFilter, i
 
 func (m *mockPositionRepo) GetByStrategy(context.Context, uuid.UUID, repository.PositionFilter, int, int) ([]domain.Position, error) {
 	return nil, nil
+}
+
+func (m *mockPositionRepo) Count(_ context.Context, _ repository.PositionFilter) (int, error) {
+	return 0, nil
+}
+
+func (m *mockPositionRepo) CountOpen(_ context.Context, _ repository.PositionFilter) (int, error) {
+	return 0, nil
 }
 
 // --- helpers ---

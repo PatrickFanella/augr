@@ -482,12 +482,17 @@ func (s *Server) handleListPositions(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleGetOpenPositions(w http.ResponseWriter, r *http.Request) {
 	limit, offset := parsePagination(r)
-	positions, err := s.positions.GetOpen(r.Context(), repository.PositionFilter{}, limit, offset)
+	q := r.URL.Query()
+	filter := repository.PositionFilter{
+		Ticker: q.Get("ticker"),
+		Side:   domain.PositionSide(q.Get("side")),
+	}
+	positions, err := s.positions.GetOpen(r.Context(), filter, limit, offset)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to list open positions", ErrCodeInternal)
 		return
 	}
-	total, err := s.positions.CountOpen(r.Context(), repository.PositionFilter{})
+	total, err := s.positions.CountOpen(r.Context(), filter)
 	if err != nil {
 		s.logger.Warn("count open positions", slog.String("error", err.Error()))
 	}
@@ -524,9 +529,11 @@ func (s *Server) handleListOrders(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 
 	filter := repository.OrderFilter{
-		Ticker: q.Get("ticker"),
-		Status: domain.OrderStatus(q.Get("status")),
-		Side:   domain.OrderSide(q.Get("side")),
+		Ticker:    q.Get("ticker"),
+		Status:    domain.OrderStatus(q.Get("status")),
+		Side:      domain.OrderSide(q.Get("side")),
+		Broker:    q.Get("broker"),
+		OrderType: domain.OrderType(q.Get("order_type")),
 	}
 
 	orders, err := s.orders.List(r.Context(), filter, limit, offset)

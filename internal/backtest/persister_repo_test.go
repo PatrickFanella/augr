@@ -31,6 +31,10 @@ func (s *stubRunRepo) List(_ context.Context, _ repository.BacktestRunFilter, _,
 	return nil, nil
 }
 
+func (s *stubRunRepo) Count(_ context.Context, _ repository.BacktestRunFilter) (int, error) {
+	return 0, nil
+}
+
 func TestRepoPersister_PersistRun_Success(t *testing.T) {
 	repo := &stubRunRepo{}
 	p := NewRepoPersister(repo)

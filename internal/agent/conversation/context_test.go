@@ -26,6 +26,10 @@ func (s *stubDecisionRepo) GetByRun(_ context.Context, _ uuid.UUID, _ repository
 	return s.decisions, s.err
 }
 
+func (s *stubDecisionRepo) CountByRun(_ context.Context, _ uuid.UUID, _ repository.AgentDecisionFilter) (int, error) {
+	return len(s.decisions), nil
+}
+
 type stubSnapshotRepo struct {
 	snapshots []domain.PipelineRunSnapshot
 	err       error
