@@ -123,7 +123,7 @@ export function CreateStrategyDialog({
     onSubmit({
       name,
       description: description || undefined,
-      ticker: ticker.toUpperCase(),
+      ticker: marketType === 'polymarket' ? ticker.toLowerCase() : ticker.toUpperCase(),
       market_type: marketType,
       schedule_cron: scheduleCron || undefined,
       config: result.config,
@@ -157,15 +157,22 @@ export function CreateStrategyDialog({
             </div>
 
             <div className="space-y-2 rounded-lg border border-border bg-background p-4">
-              <Label htmlFor="strategy-ticker">Ticker *</Label>
+              <Label htmlFor="strategy-ticker">
+                {marketType === 'polymarket' ? 'Market slug *' : 'Ticker *'}
+              </Label>
               <Input
                 id="strategy-ticker"
                 value={ticker}
                 onChange={(e) => setTicker(e.target.value)}
-                placeholder="AAPL"
+                placeholder={marketType === 'polymarket' ? 'will-x-happen-by-date' : 'AAPL'}
                 required
                 data-testid="strategy-ticker-input"
               />
+              {marketType === 'polymarket' && (
+                <p className="text-[11px] text-muted-foreground">
+                  Enter the Polymarket market slug (e.g. will-trump-win-2024). The price shown is the YES token probability (0–1).
+                </p>
+              )}
             </div>
           </div>
 

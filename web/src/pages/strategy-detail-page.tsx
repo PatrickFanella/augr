@@ -279,6 +279,67 @@ export function StrategyDetailPage() {
         </CardContent>
       </Card>
 
+      {strategy.prediction_market && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Prediction Market</CardTitle>
+            <CardDescription>{strategy.prediction_market.question}</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Probability bar */}
+            <div>
+              <div className="mb-1 flex justify-between text-xs text-muted-foreground">
+                <span>YES {(strategy.prediction_market.yes_price * 100).toFixed(1)}%</span>
+                <span>NO {(strategy.prediction_market.no_price * 100).toFixed(1)}%</span>
+              </div>
+              <div className="flex h-3 overflow-hidden rounded-full bg-muted">
+                <div
+                  className="bg-success transition-all"
+                  style={{ width: `${strategy.prediction_market.yes_price * 100}%` }}
+                />
+              </div>
+            </div>
+
+            <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div>
+                <dt className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Volume 24h</dt>
+                <dd className="mt-1 font-mono text-sm font-medium">${strategy.prediction_market.volume_24h.toLocaleString(undefined, { maximumFractionDigits: 0 })}</dd>
+              </div>
+              <div>
+                <dt className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Liquidity</dt>
+                <dd className="mt-1 font-mono text-sm font-medium">${strategy.prediction_market.liquidity.toLocaleString(undefined, { maximumFractionDigits: 0 })}</dd>
+              </div>
+              {strategy.prediction_market.best_ask_yes != null && strategy.prediction_market.best_bid_yes != null && (
+                <div>
+                  <dt className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">YES Spread</dt>
+                  <dd className="mt-1 font-mono text-sm font-medium">
+                    {strategy.prediction_market.best_bid_yes.toFixed(3)} / {strategy.prediction_market.best_ask_yes.toFixed(3)}
+                  </dd>
+                </div>
+              )}
+              {strategy.prediction_market.end_date && (
+                <div>
+                  <dt className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Resolves</dt>
+                  <dd className="mt-1 text-sm font-medium">
+                    {new Date(strategy.prediction_market.end_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                    <span className="ml-1 text-xs text-muted-foreground">
+                      ({Math.max(0, Math.ceil((new Date(strategy.prediction_market.end_date).getTime() - Date.now()) / 86400000))}d)
+                    </span>
+                  </dd>
+                </div>
+              )}
+            </dl>
+
+            {strategy.prediction_market.resolution_criteria && (
+              <div>
+                <dt className="mb-1 font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Resolution criteria</dt>
+                <dd className="text-sm text-muted-foreground">{strategy.prediction_market.resolution_criteria}</dd>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {(() => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const rulesEngine = (strategy.config as any)?.rules_engine

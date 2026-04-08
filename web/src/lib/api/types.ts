@@ -56,6 +56,28 @@ export interface HealthStatus {
   status: string
 }
 
+export interface PredictionMarketData {
+  slug: string
+  question: string
+  description?: string
+  resolution_criteria?: string
+  end_date?: ISODateString
+  resolution_source?: string
+  yes_price: number
+  no_price: number
+  volume_24h: number
+  liquidity: number
+  open_interest: number
+  condition_id?: string
+  yes_token_id?: string
+  no_token_id?: string
+  best_bid_yes?: number
+  best_ask_yes?: number
+  best_bid_no?: number
+  best_ask_no?: number
+  spread_yes?: number
+}
+
 export interface Strategy {
   id: UUID
   name: string
@@ -69,6 +91,7 @@ export interface Strategy {
   skip_next_run: boolean
   is_active?: boolean
   is_paper: boolean
+  prediction_market?: PredictionMarketData
   created_at: ISODateString
   updated_at: ISODateString
 }

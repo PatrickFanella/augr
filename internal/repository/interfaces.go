@@ -305,3 +305,21 @@ type UserRepository interface {
 	GetByUsername(ctx context.Context, username string) (*domain.User, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.User, error)
 }
+
+// PolymarketAccountRepository provides access to Polymarket trader profiles
+// and their trade history for the whale/edge tracker signal source.
+type PolymarketAccountRepository interface {
+	// UpsertAccount inserts or updates a Polymarket account profile.
+	UpsertAccount(ctx context.Context, account *domain.PolymarketAccount) error
+	// GetAccount returns a single account by wallet address.
+	GetAccount(ctx context.Context, address string) (*domain.PolymarketAccount, error)
+	// ListTrackedAccounts returns accounts where tracked=true, ordered by win_rate descending.
+	ListTrackedAccounts(ctx context.Context, minWinRate float64, limit int) ([]domain.PolymarketAccount, error)
+	// InsertTrades bulk-inserts trade records, ignoring duplicates by (account, market, timestamp).
+	InsertTrades(ctx context.Context, trades []domain.PolymarketAccountTrade) error
+	// ListTradesByAccount returns trades for a given address within the time range.
+	ListTradesByAccount(ctx context.Context, address string, from, to time.Time, limit int) ([]domain.PolymarketAccountTrade, error)
+	// MarkTracked sets tracked=true for accounts whose win_rate exceeds the threshold
+	// and who have resolved at least minResolved markets.
+	MarkTracked(ctx context.Context, minWinRate float64, minResolved int) (int64, error)
+}
