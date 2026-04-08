@@ -1777,6 +1777,20 @@ func (s *stubUserRepo) GetByID(_ context.Context, id uuid.UUID) (*domain.User, e
 	return nil, fmt.Errorf("user %v: %w", id, repository.ErrNotFound)
 }
 
+func (s *stubUserRepo) UpdatePasswordHash(_ context.Context, id uuid.UUID, newHash string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for k, user := range s.items {
+		if user.ID == id {
+			user.PasswordHash = newHash
+			s.items[k] = user
+			return nil
+		}
+	}
+	return fmt.Errorf("user %v: %w", id, repository.ErrNotFound)
+}
+
 func (s *stubStrategyRepo) Create(_ context.Context, strategy *domain.Strategy) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

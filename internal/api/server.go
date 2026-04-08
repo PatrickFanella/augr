@@ -443,8 +443,9 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 			ar.Post("/jobs/{name}/enable", s.handleSetAutomationJobEnabled)
 		})
 
-		// Current user profile
+		// Current user profile and account management
 		v1.Get("/me", s.handleGetCurrentUser)
+		v1.Patch("/me", s.handleUpdateMe)
 
 		// API key management
 		v1.Route("/api-keys", func(ak chi.Router) {

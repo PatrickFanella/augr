@@ -2,7 +2,7 @@
 title: "API Reference"
 description: "REST and WebSocket reference for the current get-rich-quick API server."
 status: "canonical"
-updated: "2026-04-03"
+updated: "2026-04-08"
 tags: [api, rest, websocket, reference]
 ---
 
@@ -35,6 +35,7 @@ Ops:        http://localhost:8080/healthz
 - `GET /metrics`
 - `POST /api/v1/auth/login`
 - `POST /api/v1/auth/refresh`
+- `POST /api/v1/auth/register`
 - `GET /ws`
 
 ### Protected endpoints
@@ -54,9 +55,9 @@ X-API-Key: <api_key>
 ### Auth notes
 
 - JWT access and refresh tokens are minted by `AuthManager`.
-- API keys are supported through `X-API-Key`.
-- API keys are subject to a token-bucket limiter.
-- WebSocket traffic is currently not behind the auth middleware. Treat it as an internal/local surface until that changes.
+- API keys are supported through `X-API-Key` header or `?api_key=` query param.
+- API keys are subject to a per-key token-bucket rate limiter.
+- WebSocket upgrades require the same credentials: `Authorization: Bearer`, `X-API-Key`, `?token=`, or `?api_key=` query params (for browsers that cannot send custom headers).
 
 ## Common response shapes
 
@@ -89,7 +90,9 @@ Notes:
 
 | Group | Routes |
 | --- | --- |
-| Auth | `POST /auth/login`, `POST /auth/refresh` |
+| Auth | `POST /auth/login`, `POST /auth/refresh`, `POST /auth/register` |
+| Account | `GET /me`, `PATCH /me` (password change) |
+| API Keys | `GET /api-keys`, `POST /api-keys`, `DELETE /api-keys/{id}` |
 | Strategies | `GET/POST /strategies`, `GET/PUT/DELETE /strategies/{id}`, lifecycle actions under `/run`, `/pause`, `/resume`, `/skip-next` |
 | Runs | `GET /runs`, `GET /runs/{id}`, `GET /runs/{id}/decisions`, `POST /runs/{id}/cancel`, `GET /runs/{id}/snapshot` |
 | Portfolio | `GET /portfolio/positions`, `GET /portfolio/positions/open`, `GET /portfolio/summary` |
@@ -101,6 +104,14 @@ Notes:
 | Events | `GET /events` |
 | Conversations | `GET/POST /conversations`, `GET/POST /conversations/{id}/messages` |
 | Audit log | `GET /audit-log` |
+| Backtests | `GET/POST /backtests/configs`, `GET/PUT/DELETE /backtests/configs/{id}`, `POST /backtests/configs/{id}/run`, `GET /backtests/runs`, `GET /backtests/runs/{id}` |
+| Discovery | `POST /discovery/run`, `GET /discovery/results` |
+| Universe | `GET /universe`, `GET /universe/watchlist`, `POST /universe/refresh`, `POST /universe/scan` |
+| Options | `GET /options/chain/{underlying}` |
+| Calendar | `GET /calendar/earnings`, `GET /calendar/economic`, `GET /calendar/ipo` |
+| Automation | `GET /automation/status`, `POST /automation/jobs/{name}/run`, `POST /automation/jobs/{name}/enable` |
+| News | `GET /news` |
+| Signals | `GET /signals/evaluated`, `GET /signals/triggers`, `GET/POST /signals/watchlist`, `DELETE /signals/watchlist/{term}` |
 
 ## Endpoint reference
 
@@ -136,6 +147,45 @@ Response:
 - auth: public
 - body: `refresh_token`
 - behavior: validates the refresh token and returns a new pair
+
+#### `POST /api/v1/auth/register`
+
+- auth: public
+- body: `username`, `password`
+- behavior: creates a new user and returns a token pair; returns `409 Conflict` for duplicate usernames
+
+### Account
+
+#### `GET /api/v1/me`
+
+- auth: required
+- returns the current user's profile (`id`, `username`, `created_at`, `updated_at`)
+
+#### `PATCH /api/v1/me`
+
+- auth: required
+- body: `current_password`, `new_password` (minimum 8 characters)
+- behavior: verifies the current password, then replaces the bcrypt hash; returns `204 No Content`
+
+### API Keys
+
+#### `GET /api/v1/api-keys`
+
+- auth: required
+- returns a paginated list of API key metadata (raw key value is never re-exposed)
+- includes revoked keys; check `revoked_at` to filter active keys
+
+#### `POST /api/v1/api-keys`
+
+- auth: required
+- body: `name` (required), `expires_at` (optional ISO 8601 timestamp)
+- returns the plaintext key **once** in `key` alongside `metadata`; store it securely — it cannot be retrieved again
+
+#### `DELETE /api/v1/api-keys/{id}`
+
+- auth: required
+- marks the key as revoked; returns `204 No Content`
+- revocation is immediate: any in-flight request using the key will be rejected on next evaluation
 
 ### Strategies
 
@@ -320,8 +370,9 @@ Response:
 #### `PUT /api/v1/settings`
 
 - auth: required
-- updates the memory-backed settings service
-- important caveat: changes do not persist across server restart
+- updates non-secret settings (model selections, provider base URLs, risk thresholds)
+- changes are persisted to the `app_settings` DB table and survive restarts
+- API keys are never stored; they live only in the in-memory session until overwritten
 
 ### Events
 
@@ -423,6 +474,6 @@ The frontend run-detail page subscribes by `run_id` while a run is active.
 
 ## Notable API caveats
 
-- WebSocket auth is not enforced by the current handler.
-- Backtest-related code exists in the repo, but the main API server does not yet expose a supported backtest route surface.
-- Settings writes are session-scoped, not durable.
+- `PATCH /api/v1/me` only supports password change. There is no username change endpoint.
+- API key rate-limit-per-minute is set at creation time using the server default; it cannot be changed after creation without direct DB access.
+- Backtest `schedule_cron` fields are executed by the built-in cron engine only when the scheduler is initialized with `WithBacktestScheduling()`.

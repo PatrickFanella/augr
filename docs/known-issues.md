@@ -57,11 +57,22 @@ Impact:
 
 ### Social and news coverage are uneven
 
-The `DataProvider` abstraction includes OHLCV, fundamentals, news, and social sentiment, but not every provider implements every surface. `newsapi` is now wired into the runtime provider chain for stock news (`NEWSAPI_API_KEY`). Finnhub is registered in the provider registry for OHLCV/social sentiment.
+The `DataProvider` abstraction includes OHLCV, fundamentals, news, and social sentiment, but coverage varies by provider:
+
+| Provider | OHLCV | Fundamentals | News | Social Sentiment |
+| --- | --- | --- | --- | --- |
+| Yahoo | ✓ | — | — | — |
+| Polygon | ✓ | ✓ | — | — |
+| Finnhub | partial (free tier 403s on bulk US stocks) | ✓ | ✓ | ✓ (Reddit + Twitter) |
+| FMP | ✓ | ✓ | — | — |
+| AlphaVantage | ✓ (25 req/day free) | ✓ | — | — |
+| NewsAPI | — | — | ✓ | — |
+| Binance | ✓ (crypto) | — | — | — |
 
 Impact:
 
-- “feature exists in interface” does not always mean “feature is active in production runtime wiring”
+- Social sentiment data requires `FINNHUB_API_KEY` — social signals are absent without it
+- StockTwits trending/sentiment is available via the automation job engine but is **not** part of the `DataProvider` chain
 
 ### ~~Whole-pipeline timeout is not currently enforced~~ ✓ Fixed
 

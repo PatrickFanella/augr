@@ -102,6 +102,21 @@ func (r *UserRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.User, err
 	return user, nil
 }
 
+// UpdatePasswordHash replaces the bcrypt password hash for the given user.
+func (r *UserRepo) UpdatePasswordHash(ctx context.Context, id uuid.UUID, newHash string) error {
+	tag, err := r.pool.Exec(ctx,
+		`UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2`,
+		newHash, id,
+	)
+	if err != nil {
+		return fmt.Errorf("postgres: update password hash: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return repository.ErrNotFound
+	}
+	return nil
+}
+
 func scanUser(sc scanner) (*domain.User, error) {
 	var user domain.User
 	if err := sc.Scan(

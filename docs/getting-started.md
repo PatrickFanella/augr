@@ -7,8 +7,7 @@ It uses:
 - a **native** Go backend build/start
 - the Vite frontend in `web/`
 
-Two current constraints matter:
-- There is **no sign-up route or sign-up page** yet. The server exposes `POST /api/v1/auth/login` and `POST /api/v1/auth/refresh`, so you must create the first user directly in Postgres.
+One current constraint matters:
 - Manual strategy runs are wired only when the backend starts with `APP_ENV=smoke`. Outside smoke, `POST /api/v1/strategies/{id}/run` returns `501 manual strategy runs are not configured`.
 
 ## 1. Prerequisites
@@ -100,8 +99,17 @@ Expected response:
 
 ## 6. Create your first account
 
-There is no registration endpoint yet, so insert a local dev user directly into Postgres.
-The first migration enables `pgcrypto`, so `crypt(..., gen_salt('bf'))` generates a bcrypt-compatible hash.
+Register a user via the API:
+
+```bash
+curl -s -X POST http://localhost:8080/api/v1/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"demo","password":"demo-pass"}' | jq .
+```
+
+This returns an access token and refresh token you can use immediately.
+
+If you prefer to insert the user directly into Postgres instead (e.g., in CI or automated setup):
 
 ```bash
 docker compose exec postgres psql -U postgres -d tradingagent <<'SQL'
@@ -111,7 +119,7 @@ ON CONFLICT (username) DO NOTHING;
 SQL
 ```
 
-You can now log in with:
+Either way, log in with:
 - username: `demo`
 - password: `demo-pass`
 
@@ -258,13 +266,13 @@ Then re-check `JWT_SECRET`, `DATABASE_URL`, one LLM provider, and one market-dat
 
 ### Login fails with `invalid username or password`
 
-There is no sign-up route yet. Check whether the local user exists:
+Check whether the user exists:
 
 ```bash
 docker compose exec postgres psql -U postgres -d tradingagent -c "SELECT username FROM users;"
 ```
 
-If `demo` is missing, re-run the `INSERT INTO users ...` step from section 6 or create a new user with a known password.
+If `demo` is missing, register via the API (`POST /api/v1/auth/register`) or re-run the direct Postgres insert from section 6.
 
 ### `manual strategy runs are not configured`
 

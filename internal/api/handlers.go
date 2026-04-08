@@ -1297,6 +1297,63 @@ func (s *Server) handleGetCurrentUser(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, user)
 }
 
+// handleUpdateMe changes the authenticated user's password.
+func (s *Server) handleUpdateMe(w http.ResponseWriter, r *http.Request) {
+	principal, ok := PrincipalFromContext(r.Context())
+	if !ok {
+		respondError(w, http.StatusUnauthorized, "not authenticated", ErrCodeUnauthorized)
+		return
+	}
+
+	var req struct {
+		CurrentPassword string `json:"current_password"`
+		NewPassword     string `json:"new_password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body", ErrCodeBadRequest)
+		return
+	}
+	if strings.TrimSpace(req.CurrentPassword) == "" || strings.TrimSpace(req.NewPassword) == "" {
+		respondError(w, http.StatusBadRequest, "current_password and new_password are required", ErrCodeValidation)
+		return
+	}
+	if len(req.NewPassword) < 8 {
+		respondError(w, http.StatusBadRequest, "new_password must be at least 8 characters", ErrCodeValidation)
+		return
+	}
+
+	user, err := s.users.GetByUsername(r.Context(), principal.Subject)
+	if err != nil {
+		if isNotFound(err) {
+			respondError(w, http.StatusNotFound, "user not found", ErrCodeNotFound)
+			return
+		}
+		s.logger.Error("update me: get user", slog.String("error", err.Error()))
+		respondError(w, http.StatusInternalServerError, "failed to fetch user", ErrCodeInternal)
+		return
+	}
+
+	if err := verifyPassword(user.PasswordHash, req.CurrentPassword); err != nil {
+		respondError(w, http.StatusUnauthorized, "current password is incorrect", ErrCodeUnauthorized)
+		return
+	}
+
+	newHash, err := hashPassword(req.NewPassword)
+	if err != nil {
+		s.logger.Error("update me: hash password", slog.String("error", err.Error()))
+		respondError(w, http.StatusInternalServerError, "failed to update password", ErrCodeInternal)
+		return
+	}
+
+	if err := s.users.UpdatePasswordHash(r.Context(), user.ID, newHash); err != nil {
+		s.logger.Error("update me: update password hash", slog.String("error", err.Error()))
+		respondError(w, http.StatusInternalServerError, "failed to update password", ErrCodeInternal)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // handleListAPIKeys returns all API keys (metadata only, never raw key values).
 func (s *Server) handleListAPIKeys(w http.ResponseWriter, r *http.Request) {
 	limit, offset := parsePagination(r)

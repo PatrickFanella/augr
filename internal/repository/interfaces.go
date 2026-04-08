@@ -307,6 +307,7 @@ type UserRepository interface {
 	Create(ctx context.Context, user *domain.User) error
 	GetByUsername(ctx context.Context, username string) (*domain.User, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.User, error)
+	UpdatePasswordHash(ctx context.Context, id uuid.UUID, newHash string) error
 }
 
 // PolymarketAccountRepository provides access to Polymarket trader profiles
