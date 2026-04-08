@@ -1956,6 +1956,9 @@ func (stubPositionRepo) GetByStrategy(context.Context, uuid.UUID, repository.Pos
 func (stubPositionRepo) Count(context.Context, repository.PositionFilter) (int, error) {
 	return 0, nil
 }
+func (stubPositionRepo) CountOpen(context.Context, repository.PositionFilter) (int, error) {
+	return 0, nil
+}
 
 // stubTradeRepo
 
@@ -2119,6 +2122,12 @@ func (s *stubConversationRepo) ListConversations(_ context.Context, _ repository
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.convs, nil
+}
+
+func (s *stubConversationRepo) CountConversations(_ context.Context, _ repository.ConversationFilter) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.convs), nil
 }
 
 func (s *stubConversationRepo) AddMessage(_ context.Context, convID uuid.UUID, msg *domain.ConversationMessage) error {

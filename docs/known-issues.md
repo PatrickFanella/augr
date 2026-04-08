@@ -89,13 +89,14 @@ are unchanged and always re-evaluated at runtime.
 timeout settings: `(analysts × analysis_timeout) + (2 × rounds × debate_timeout) + overhead`.
 Falls back to 30 minutes when any constituent is unconfigured.
 
-### ~~Pagination `total` field never populated~~ ✓ Fixed (except memories, conversations, api-keys)
+### ~~Pagination `total` field never populated~~ ✓ Fixed (except memories, api-keys)
 
 `GET /api/v1/strategies`, `/runs`, `/backtests/configs`, `/backtests/runs`, `/audit-log`,
-`/orders`, `/portfolio/positions`, `/trades`, and `/events` all return a `total` field.
+`/orders`, `/portfolio/positions`, `/portfolio/positions/open`, `/trades`, `/events`,
+`/conversations`, and `/discovery/results` all return a `total` field.
 Each calls a `SELECT COUNT(*)` with the same filter conditions as the page query. Count
 errors are logged but do not fail the list response. Remaining without `total`: memories
-(full-text search semantics differ), conversations, api-keys.
+(full-text search semantics differ), api-keys.
 
 ### ~~Operator actions were not audited~~ ✓ Fixed
 

@@ -100,6 +100,27 @@ func (r *ConversationRepo) ListConversations(ctx context.Context, filter reposit
 	return conversations, nil
 }
 
+// CountConversations returns the total number of conversations matching the filter.
+func (r *ConversationRepo) CountConversations(ctx context.Context, filter repository.ConversationFilter) (int, error) {
+	query, args := buildConversationCountQuery(filter)
+	var total int
+	if err := r.pool.QueryRow(ctx, query, args...).Scan(&total); err != nil {
+		return 0, fmt.Errorf("postgres: count conversations: %w", err)
+	}
+	return total, nil
+}
+
+func buildConversationCountQuery(filter repository.ConversationFilter) (string, []any) {
+	qb := NewQueryBuilder()
+	if filter.PipelineRunID != nil {
+		qb.AddCondition("pipeline_run_id", "=", *filter.PipelineRunID)
+	}
+	if filter.AgentRole != "" {
+		qb.AddCondition("agent_role", "=", filter.AgentRole)
+	}
+	return `SELECT COUNT(*) FROM conversations` + qb.WhereClause(), qb.Args()
+}
+
 // AddMessage inserts a new message for the given conversation and populates the
 // generated fields on the provided struct.
 func (r *ConversationRepo) AddMessage(ctx context.Context, convID uuid.UUID, msg *domain.ConversationMessage) error {

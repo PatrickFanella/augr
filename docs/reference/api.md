@@ -85,7 +85,8 @@ Notes:
 
 - `limit` defaults to `50`
 - `limit` is capped at `100`
-- `total` is populated for `GET /strategies` and `GET /runs`; omitted (`0`) for other endpoints
+- `total` is populated for: strategies, runs, portfolio/positions, portfolio/positions/open, orders, trades, conversations, backtests/configs, backtests/runs, audit-log, events, discovery/results
+- `total` is omitted (`0`) for: memories (full-text search semantics differ), api-keys
 
 ## Route map
 

@@ -266,6 +266,44 @@ func buildPositionCountQuery(filter repository.PositionFilter) (string, []any) {
 	return query, args
 }
 
+// CountOpen returns the number of open (closed_at IS NULL) positions matching the filter.
+func (r *PositionRepo) CountOpen(ctx context.Context, filter repository.PositionFilter) (int, error) {
+	query, args := buildPositionOpenCountQuery(filter)
+	var total int
+	if err := r.pool.QueryRow(ctx, query, args...).Scan(&total); err != nil {
+		return 0, fmt.Errorf("postgres: count open positions: %w", err)
+	}
+	return total, nil
+}
+
+func buildPositionOpenCountQuery(filter repository.PositionFilter) (string, []any) {
+	var (
+		conditions []string
+		args       []any
+		argIdx     int
+	)
+	nextArg := func(v any) string {
+		argIdx++
+		args = append(args, v)
+		return fmt.Sprintf("$%d", argIdx)
+	}
+	conditions = append(conditions, "closed_at IS NULL")
+	if filter.Ticker != "" {
+		conditions = append(conditions, "ticker = "+nextArg(filter.Ticker))
+	}
+	if filter.Side != "" {
+		conditions = append(conditions, "side = "+nextArg(filter.Side))
+	}
+	if filter.OpenedAfter != nil {
+		conditions = append(conditions, "opened_at >= "+nextArg(*filter.OpenedAfter))
+	}
+	if filter.OpenedBefore != nil {
+		conditions = append(conditions, "opened_at <= "+nextArg(*filter.OpenedBefore))
+	}
+	query := `SELECT COUNT(*) FROM positions WHERE ` + strings.Join(conditions, " AND ")
+	return query, args
+}
+
 func buildPositionListQuery(filter repository.PositionFilter, limit, offset int) (string, []any) {
 	return buildPositionQuery("", nil, false, filter, limit, offset)
 }

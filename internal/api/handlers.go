@@ -476,7 +476,11 @@ func (s *Server) handleGetOpenPositions(w http.ResponseWriter, r *http.Request) 
 		respondError(w, http.StatusInternalServerError, "failed to list open positions", ErrCodeInternal)
 		return
 	}
-	respondList(w, positions, limit, offset)
+	total, err := s.positions.CountOpen(r.Context(), repository.PositionFilter{})
+	if err != nil {
+		s.logger.Warn("count open positions", slog.String("error", err.Error()))
+	}
+	respondListWithTotal(w, positions, total, limit, offset)
 }
 
 func (s *Server) handlePortfolioSummary(w http.ResponseWriter, r *http.Request) {
@@ -1048,7 +1052,11 @@ func (s *Server) handleListConversations(w http.ResponseWriter, r *http.Request)
 		respondError(w, http.StatusInternalServerError, "failed to list conversations", ErrCodeInternal)
 		return
 	}
-	respondList(w, conversations, limit, offset)
+	total, err := s.conversations.CountConversations(r.Context(), filter)
+	if err != nil {
+		s.logger.Warn("count conversations", slog.String("error", err.Error()))
+	}
+	respondListWithTotal(w, conversations, total, limit, offset)
 }
 
 func (s *Server) handleGetConversationMessages(w http.ResponseWriter, r *http.Request) {

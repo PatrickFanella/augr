@@ -239,6 +239,8 @@ type ConversationRepository interface {
 	CreateConversation(ctx context.Context, conv *domain.Conversation) error
 	GetConversation(ctx context.Context, id uuid.UUID) (*domain.Conversation, error)
 	ListConversations(ctx context.Context, filter ConversationFilter, limit, offset int) ([]domain.Conversation, error)
+	// Count returns the total number of conversations matching the filter.
+	CountConversations(ctx context.Context, filter ConversationFilter) (int, error)
 	AddMessage(ctx context.Context, convID uuid.UUID, msg *domain.ConversationMessage) error
 	GetMessages(ctx context.Context, convID uuid.UUID, limit, offset int) ([]domain.ConversationMessage, error)
 }
@@ -266,6 +268,8 @@ type PositionRepository interface {
 	Update(ctx context.Context, position *domain.Position) error
 	Delete(ctx context.Context, id uuid.UUID) error
 	GetOpen(ctx context.Context, filter PositionFilter, limit, offset int) ([]domain.Position, error)
+	// CountOpen returns the total number of open (not yet closed) positions.
+	CountOpen(ctx context.Context, filter PositionFilter) (int, error)
 	GetByStrategy(ctx context.Context, strategyID uuid.UUID, filter PositionFilter, limit, offset int) ([]domain.Position, error)
 }
 
