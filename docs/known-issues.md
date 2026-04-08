@@ -24,13 +24,12 @@ Impact:
 
 ## Product and control-plane gaps
 
-### WebSocket authentication is not enforced
+### ~~WebSocket authentication is not enforced~~ ✓ Fixed
 
-`GET /ws` is mounted outside the auth-protected API group. The current handler allows upgrade and subscription commands without the JWT/API-key middleware used for `/api/v1/*`.
-
-Impact:
-
-- treat the WebSocket feed as an internal/local surface until this is fixed
+`GET /ws` now enforces authentication before upgrading the connection. Clients
+pass credentials via the standard `Authorization: Bearer <token>` or `X-API-Key`
+headers, or via `?token=<jwt>` / `?api_key=<key>` query parameters (for browser
+WebSocket clients that cannot send custom headers).
 
 ### Settings edits are in-memory only
 
@@ -68,19 +67,17 @@ Impact:
 
 ### Social and news coverage are uneven
 
-The `DataProvider` abstraction includes OHLCV, fundamentals, news, and social sentiment, but not every provider implements every surface. `FINNHUB_*` settings are parsed into config but not currently wired into the runtime provider factory. A `newsapi` package exists but is not part of the main runtime chain.
+The `DataProvider` abstraction includes OHLCV, fundamentals, news, and social sentiment, but not every provider implements every surface. `newsapi` is now wired into the runtime provider chain for stock news (`NEWSAPI_API_KEY`). Finnhub is registered in the provider registry for OHLCV/social sentiment.
 
 Impact:
 
 - “feature exists in interface” does not always mean “feature is active in production runtime wiring”
 
-### Whole-pipeline timeout is not currently enforced
+### ~~Whole-pipeline timeout is not currently enforced~~ ✓ Fixed
 
-The runtime uses phase-specific timeouts, but the pipeline-wide timeout helper currently resolves to no overall timeout.
-
-Impact:
-
-- a run can rely on per-phase limits without a single global wall-clock cap
+`runtimePipelineTimeout` now derives a finite wall-clock budget from the per-phase
+timeout settings: `(analysts × analysis_timeout) + (2 × rounds × debate_timeout) + overhead`.
+Falls back to 30 minutes when any constituent is unconfigured.
 
 ## UI caveats
 

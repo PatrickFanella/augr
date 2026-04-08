@@ -309,6 +309,32 @@ func (a *AuthManager) AuthenticateRequest(r *http.Request) (AuthResult, error) {
 	return AuthResult{}, errMissingCredentials
 }
 
+// AuthenticateWSRequest validates a WebSocket upgrade request. Browser WebSocket
+// clients cannot send custom headers, so this additionally checks the query
+// parameters "token" (JWT bearer) and "api_key" after the standard header paths.
+func (a *AuthManager) AuthenticateWSRequest(r *http.Request) (AuthResult, error) {
+	// 1. Standard header-based auth (non-browser clients and curl).
+	if result, err := a.AuthenticateRequest(r); err == nil {
+		return result, nil
+	}
+
+	// 2. Bearer token via ?token= query param (browser WebSocket clients).
+	if token := strings.TrimSpace(r.URL.Query().Get("token")); token != "" {
+		principal, err := a.ValidateAccessToken(token)
+		if err != nil {
+			return AuthResult{}, err
+		}
+		return AuthResult{Principal: principal}, nil
+	}
+
+	// 3. API key via ?api_key= query param.
+	if rawKey := strings.TrimSpace(r.URL.Query().Get("api_key")); rawKey != "" {
+		return a.validateAPIKey(r.Context(), rawKey)
+	}
+
+	return AuthResult{}, errMissingCredentials
+}
+
 // PrincipalFromContext returns the authenticated principal attached by middleware.
 func PrincipalFromContext(ctx context.Context) (AuthPrincipal, bool) {
 	principal, ok := ctx.Value(authPrincipalContextKey).(AuthPrincipal)

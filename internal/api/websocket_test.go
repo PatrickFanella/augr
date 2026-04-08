@@ -373,9 +373,53 @@ func TestClientHandleCommandInvalid(t *testing.T) {
 	}
 }
 
+// wsTestToken generates a valid access token for WebSocket tests using the
+// test server's AuthManager.
+func wsTestToken(t *testing.T, srv *Server) string {
+	t.Helper()
+	pair, err := srv.auth.GenerateTokenPair("test-user")
+	if err != nil {
+		t.Fatalf("generate ws token: %v", err)
+	}
+	return pair.AccessToken
+}
+
+// wsDialWithAuth dials the WebSocket endpoint at baseURL with a valid token
+// passed as the "token" query parameter.
+func wsDialWithAuth(t *testing.T, srv *Server, baseURL string) (*websocket.Conn, *http.Response) {
+	t.Helper()
+	token := wsTestToken(t, srv)
+	wsURL := "ws" + strings.TrimPrefix(baseURL, "http") + "/ws?token=" + token
+	conn, resp, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	return conn, resp
+}
+
 // ---------------------------------------------------------------------------
 // WebSocket handler integration test
 // ---------------------------------------------------------------------------
+
+func TestWebSocketRejectsUnauthenticated(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServer(t)
+	go srv.hub.Run()
+	defer srv.hub.Stop()
+
+	ts := httptest.NewServer(srv.Router())
+	defer ts.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(ts.URL, "http") + "/ws"
+	_, resp, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err == nil {
+		t.Fatal("expected dial to fail for unauthenticated request")
+	}
+	if resp != nil && resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusUnauthorized)
+	}
+}
 
 func TestWebSocketEndpoint(t *testing.T) {
 	t.Parallel()
@@ -387,11 +431,7 @@ func TestWebSocketEndpoint(t *testing.T) {
 	ts := httptest.NewServer(srv.Router())
 	defer ts.Close()
 
-	wsURL := "ws" + strings.TrimPrefix(ts.URL, "http") + "/ws"
-	conn, resp, err := websocket.DefaultDialer.Dial(wsURL, nil)
-	if err != nil {
-		t.Fatalf("dial: %v", err)
-	}
+	conn, resp := wsDialWithAuth(t, srv, ts.URL)
 	defer func() {
 		_ = conn.Close()
 	}()
@@ -453,11 +493,7 @@ func TestWebSocketSubscriptionFiltering(t *testing.T) {
 	ts := httptest.NewServer(srv.Router())
 	defer ts.Close()
 
-	wsURL := "ws" + strings.TrimPrefix(ts.URL, "http") + "/ws"
-	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
-	if err != nil {
-		t.Fatalf("dial: %v", err)
-	}
+	conn, _ := wsDialWithAuth(t, srv, ts.URL)
 	defer func() {
 		_ = conn.Close()
 	}()
@@ -475,8 +511,7 @@ func TestWebSocketSubscriptionFiltering(t *testing.T) {
 
 	// Read the ack.
 	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
-	_, _, err = conn.ReadMessage()
-	if err != nil {
+	if _, _, err := conn.ReadMessage(); err != nil {
 		t.Fatalf("read ack: %v", err)
 	}
 
@@ -519,11 +554,7 @@ func TestWebSocketDisconnection(t *testing.T) {
 	ts := httptest.NewServer(srv.Router())
 	defer ts.Close()
 
-	wsURL := "ws" + strings.TrimPrefix(ts.URL, "http") + "/ws"
-	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
-	if err != nil {
-		t.Fatalf("dial: %v", err)
-	}
+	conn, _ := wsDialWithAuth(t, srv, ts.URL)
 
 	// Wait for the client to be registered.
 	waitFor(t, func() bool { return srv.hub.ClientCount() == 1 })

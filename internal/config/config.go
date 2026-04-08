@@ -90,6 +90,7 @@ type DataProviderConfigs struct {
 	AlphaVantage DataProviderConfig
 	Finnhub      DataProviderConfig
 	FMP          DataProviderConfig
+	NewsAPI      DataProviderConfig
 	Tradier      TradierConfig
 }
 
@@ -493,6 +494,9 @@ func loadFromEnvironment() (Config, error) {
 			FMP: DataProviderConfig{
 				APIKey:             os.Getenv("FMP_API_KEY"),
 				RateLimitPerMinute: fmpRateLimit,
+			},
+			NewsAPI: DataProviderConfig{
+				APIKey: os.Getenv("NEWSAPI_API_KEY"),
 			},
 			Tradier: TradierConfig{
 				APIKey:  os.Getenv("TRADIER_API_KEY"),

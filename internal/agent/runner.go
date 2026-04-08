@@ -721,8 +721,39 @@ func defaultSkipPhases() map[Phase]bool {
 	return map[Phase]bool{PhaseRiskDebate: true}
 }
 
-func runtimePipelineTimeout(_ ResolvedConfig) time.Duration {
-	return 0
+// runtimePipelineTimeout derives a safe wall-clock budget for the entire
+// pipeline from the per-phase timeout settings.
+//
+// Formula (uses the resolved per-phase limits):
+//
+//	(maxAnalysts × analysisTimeout)    – parallel analysis phase
+//	+ (2 × rounds × debateTimeout)    – research debate + risk debate
+//	+ (2 × analysisTimeout)           – trader + risk-eval budget
+//	+ 5-minute overhead               – DB I/O, setup, teardown
+//
+// Returns 30 minutes when any constituent timeout is unconfigured (≤ 0) so
+// there is always a finite upper bound even with default settings.
+func runtimePipelineTimeout(resolved ResolvedConfig) time.Duration {
+	const (
+		maxAnalysts     = 4
+		overheadSeconds = 5 * 60
+		fallback        = 30 * time.Minute
+	)
+
+	analysis := resolved.PipelineConfig.AnalysisTimeoutSeconds
+	debate := resolved.PipelineConfig.DebateTimeoutSeconds
+	rounds := resolved.PipelineConfig.DebateRounds
+
+	if analysis <= 0 || debate <= 0 || rounds <= 0 {
+		return fallback
+	}
+
+	total := maxAnalysts*analysis + // analysis phase (agents run sequentially)
+		2*rounds*debate + // research debate + risk debate
+		2*analysis + // trader + risk-eval
+		overheadSeconds
+
+	return time.Duration(total) * time.Second
 }
 
 func runtimeAnalysisTimeout(resolved ResolvedConfig) time.Duration {

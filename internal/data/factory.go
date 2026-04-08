@@ -37,6 +37,7 @@ type ProviderRegistry struct {
 	AlphaVantage func(apiKey string, rateLimitPerMinute int, logger *slog.Logger) DataProvider
 	Finnhub      func(apiKey string, rateLimitPerMinute int, logger *slog.Logger) DataProvider
 	FMP          func(apiKey string, rateLimitPerMinute int, logger *slog.Logger) DataProvider
+	NewsAPI      func(apiKey string, logger *slog.Logger) DataProvider
 	Yahoo        func(logger *slog.Logger) DataProvider
 	Binance      func(logger *slog.Logger) DataProvider
 	Polymarket   func(clobURL string, logger *slog.Logger) DataProvider
@@ -93,6 +94,9 @@ func NewDataService(cfg config.Config, reg *ProviderRegistry, cacheRepo reposito
 	}
 	if apiKey := strings.TrimSpace(cfg.DataProviders.AlphaVantage.APIKey); apiKey != "" && reg.AlphaVantage != nil {
 		stockProviders = append(stockProviders, reg.AlphaVantage(apiKey, cfg.DataProviders.AlphaVantage.RateLimitPerMinute, logger))
+	}
+	if apiKey := strings.TrimSpace(cfg.DataProviders.NewsAPI.APIKey); apiKey != "" && reg.NewsAPI != nil {
+		stockProviders = append(stockProviders, reg.NewsAPI(apiKey, logger))
 	}
 
 	cryptoProviders := make([]DataProvider, 0, 1)

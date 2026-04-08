@@ -269,9 +269,20 @@ func (c *Client) sendError(msg string) {
 
 // handleWebSocket upgrades an HTTP connection to a WebSocket and registers
 // the resulting Client with the Hub.
+//
+// Authentication is enforced before the upgrade. Browser WebSocket clients
+// that cannot send custom headers should supply a JWT via the "token" query
+// parameter or an API key via the "api_key" query parameter.
 func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	if s.hub == nil {
 		http.Error(w, "websocket not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	// Authenticate before upgrading; once the connection is upgraded the
+	// HTTP response headers are committed and cannot carry a 401.
+	if _, err := s.auth.AuthenticateWSRequest(r); err != nil {
+		http.Error(w, "authentication required", http.StatusUnauthorized)
 		return
 	}
 
