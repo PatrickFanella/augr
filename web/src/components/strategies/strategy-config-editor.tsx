@@ -13,12 +13,11 @@ import type {
   StrategyStatus,
   StrategyUpdateRequest,
 } from '@/lib/api/types';
-
 import {
-  analystOptions,
-  buildStructuredStrategyConfig,
-  parseStructuredStrategyConfig,
-} from './strategy-structured-config';
+  defaultAnalysts,
+  strategyConfigBoundary,
+  type StrategyConfigForm,
+} from '@/lib/strategy-config/boundary';
 
 interface StrategyConfigEditorProps {
   strategy: Strategy;
@@ -52,28 +51,13 @@ export function StrategyConfigEditor({
   const [scheduleCron, setScheduleCron] = useState(strategy.schedule_cron ?? '');
   const [isPaper, setIsPaper] = useState(strategy.is_paper);
   const [isActive, setIsActive] = useState(resolveStrategyStatus(strategy) === 'active');
-  const [configError, setConfigError] = useState<string | null>(null);
-  const [deepThinkProvider, setDeepThinkProvider] = useState('');
-  const [deepThinkModel, setDeepThinkModel] = useState('');
-  const [quickThinkProvider, setQuickThinkProvider] = useState('');
-  const [quickThinkModel, setQuickThinkModel] = useState('');
-  const [researchDebateRounds, setResearchDebateRounds] = useState('');
-  const [riskDebateRounds, setRiskDebateRounds] = useState('');
-  const [phaseTimeout, setPhaseTimeout] = useState('');
-  const [pipelineTimeout, setPipelineTimeout] = useState('');
-  const [maxPositionSizePct, setMaxPositionSizePct] = useState('');
-  const [stopLossAtrMultiplier, setStopLossAtrMultiplier] = useState('');
-  const [takeProfitAtrMultiplier, setTakeProfitAtrMultiplier] = useState('');
-  const [minConfidenceThreshold, setMinConfidenceThreshold] = useState('');
-  const [selectedAnalysts, setSelectedAnalysts] = useState<AgentRole[]>([]);
+  const [configForm, setConfigForm] = useState<StrategyConfigForm>(() =>
+    strategyConfigBoundary.load(strategy.config),
+  );
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [promptOverrides, setPromptOverrides] = useState('{}');
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    const cfg = ((strategy.config ?? {}) as Record<string, unknown>) ?? {};
-    const llm = ((cfg.llm_config ?? {}) as Record<string, unknown>) ?? {};
-    const structuredConfig = parseStructuredStrategyConfig(strategy.config);
-
     setName(strategy.name);
     setDescription(strategy.description ?? '');
     setTicker(strategy.ticker);
@@ -81,23 +65,8 @@ export function StrategyConfigEditor({
     setScheduleCron(strategy.schedule_cron ?? '');
     setIsPaper(strategy.is_paper);
     setIsActive(resolveStrategyStatus(strategy) === 'active');
-    setConfigError(null);
-
-    setDeepThinkProvider((llm.provider as string) ?? '');
-    setDeepThinkModel((llm.deep_think_model as string) ?? '');
-    setQuickThinkProvider('');
-    setQuickThinkModel((llm.quick_think_model as string) ?? '');
-
-    setResearchDebateRounds(structuredConfig.researchDebateRounds);
-    setRiskDebateRounds(structuredConfig.riskDebateRounds);
-    setPhaseTimeout(structuredConfig.phaseTimeout);
-    setPipelineTimeout(structuredConfig.pipelineTimeout);
-    setMaxPositionSizePct(structuredConfig.maxPositionSizePct);
-    setStopLossAtrMultiplier(structuredConfig.stopLossAtrMultiplier);
-    setTakeProfitAtrMultiplier(structuredConfig.takeProfitAtrMultiplier);
-    setMinConfidenceThreshold(structuredConfig.minConfidenceThreshold);
-    setSelectedAnalysts(structuredConfig.selectedAnalysts);
-    setPromptOverrides(structuredConfig.promptOverrides);
+    setConfigForm(strategyConfigBoundary.load(strategy.config));
+    setFieldErrors({});
     setShowAdvanced(false);
   }, [strategy]);
 
@@ -106,65 +75,41 @@ export function StrategyConfigEditor({
     [settings?.llm?.providers],
   );
 
-  function toggleAnalyst(analyst: AgentRole, checked: boolean) {
-    setSelectedAnalysts((prev) => {
-      if (checked) {
-        return prev.includes(analyst) ? prev : [...prev, analyst];
-      }
-      return prev.filter((value) => value !== analyst);
+  function setPipeline(patch: Partial<StrategyConfigForm['pipeline']>) {
+    setConfigForm((prev) => ({ ...prev, pipeline: { ...prev.pipeline, ...patch } }));
+    setFieldErrors({});
+  }
+  function setRisk(patch: Partial<StrategyConfigForm['risk']>) {
+    setConfigForm((prev) => ({ ...prev, risk: { ...prev.risk, ...patch } }));
+    setFieldErrors({});
+  }
+  function setLlm(patch: Partial<StrategyConfigForm['llm']>) {
+    setConfigForm((prev) => ({ ...prev, llm: { ...prev.llm, ...patch } }));
+    setFieldErrors({});
+  }
+
+  function toggleAnalyst(role: AgentRole, checked: boolean) {
+    setConfigForm((prev) => {
+      const next = checked
+        ? prev.analysts.selected.includes(role)
+          ? prev.analysts.selected
+          : [...prev.analysts.selected, role]
+        : prev.analysts.selected.filter((r) => r !== role);
+      return { ...prev, analysts: { mode: 'custom', selected: next } };
     });
-    setConfigError(null);
+    setFieldErrors({});
   }
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
 
-    const structuredConfig = buildStructuredStrategyConfig(
-      {
-        researchDebateRounds,
-        riskDebateRounds,
-        phaseTimeout,
-        pipelineTimeout,
-        maxPositionSizePct,
-        stopLossAtrMultiplier,
-        takeProfitAtrMultiplier,
-        minConfidenceThreshold,
-        selectedAnalysts,
-        promptOverrides,
-      },
-      strategy.config,
-    );
-
-    if (structuredConfig.error || !structuredConfig.config) {
-      setConfigError(structuredConfig.error ?? 'Invalid configuration');
+    const result = strategyConfigBoundary.submit(configForm);
+    if (!result.ok) {
+      setFieldErrors(result.fieldErrors);
       return;
     }
 
-    const config = structuredConfig.config;
-    const llmConfig = ((config.llm_config ?? {}) as Record<string, unknown>) ?? {};
-
-    if (deepThinkProvider) {
-      llmConfig.provider = deepThinkProvider;
-    } else {
-      delete llmConfig.provider;
-    }
-    if (deepThinkModel) {
-      llmConfig.deep_think_model = deepThinkModel;
-    } else {
-      delete llmConfig.deep_think_model;
-    }
-    if (quickThinkModel) {
-      llmConfig.quick_think_model = quickThinkModel;
-    } else {
-      delete llmConfig.quick_think_model;
-    }
-    if (Object.keys(llmConfig).length > 0) {
-      config.llm_config = llmConfig;
-    } else {
-      delete config.llm_config;
-    }
-
-    setConfigError(null);
+    setFieldErrors({});
 
     const currentStatus = resolveStrategyStatus(strategy);
     const nextStatus: StrategyStatus = isActive
@@ -179,12 +124,14 @@ export function StrategyConfigEditor({
       ticker: ticker.toUpperCase(),
       market_type: marketType,
       schedule_cron: scheduleCron || undefined,
-      config,
+      config: result.config,
       status: nextStatus,
       is_paper: isPaper,
       skip_next_run: strategy.skip_next_run,
     });
   }
+
+  const firstError = Object.values(fieldErrors)[0];
 
   return (
     <Card data-testid="strategy-config-editor">
@@ -278,14 +225,11 @@ export function StrategyConfigEditor({
             </h4>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="deep-think-provider">Deep Think Provider</Label>
+                <Label htmlFor="llm-provider">Provider</Label>
                 <select
-                  id="deep-think-provider"
-                  value={deepThinkProvider}
-                  onChange={(e) => {
-                    setDeepThinkProvider(e.target.value);
-                    setConfigError(null);
-                  }}
+                  id="llm-provider"
+                  value={configForm.llm.provider}
+                  onChange={(e) => setLlm({ provider: e.target.value as '' })}
                   className={denseSelectClassName}
                 >
                   <option value="">Use global default</option>
@@ -300,47 +244,20 @@ export function StrategyConfigEditor({
                 <Label htmlFor="deep-think-model">Deep Think Model</Label>
                 <Input
                   id="deep-think-model"
-                  value={deepThinkModel}
-                  onChange={(e) => {
-                    setDeepThinkModel(e.target.value);
-                    setConfigError(null);
-                  }}
+                  value={configForm.llm.deepThinkModel}
+                  onChange={(e) => setLlm({ deepThinkModel: e.target.value })}
                   placeholder={settings?.llm?.deep_think_model ?? 'Global default'}
                 />
               </div>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="quick-think-provider">Quick Think Provider</Label>
-                <select
-                  id="quick-think-provider"
-                  value={quickThinkProvider}
-                  onChange={(e) => {
-                    setQuickThinkProvider(e.target.value);
-                    setConfigError(null);
-                  }}
-                  className={denseSelectClassName}
-                >
-                  <option value="">Use global default</option>
-                  {providerOptions.map((provider) => (
-                    <option key={provider} value={provider}>
-                      {provider}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="quick-think-model">Quick Think Model</Label>
-                <Input
-                  id="quick-think-model"
-                  value={quickThinkModel}
-                  onChange={(e) => {
-                    setQuickThinkModel(e.target.value);
-                    setConfigError(null);
-                  }}
-                  placeholder={settings?.llm?.quick_think_model ?? 'Global default'}
-                />
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="quick-think-model">Quick Think Model</Label>
+              <Input
+                id="quick-think-model"
+                value={configForm.llm.quickThinkModel}
+                onChange={(e) => setLlm({ quickThinkModel: e.target.value })}
+                placeholder={settings?.llm?.quick_think_model ?? 'Global default'}
+              />
             </div>
           </div>
 
@@ -350,63 +267,38 @@ export function StrategyConfigEditor({
             </h4>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="research-debate-rounds">Research Debate Rounds</Label>
+                <Label htmlFor="debate-rounds">Debate Rounds</Label>
                 <Input
-                  id="research-debate-rounds"
+                  id="debate-rounds"
                   type="number"
                   min={1}
                   max={10}
-                  value={researchDebateRounds}
-                  onChange={(e) => {
-                    setResearchDebateRounds(e.target.value);
-                    setConfigError(null);
-                  }}
+                  value={configForm.pipeline.debateRounds}
+                  onChange={(e) => setPipeline({ debateRounds: e.target.value })}
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="risk-debate-rounds">Risk Debate Rounds</Label>
-                <Input
-                  id="risk-debate-rounds"
-                  type="number"
-                  min={1}
-                  max={10}
-                  value={riskDebateRounds}
-                  onChange={(e) => {
-                    setRiskDebateRounds(e.target.value);
-                    setConfigError(null);
-                  }}
-                />
-              </div>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="phase-timeout">Analysis Timeout (seconds)</Label>
                 <Input
                   id="phase-timeout"
                   type="number"
                   min={1}
-                  value={phaseTimeout}
-                  onChange={(e) => {
-                    setPhaseTimeout(e.target.value);
-                    setConfigError(null);
-                  }}
+                  value={configForm.pipeline.analysisTimeoutSeconds}
+                  onChange={(e) => setPipeline({ analysisTimeoutSeconds: e.target.value })}
                   placeholder="120"
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="pipeline-timeout">Debate Timeout (seconds)</Label>
-                <Input
-                  id="pipeline-timeout"
-                  type="number"
-                  min={1}
-                  value={pipelineTimeout}
-                  onChange={(e) => {
-                    setPipelineTimeout(e.target.value);
-                    setConfigError(null);
-                  }}
-                  placeholder="600"
-                />
-              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="pipeline-timeout">Debate Timeout (seconds)</Label>
+              <Input
+                id="pipeline-timeout"
+                type="number"
+                min={1}
+                value={configForm.pipeline.debateTimeoutSeconds}
+                onChange={(e) => setPipeline({ debateTimeoutSeconds: e.target.value })}
+                placeholder="600"
+              />
             </div>
           </div>
 
@@ -423,11 +315,8 @@ export function StrategyConfigEditor({
                   step="0.01"
                   min={0.01}
                   max={1}
-                  value={maxPositionSizePct}
-                  onChange={(e) => {
-                    setMaxPositionSizePct(e.target.value);
-                    setConfigError(null);
-                  }}
+                  value={configForm.risk.positionSizePct}
+                  onChange={(e) => setRisk({ positionSizePct: e.target.value })}
                 />
               </div>
               <div className="space-y-2">
@@ -436,11 +325,8 @@ export function StrategyConfigEditor({
                   id="stop-loss-atr-multiplier"
                   type="number"
                   step="0.1"
-                  value={stopLossAtrMultiplier}
-                  onChange={(e) => {
-                    setStopLossAtrMultiplier(e.target.value);
-                    setConfigError(null);
-                  }}
+                  value={configForm.risk.stopLossMultiplier}
+                  onChange={(e) => setRisk({ stopLossMultiplier: e.target.value })}
                 />
               </div>
             </div>
@@ -451,11 +337,8 @@ export function StrategyConfigEditor({
                   id="take-profit-atr-multiplier"
                   type="number"
                   step="0.1"
-                  value={takeProfitAtrMultiplier}
-                  onChange={(e) => {
-                    setTakeProfitAtrMultiplier(e.target.value);
-                    setConfigError(null);
-                  }}
+                  value={configForm.risk.takeProfitMultiplier}
+                  onChange={(e) => setRisk({ takeProfitMultiplier: e.target.value })}
                 />
               </div>
               <div className="space-y-2">
@@ -466,11 +349,8 @@ export function StrategyConfigEditor({
                   step="0.01"
                   min={0}
                   max={1}
-                  value={minConfidenceThreshold}
-                  onChange={(e) => {
-                    setMinConfidenceThreshold(e.target.value);
-                    setConfigError(null);
-                  }}
+                  value={configForm.risk.minConfidence}
+                  onChange={(e) => setRisk({ minConfidence: e.target.value })}
                 />
               </div>
             </div>
@@ -481,18 +361,18 @@ export function StrategyConfigEditor({
               Analysts
             </h4>
             <div className="grid gap-3 sm:grid-cols-2">
-              {analystOptions.map(({ role, label }) => (
+              {defaultAnalysts.map((role) => (
                 <label
                   key={role}
                   className="flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm"
                 >
                   <input
                     type="checkbox"
-                    checked={selectedAnalysts.includes(role)}
+                    checked={configForm.analysts.selected.includes(role)}
                     onChange={(e) => toggleAnalyst(role, e.target.checked)}
                     className="rounded border-input"
                   />
-                  {label}
+                  {role.replace(/_/g, ' ')}
                 </label>
               ))}
             </div>
@@ -517,10 +397,13 @@ export function StrategyConfigEditor({
                 <Label htmlFor="prompt-overrides">Prompt Overrides (JSON)</Label>
                 <Textarea
                   id="prompt-overrides"
-                  value={promptOverrides}
+                  value={configForm.promptOverridesJson}
                   onChange={(e) => {
-                    setPromptOverrides(e.target.value);
-                    setConfigError(null);
+                    setConfigForm((prev) => ({
+                      ...prev,
+                      promptOverridesJson: e.target.value,
+                    }));
+                    setFieldErrors({});
                   }}
                   rows={6}
                   className="font-mono text-xs"
@@ -529,9 +412,9 @@ export function StrategyConfigEditor({
             ) : null}
           </div>
 
-          {configError ? (
+          {firstError ? (
             <p className="rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-              {configError}
+              {firstError}
             </p>
           ) : null}
 

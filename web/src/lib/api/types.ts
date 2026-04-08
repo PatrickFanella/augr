@@ -2,6 +2,28 @@ export type UUID = string
 export type ISODateString = string
 
 export type MarketType = 'stock' | 'crypto' | 'polymarket'
+export type StrategyLLMProvider = 'openai' | 'anthropic' | 'google' | 'openrouter' | 'xai' | 'ollama'
+
+export interface StrategyConfigWire {
+  llm_config?: {
+    provider?: StrategyLLMProvider
+    deep_think_model?: string
+    quick_think_model?: string
+  }
+  pipeline_config?: {
+    debate_rounds?: number
+    analysis_timeout_seconds?: number
+    debate_timeout_seconds?: number
+  }
+  risk_config?: {
+    position_size_pct?: number
+    stop_loss_multiplier?: number
+    take_profit_multiplier?: number
+    min_confidence?: number
+  }
+  analyst_selection?: AgentRole[]
+  prompt_overrides?: Record<string, string>
+}
 export type StrategyStatus = 'active' | 'paused' | 'inactive'
 export type PipelineStatus = 'running' | 'completed' | 'failed' | 'cancelled'
 export type PipelineSignal = 'buy' | 'sell' | 'hold'
@@ -86,7 +108,7 @@ export interface Strategy {
   market_type: MarketType
   schedule_cron?: string
   schedule_description?: string
-  config: unknown
+  config: StrategyConfigWire
   status: StrategyStatus
   skip_next_run: boolean
   is_active?: boolean
@@ -452,7 +474,7 @@ export interface StrategyCreateRequest {
   ticker: string
   market_type: MarketType
   schedule_cron?: string
-  config?: unknown
+  config?: StrategyConfigWire
   status?: StrategyStatus
   is_active?: boolean
   is_paper?: boolean
@@ -464,7 +486,7 @@ export interface StrategyUpdateRequest {
   ticker: string
   market_type: MarketType
   schedule_cron?: string
-  config?: unknown
+  config?: StrategyConfigWire
   status: StrategyStatus
   is_active?: boolean
   is_paper: boolean
@@ -603,7 +625,7 @@ export interface OptionSnapshot {
 export interface DeployedStrategy {
   strategy_id: UUID
   ticker: string
-  config: unknown
+  config: StrategyConfigWire
   in_sample: BacktestMetrics
   out_of_sample: BacktestMetrics
   score: number
