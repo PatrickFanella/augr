@@ -174,6 +174,9 @@ type StrategyRepository interface {
 	List(ctx context.Context, filter StrategyFilter, limit, offset int) ([]domain.Strategy, error)
 	Update(ctx context.Context, strategy *domain.Strategy) error
 	Delete(ctx context.Context, id uuid.UUID) error
+	// UpdateThesis persists the serialised active thesis for the given strategy.
+	// Passing nil clears the stored thesis.
+	UpdateThesis(ctx context.Context, strategyID uuid.UUID, thesis json.RawMessage) error
 }
 
 // BacktestConfigRepository provides CRUD operations for backtest configurations.

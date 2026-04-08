@@ -96,10 +96,11 @@ type RuntimeConfig struct {
 // InitialStateSeed captures pre-fetched pipeline inputs that should be loaded
 // into a run before phase execution starts.
 type InitialStateSeed struct {
-	Market       *MarketData
-	News         []data.NewsArticle
-	Fundamentals *data.Fundamentals
-	Social       *data.SocialSentiment
+	Market           *MarketData
+	News             []data.NewsArticle
+	Fundamentals     *data.Fundamentals
+	Social           *data.SocialSentiment
+	PredictionMarket *PredictionMarketData
 }
 
 // PreparedRun is the immutable execution plan for one strategy run.
@@ -398,6 +399,10 @@ func applyInitialStateSeed(state *PipelineState, seed InitialStateSeed) {
 	if seed.Social != nil {
 		social := *seed.Social
 		state.Social = &social
+	}
+	if seed.PredictionMarket != nil {
+		pm := *seed.PredictionMarket
+		state.PredictionMarket = &pm
 	}
 }
 

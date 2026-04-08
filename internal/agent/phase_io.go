@@ -8,11 +8,12 @@ import (
 
 // AnalysisInput provides read-only context for analyst nodes.
 type AnalysisInput struct {
-	Ticker       string
-	Market       *MarketData
-	News         []data.NewsArticle
-	Fundamentals *data.Fundamentals
-	Social       *data.SocialSentiment
+	Ticker           string
+	Market           *MarketData
+	News             []data.NewsArticle
+	Fundamentals     *data.Fundamentals
+	Social           *data.SocialSentiment
+	PredictionMarket *PredictionMarketData
 }
 
 // AnalysisOutput is the result of an analyst node's execution.
@@ -50,6 +51,7 @@ type TradingInput struct {
 // TradingOutput is the result of the trader node's execution.
 type TradingOutput struct {
 	Plan         TradingPlan
+	Thesis       *Thesis // nil if the LLM did not produce thesis fields
 	StoredOutput string
 	LLMResponse  *DecisionLLMResponse
 }
@@ -72,11 +74,12 @@ type RiskJudgeOutput struct {
 // analysisInputFromState constructs an AnalysisInput from the pipeline state.
 func analysisInputFromState(state *PipelineState) AnalysisInput {
 	return AnalysisInput{
-		Ticker:       state.Ticker,
-		Market:       state.Market,
-		News:         state.News,
-		Fundamentals: state.Fundamentals,
-		Social:       state.Social,
+		Ticker:           state.Ticker,
+		Market:           state.Market,
+		News:             state.News,
+		Fundamentals:     state.Fundamentals,
+		Social:           state.Social,
+		PredictionMarket: state.PredictionMarket,
 	}
 }
 
@@ -162,6 +165,9 @@ func tradingInputFromState(state *PipelineState) TradingInput {
 // applyTradingOutput maps a TradingOutput back to the pipeline state.
 func applyTradingOutput(state *PipelineState, output TradingOutput) {
 	state.TradingPlan = output.Plan
+	if output.Thesis != nil {
+		state.ActiveThesis = output.Thesis
+	}
 	state.RecordDecision(AgentRoleTrader, PhaseTrading, nil, output.StoredOutput, output.LLMResponse)
 }
 

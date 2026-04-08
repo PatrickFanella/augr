@@ -162,6 +162,27 @@ func (r *StrategyRepo) Delete(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
+// UpdateThesis persists the serialised active thesis JSON for the given strategy.
+// Passing nil clears the stored thesis.
+func (r *StrategyRepo) UpdateThesis(ctx context.Context, strategyID uuid.UUID, thesis json.RawMessage) error {
+	var thesisArg interface{}
+	if len(thesis) > 0 {
+		thesisArg = []byte(thesis)
+	}
+	tag, err := r.pool.Exec(ctx,
+		`UPDATE strategies SET active_thesis = $1, updated_at = NOW() WHERE id = $2`,
+		thesisArg,
+		strategyID,
+	)
+	if err != nil {
+		return fmt.Errorf("postgres: update thesis %s: %w", strategyID, err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("postgres: update thesis %s: %w", strategyID, ErrNotFound)
+	}
+	return nil
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------

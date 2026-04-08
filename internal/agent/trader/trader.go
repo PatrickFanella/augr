@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/agent"
 	"github.com/PatrickFanella/get-rich-quick/internal/llm"
@@ -39,7 +40,11 @@ You MUST respond with a JSON object in the following format (no markdown, no cod
   "time_horizon": "intraday" | "swing" | "position",
   "confidence": <float between 0.0 and 1.0>,
   "rationale": "Brief explanation of the trading plan",
-  "risk_reward": <float>
+  "risk_reward": <float>,
+  "watch_terms": ["term1", "term2"],
+  "thesis_summary": "One-sentence thesis summary for signal monitoring",
+  "conviction": <float between 0.0 and 1.0>,
+  "invalidation_conditions": ["condition1", "condition2"]
 }
 
 Rules:
@@ -56,10 +61,15 @@ Rules:
   - "time_horizon" must be one of: "intraday", "swing", or "position"
   - "risk_reward" must be a positive number representing the risk/reward ratio
 - For "hold" actions, entry_type, time_horizon, entry_price, position_size, stop_loss, take_profit, and risk_reward may be omitted or set to zero
-- Be data-driven: reference specific evidence from the investment plan and analyst reports`
+- Be data-driven: reference specific evidence from the investment plan and analyst reports
+- "watch_terms": 3–8 keywords or phrases that, if seen in news or social media, indicate this thesis is being affected. Include the ticker, company name, key catalysts, and relevant macro terms.
+- "thesis_summary": a single sentence summarising why this trade makes sense, suitable for display in a monitoring dashboard.
+- "conviction": your confidence in the thesis independent of position sizing, 0.0–1.0.
+- "invalidation_conditions": 1–4 natural language conditions that would invalidate this thesis (e.g. "price breaks below $X support", "earnings miss consensus by >10%").`
 
 // TradingPlanOutput represents the structured output parsed from the trader's
-// LLM response. It captures all the parameters needed for a concrete trading plan.
+// LLM response. It captures all the parameters needed for a concrete trading plan
+// plus thesis fields used by the signal intelligence layer.
 type TradingPlanOutput struct {
 	Action       string  `json:"action"`
 	Ticker       string  `json:"ticker"`
@@ -72,6 +82,13 @@ type TradingPlanOutput struct {
 	Confidence   float64 `json:"confidence"`
 	Rationale    string  `json:"rationale"`
 	RiskReward   float64 `json:"risk_reward"`
+	// Polymarket-only: the token side the plan is acting on.
+	Side string `json:"side,omitempty"`
+	// Thesis fields — populated alongside the trading plan.
+	WatchTerms            []string `json:"watch_terms,omitempty"`
+	ThesisSummary         string   `json:"thesis_summary,omitempty"`
+	Conviction            float64  `json:"conviction,omitempty"`
+	InvalidationConditions []string `json:"invalidation_conditions,omitempty"`
 }
 
 // Trader is a trading-phase Node that converts the investment plan from the
@@ -137,6 +154,10 @@ func (t *Trader) Execute(ctx context.Context, state *agent.PipelineState) error 
 		return err
 	}
 	state.TradingPlan = output.Plan
+	if output.Thesis != nil {
+		output.Thesis.PipelineRunID = state.PipelineRunID
+		state.ActiveThesis = output.Thesis
+	}
 	state.RecordDecision(agent.AgentRoleTrader, agent.PhaseTrading, nil, output.StoredOutput, output.LLMResponse)
 	return nil
 }
@@ -207,8 +228,14 @@ func (t *Trader) Trade(ctx context.Context, input agent.TradingInput) (agent.Tra
 		}
 	}
 
+	var thesis *agent.Thesis
+	if plan != nil {
+		thesis = mapToThesis(plan)
+	}
+
 	return agent.TradingOutput{
 		Plan:         tradingPlan,
+		Thesis:       thesis,
 		StoredOutput: storedOutput,
 		LLMResponse: &agent.DecisionLLMResponse{
 			Provider:   t.providerName,
@@ -270,6 +297,29 @@ func mapToTradingPlan(plan *TradingPlanOutput) agent.TradingPlan {
 		Confidence:   plan.Confidence,
 		Rationale:    plan.Rationale,
 		RiskReward:   plan.RiskReward,
+		Side:         plan.Side,
+	}
+}
+
+// mapToThesis converts thesis fields from a parsed TradingPlanOutput into an
+// agent.Thesis. Returns nil when no meaningful thesis fields were populated by the LLM.
+// The caller is responsible for setting PipelineRunID after the fact.
+func mapToThesis(plan *TradingPlanOutput) *agent.Thesis {
+	if plan.ThesisSummary == "" && len(plan.WatchTerms) == 0 {
+		return nil
+	}
+	direction := plan.Action
+	if plan.Side != "" {
+		direction = plan.Side
+	}
+	return &agent.Thesis{
+		WatchTerms:   plan.WatchTerms,
+		Summary:      plan.ThesisSummary,
+		Conviction:   plan.Conviction,
+		Direction:    direction,
+		TimeHorizon:  plan.TimeHorizon,
+		InvalidateIf: plan.InvalidationConditions,
+		GeneratedAt:  time.Now(),
 	}
 }
 

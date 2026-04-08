@@ -56,19 +56,21 @@ const (
 
 // PipelineState carries the mutable state shared across all pipeline phases.
 type PipelineState struct {
-	PipelineRunID  uuid.UUID             `json:"pipeline_run_id"`
-	StrategyID     uuid.UUID             `json:"strategy_id"`
-	Ticker         string                `json:"ticker"`
-	Market         *MarketData           `json:"market,omitempty"`
-	News           []data.NewsArticle    `json:"news,omitempty"`
-	Fundamentals   *data.Fundamentals    `json:"fundamentals,omitempty"`
-	Social         *data.SocialSentiment `json:"social,omitempty"`
-	AnalystReports map[AgentRole]string  `json:"analyst_reports,omitempty"`
-	ResearchDebate ResearchDebateState   `json:"research_debate"`
-	TradingPlan    TradingPlan           `json:"trading_plan"`
-	RiskDebate     RiskDebateState       `json:"risk_debate"`
-	FinalSignal    FinalSignal           `json:"final_signal"`
-	LLMCacheStats  llm.CacheStats        `json:"llm_cache_stats"`
+	PipelineRunID    uuid.UUID              `json:"pipeline_run_id"`
+	StrategyID       uuid.UUID              `json:"strategy_id"`
+	Ticker           string                 `json:"ticker"`
+	Market           *MarketData            `json:"market,omitempty"`
+	News             []data.NewsArticle     `json:"news,omitempty"`
+	Fundamentals     *data.Fundamentals     `json:"fundamentals,omitempty"`
+	Social           *data.SocialSentiment  `json:"social,omitempty"`
+	PredictionMarket *PredictionMarketData  `json:"prediction_market,omitempty"`
+	AnalystReports   map[AgentRole]string   `json:"analyst_reports,omitempty"`
+	ResearchDebate   ResearchDebateState    `json:"research_debate"`
+	TradingPlan      TradingPlan            `json:"trading_plan"`
+	ActiveThesis     *Thesis                `json:"active_thesis,omitempty"`
+	RiskDebate       RiskDebateState        `json:"risk_debate"`
+	FinalSignal      FinalSignal            `json:"final_signal"`
+	LLMCacheStats    llm.CacheStats         `json:"llm_cache_stats"`
 	// Errors holds internal errors encountered during pipeline execution.
 	// It is intentionally excluded from JSON output via `json:"-"`.
 	Errors []error `json:"-"`
@@ -189,9 +191,11 @@ type TradingPlan struct {
 	TimeHorizon  string         `json:"time_horizon,omitempty"`
 	// Confidence is always in the [0, 1] range. The trader produces this directly;
 	// the risk manager normalizes from a 1-10 integer scale by dividing by 10.
-	Confidence   float64        `json:"confidence,omitempty"`
-	Rationale    string         `json:"rationale,omitempty"`
-	RiskReward   float64        `json:"risk_reward,omitempty"`
+	Confidence  float64 `json:"confidence,omitempty"`
+	Rationale   string  `json:"rationale,omitempty"`
+	RiskReward  float64 `json:"risk_reward,omitempty"`
+	// Side is "YES" or "NO" for Polymarket strategies; empty for equities.
+	Side string `json:"side,omitempty"`
 }
 
 // RiskDebateState stores the state accumulated during the risk debate phase.
@@ -202,8 +206,10 @@ type RiskDebateState struct {
 
 // FinalSignal stores the extracted pipeline signal and confidence.
 type FinalSignal struct {
-	Signal     PipelineSignal `json:"signal,omitempty"`
+	Signal PipelineSignal `json:"signal,omitempty"`
 	// Confidence is always in the [0, 1] range. The trader produces this directly;
 	// the risk manager normalizes from a 1-10 integer scale by dividing by 10.
-	Confidence float64        `json:"confidence,omitempty"`
+	Confidence float64 `json:"confidence,omitempty"`
+	// Side is "YES" or "NO" for Polymarket strategies; empty for equities.
+	Side string `json:"side,omitempty"`
 }

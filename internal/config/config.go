@@ -107,8 +107,18 @@ type DataProviderConfig struct {
 
 // BrokerConfigs contains broker integration settings.
 type BrokerConfigs struct {
-	Alpaca  BrokerConfig
-	Binance BrokerConfig
+	Alpaca     BrokerConfig
+	Binance    BrokerConfig
+	Polymarket PolymarketConfig
+}
+
+// PolymarketConfig contains credentials and endpoint settings for the
+// Polymarket CLOB API, shared by both the broker adapter and data provider.
+type PolymarketConfig struct {
+	APIKey     string
+	Secret     string
+	Passphrase string
+	CLOBURL    string
 }
 
 // BrokerConfig contains broker credentials and execution mode.
@@ -458,6 +468,12 @@ func loadFromEnvironment() (Config, error) {
 				APIKey:    os.Getenv("BINANCE_API_KEY"),
 				APISecret: os.Getenv("BINANCE_API_SECRET"),
 				PaperMode: binancePaperMode,
+			},
+			Polymarket: PolymarketConfig{
+				APIKey:     os.Getenv("POLYMARKET_API_KEY"),
+				Secret:     os.Getenv("POLYMARKET_SECRET"),
+				Passphrase: os.Getenv("POLYMARKET_PASSPHRASE"),
+				CLOBURL:    getEnvString("POLYMARKET_CLOB_URL", "https://clob.polymarket.com"),
 			},
 		},
 		Risk: RiskConfig{
