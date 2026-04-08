@@ -10,18 +10,6 @@ tags: [known-issues, limitations]
 
 This page is intentionally blunt. It exists so contributors and operators do not lose time assuming the happy path is more complete than it really is.
 
-## Repository health
-
-### Unresolved merge conflicts are present
-
-The repository currently contains merge-conflict markers in multiple backend and frontend files, including runtime, risk, API tests, and UI pages/components.
-
-Impact:
-
-- broad `go test ./...` and frontend verification can fail before reaching your area of work
-- some docs necessarily describe intended behavior plus current caveats
-- the realtime and settings-related UI surfaces are especially likely to need revalidation after conflict resolution
-
 ## Product and control-plane gaps
 
 ### ~~WebSocket authentication is not enforced~~ ✓ Fixed
@@ -43,15 +31,21 @@ saves to Postgres on every successful update and restores on startup via
 `POST /api/v1/auth/register` now accepts `{username, password}`, creates the user,
 and returns a token pair. Duplicate usernames return `409 Conflict`.
 
+### ~~Current-user and API key management endpoints are missing~~ ✓ Fixed
+
+- `GET /api/v1/me` returns the authenticated user's profile (id, username, timestamps).
+- `GET /api/v1/api-keys` lists all API keys (metadata only — raw key is never re-exposed).
+- `POST /api/v1/api-keys` creates a new API key; returns the plaintext key once alongside metadata.
+- `DELETE /api/v1/api-keys/{id}` revokes a key.
+
 ## Runtime and execution caveats
 
-### Backtest capability exists below the product surface
+### ~~Backtest capability exists below the product surface~~ ✓ Fixed
 
-There is substantial backtest code under `internal/backtest`, and there is a backtest comparison helper under `internal/api/backtest_comparison.go`, but the main API server does not currently expose a supported backtest route set.
-
-Impact:
-
-- backtesting is not yet a first-class documented user workflow
+Backtests are now fully exposed: `GET/POST /api/v1/backtests/configs`,
+`POST /api/v1/backtests/configs/{id}/run`, `GET /api/v1/backtests/runs`.
+Configs with a `schedule_cron` field are automatically scheduled and run by
+the built-in cron engine.
 
 ### Polymarket support is incomplete
 
@@ -74,24 +68,6 @@ Impact:
 `runtimePipelineTimeout` now derives a finite wall-clock budget from the per-phase
 timeout settings: `(analysts × analysis_timeout) + (2 × rounds × debate_timeout) + overhead`.
 Falls back to 30 minutes when any constituent is unconfigured.
-
-## UI caveats
-
-### Realtime page is not trustworthy until conflicts are resolved
-
-`web/src/pages/realtime-page.tsx` and several related components currently contain merge conflicts.
-
-Impact:
-
-- do not treat the realtime page as stable product truth until the merge state is cleaned up
-
-### Structured strategy editing needs revalidation
-
-Several strategy config editor components currently have conflict markers.
-
-Impact:
-
-- the underlying API and typed config model are more trustworthy than the current UI editor state
 
 ## Documentation caveats
 

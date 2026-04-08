@@ -443,6 +443,16 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 			ar.Post("/jobs/{name}/enable", s.handleSetAutomationJobEnabled)
 		})
 
+		// Current user profile
+		v1.Get("/me", s.handleGetCurrentUser)
+
+		// API key management
+		v1.Route("/api-keys", func(ak chi.Router) {
+			ak.Get("/", s.handleListAPIKeys)
+			ak.Post("/", s.handleCreateAPIKey)
+			ak.Delete("/{id}", s.handleRevokeAPIKey)
+		})
+
 		v1.Get("/news", s.handleListNews)
 
 		// Signal intelligence

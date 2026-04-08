@@ -292,6 +292,22 @@ func (a *AuthManager) CreateAPIKey(ctx context.Context, name string, expiresAt *
 	return plaintext, key, nil
 }
 
+// ListAPIKeys returns all API keys, including revoked ones, ordered by creation time.
+func (a *AuthManager) ListAPIKeys(ctx context.Context, limit, offset int) ([]domain.APIKey, error) {
+	if a.apiKeys == nil {
+		return nil, fmt.Errorf("api key repository is required")
+	}
+	return a.apiKeys.List(ctx, limit, offset)
+}
+
+// RevokeAPIKey marks the API key with the given ID as revoked.
+func (a *AuthManager) RevokeAPIKey(ctx context.Context, id uuid.UUID) error {
+	if a.apiKeys == nil {
+		return fmt.Errorf("api key repository is required")
+	}
+	return a.apiKeys.Revoke(ctx, id, time.Now().UTC())
+}
+
 // AuthenticateRequest validates either a bearer token or API key from the request.
 func (a *AuthManager) AuthenticateRequest(r *http.Request) (AuthResult, error) {
 	if token := bearerTokenFromHeader(r.Header.Get("Authorization")); token != "" {

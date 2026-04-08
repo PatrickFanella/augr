@@ -1275,6 +1275,91 @@ func (s *Server) handleListAuditLog(w http.ResponseWriter, r *http.Request) {
 	respondList(w, entries, limit, offset)
 }
 
+// handleGetCurrentUser returns the authenticated user's profile.
+func (s *Server) handleGetCurrentUser(w http.ResponseWriter, r *http.Request) {
+	principal, ok := PrincipalFromContext(r.Context())
+	if !ok {
+		respondError(w, http.StatusUnauthorized, "not authenticated", ErrCodeUnauthorized)
+		return
+	}
+
+	user, err := s.users.GetByUsername(r.Context(), principal.Subject)
+	if err != nil {
+		if isNotFound(err) {
+			respondError(w, http.StatusNotFound, "user not found", ErrCodeNotFound)
+			return
+		}
+		s.logger.Error("get current user", slog.String("error", err.Error()))
+		respondError(w, http.StatusInternalServerError, "failed to fetch user", ErrCodeInternal)
+		return
+	}
+
+	respondJSON(w, http.StatusOK, user)
+}
+
+// handleListAPIKeys returns all API keys (metadata only, never raw key values).
+func (s *Server) handleListAPIKeys(w http.ResponseWriter, r *http.Request) {
+	limit, offset := parsePagination(r)
+	keys, err := s.auth.ListAPIKeys(r.Context(), limit, offset)
+	if err != nil {
+		s.logger.Error("list api keys", slog.String("error", err.Error()))
+		respondError(w, http.StatusInternalServerError, "failed to list api keys", ErrCodeInternal)
+		return
+	}
+	respondList(w, keys, limit, offset)
+}
+
+// handleCreateAPIKey creates a new API key and returns the plaintext value once.
+func (s *Server) handleCreateAPIKey(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Name      string     `json:"name"`
+		ExpiresAt *time.Time `json:"expires_at,omitempty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body", ErrCodeBadRequest)
+		return
+	}
+	req.Name = strings.TrimSpace(req.Name)
+	if req.Name == "" {
+		respondError(w, http.StatusBadRequest, "name is required", ErrCodeValidation)
+		return
+	}
+
+	plaintext, key, err := s.auth.CreateAPIKey(r.Context(), req.Name, req.ExpiresAt)
+	if err != nil {
+		s.logger.Error("create api key", slog.String("error", err.Error()))
+		respondError(w, http.StatusInternalServerError, "failed to create api key", ErrCodeInternal)
+		return
+	}
+
+	respondJSON(w, http.StatusCreated, struct {
+		Key      string         `json:"key"`
+		Metadata *domain.APIKey `json:"metadata"`
+	}{Key: plaintext, Metadata: key})
+}
+
+// handleRevokeAPIKey marks an API key as revoked.
+func (s *Server) handleRevokeAPIKey(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid api key id", ErrCodeBadRequest)
+		return
+	}
+
+	if err := s.auth.RevokeAPIKey(r.Context(), id); err != nil {
+		if isNotFound(err) {
+			respondError(w, http.StatusNotFound, "api key not found", ErrCodeNotFound)
+			return
+		}
+		s.logger.Error("revoke api key", slog.String("error", err.Error()))
+		respondError(w, http.StatusInternalServerError, "failed to revoke api key", ErrCodeInternal)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // titleCase capitalises the first letter of each whitespace-delimited word.
 func titleCase(s string) string {
 	words := strings.Fields(s)
