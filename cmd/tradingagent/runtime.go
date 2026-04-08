@@ -97,7 +97,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 		MinLiquidity:               cfg.Risk.Polymarket.MinLiquidity,
 		MaxSpreadPct:               cfg.Risk.Polymarket.MaxSpreadPct,
 		MinDaysToResolution:        cfg.Risk.Polymarket.MinDaysToResolution,
-	})
+	}).WithStatePersister(ctx, pgrepo.NewRiskStatePersister(db.Pool))
 
 	settingsSvc := api.NewMemorySettingsServiceFromConfig(cfg).
 		WithPersister(ctx, pgrepo.NewSettingsPersister(db.Pool), logger)

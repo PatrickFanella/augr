@@ -47,13 +47,15 @@ Backtests are now fully exposed: `GET/POST /api/v1/backtests/configs`,
 Configs with a `schedule_cron` field are automatically scheduled and run by
 the built-in cron engine.
 
-### Polymarket support is incomplete
+### ~~Polymarket support is incomplete~~ ✓ More complete than documented
 
-`polymarket` exists as a market type and there is a Polymarket execution package, but the main production strategy runner does not present live Polymarket execution as a complete, operator-friendly supported path.
+The production strategy runner fully handles `market_type: polymarket` strategies:
+- Resolves YES/NO outcome token IDs from `PredictionMarket` state before order submission
+- Routes live orders through `polymarketexecution.Broker` when `POLYMARKET_API_KEY` is set
+- Falls back to local paper broker when `is_paper: true` (Polymarket has no native paper mode)
+- Enforces per-market exposure, liquidity, spread, and resolution-timeline risk limits
 
-Impact:
-
-- treat Polymarket as partial support, not finished support
+Configure with `POLYMARKET_API_KEY`, `POLYMARKET_SECRET`, `POLYMARKET_PASSPHRASE`, and the `POLYMARKET_*` risk limit variables. See `docs/reference/configuration.md`.
 
 ### Social and news coverage are uneven
 
@@ -73,6 +75,13 @@ Impact:
 
 - Social sentiment data requires `FINNHUB_API_KEY` — social signals are absent without it
 - StockTwits trending/sentiment is available via the automation job engine but is **not** part of the `DataProvider` chain
+
+### ~~API-toggle kill-switch state was lost on restart~~ ✓ Fixed
+
+Kill-switch activations via `POST /api/v1/risk/killswitch` are now persisted to the
+`risk_state` table (migration 000025) and restored on startup. An operator-activated
+kill-switch survives process restarts. File-flag and environment-variable mechanisms
+are unchanged and always re-evaluated at runtime.
 
 ### ~~Whole-pipeline timeout is not currently enforced~~ ✓ Fixed
 

@@ -2,7 +2,7 @@
 title: "Configuration"
 description: "Environment variables, feature flags, runtime settings, and persistence semantics."
 status: "canonical"
-updated: "2026-04-03"
+updated: "2026-04-08"
 tags: [configuration, env, reference]
 ---
 
@@ -44,45 +44,102 @@ All durable server configuration currently starts in the environment.
 
 ### Data providers
 
-- `POLYGON_API_KEY`
-- `ALPHA_VANTAGE_API_KEY`
-- `ALPHA_VANTAGE_RATE_LIMIT_PER_MINUTE`
-- `FINNHUB_API_KEY`
-- `FINNHUB_RATE_LIMIT_PER_MINUTE`
+| Variable | Notes |
+| --- | --- |
+| `POLYGON_API_KEY` | OHLCV, fundamentals, options chain |
+| `ALPHA_VANTAGE_API_KEY` | OHLCV, fundamentals (free tier: 25 req/day) |
+| `ALPHA_VANTAGE_RATE_LIMIT_PER_MINUTE` | Override default rate limit |
+| `FINNHUB_API_KEY` | Fundamentals, news, social sentiment (Reddit+Twitter), earnings/IPO calendar |
+| `FINNHUB_RATE_LIMIT_PER_MINUTE` | Override default rate limit |
+| `NEWSAPI_API_KEY` | News articles for stock tickers (`newsapi.org`) |
+| `FMP_API_KEY` | Financial Modeling Prep OHLCV + fundamentals |
+| `FMP_RATE_LIMIT_PER_MINUTE` | Override default rate limit |
 
 ### Brokers
 
-- `ALPACA_API_KEY`
-- `ALPACA_API_SECRET`
-- `ALPACA_PAPER_MODE`
-- `BINANCE_API_KEY`
-- `BINANCE_API_SECRET`
-- `BINANCE_PAPER_MODE`
+| Variable | Notes |
+| --- | --- |
+| `ALPACA_API_KEY` | Required for stock live/paper trading |
+| `ALPACA_API_SECRET` | — |
+| `ALPACA_PAPER_MODE` | `true` = paper account (default false) |
+| `BINANCE_API_KEY` | Required for crypto live/paper trading |
+| `BINANCE_API_SECRET` | — |
+| `BINANCE_PAPER_MODE` | `true` = paper account (default false) |
+| `POLYMARKET_API_KEY` | Required for live Polymarket prediction-market trading |
+| `POLYMARKET_SECRET` | API secret for Polymarket CLOB |
+| `POLYMARKET_PASSPHRASE` | API passphrase for Polymarket CLOB |
+| `POLYMARKET_CLOB_URL` | Override CLOB API base URL (default: `https://clob.polymarket.com`) |
+
+### Polymarket risk limits
+
+| Variable | Notes |
+| --- | --- |
+| `POLYMARKET_MAX_POSITION_USDC` | Maximum USDC per single prediction market position |
+| `POLYMARKET_MAX_SINGLE_EXPOSURE_PCT` | Maximum % of portfolio in one market |
+| `POLYMARKET_MAX_TOTAL_EXPOSURE_PCT` | Maximum total Polymarket exposure as % of portfolio |
+| `POLYMARKET_MIN_LIQUIDITY_USDC` | Minimum USDC liquidity required to enter a market |
+| `POLYMARKET_MAX_SPREAD_PCT` | Maximum bid-ask spread to accept |
+| `POLYMARKET_MIN_DAYS_TO_RESOLUTION` | Minimum days remaining before market resolution |
 
 ### Notifications
 
-- Telegram
-- SMTP/email
-- n8n webhooks
-- PagerDuty webhooks
-- Discord webhooks
+| Variable | Notes |
+| --- | --- |
+| `TELEGRAM_BOT_TOKEN` | Telegram bot API token |
+| `TELEGRAM_CHAT_ID` | Target chat/channel ID |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD` | Email alerts |
+| `SMTP_FROM`, `SMTP_TO` | Sender and recipient |
+| `N8N_WEBHOOK_URL` | n8n workflow webhook |
+| `PAGERDUTY_ROUTING_KEY` | PagerDuty Events API v2 key |
+| `DISCORD_WEBHOOK_URL` | Default Discord webhook |
+| `DISCORD_WEBHOOK_SIGNALS` | Separate webhook for signal events |
+| `DISCORD_WEBHOOK_DECISIONS` | Separate webhook for agent decision events |
+| `DISCORD_WEBHOOK_ALERTS` | Separate webhook for operational alerts |
+
+#### Alert routing
+
+| Variable | Notes |
+| --- | --- |
+| `ALERT_CIRCUIT_BREAKER_CHANNELS` | Comma-separated channel names (e.g. `discord,telegram`) |
+| `ALERT_KILL_SWITCH_CHANNELS` | Channels notified on kill-switch activation/deactivation |
+| `ALERT_DB_CONNECTION_CHANNELS` | Channels notified on DB connectivity issues |
+| `ALERT_LLM_PROVIDER_DOWN_CHANNELS` | Channels notified when LLM error rate threshold is exceeded |
+| `ALERT_HIGH_LATENCY_CHANNELS` | Channels notified when API/pipeline latency exceeds threshold |
+| `ALERT_PIPELINE_FAILURE_CHANNELS` | Channels notified on pipeline execution failures |
+| `ALERT_HIGH_LATENCY_THRESHOLD` | Duration string, e.g. `5s` |
+| `ALERT_LLM_PROVIDER_DOWN_ERROR_RATE_THRESHOLD` | Float, e.g. `0.5` = 50% error rate |
+| `ALERT_LLM_PROVIDER_DOWN_WINDOW` | Duration window for error rate measurement |
+| `ALERT_PIPELINE_FAILURE_THRESHOLD` | Consecutive failure count before alerting |
 
 ### Risk defaults
 
-- `RISK_MAX_POSITION_SIZE_PCT`
-- `RISK_MAX_DAILY_LOSS_PCT`
-- `RISK_MAX_DRAWDOWN_PCT`
-- `RISK_MAX_OPEN_POSITIONS`
-- `RISK_CIRCUIT_BREAKER_THRESHOLD`
-- `RISK_CIRCUIT_BREAKER_COOLDOWN`
-- `TRADING_AGENT_KILL`
+| Variable | Notes |
+| --- | --- |
+| `RISK_MAX_POSITION_SIZE_PCT` | Max position as fraction of portfolio (e.g. `0.10`) |
+| `RISK_MAX_DAILY_LOSS_PCT` | Circuit-breaker daily loss threshold (e.g. `0.03`) |
+| `RISK_MAX_DRAWDOWN_PCT` | Circuit-breaker total drawdown threshold (e.g. `0.10`) |
+| `RISK_MAX_OPEN_POSITIONS` | Maximum concurrent open positions |
+| `RISK_CIRCUIT_BREAKER_THRESHOLD` | Alias for `RISK_MAX_DAILY_LOSS_PCT` |
+| `RISK_CIRCUIT_BREAKER_COOLDOWN` | Duration before circuit breaker auto-resets (e.g. `15m`) |
+| `TRADING_AGENT_KILL` | Set to `true` to activate the kill switch via environment variable |
 
 ### Feature flags
 
-- `ENABLE_SCHEDULER`
-- `ENABLE_REDIS_CACHE`
-- `ENABLE_AGENT_MEMORY`
-- `ENABLE_LIVE_TRADING`
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `ENABLE_SCHEDULER` | `false` | Enable the cron scheduler for strategy and backtest runs |
+| `ENABLE_REDIS_CACHE` | `false` | Use Redis for market-data and LLM response caching |
+| `ENABLE_AGENT_MEMORY` | `false` | Enable agent memory storage and retrieval |
+| `ENABLE_LIVE_TRADING` | `false` | Allow live broker order submission (paper mode otherwise) |
+
+### Ticker discovery
+
+| Variable | Notes |
+| --- | --- |
+| `TICKER_DISCOVERY` | `true` to enable scheduled ticker universe refresh |
+| `TICKER_DISCOVERY_CRON` | Cron expression for discovery runs (e.g. `0 6 * * 1-5`) |
+| `TICKER_DISCOVERY_MIN_ADV` | Minimum average daily volume filter |
+| `TICKER_DISCOVERY_MAX_TICKERS` | Maximum universe size |
 
 ## What persists vs what does not
 
@@ -93,22 +150,22 @@ All durable server configuration currently starts in the environment.
 - migration state
 - strategies and run artifacts
 
-### Not durable today
+### Not durable
 
-- settings page edits
-- API `PUT /settings` edits
-
-Those settings mutate the in-memory settings service for the running process only.
+- LLM provider API keys entered through the settings UI (stored in memory only; never written to DB)
+- Circuit-breaker trip state (resets on restart; intentional — restarts imply manual intervention)
 
 ## Kill switch sources
 
-The risk engine can be influenced by:
+The risk engine supports three independent mechanisms, any one of which will halt trading:
 
-- API toggles
-- environment variable `TRADING_AGENT_KILL`
-- file flag under `/tmp/tradingagent_kill`
+| Mechanism | How to activate | Survives restart? |
+| --- | --- | --- |
+| API toggle | `POST /api/v1/risk/killswitch` with `{"active": true}` | ✓ (persisted to `risk_state` table, migration 000025) |
+| Environment variable | `TRADING_AGENT_KILL=true` | ✓ (re-evaluated from env on each check) |
+| File flag | Create file at `/tmp/tradingagent_kill` | ✓ (file persists until deleted) |
 
-This is useful operationally, but it also means you should check more than one source when debugging a stuck kill-switch state.
+When debugging a stuck kill-switch, check all three sources. `GET /api/v1/risk/status` reports the active mechanisms.
 
 ## Broker visibility in settings
 

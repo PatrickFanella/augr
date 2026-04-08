@@ -56,6 +56,7 @@ type RiskEngineImpl struct {
 	getEnvFunc            func(string) string // for testability; defaults to os.Getenv
 	portfolioSnapshotMu   sync.RWMutex
 	portfolioSnapshotFunc func(context.Context) (Portfolio, error)
+	persister             StatePersister // optional; nil = no DB persistence
 }
 
 // defaultFileExists checks whether the given path exists on the filesystem.
@@ -99,6 +100,37 @@ func NewRiskEngine(limits PositionLimits, cbConfig CircuitBreakerConfig, positio
 // Call this after NewRiskEngine before the engine handles any requests.
 func (e *RiskEngineImpl) WithPolymarketLimits(limits PolymarketLimits) *RiskEngineImpl {
 	e.pmLimits = limits
+	return e
+}
+
+// WithStatePersister attaches a StatePersister and immediately loads any
+// previously persisted kill-switch state. An operator-activated kill-switch
+// will be restored so it survives process restarts. Returns the receiver for
+// chaining.
+func (e *RiskEngineImpl) WithStatePersister(ctx context.Context, p StatePersister) *RiskEngineImpl {
+	e.persister = p
+	state, err := p.Load(ctx)
+	if err != nil {
+		e.logger.Warn("risk: failed to load persisted state, starting clean",
+			slog.String("error", err.Error()))
+		return e
+	}
+
+	e.state.mu.Lock()
+	defer e.state.mu.Unlock()
+	if state.KillSwitch.Active {
+		e.state.ks = state.KillSwitch
+		e.logger.Warn("risk: restored active kill switch from persistent state",
+			slog.String("reason", state.KillSwitch.Reason))
+	}
+	for mt, mks := range state.MarketKillSwitches {
+		if mks.Active {
+			e.state.mks[mt] = mks
+			e.logger.Warn("risk: restored active market kill switch from persistent state",
+				slog.String("market_type", string(mt)),
+				slog.String("reason", mks.Reason))
+		}
+	}
 	return e
 }
 
@@ -480,20 +512,22 @@ func (e *RiskEngineImpl) IsKillSwitchActive(_ context.Context) (bool, error) {
 
 // ActivateKillSwitch activates the kill switch via the API toggle mechanism.
 func (e *RiskEngineImpl) ActivateKillSwitch(ctx context.Context, reason string) error {
-	e.state.mu.Lock()
-	defer e.state.mu.Unlock()
-
 	now := e.currentTime()
+	e.state.mu.Lock()
 	e.state.ks = KillSwitchStatus{
 		Active:      true,
 		Reason:      reason,
 		Mechanisms:  []KillSwitchMechanism{KillSwitchMechanismAPI},
 		ActivatedAt: &now,
 	}
+	snapshot := e.buildPersistedStateLocked()
+	e.state.mu.Unlock()
+
 	e.logger.WarnContext(ctx, "kill switch activated",
 		slog.String("reason", reason),
 		slog.String("mechanism", KillSwitchMechanismAPI.String()),
 	)
+	e.saveState(ctx, snapshot)
 	return nil
 }
 
@@ -501,12 +535,14 @@ func (e *RiskEngineImpl) ActivateKillSwitch(ctx context.Context, reason string) 
 // Note: file flag and env var mechanisms are not affected by this call.
 func (e *RiskEngineImpl) DeactivateKillSwitch(ctx context.Context) error {
 	e.state.mu.Lock()
-	defer e.state.mu.Unlock()
-
 	e.state.ks = KillSwitchStatus{Active: false}
+	snapshot := e.buildPersistedStateLocked()
+	e.state.mu.Unlock()
+
 	e.logger.InfoContext(ctx, "kill switch deactivated",
 		slog.String("mechanism", KillSwitchMechanismAPI.String()),
 	)
+	e.saveState(ctx, snapshot)
 	return nil
 }
 
@@ -530,11 +566,14 @@ func (e *RiskEngineImpl) ActivateMarketKillSwitch(ctx context.Context, marketTyp
 		Mechanisms:  []KillSwitchMechanism{KillSwitchMechanismAPI},
 		ActivatedAt: &now,
 	}
+	snapshot := e.buildPersistedStateLocked()
 	e.state.mu.Unlock()
+
 	e.logger.WarnContext(ctx, "market kill switch activated",
 		slog.String("market_type", string(marketType)),
 		slog.String("reason", reason),
 	)
+	e.saveState(ctx, snapshot)
 	return nil
 }
 
@@ -542,11 +581,40 @@ func (e *RiskEngineImpl) ActivateMarketKillSwitch(ctx context.Context, marketTyp
 func (e *RiskEngineImpl) DeactivateMarketKillSwitch(ctx context.Context, marketType domain.MarketType) error {
 	e.state.mu.Lock()
 	delete(e.state.mks, marketType)
+	snapshot := e.buildPersistedStateLocked()
 	e.state.mu.Unlock()
+
 	e.logger.InfoContext(ctx, "market kill switch deactivated",
 		slog.String("market_type", string(marketType)),
 	)
+	e.saveState(ctx, snapshot)
 	return nil
+}
+
+// buildPersistedStateLocked snapshots the current API-toggle kill-switch state.
+// Must be called with e.state.mu held.
+func (e *RiskEngineImpl) buildPersistedStateLocked() PersistedRiskState {
+	mks := make(map[domain.MarketType]KillSwitchStatus, len(e.state.mks))
+	for k, v := range e.state.mks {
+		mks[k] = v
+	}
+	return PersistedRiskState{
+		KillSwitch:         e.state.ks,
+		MarketKillSwitches: mks,
+	}
+}
+
+// saveState writes the risk state to the persister if one is configured.
+// Errors are logged but not returned — persistence is best-effort and must
+// not block the safety path.
+func (e *RiskEngineImpl) saveState(ctx context.Context, state PersistedRiskState) {
+	if e.persister == nil {
+		return
+	}
+	if err := e.persister.Save(ctx, state); err != nil {
+		e.logger.Error("risk: failed to persist kill switch state",
+			slog.String("error", err.Error()))
+	}
 }
 
 // UpdateMetrics evaluates post-trade metrics and auto-trips the circuit breaker
