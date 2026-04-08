@@ -13,6 +13,7 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/discovery"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/llm"
+	"github.com/PatrickFanella/get-rich-quick/internal/signal"
 	"github.com/PatrickFanella/get-rich-quick/internal/universe"
 	"github.com/go-chi/chi/v5"
 	"github.com/gorilla/websocket"
@@ -81,6 +82,10 @@ type Server struct {
 	hub            *Hub
 	wsUpgrader     websocket.Upgrader
 	metricsHandler http.Handler
+
+	// Signal intelligence (optional; nil = feature not running).
+	signalStore *signal.EventStore
+	watchIndex  *signal.WatchIndex
 }
 
 // StrategyRunResult captures the persisted artifacts created by a manual run.
@@ -169,6 +174,10 @@ type Deps struct {
 	DBHealth       HealthCheck
 	RedisHealth    HealthCheck
 	MetricsHandler http.Handler
+
+	// Signal intelligence (optional; nil = feature not enabled).
+	SignalStore *signal.EventStore
+	WatchIndex  *signal.WatchIndex
 }
 
 // NewServer creates a new API server with all routes and middleware registered.
@@ -268,6 +277,8 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 		hub:            hub,
 		wsUpgrader:     newUpgrader(cfg.CORSConfig.AllowedOrigins),
 		metricsHandler: deps.MetricsHandler,
+		signalStore:    deps.SignalStore,
+		watchIndex:     deps.WatchIndex,
 	}
 
 	r := chi.NewRouter()
@@ -432,6 +443,15 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 		})
 
 		v1.Get("/news", s.handleListNews)
+
+		// Signal intelligence
+		v1.Route("/signals", func(sr chi.Router) {
+			sr.Get("/evaluated", s.handleListSignalEvents)
+			sr.Get("/triggers", s.handleListTriggerLog)
+			sr.Get("/watchlist", s.handleListWatchTerms)
+			sr.Post("/watchlist", s.handleAddWatchTerm)
+			sr.Delete("/watchlist/{term}", s.handleDeleteWatchTerm)
+		})
 	})
 
 	s.router = r

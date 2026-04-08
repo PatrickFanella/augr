@@ -727,3 +727,40 @@ export interface ScoredTicker {
   change_pct: number
   gap_pct: number
 }
+
+// ---------- Signal Intelligence ----------
+
+export interface StoredSignal {
+  id: UUID
+  received_at: ISODateString
+  source: string
+  title: string
+  body: string
+  urgency: number
+  summary: string
+  recommended_action: string
+  affected_strategy_ids: UUID[]
+  metadata?: Record<string, unknown>
+}
+
+export interface StoredTrigger {
+  id: UUID
+  fired_at: ISODateString
+  strategy_id: UUID
+  action: string
+  priority: number
+  signal_title: string
+  signal_summary: string
+  source: string
+}
+
+export interface WatchTerm {
+  term: string
+  source: 'auto' | 'manual'
+  strategy_ids: UUID[]
+}
+
+export interface AddWatchTermRequest {
+  term: string
+  strategy_id?: UUID
+}

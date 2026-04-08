@@ -1,6 +1,7 @@
 import { getAccessToken, getRefreshToken, getExpiresAt, clearTokens, setTokens } from '@/lib/auth'
 import { getApiBaseUrl } from '@/lib/config'
 import type {
+  AddWatchTermRequest,
   AgentDecision,
   AgentEvent,
   AgentMemory,
@@ -32,6 +33,8 @@ import type {
   SECFiling,
   Settings,
   SettingsUpdateRequest,
+  StoredSignal,
+  StoredTrigger,
   Strategy,
   StrategyCreateRequest,
   StrategyListParams,
@@ -41,6 +44,7 @@ import type {
   Trade,
   TradeListParams,
   UUID,
+  WatchTerm,
   Conversation,
   ConversationCreateRequest,
   ConversationListParams,
@@ -524,6 +528,27 @@ export class ApiClient {
 
   async getIPOCalendar(params: { from?: string; to?: string } = {}) {
     return this.request<IPOEvent[]>('/api/v1/calendar/ipo', { query: toQueryParams(params) })
+  }
+
+  // Signal Intelligence
+  async listEvaluatedSignals(params: { min_urgency?: number; limit?: number; offset?: number } = {}) {
+    return this.request<{ data: StoredSignal[]; total: number }>('/api/v1/signals/evaluated', { query: toQueryParams(params) })
+  }
+
+  async listTriggerLog(params: { limit?: number; offset?: number } = {}) {
+    return this.request<{ data: StoredTrigger[]; total: number }>('/api/v1/signals/triggers', { query: toQueryParams(params) })
+  }
+
+  async listWatchTerms() {
+    return this.request<{ data: WatchTerm[] }>('/api/v1/signals/watchlist')
+  }
+
+  async addWatchTerm(req: AddWatchTermRequest) {
+    return this.request<{ term: string }>('/api/v1/signals/watchlist', { method: 'POST', body: req })
+  }
+
+  async deleteWatchTerm(term: string) {
+    return this.requestNoContent(`/api/v1/signals/watchlist/${encodeURIComponent(term)}`, { method: 'DELETE' })
   }
 }
 

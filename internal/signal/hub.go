@@ -29,6 +29,7 @@ type SignalHub struct {
 	watchIndex *WatchIndex
 	strategies StrategyProvider
 	triggerCh  chan<- TriggerEvent
+	store      *EventStore // optional; nil = no persistence
 	logger     *slog.Logger
 
 	mu      sync.Mutex
@@ -39,12 +40,14 @@ type SignalHub struct {
 // NewSignalHub constructs a SignalHub. triggerCh receives TriggerEvents for
 // urgency ≥ 3; the caller owns the channel and should buffer it. Pass a nil
 // evaluator to skip LLM scoring (all matched events get urgency 3).
+// store may be nil to skip event persistence.
 func NewSignalHub(
 	sources []SignalSource,
 	evaluator *Evaluator,
 	watchIndex *WatchIndex,
 	strategies StrategyProvider,
 	triggerCh chan<- TriggerEvent,
+	store *EventStore,
 	logger *slog.Logger,
 ) *SignalHub {
 	if watchIndex == nil {
@@ -59,6 +62,7 @@ func NewSignalHub(
 		watchIndex: watchIndex,
 		strategies: strategies,
 		triggerCh:  triggerCh,
+		store:      store,
 		logger:     logger,
 	}
 }
@@ -232,6 +236,10 @@ func (h *SignalHub) process(ctx context.Context, evt RawSignalEvent) {
 			Summary:            evt.Title,
 			RecommendedAction:  "monitor",
 		}
+	}
+
+	if h.store != nil {
+		h.store.RecordSignal(*evaluated)
 	}
 
 	if evaluated.Urgency < 3 {

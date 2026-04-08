@@ -39,15 +39,17 @@ type TriggerHandler struct {
 	strategies StrategyLoader
 	thesis     ThesisLoader // optional; nil disables thesis-aware fast-path
 	runner     StrategyTriggerer
+	store      *EventStore // optional; nil = no trigger persistence
 	logger     *slog.Logger
 }
 
-// NewTriggerHandler constructs a TriggerHandler. thesisLoader may be nil.
+// NewTriggerHandler constructs a TriggerHandler. thesisLoader and store may be nil.
 func NewTriggerHandler(
 	triggerCh <-chan TriggerEvent,
 	strategies StrategyLoader,
 	thesisLoader ThesisLoader,
 	runner StrategyTriggerer,
+	store *EventStore,
 	logger *slog.Logger,
 ) *TriggerHandler {
 	if logger == nil {
@@ -58,6 +60,7 @@ func NewTriggerHandler(
 		strategies: strategies,
 		thesis:     thesisLoader,
 		runner:     runner,
+		store:      store,
 		logger:     logger,
 	}
 }
@@ -79,6 +82,10 @@ func (h *TriggerHandler) Run(ctx context.Context) {
 }
 
 func (h *TriggerHandler) handle(ctx context.Context, evt TriggerEvent) {
+	if h.store != nil {
+		h.store.RecordTrigger(evt)
+	}
+
 	log := h.logger.With(
 		slog.String("strategy_id", evt.StrategyID.String()),
 		slog.String("title", evt.Signal.Summary),

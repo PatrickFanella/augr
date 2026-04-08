@@ -116,6 +116,44 @@ func (w *WatchIndex) Match(text string) []uuid.UUID {
 	return result
 }
 
+// WatchTerm describes one term in the watch index with its source.
+type WatchTerm struct {
+	Term        string      `json:"term"`
+	Source      string      `json:"source"` // "auto" or "manual"
+	StrategyIDs []uuid.UUID `json:"strategy_ids"`
+}
+
+// ListTerms returns all terms in the watch index (auto + manual) for inspection.
+func (w *WatchIndex) ListTerms() []WatchTerm {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+
+	out := make([]WatchTerm, 0, len(w.auto)+len(w.manual))
+	for term, ids := range w.auto {
+		cp := make([]uuid.UUID, len(ids))
+		copy(cp, ids)
+		out = append(out, WatchTerm{Term: term, Source: "auto", StrategyIDs: cp})
+	}
+	for term, ids := range w.manual {
+		cp := make([]uuid.UUID, len(ids))
+		copy(cp, ids)
+		out = append(out, WatchTerm{Term: term, Source: "manual", StrategyIDs: cp})
+	}
+	return out
+}
+
+// RemoveManualTerm removes all strategy mappings for a manual term. No-op if
+// the term is not a manual entry.
+func (w *WatchIndex) RemoveManualTerm(term string) {
+	t := normalise(term)
+	if t == "" {
+		return
+	}
+	w.mu.Lock()
+	delete(w.manual, t)
+	w.mu.Unlock()
+}
+
 // ---------------------------------------------------------------------------
 // helpers
 // ---------------------------------------------------------------------------
