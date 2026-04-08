@@ -25,4 +25,5 @@ type DiscoveryRun struct {
 type RunRepository interface {
 	Create(ctx context.Context, config, result json.RawMessage, startedAt time.Time, duration time.Duration, candidates, deployed int) error
 	List(ctx context.Context, limit, offset int) ([]DiscoveryRun, error)
+	Count(ctx context.Context) (int, error)
 }

@@ -109,7 +109,7 @@ Notes:
 | Discovery | `POST /discovery/run`, `GET /discovery/results` |
 | Universe | `GET /universe`, `GET /universe/watchlist`, `POST /universe/refresh`, `POST /universe/scan` |
 | Options | `GET /options/chain/{underlying}` |
-| Calendar | `GET /calendar/earnings`, `GET /calendar/economic`, `GET /calendar/ipo` |
+| Calendar | `GET /calendar/earnings`, `GET /calendar/economic`, `GET /calendar/ipo`, `GET /calendar/filings`, `POST /calendar/filings/analyze` |
 | Automation | `GET /automation/status`, `POST /automation/jobs/{name}/run`, `POST /automation/jobs/{name}/enable` |
 | News | `GET /news` |
 | Signals | `GET /signals/evaluated`, `GET /signals/triggers`, `GET/POST /signals/watchlist`, `DELETE /signals/watchlist/{term}` |
@@ -441,7 +441,7 @@ Audited event types:
 | `market_kill_switch.activated` / `.deactivated` | `POST /risk/markets/{type}/stop\|resume` |
 | `settings.updated` | `PUT /settings` |
 | `strategy.manual_run` | `POST /strategies/{id}/run` |
-| `strategy.pausedd` / `.resumedd` | `POST /strategies/{id}/pause\|resume` |
+| `strategy.paused` / `.resumed` | `POST /strategies/{id}/pause\|resume` |
 | `strategy.skip_next` | `POST /strategies/{id}/skip-next` |
 | `user.registered` | `POST /auth/register` |
 | `api_key.created` / `.revoked` | `POST/DELETE /api-keys` |
@@ -613,6 +613,16 @@ Date parameters use `YYYY-MM-DD` format. Earnings and IPO endpoints default to `
 - filters: `ticker`, `form` (e.g. `10-K`, `8-K`), `from`, `to` (YYYY-MM-DD; defaults to last 30 days)
 - returns SEC filings matching the filter
 
+#### `POST /api/v1/calendar/filings/analyze`
+
+- auth: required
+- requires LLM provider configured; returns `501 Not Implemented` otherwise
+- body: `{ "symbol": "AAPL", "form": "10-K", "url": "https://..." }`
+  - `symbol` (string, required) — ticker symbol
+  - `form` (string, required) — SEC form type (e.g. `10-K`, `8-K`)
+  - `url` (string, required) — direct URL to the filing document
+- returns an LLM-generated analysis of the filing (sentiment, key risks, summary)
+
 ### Universe
 
 Requires `POLYGON_API_KEY` and `TICKER_DISCOVERY=true` for automatic refresh. The universe repo and universe engine are wired independently — some endpoints may be unavailable when only one is configured.
@@ -655,6 +665,7 @@ Strategy discovery runs a screener → generator → sweep pipeline to identify 
 - auth: required
 - lists past discovery runs with candidate counts and deployment outcomes
 - filters: `limit` / `offset`
+- returns `total` in list envelope
 - returns `503` when discovery run repo not configured
 
 ## WebSocket reference

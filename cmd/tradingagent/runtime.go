@@ -122,9 +122,10 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 		MetricsHandler:  appMetrics.Handler(),
 		Snapshots:       snapshotRepo,
 		LLMProvider:     throttleLLM(newLLMProviderFromConfig(cfg.LLM, logger)),
-		BacktestConfigs: pgrepo.NewBacktestConfigRepo(db.Pool),
-		BacktestRuns:    pgrepo.NewBacktestRunRepo(db.Pool),
-		NewsFeedRepo:    newsFeedRepo,
+		BacktestConfigs:  pgrepo.NewBacktestConfigRepo(db.Pool),
+		BacktestRuns:     pgrepo.NewBacktestRunRepo(db.Pool),
+		NewsFeedRepo:     newsFeedRepo,
+		DiscoveryRunRepo: pgrepo.NewDiscoveryRunRepo(db.Pool),
 	}
 	notificationManager := newNotificationManager(cfg)
 

@@ -108,7 +108,7 @@ for every critical operator action:
 | `market_kill_switch.activated` / `.deactivated` | `POST /api/v1/risk/markets/{type}/stop\|resume` |
 | `settings.updated` | `PUT /api/v1/settings` |
 | `strategy.manual_run` | `POST /api/v1/strategies/{id}/run` |
-| `strategy.pausedd` / `.resumedd` | `POST /api/v1/strategies/{id}/pause\|resume` |
+| `strategy.paused` / `.resumed` | `POST /api/v1/strategies/{id}/pause\|resume` |
 | `strategy.skip_next` | `POST /api/v1/strategies/{id}/skip-next` |
 | `user.registered` | `POST /api/v1/auth/register` |
 | `api_key.created` / `.revoked` | `POST/DELETE /api/v1/api-keys` |

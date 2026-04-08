@@ -92,5 +92,9 @@ func (s *Server) handleListDiscoveryRuns(w http.ResponseWriter, r *http.Request)
 		respondError(w, http.StatusInternalServerError, "failed to list discovery runs", ErrCodeInternal)
 		return
 	}
-	respondList(w, runs, limit, offset)
+	total, err := s.discoveryRunRepo.Count(r.Context())
+	if err != nil {
+		s.logger.Warn("failed to count discovery runs", "error", err)
+	}
+	respondListWithTotal(w, runs, total, limit, offset)
 }
