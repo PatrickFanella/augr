@@ -113,9 +113,10 @@ func newRealStrategyRunner(
 
 	// Wire Polymarket client if credentials are configured.
 	pm := cfg.Brokers.Polymarket
-	if strings.TrimSpace(pm.APIKey) != "" {
-		client := polymarketexecution.NewClient(pm.APIKey, pm.Secret, pm.Passphrase, logger)
-		client.SetBaseURL(pm.CLOBURL)
+	if strings.TrimSpace(pm.KeyID) != "" {
+		client := polymarketexecution.NewClient(pm.KeyID, pm.SecretKey, logger)
+		client.SetAPIBaseURL(pm.APIBaseURL)
+		client.SetGatewayBaseURL(pm.GatewayBaseURL)
 		runner.polymarketClient = client
 	}
 
@@ -174,30 +175,19 @@ func (r *realStrategyRunner) RunStrategy(ctx context.Context, strategy domain.St
 		return nil, err
 	}
 
-	// Polymarket pre-processing: replace slug ticker with the CLOB tokenID
-	// that corresponds to the trader's Side ("YES" or "NO").
 	planTicker := result.State.TradingPlan.Ticker
-	if strategy.MarketType.Normalize() == domain.MarketTypePolymarket && state.PredictionMarket != nil {
+	if strategy.MarketType.Normalize() == domain.MarketTypePolymarket {
 		side := result.State.TradingPlan.Side
 		if side == "" {
 			return nil, fmt.Errorf("polymarket strategy %s: trader did not specify Side (YES/NO)", strategy.Name)
 		}
 		switch strings.ToUpper(side) {
-		case "YES":
-			if state.PredictionMarket.YesTokenID == "" {
-				return nil, fmt.Errorf("polymarket strategy %s: YES tokenID not available", strategy.Name)
-			}
-			planTicker = state.PredictionMarket.YesTokenID
-		case "NO":
-			if state.PredictionMarket.NoTokenID == "" {
-				return nil, fmt.Errorf("polymarket strategy %s: NO tokenID not available", strategy.Name)
-			}
-			planTicker = state.PredictionMarket.NoTokenID
+		case "YES", "NO":
 		default:
 			return nil, fmt.Errorf("polymarket strategy %s: invalid Side %q (want YES or NO)", strategy.Name, side)
 		}
 		entryPrice := result.State.TradingPlan.EntryPrice
-		if entryPrice > 0 && (entryPrice < 0 || entryPrice > 1) {
+		if entryPrice > 0 && entryPrice > 1 {
 			return nil, fmt.Errorf("polymarket strategy %s: entry price %.4f outside valid range [0,1]", strategy.Name, entryPrice)
 		}
 	}
@@ -220,6 +210,7 @@ func (r *realStrategyRunner) RunStrategy(ctx context.Context, strategy domain.St
 			Confidence:   result.State.TradingPlan.Confidence,
 			Rationale:    result.State.TradingPlan.Rationale,
 			RiskReward:   result.State.TradingPlan.RiskReward,
+			Side:         result.State.TradingPlan.Side,
 		},
 		strategy.ID,
 		run.ID,
@@ -673,8 +664,8 @@ func (r *realStrategyRunner) newBrokerForStrategy(strategy domain.Strategy) (exe
 		)), "binance", nil
 	case domain.MarketTypePolymarket:
 		pm := r.cfg.Brokers.Polymarket
-		if strings.TrimSpace(pm.APIKey) == "" {
-			return nil, "", errors.New("polymarket credentials (POLYMARKET_API_KEY) are required for live polymarket trading")
+		if strings.TrimSpace(pm.KeyID) == "" || strings.TrimSpace(pm.SecretKey) == "" {
+			return nil, "", errors.New("polymarket credentials (POLYMARKET_KEY_ID and POLYMARKET_SECRET_KEY) are required for live polymarket trading")
 		}
 		if r.polymarketClient == nil {
 			return nil, "", errors.New("polymarket client not initialised")
@@ -718,8 +709,6 @@ func (r *realStrategyRunner) setRiskPortfolioSnapshotSource(broker execution.Bro
 func hasBrokerCredentials(cfg config.BrokerConfig) bool {
 	return strings.TrimSpace(cfg.APIKey) != "" && strings.TrimSpace(cfg.APISecret) != ""
 }
-
-
 
 func latestSocialSnapshot(snapshots []data.SocialSentiment) *data.SocialSentiment {
 	if len(snapshots) == 0 {

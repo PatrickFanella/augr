@@ -256,15 +256,15 @@ type tradierOption struct {
 }
 
 type tradierGreeks struct {
-	Delta   float64 `json:"delta"`
-	Gamma   float64 `json:"gamma"`
-	Theta   float64 `json:"theta"`
-	Vega    float64 `json:"vega"`
-	Rho     float64 `json:"rho"`
-	BidIV   float64 `json:"bid_iv"`
-	MidIV   float64 `json:"mid_iv"`
-	AskIV   float64 `json:"ask_iv"`
-	SmvVol  float64 `json:"smv_vol"`
+	Delta  float64 `json:"delta"`
+	Gamma  float64 `json:"gamma"`
+	Theta  float64 `json:"theta"`
+	Vega   float64 `json:"vega"`
+	Rho    float64 `json:"rho"`
+	BidIV  float64 `json:"bid_iv"`
+	MidIV  float64 `json:"mid_iv"`
+	AskIV  float64 `json:"ask_iv"`
+	SmvVol float64 `json:"smv_vol"`
 }
 
 type tradierExpirationsResponse struct {

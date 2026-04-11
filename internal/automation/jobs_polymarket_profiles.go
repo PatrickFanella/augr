@@ -2,13 +2,11 @@ package automation
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
-	"net/http"
-	"net/url"
 	"time"
 
+	polymarketdata "github.com/PatrickFanella/get-rich-quick/internal/data/polymarket"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/scheduler"
 )
@@ -45,7 +43,7 @@ func (o *JobOrchestrator) polymarketProfiles(ctx context.Context) error {
 		clobURL = "https://clob.polymarket.com"
 	}
 
-	trades, err := fetchRecentCLOBTrades(ctx, clobURL, 500)
+	trades, err := fetchRecentPolymarketTrades(ctx, clobURL, 500)
 	if err != nil {
 		return fmt.Errorf("polymarket_profiles: fetch trades: %w", err)
 	}
@@ -158,81 +156,32 @@ func (o *JobOrchestrator) polymarketProfiles(ctx context.Context) error {
 	return nil
 }
 
-// — CLOB trades API —
-
 type clobTrade struct {
-	MakerAddress string    `json:"owner"` // wallet address of the taker
-	MarketSlug   string    `json:"market"`
-	Side         string    `json:"outcome"` // "YES" or "NO"
+	MakerAddress string
+	MarketSlug   string
+	Side         string
 	Price        float64
 	SizeUSDC     float64
 	Timestamp    time.Time
 }
 
-type clobTradesResponse struct {
-	Data []clobTradeRaw `json:"data"`
-}
-
-type clobTradeRaw struct {
-	Owner      string `json:"owner"`
-	Market     string `json:"market"`
-	Outcome    string `json:"outcome"`
-	Price      string `json:"price"`
-	Size       string `json:"size"`
-	MatchTime  string `json:"match_time"`
-}
-
-func fetchRecentCLOBTrades(ctx context.Context, clobURL string, limit int) ([]clobTrade, error) {
-	u, err := url.Parse(clobURL + "/data/trades")
-	if err != nil {
-		return nil, err
-	}
-	q := u.Query()
-	q.Set("limit", fmt.Sprintf("%d", limit))
-	u.RawQuery = q.Encode()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+func fetchRecentPolymarketTrades(ctx context.Context, clobURL string, limit int) ([]clobTrade, error) {
+	publicTrades, err := polymarketdata.FetchRecentTrades(ctx, clobURL, limit)
 	if err != nil {
 		return nil, err
 	}
 
-	client := &http.Client{Timeout: 15 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("CLOB trades HTTP %d", resp.StatusCode)
-	}
-
-	var raw clobTradesResponse
-	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
-		return nil, err
-	}
-
-	trades := make([]clobTrade, 0, len(raw.Data))
-	for _, r := range raw.Data {
-		var price, size float64
-		fmt.Sscanf(r.Price, "%f", &price)
-		fmt.Sscanf(r.Size, "%f", &size)
-
-		ts, _ := time.Parse(time.RFC3339, r.MatchTime)
-
-		side := r.Outcome
-		if side == "" {
-			side = "YES"
-		}
-
+	trades := make([]clobTrade, 0, len(publicTrades))
+	for _, trade := range publicTrades {
 		trades = append(trades, clobTrade{
-			MakerAddress: r.Owner,
-			MarketSlug:   r.Market,
-			Side:         side,
-			Price:        price,
-			SizeUSDC:     size,
-			Timestamp:    ts,
+			MakerAddress: trade.Address,
+			MarketSlug:   trade.MarketSlug,
+			Side:         trade.Outcome,
+			Price:        trade.Price,
+			SizeUSDC:     trade.Size,
+			Timestamp:    trade.Timestamp,
 		})
 	}
+
 	return trades, nil
 }

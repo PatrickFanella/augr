@@ -751,16 +751,16 @@ func TestTTLForOHLCV(t *testing.T) {
 
 func TestNewDataServiceSkipsProvidersWithoutAPIKeys(t *testing.T) {
 	reg := &ProviderRegistry{
-		Polygon: func(_ string, _ *slog.Logger) DataProvider {
+		Polygon: func(_ ProviderConfig) DataProvider {
 			return &serviceStubProvider{name: "polygon"}
 		},
-		AlphaVantage: func(_ string, _ int, _ *slog.Logger) DataProvider {
+		AlphaVantage: func(_ ProviderConfig) DataProvider {
 			return &serviceStubProvider{name: "alpha"}
 		},
-		Yahoo: func(_ *slog.Logger) DataProvider {
+		Yahoo: func(_ ProviderConfig) DataProvider {
 			return &serviceStubProvider{name: "yahoo"}
 		},
-		Binance: func(_ *slog.Logger) DataProvider {
+		Binance: func(_ ProviderConfig) DataProvider {
 			return &serviceStubProvider{name: "binance"}
 		},
 	}

@@ -389,8 +389,10 @@ type yahooOptionContract struct {
 
 // Greeks computation via gopriceoptions (Black-Scholes).
 
-const riskFreeRate = 0.05 // approximate; good enough for scanning
-const dividend = 0.0
+const (
+	riskFreeRate = 0.05 // approximate; good enough for scanning
+	dividend     = 0.0
+)
 
 // computeGreeks calculates option Greeks using the gopriceoptions package.
 // s=underlying price, k=strike, t=time to expiry in years, sigma=annualised IV.

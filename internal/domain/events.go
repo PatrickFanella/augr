@@ -4,15 +4,15 @@ import "time"
 
 // EarningsEvent represents a scheduled or completed earnings report.
 type EarningsEvent struct {
-	Symbol          string   `json:"symbol"`
+	Symbol          string    `json:"symbol"`
 	Date            time.Time `json:"date"`
-	Hour            string   `json:"hour"`              // "bmo", "amc", "dmh"
-	EPSEstimate     *float64 `json:"eps_estimate,omitempty"`
-	EPSActual       *float64 `json:"eps_actual,omitempty"`
-	RevenueEstimate *float64 `json:"revenue_estimate,omitempty"`
-	RevenueActual   *float64 `json:"revenue_actual,omitempty"`
-	Quarter         int      `json:"quarter"`
-	Year            int      `json:"year"`
+	Hour            string    `json:"hour"` // "bmo", "amc", "dmh"
+	EPSEstimate     *float64  `json:"eps_estimate,omitempty"`
+	EPSActual       *float64  `json:"eps_actual,omitempty"`
+	RevenueEstimate *float64  `json:"revenue_estimate,omitempty"`
+	RevenueActual   *float64  `json:"revenue_actual,omitempty"`
+	Quarter         int       `json:"quarter"`
+	Year            int       `json:"year"`
 }
 
 // SECFiling represents a filing submitted to the SEC.
@@ -28,14 +28,14 @@ type SECFiling struct {
 
 // EconomicEvent represents a macroeconomic calendar event.
 type EconomicEvent struct {
-	Event    string   `json:"event"`
-	Country  string   `json:"country"`
+	Event    string    `json:"event"`
+	Country  string    `json:"country"`
 	Time     time.Time `json:"time"`
-	Impact   string   `json:"impact"`
-	Estimate *float64 `json:"estimate,omitempty"`
-	Actual   *float64 `json:"actual,omitempty"`
-	Previous *float64 `json:"previous,omitempty"`
-	Unit     string   `json:"unit"`
+	Impact   string    `json:"impact"`
+	Estimate *float64  `json:"estimate,omitempty"`
+	Actual   *float64  `json:"actual,omitempty"`
+	Previous *float64  `json:"previous,omitempty"`
+	Unit     string    `json:"unit"`
 }
 
 // IPOEvent represents an upcoming or recent IPO.

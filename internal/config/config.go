@@ -113,13 +113,16 @@ type BrokerConfigs struct {
 	Polymarket PolymarketConfig
 }
 
-// PolymarketConfig contains credentials and endpoint settings for the
-// Polymarket CLOB API, shared by both the broker adapter and data provider.
+// PolymarketConfig contains credentials and endpoint settings for Polymarket.
+// Live trading uses the retail API + gateway API, while legacy data and signal
+// workflows may still read from the historical CLOB endpoints during the
+// migration window.
 type PolymarketConfig struct {
-	APIKey     string
-	Secret     string
-	Passphrase string
-	CLOBURL    string
+	KeyID          string
+	SecretKey      string
+	APIBaseURL     string
+	GatewayBaseURL string
+	CLOBURL        string
 }
 
 // BrokerConfig contains broker credentials and execution mode.
@@ -225,11 +228,11 @@ type HighLatencyAlertRuleConfig struct {
 
 // FeatureFlags contains boolean feature toggles.
 type FeatureFlags struct {
-	EnableScheduler        bool
-	EnableRedisCache       bool
-	EnableAgentMemory      bool
-	EnableLiveTrading      bool
-	EnableTickerDiscovery  bool
+	EnableScheduler       bool
+	EnableRedisCache      bool
+	EnableAgentMemory     bool
+	EnableLiveTrading     bool
+	EnableTickerDiscovery bool
 }
 
 // Load loads configuration from the environment and validates it.
@@ -515,10 +518,11 @@ func loadFromEnvironment() (Config, error) {
 				PaperMode: binancePaperMode,
 			},
 			Polymarket: PolymarketConfig{
-				APIKey:     os.Getenv("POLYMARKET_API_KEY"),
-				Secret:     os.Getenv("POLYMARKET_SECRET"),
-				Passphrase: os.Getenv("POLYMARKET_PASSPHRASE"),
-				CLOBURL:    getEnvString("POLYMARKET_CLOB_URL", "https://clob.polymarket.com"),
+				KeyID:          os.Getenv("POLYMARKET_KEY_ID"),
+				SecretKey:      os.Getenv("POLYMARKET_SECRET_KEY"),
+				APIBaseURL:     getEnvString("POLYMARKET_API_BASE_URL", "https://api.polymarket.us"),
+				GatewayBaseURL: getEnvString("POLYMARKET_GATEWAY_BASE_URL", "https://gateway.polymarket.us"),
+				CLOBURL:        getEnvString("POLYMARKET_CLOB_URL", "https://clob.polymarket.com"),
 			},
 		},
 		Risk: RiskConfig{

@@ -72,17 +72,17 @@ func (e *Evaluator) Evaluate(ctx context.Context, event RawSignalEvent, strategi
 	}
 
 	type strategyDesc struct {
-		ID          string   `json:"id"`
-		Ticker      string   `json:"ticker"`
-		WatchTerms  []string `json:"watch_terms"`
-		ThesisSummary string `json:"thesis_summary,omitempty"`
+		ID            string   `json:"id"`
+		Ticker        string   `json:"ticker"`
+		WatchTerms    []string `json:"watch_terms"`
+		ThesisSummary string   `json:"thesis_summary,omitempty"`
 	}
 	descs := make([]strategyDesc, len(strategies))
 	for i, s := range strategies {
 		descs[i] = strategyDesc{
-			ID:          s.ID.String(),
-			Ticker:      s.Ticker,
-			WatchTerms:  s.WatchTerms,
+			ID:            s.ID.String(),
+			Ticker:        s.Ticker,
+			WatchTerms:    s.WatchTerms,
 			ThesisSummary: s.ThesisSummary,
 		}
 	}

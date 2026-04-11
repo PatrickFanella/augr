@@ -20,8 +20,10 @@ func (o *JobOrchestrator) registerWeeklyJobs() {
 	o.Register("strategy_tournament", "Pit all strategies against each other, prune losers", strategyTournamentSpec, o.strategyTournament)
 }
 
-var universeRefreshSpec = scheduler.ScheduleSpec{Type: scheduler.ScheduleTypeCron, Cron: "0 12 * * 0", SkipWeekends: false, SkipHolidays: false}
-var strategyTournamentSpec = scheduler.ScheduleSpec{Type: scheduler.ScheduleTypeCron, Cron: "0 14 * * 0", SkipWeekends: false, SkipHolidays: false}
+var (
+	universeRefreshSpec    = scheduler.ScheduleSpec{Type: scheduler.ScheduleTypeCron, Cron: "0 12 * * 0", SkipWeekends: false, SkipHolidays: false}
+	strategyTournamentSpec = scheduler.ScheduleSpec{Type: scheduler.ScheduleTypeCron, Cron: "0 14 * * 0", SkipWeekends: false, SkipHolidays: false}
+)
 
 // universeRefresh reloads all universe constituents from Polygon.
 func (o *JobOrchestrator) universeRefresh(ctx context.Context) error {

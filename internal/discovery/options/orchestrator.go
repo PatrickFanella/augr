@@ -34,9 +34,11 @@ type OptionsDiscoveryConfig struct {
 type OptionsDiscoveryDeps struct {
 	DataService     *data.DataService
 	OptionsProvider data.OptionsDataProvider
-	LLMProvider     interface{ Complete(context.Context, interface{}) (interface{}, error) } // unused — use Generator
-	Strategies      repository.StrategyRepository
-	Logger          *slog.Logger
+	LLMProvider     interface {
+		Complete(context.Context, interface{}) (interface{}, error)
+	} // unused — use Generator
+	Strategies repository.StrategyRepository
+	Logger     *slog.Logger
 }
 
 // OptionsDeployedStrategy is a winner that was deployed.

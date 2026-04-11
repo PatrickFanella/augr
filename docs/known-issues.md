@@ -49,13 +49,13 @@ the built-in cron engine.
 
 ### ~~Polymarket support is incomplete~~ ✓ More complete than documented
 
-The production strategy runner fully handles `market_type: polymarket` strategies:
-- Resolves YES/NO outcome token IDs from `PredictionMarket` state before order submission
-- Routes live orders through `polymarketexecution.Broker` when `POLYMARKET_API_KEY` is set
+The production strategy runner now handles `market_type: polymarket` strategies through the retail Polymarket US API:
+- Preserves trader-selected YES/NO side through execution and maps it to retail order intents
+- Routes live orders through `polymarketexecution.Broker` when `POLYMARKET_KEY_ID` and `POLYMARKET_SECRET_KEY` are set
 - Falls back to local paper broker when `is_paper: true` (Polymarket has no native paper mode)
 - Enforces per-market exposure, liquidity, spread, and resolution-timeline risk limits
 
-Configure with `POLYMARKET_API_KEY`, `POLYMARKET_SECRET`, `POLYMARKET_PASSPHRASE`, and the `POLYMARKET_*` risk limit variables. See `docs/reference/configuration.md`.
+Configure with `POLYMARKET_KEY_ID`, `POLYMARKET_SECRET_KEY`, optional `POLYMARKET_API_BASE_URL`/`POLYMARKET_GATEWAY_BASE_URL`, and the `POLYMARKET_*` risk limit variables. Legacy data and signal jobs may still read `POLYMARKET_CLOB_URL` during the migration. See `docs/reference/configuration.md`.
 
 ### Social and news coverage are uneven
 

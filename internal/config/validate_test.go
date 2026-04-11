@@ -239,6 +239,17 @@ func TestValidateLiveTradingAllowedWithAlpaca(t *testing.T) {
 	}
 }
 
+func TestValidateLiveTradingAllowedWithPolymarket(t *testing.T) {
+	cfg := validConfig()
+	cfg.Features.EnableLiveTrading = true
+	cfg.Brokers.Polymarket.KeyID = "key-id"
+	cfg.Brokers.Polymarket.SecretKey = "secret-key"
+
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("Validate() error = %v, want nil", err)
+	}
+}
+
 func TestValidateDefaultProviderMustHaveKey(t *testing.T) {
 	cfg := validConfig()
 	cfg.LLM.DefaultProvider = "anthropic"

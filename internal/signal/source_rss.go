@@ -8,15 +8,9 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/data/rss"
 )
 
-// DefaultRSSFeedURLs returns the default financial/general news RSS feed URLs
-// used for signal monitoring.
-func DefaultRSSFeedURLs() []string {
-	return []string{
-		"https://feeds.reuters.com/reuters/topNews",
-		"https://feeds.apnews.com/rss/apf-topnews",
-		"https://feeds.marketwatch.com/marketwatch/topstories/",
-		"https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100003114",
-	}
+// DefaultRSSFeeds returns the maintained feed list used across the app.
+func DefaultRSSFeeds() []rss.Feed {
+	return rss.DefaultFeeds()
 }
 
 // RSSSource is a SignalSource that polls RSS feeds and emits new articles as
@@ -30,16 +24,12 @@ type RSSSource struct {
 
 // NewRSSSource creates an RSS signal source for the given feed URLs.
 // If interval is zero it defaults to 60 seconds.
-func NewRSSSource(feedURLs []string, interval time.Duration, logger *slog.Logger) *RSSSource {
+func NewRSSSource(feeds []rss.Feed, interval time.Duration, logger *slog.Logger) *RSSSource {
 	if interval == 0 {
 		interval = 60 * time.Second
 	}
 	if logger == nil {
 		logger = slog.Default()
-	}
-	feeds := make([]rss.Feed, len(feedURLs))
-	for i, u := range feedURLs {
-		feeds[i] = rss.Feed{Name: u, URL: u}
 	}
 	return &RSSSource{
 		agg:      rss.NewAggregator(feeds, logger),

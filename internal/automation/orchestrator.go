@@ -12,8 +12,8 @@ import (
 
 	"github.com/PatrickFanella/get-rich-quick/internal/data"
 	"github.com/PatrickFanella/get-rich-quick/internal/data/polygon"
-	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/data/rss"
+	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/llm"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 	pgrepo "github.com/PatrickFanella/get-rich-quick/internal/repository/postgres"
@@ -41,21 +41,21 @@ type StrategyTrigger interface {
 
 // OrchestratorDeps bundles external dependencies required by the orchestrator.
 type OrchestratorDeps struct {
-	Universe               *universe.Universe
-	Polygon                *polygon.Client
-	DataService            *data.DataService
-	OptionsProvider        data.OptionsDataProvider
-	LLMProvider            llm.Provider
-	EventsProvider         data.EventsProvider
-	StrategyRepo           repository.StrategyRepository
-	RunRepo                repository.PipelineRunRepository
-	JobRunRepo             *pgrepo.JobRunRepo
-	OptionsScanRepo        *pgrepo.OptionsScanRepo
-	NewsFeedRepo           *pgrepo.NewsFeedRepo
-	StrategyTrigger        StrategyTrigger                       // optional; nil = no event-driven triggers
-	PolymarketAccountRepo  repository.PolymarketAccountRepository // optional; nil = skip profiling job
-	PolymarketCLOBURL      string                                 // optional; defaults to Polymarket CLOB base URL
-	Logger                 *slog.Logger
+	Universe              *universe.Universe
+	Polygon               *polygon.Client
+	DataService           *data.DataService
+	OptionsProvider       data.OptionsDataProvider
+	LLMProvider           llm.Provider
+	EventsProvider        data.EventsProvider
+	StrategyRepo          repository.StrategyRepository
+	RunRepo               repository.PipelineRunRepository
+	JobRunRepo            *pgrepo.JobRunRepo
+	OptionsScanRepo       *pgrepo.OptionsScanRepo
+	NewsFeedRepo          *pgrepo.NewsFeedRepo
+	StrategyTrigger       StrategyTrigger                        // optional; nil = no event-driven triggers
+	PolymarketAccountRepo repository.PolymarketAccountRepository // optional; nil = skip profiling job
+	PolymarketCLOBURL     string                                 // optional; defaults to Polymarket CLOB base URL
+	Logger                *slog.Logger
 }
 
 // RegisteredJob tracks a single automated job and its runtime state.

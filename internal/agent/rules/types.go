@@ -73,10 +73,10 @@ type SizingConfig struct {
 
 // StopLossConfig defines how stop-loss is calculated.
 type StopLossConfig struct {
-	Method        string  `json:"method"`                    // "fixed_pct", "atr_multiple", "indicator"
-	Pct           float64 `json:"pct,omitempty"`             // for fixed_pct
-	ATRMultiplier float64 `json:"atr_multiplier,omitempty"`  // for atr_multiple
-	IndicatorRef  string  `json:"indicator_ref,omitempty"`   // for indicator (e.g. "bollinger_lower")
+	Method        string  `json:"method"`                   // "fixed_pct", "atr_multiple", "indicator"
+	Pct           float64 `json:"pct,omitempty"`            // for fixed_pct
+	ATRMultiplier float64 `json:"atr_multiplier,omitempty"` // for atr_multiple
+	IndicatorRef  string  `json:"indicator_ref,omitempty"`  // for indicator (e.g. "bollinger_lower")
 }
 
 // TakeProfitConfig defines how take-profit is calculated.

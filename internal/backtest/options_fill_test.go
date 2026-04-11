@@ -25,7 +25,7 @@ func TestSimulateOptionsFill_MarketBuySlippage(t *testing.T) {
 		Ticker:             "AAPL260417C00200000",
 		Side:               domain.OrderSideBuy,
 		OrderType:          domain.OrderTypeMarket,
-		Quantity:            5,
+		Quantity:           5,
 		ContractMultiplier: 100,
 	}
 	cfg := OptionsFillConfig{SpreadSlippageBps: 10, FeePerContract: 0.65}
@@ -65,7 +65,7 @@ func TestSimulateOptionsFill_MarketSellSlippage(t *testing.T) {
 		Ticker:             "AAPL260417P00180000",
 		Side:               domain.OrderSideSell,
 		OrderType:          domain.OrderTypeMarket,
-		Quantity:            2,
+		Quantity:           2,
 		ContractMultiplier: 100,
 	}
 	cfg := DefaultOptionsFillConfig()
@@ -95,7 +95,7 @@ func TestSimulateOptionsFill_FeeCalculation(t *testing.T) {
 		Ticker:             "SPY260320C00500000",
 		Side:               domain.OrderSideBuy,
 		OrderType:          domain.OrderTypeMarket,
-		Quantity:            10,
+		Quantity:           10,
 		ContractMultiplier: 100,
 	}
 	cfg := OptionsFillConfig{SpreadSlippageBps: 0, FeePerContract: 1.25}

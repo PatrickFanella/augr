@@ -68,15 +68,15 @@ type Position struct {
 	ClosedAt      *time.Time   `json:"closed_at,omitempty"`
 
 	// Options fields (nil/zero for equity positions).
-	AssetClass         AssetClass   `json:"asset_class,omitempty"`
-	UnderlyingTicker   string       `json:"underlying_ticker,omitempty"`
-	OptionType         *OptionType  `json:"option_type,omitempty"`
-	Strike             *float64     `json:"strike,omitempty"`
-	Expiry             *time.Time   `json:"expiry,omitempty"`
-	ContractMultiplier float64      `json:"contract_multiplier,omitempty"`
-	LegGroupID         *uuid.UUID   `json:"leg_group_id,omitempty"`
-	Delta              *float64     `json:"delta,omitempty"`
-	Gamma              *float64     `json:"gamma,omitempty"`
-	Theta              *float64     `json:"theta,omitempty"`
-	Vega               *float64     `json:"vega,omitempty"`
+	AssetClass         AssetClass  `json:"asset_class,omitempty"`
+	UnderlyingTicker   string      `json:"underlying_ticker,omitempty"`
+	OptionType         *OptionType `json:"option_type,omitempty"`
+	Strike             *float64    `json:"strike,omitempty"`
+	Expiry             *time.Time  `json:"expiry,omitempty"`
+	ContractMultiplier float64     `json:"contract_multiplier,omitempty"`
+	LegGroupID         *uuid.UUID  `json:"leg_group_id,omitempty"`
+	Delta              *float64    `json:"delta,omitempty"`
+	Gamma              *float64    `json:"gamma,omitempty"`
+	Theta              *float64    `json:"theta,omitempty"`
+	Vega               *float64    `json:"vega,omitempty"`
 }

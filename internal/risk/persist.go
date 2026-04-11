@@ -24,6 +24,6 @@ type StatePersister interface {
 // environment-variable mechanisms are inherently durable and do not need DB
 // persistence.
 type PersistedRiskState struct {
-	KillSwitch          KillSwitchStatus                       `json:"kill_switch"`
-	MarketKillSwitches  map[domain.MarketType]KillSwitchStatus `json:"market_kill_switches"`
+	KillSwitch         KillSwitchStatus                       `json:"kill_switch"`
+	MarketKillSwitches map[domain.MarketType]KillSwitchStatus `json:"market_kill_switches"`
 }

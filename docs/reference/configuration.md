@@ -65,10 +65,11 @@ All durable server configuration currently starts in the environment.
 | `BINANCE_API_KEY` | Required for crypto live/paper trading |
 | `BINANCE_API_SECRET` | — |
 | `BINANCE_PAPER_MODE` | `true` = paper account (default false) |
-| `POLYMARKET_API_KEY` | Required for live Polymarket prediction-market trading |
-| `POLYMARKET_SECRET` | API secret for Polymarket CLOB |
-| `POLYMARKET_PASSPHRASE` | API passphrase for Polymarket CLOB |
-| `POLYMARKET_CLOB_URL` | Override CLOB API base URL (default: `https://clob.polymarket.com`) |
+| `POLYMARKET_KEY_ID` | Required for live Polymarket prediction-market trading |
+| `POLYMARKET_SECRET_KEY` | Base64-encoded Ed25519 secret key for retail API signing |
+| `POLYMARKET_API_BASE_URL` | Override authenticated retail API base URL (default: `https://api.polymarket.us`) |
+| `POLYMARKET_GATEWAY_BASE_URL` | Override public gateway base URL (default: `https://gateway.polymarket.us`) |
+| `POLYMARKET_CLOB_URL` | Legacy CLOB/data endpoint still used by older data/signal workflows during migration |
 
 ### Polymarket risk limits
 

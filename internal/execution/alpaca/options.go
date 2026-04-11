@@ -37,12 +37,12 @@ type optionOrderRequest struct {
 
 // mlegOrderRequest is the Alpaca multi-leg options order payload.
 type mlegOrderRequest struct {
-	Qty         string       `json:"qty"`
-	Type        string       `json:"type"`
-	TimeInForce string       `json:"time_in_force"`
-	OrderClass  string       `json:"order_class"`
-	Legs        []mlegLeg    `json:"legs"`
-	LimitPrice  string       `json:"limit_price,omitempty"`
+	Qty         string    `json:"qty"`
+	Type        string    `json:"type"`
+	TimeInForce string    `json:"time_in_force"`
+	OrderClass  string    `json:"order_class"`
+	Legs        []mlegLeg `json:"legs"`
+	LimitPrice  string    `json:"limit_price,omitempty"`
 }
 
 type mlegLeg struct {

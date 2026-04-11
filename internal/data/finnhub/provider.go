@@ -19,8 +19,10 @@ type Provider struct {
 	client *Client
 }
 
-var _ data.DataProvider = (*Provider)(nil)
-var _ data.EventsProvider = (*Provider)(nil)
+var (
+	_ data.DataProvider   = (*Provider)(nil)
+	_ data.EventsProvider = (*Provider)(nil)
+)
 
 type candleResponse struct {
 	Close     []float64 `json:"c"`
@@ -169,7 +171,7 @@ func (p *Provider) GetFundamentals(ctx context.Context, ticker string) (data.Fun
 		EPS:              m.EPSBasicExclExtraTTM,
 		Revenue:          m.RevenueTTM,
 		RevenueGrowthYoY: m.RevenueGrowthTTMYoY / 100, // convert percentage to ratio
-		GrossMargin:      m.GrossMarginTTM / 100,       // convert percentage to ratio
+		GrossMargin:      m.GrossMarginTTM / 100,      // convert percentage to ratio
 		DebtToEquity:     m.TotalDebtEquityAnnual,
 		FreeCashFlow:     m.FreeCashFlowTTM,
 		DividendYield:    m.DividendYieldIndicatedAn / 100, // convert percentage to ratio
@@ -267,11 +269,11 @@ func (p *Provider) GetSocialSentiment(ctx context.Context, ticker string, from, 
 		}
 
 		out = append(out, data.SocialSentiment{
-			Ticker:    ticker,
-			Score:     score,
-			Bullish:   bullish,
-			Bearish:   bearish,
-			PostCount: totalMentions,
+			Ticker:     ticker,
+			Score:      score,
+			Bullish:    bullish,
+			Bearish:    bearish,
+			PostCount:  totalMentions,
 			MeasuredAt: t,
 		})
 	}

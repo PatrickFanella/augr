@@ -9,8 +9,8 @@ import (
 
 // Options fill errors.
 var (
-	ErrNilOptionsOrder       = errors.New("options_fill: order is required")
-	ErrOptionsInvalidQty     = errors.New("options_fill: order quantity must be greater than zero")
+	ErrNilOptionsOrder        = errors.New("options_fill: order is required")
+	ErrOptionsInvalidQty      = errors.New("options_fill: order quantity must be greater than zero")
 	ErrOptionsInvalidBarClose = errors.New("options_fill: bar close price must be greater than zero")
 )
 

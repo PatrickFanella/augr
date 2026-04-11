@@ -63,7 +63,7 @@ func IsExpired(position *domain.Position, now time.Time) bool {
 
 // ExerciseValue returns the intrinsic value of an option at the given underlying
 // price. Returns 0 for out-of-the-money options.
-func ExerciseValue(optType domain.OptionType, strike float64, underlyingPrice float64) float64 {
+func ExerciseValue(optType domain.OptionType, strike, underlyingPrice float64) float64 {
 	switch optType {
 	case domain.OptionTypeCall:
 		if underlyingPrice > strike {

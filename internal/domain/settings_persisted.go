@@ -3,9 +3,9 @@ package domain
 // LLMPersisted holds the non-secret LLM settings that are safe to persist to DB.
 // API keys are never stored here.
 type LLMPersisted struct {
-	DefaultProvider string               `json:"default_provider"`
-	DeepThinkModel  string               `json:"deep_think_model"`
-	QuickThinkModel string               `json:"quick_think_model"`
+	DefaultProvider string                `json:"default_provider"`
+	DeepThinkModel  string                `json:"deep_think_model"`
+	QuickThinkModel string                `json:"quick_think_model"`
 	Providers       LLMProvidersPersisted `json:"providers"`
 }
 

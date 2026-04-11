@@ -62,7 +62,7 @@ wait_for_app_health() {
 	while (( SECONDS < deadline )); do
 		local health_response
 		if health_response="$(compose exec -T app wget -qO- http://127.0.0.1:8080/healthz 2>/dev/null)"; then
-			python3 -c 'import json, sys; body = json.loads(sys.stdin.read()); raise SystemExit(0 if body.get("status") == "all-ok" else 1)' <<<"$health_response" && return 0
+			python3 -c 'import json, sys; body = json.loads(sys.stdin.read()); raise SystemExit(0 if body.get("status") == "ok" and body.get("db") == "ok" and body.get("redis") == "ok" else 1)' <<<"$health_response" && return 0
 		fi
 		sleep 2
 	done
@@ -135,7 +135,7 @@ for migration in "${migration_files[@]}"; do
 done
 
 HEALTH_RESPONSE="$(compose exec -T app wget -qO- http://127.0.0.1:8080/healthz)"
-python3 -c 'import json, sys; body = json.loads(sys.stdin.read()); assert body.get("status") == "all-ok", body' <<<"$HEALTH_RESPONSE"
+python3 -c 'import json, sys; body = json.loads(sys.stdin.read()); assert body.get("status") == "ok", body; assert body.get("db") == "ok", body; assert body.get("redis") == "ok", body' <<<"$HEALTH_RESPONSE"
 
 AUTH_TOKEN="$(
 	JWT_SECRET="$JWT_SECRET" python3 - <<'PY'

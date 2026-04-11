@@ -89,8 +89,10 @@ func Validate(cfg Config) error {
 			strings.TrimSpace(cfg.Brokers.Alpaca.APISecret) != ""
 		hasBinance := strings.TrimSpace(cfg.Brokers.Binance.APIKey) != "" &&
 			strings.TrimSpace(cfg.Brokers.Binance.APISecret) != ""
-		if !hasAlpaca && !hasBinance {
-			errs = append(errs, "ENABLE_LIVE_TRADING requires at least one broker (Alpaca or Binance) to be fully configured")
+		hasPolymarket := strings.TrimSpace(cfg.Brokers.Polymarket.KeyID) != "" &&
+			strings.TrimSpace(cfg.Brokers.Polymarket.SecretKey) != ""
+		if !hasAlpaca && !hasBinance && !hasPolymarket {
+			errs = append(errs, "ENABLE_LIVE_TRADING requires at least one broker (Alpaca, Binance, or Polymarket) to be fully configured")
 		}
 	}
 

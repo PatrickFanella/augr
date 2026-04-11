@@ -11,8 +11,10 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/data"
 )
 
-const baseURL = "https://data.sec.gov"
-const tickerMapURL = "https://www.sec.gov/files/company_tickers.json"
+const (
+	baseURL      = "https://data.sec.gov"
+	tickerMapURL = "https://www.sec.gov/files/company_tickers.json"
+)
 
 // Client is a rate-limited HTTP client for the SEC EDGAR API.
 type Client struct {

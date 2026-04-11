@@ -69,15 +69,15 @@ func (p *OptionsDataProvider) SetHTTPClient(client *http.Client) {
 
 // snapshotsResponse is the top-level response from the Alpaca options snapshots endpoint.
 type snapshotsResponse struct {
-	Snapshots      map[string]optionSnapshot `json:"snapshots"`
-	NextPageToken  string                    `json:"next_page_token"`
+	Snapshots     map[string]optionSnapshot `json:"snapshots"`
+	NextPageToken string                    `json:"next_page_token"`
 }
 
 type optionSnapshot struct {
-	LatestTrade        *optionTrade  `json:"latestTrade"`
-	LatestQuote        *optionQuote  `json:"latestQuote"`
-	ImpliedVolatility  *float64      `json:"impliedVolatility"`
-	Greeks             *optionGreeks `json:"greeks"`
+	LatestTrade       *optionTrade  `json:"latestTrade"`
+	LatestQuote       *optionQuote  `json:"latestQuote"`
+	ImpliedVolatility *float64      `json:"impliedVolatility"`
+	Greeks            *optionGreeks `json:"greeks"`
 }
 
 type optionTrade struct {

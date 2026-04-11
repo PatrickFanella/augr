@@ -271,6 +271,7 @@ func (stubPositionRepo) Create(context.Context, *domain.Position) error { return
 func (stubPositionRepo) Get(_ context.Context, _ uuid.UUID) (*domain.Position, error) {
 	return nil, repository.ErrNotFound
 }
+
 func (stubPositionRepo) List(context.Context, repository.PositionFilter, int, int) ([]domain.Position, error) {
 	return nil, nil
 }
@@ -279,12 +280,15 @@ func (stubPositionRepo) Delete(context.Context, uuid.UUID) error        { return
 func (stubPositionRepo) GetOpen(context.Context, repository.PositionFilter, int, int) ([]domain.Position, error) {
 	return nil, nil
 }
+
 func (stubPositionRepo) GetByStrategy(context.Context, uuid.UUID, repository.PositionFilter, int, int) ([]domain.Position, error) {
 	return nil, nil
 }
+
 func (stubPositionRepo) Count(context.Context, repository.PositionFilter) (int, error) {
 	return 0, nil
 }
+
 func (stubPositionRepo) CountOpen(context.Context, repository.PositionFilter) (int, error) {
 	return 0, nil
 }
@@ -335,7 +339,7 @@ func TestRealStrategyRunnerLoadInitialState_PopulatesSeededInputs(t *testing.T) 
 				{Timestamp: now, Open: 104, High: 109, Low: 103, Close: 108, Volume: 1200},
 			},
 			fundamentals: data.Fundamentals{Ticker: "AAPL", MarketCap: 3_000_000_000_000, FetchedAt: now},
-			news: []data.NewsArticle{{Title: "AAPL beats", PublishedAt: now, Sentiment: 0.8}},
+			news:         []data.NewsArticle{{Title: "AAPL beats", PublishedAt: now, Sentiment: 0.8}},
 			social: []data.SocialSentiment{
 				{Ticker: "AAPL", Score: 0.2, MeasuredAt: now.Add(-2 * time.Hour)},
 				{Ticker: "AAPL", Score: 0.9, MeasuredAt: now.Add(-1 * time.Hour)},
@@ -444,14 +448,14 @@ func TestBuildRunnerDefinition_AppliesPromptOverridesBeyondAnalysis(t *testing.T
 			DeepThinkModel:  "gpt-5",
 		},
 		PromptOverrides: map[agent.AgentRole]string{
-			agent.AgentRoleBullResearcher:       "custom bull prompt",
-			agent.AgentRoleBearResearcher:       "custom bear prompt",
-			agent.AgentRoleInvestJudge:          "custom invest judge prompt",
-			agent.AgentRoleTrader:               "custom trader prompt",
-			agent.AgentRoleAggressiveAnalyst:    "custom aggressive prompt",
-			agent.AgentRoleConservativeAnalyst:  "custom conservative prompt",
-			agent.AgentRoleNeutralAnalyst:       "custom neutral prompt",
-			agent.AgentRoleRiskManager:          "custom risk manager prompt",
+			agent.AgentRoleBullResearcher:      "custom bull prompt",
+			agent.AgentRoleBearResearcher:      "custom bear prompt",
+			agent.AgentRoleInvestJudge:         "custom invest judge prompt",
+			agent.AgentRoleTrader:              "custom trader prompt",
+			agent.AgentRoleAggressiveAnalyst:   "custom aggressive prompt",
+			agent.AgentRoleConservativeAnalyst: "custom conservative prompt",
+			agent.AgentRoleNeutralAnalyst:      "custom neutral prompt",
+			agent.AgentRoleRiskManager:         "custom risk manager prompt",
 		},
 	}
 

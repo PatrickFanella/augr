@@ -160,33 +160,33 @@ type optionsChainResponse struct {
 }
 
 type optionsChainResult struct {
-	BreakEvenPrice    float64                    `json:"break_even_price"`
-	Day               *optionsChainDay           `json:"day"`
-	Details           *optionsChainDetails       `json:"details"`
-	Greeks            *optionsChainGreeks        `json:"greeks"`
-	ImpliedVolatility *float64                   `json:"implied_volatility"`
-	OpenInterest      float64                    `json:"open_interest"`
-	LastQuote         *optionsChainQuote         `json:"last_quote"`
-	LastTrade         *optionsChainTrade         `json:"last_trade"`
-	UnderlyingAsset   *optionsChainUnderlying    `json:"underlying_asset"`
+	BreakEvenPrice    float64                 `json:"break_even_price"`
+	Day               *optionsChainDay        `json:"day"`
+	Details           *optionsChainDetails    `json:"details"`
+	Greeks            *optionsChainGreeks     `json:"greeks"`
+	ImpliedVolatility *float64                `json:"implied_volatility"`
+	OpenInterest      float64                 `json:"open_interest"`
+	LastQuote         *optionsChainQuote      `json:"last_quote"`
+	LastTrade         *optionsChainTrade      `json:"last_trade"`
+	UnderlyingAsset   *optionsChainUnderlying `json:"underlying_asset"`
 }
 
 type optionsChainDay struct {
-	Open            float64 `json:"open"`
-	High            float64 `json:"high"`
-	Low             float64 `json:"low"`
-	Close           float64 `json:"close"`
-	Volume          float64 `json:"volume"`
-	VWAP            float64 `json:"vwap"`
-	PreviousClose   float64 `json:"previous_close"`
+	Open          float64 `json:"open"`
+	High          float64 `json:"high"`
+	Low           float64 `json:"low"`
+	Close         float64 `json:"close"`
+	Volume        float64 `json:"volume"`
+	VWAP          float64 `json:"vwap"`
+	PreviousClose float64 `json:"previous_close"`
 }
 
 type optionsChainDetails struct {
-	Ticker           string  `json:"ticker"` // O:AAPL241220C00150000
-	ContractType     string  `json:"contract_type"` // put, call
-	ExerciseStyle    string  `json:"exercise_style"` // american, european
-	ExpirationDate   string  `json:"expiration_date"` // YYYY-MM-DD
-	StrikePrice      float64 `json:"strike_price"`
+	Ticker            string  `json:"ticker"`          // O:AAPL241220C00150000
+	ContractType      string  `json:"contract_type"`   // put, call
+	ExerciseStyle     string  `json:"exercise_style"`  // american, european
+	ExpirationDate    string  `json:"expiration_date"` // YYYY-MM-DD
+	StrikePrice       float64 `json:"strike_price"`
 	SharesPerContract float64 `json:"shares_per_contract"`
 }
 
@@ -198,10 +198,10 @@ type optionsChainGreeks struct {
 }
 
 type optionsChainQuote struct {
-	Ask     float64 `json:"ask"`
-	AskSize float64 `json:"ask_size"`
-	Bid     float64 `json:"bid"`
-	BidSize float64 `json:"bid_size"`
+	Ask      float64 `json:"ask"`
+	AskSize  float64 `json:"ask_size"`
+	Bid      float64 `json:"bid"`
+	BidSize  float64 `json:"bid_size"`
 	Midpoint float64 `json:"midpoint"`
 }
 

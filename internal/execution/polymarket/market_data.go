@@ -4,197 +4,239 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/url"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/agent"
 )
 
-// GetMarketData fetches complete market metadata and order-book state for the
-// given Polymarket market slug and maps it to an agent.PredictionMarketData.
-//
-// API calls made:
-//  1. GET /markets?market_slug={slug}   — market metadata + token IDs
-//  2. GET /prices-history?market=…      — current YES/NO mid-prices
-//  3. GET /book?token_id={yesTokenID}  — best bid/ask for YES token
-//  4. GET /book?token_id={noTokenID}   — best bid/ask for NO token
+// GetMarketData fetches complete market metadata and book state for the given
+// Polymarket market slug and maps it to an agent.PredictionMarketData.
 func (c *Client) GetMarketData(ctx context.Context, slug string) (*agent.PredictionMarketData, error) {
 	market, err := c.fetchMarketBySlug(ctx, slug)
 	if err != nil {
 		return nil, err
 	}
 
-	yesPrice, noPrice, err := c.fetchMidPrices(ctx, market.ConditionID, market.YesTokenID, market.NoTokenID)
+	book, err := c.fetchMarketBook(ctx, slug)
 	if err != nil {
-		// Non-fatal: return what we have with zero prices.
-		c.getLogger().Warn("polymarket: failed to fetch mid-prices", "slug", slug, "error", err)
+		// Non-fatal: return market metadata without book data.
+		c.getLogger().Warn("polymarket: failed to fetch market book", "slug", slug, "error", err)
 	}
 
-	yesBook, _ := c.fetchBook(ctx, market.YesTokenID)
-	noBook, _ := c.fetchBook(ctx, market.NoTokenID)
+	bbo, err := c.fetchMarketBBO(ctx, slug)
+	if err != nil {
+		c.getLogger().Warn("polymarket: failed to fetch market bbo", "slug", slug, "error", err)
+	}
 
 	var endDate *time.Time
-	if !market.EndDateISO.IsZero() {
-		t := market.EndDateISO
-		endDate = &t
+	if market.EndDate != "" {
+		if parsed, err := time.Parse(time.RFC3339, market.EndDate); err == nil {
+			parsed = parsed.UTC()
+			endDate = &parsed
+		}
+	}
+
+	yesPrice := market.sidePrice(true)
+	noPrice := market.sidePrice(false)
+	if bbo.LastPriceSample.LongPx.Value != "" {
+		yesPrice = parseDecimalOrZero(bbo.LastPriceSample.LongPx.Value)
+	}
+	if bbo.LastPriceSample.ShortPx.Value != "" {
+		noPrice = parseDecimalOrZero(bbo.LastPriceSample.ShortPx.Value)
+	}
+	if yesPrice == 0 && bbo.CurrentPx.Value != "" {
+		yesPrice = parseDecimalOrZero(bbo.CurrentPx.Value)
+		if noPrice == 0 && yesPrice > 0 && yesPrice < 1 {
+			noPrice = 1 - yesPrice
+		}
+	}
+
+	bestBidYes := parseDecimalOrZero(bbo.BestBid.Value)
+	bestAskYes := parseDecimalOrZero(bbo.BestAsk.Value)
+	if len(book.Bids) > 0 {
+		bestBidYes = parseDecimalOrZero(book.Bids[0].Px.Value)
+	}
+	if len(book.Offers) > 0 {
+		bestAskYes = parseDecimalOrZero(book.Offers[0].Px.Value)
 	}
 
 	pmd := &agent.PredictionMarketData{
-		Slug:               market.MarketSlug,
-		Question:           market.Question,
+		Slug:               firstNonEmpty(market.Slug, slug),
+		Question:           firstNonEmpty(market.Question, market.Title),
 		Description:        market.Description,
-		ResolutionCriteria: market.ResolutionCriteria,
+		ResolutionCriteria: market.Subtitle,
 		EndDate:            endDate,
-		ResolutionSource:   market.ResolutionSource,
+		ResolutionSource:   market.EP3Status,
 		YesPrice:           yesPrice,
 		NoPrice:            noPrice,
-		Volume24h:          market.Volume24h,
-		Liquidity:          market.Liquidity,
-		OpenInterest:       market.OpenInterest,
-		ConditionID:        market.ConditionID,
-		YesTokenID:         market.YesTokenID,
-		NoTokenID:          market.NoTokenID,
-		BestBidYes:         yesBook.bestBid,
-		BestAskYes:         yesBook.bestAsk,
-		BestBidNo:          noBook.bestBid,
-		BestAskNo:          noBook.bestAsk,
-	}
-	if pmd.BestAskYes > 0 {
-		pmd.SpreadYes = pmd.BestAskYes - pmd.BestBidYes
+		Volume24h:          parseDecimalOrZero(bbo.SharesTraded),
+		Liquidity:          float64(bbo.BidDepth + bbo.AskDepth),
+		OpenInterest:       parseDecimalOrZero(bbo.OpenInterest),
+		BestBidYes:         bestBidYes,
+		BestAskYes:         bestAskYes,
+		SpreadYes:          max0(bestAskYes - bestBidYes),
 	}
 
+	// Current retail gateway responses are slug-centric; legacy token IDs are no
+	// longer required for phase-1 live trading alignment.
 	return pmd, nil
 }
 
-// ---------------------------------------------------------------------------
-// internal API response types
-// ---------------------------------------------------------------------------
-
-type clobMarket struct {
-	MarketSlug         string    `json:"market_slug"`
-	Question           string    `json:"question"`
-	Description        string    `json:"description"`
-	ResolutionCriteria string    `json:"resolution_criteria"`
-	ResolutionSource   string    `json:"resolution_source"`
-	EndDateISO         time.Time `json:"end_date_iso"`
-	ConditionID        string    `json:"condition_id"`
-	Tokens             []struct {
-		Outcome string `json:"outcome"` // "Yes" or "No"
-		TokenID string `json:"token_id"`
-	} `json:"tokens"`
-	Volume24h    float64 `json:"volume_24hr"`
-	Liquidity    float64 `json:"liquidity"`
-	OpenInterest float64 `json:"open_interest"`
-
-	// resolved during fetch
-	YesTokenID string
-	NoTokenID  string
+type marketBySlugResponse struct {
+	Market gatewayMarket `json:"market"`
 }
 
-type bookSide struct {
-	bestBid float64
-	bestAsk float64
+type gatewayMarket struct {
+	ID            string `json:"id"`
+	Question      string `json:"question"`
+	Slug          string `json:"slug"`
+	EndDate       string `json:"endDate"`
+	Description   string `json:"description"`
+	Subtitle      string `json:"subtitle"`
+	EP3Status     string `json:"ep3Status"`
+	Title         string `json:"title"`
+	OutcomePrices string `json:"outcomePrices"`
+	MarketSides   []struct {
+		Description string `json:"description"`
+		Price       string `json:"price"`
+		Long        *bool  `json:"long"`
+	} `json:"marketSides"`
 }
 
-type clobBookResponse struct {
+type marketBookResponse struct {
+	MarketData marketBookData `json:"marketData"`
+}
+
+type marketBookData struct {
 	Bids []struct {
-		Price float64 `json:"price,string"`
-		Size  float64 `json:"size,string"`
+		Px amount `json:"px"`
 	} `json:"bids"`
-	Asks []struct {
-		Price float64 `json:"price,string"`
-		Size  float64 `json:"size,string"`
-	} `json:"asks"`
+	Offers []struct {
+		Px amount `json:"px"`
+	} `json:"offers"`
 }
 
-// ---------------------------------------------------------------------------
-// fetch helpers
-// ---------------------------------------------------------------------------
+type marketBBOResponse struct {
+	MarketData marketBBOData `json:"marketData"`
+}
 
-func (c *Client) fetchMarketBySlug(ctx context.Context, slug string) (*clobMarket, error) {
-	params := url.Values{"market_slug": []string{slug}}
-	body, err := c.Get(ctx, "/markets", params)
+type marketBBOData struct {
+	CurrentPx       amount `json:"currentPx"`
+	LastTradePx     amount `json:"lastTradePx"`
+	SettlementPx    amount `json:"settlementPx"`
+	SharesTraded    string `json:"sharesTraded"`
+	OpenInterest    string `json:"openInterest"`
+	BestAsk         amount `json:"bestAsk"`
+	BestBid         amount `json:"bestBid"`
+	AskDepth        int    `json:"askDepth"`
+	BidDepth        int    `json:"bidDepth"`
+	LastPriceSample struct {
+		LongPx  amount `json:"longPx"`
+		ShortPx amount `json:"shortPx"`
+	} `json:"lastPriceSample"`
+}
+
+func (c *Client) fetchMarketBySlug(ctx context.Context, slug string) (gatewayMarket, error) {
+	body, err := c.GetPublic(ctx, "/v1/market/slug/"+slug, nil)
 	if err != nil {
-		return nil, fmt.Errorf("polymarket: fetch market %q: %w", slug, err)
+		return gatewayMarket{}, fmt.Errorf("polymarket: fetch market %q: %w", slug, err)
 	}
 
-	// The CLOB API returns {"data": [...]} for list endpoints.
-	var resp struct {
-		Data []clobMarket `json:"data"`
-	}
+	var resp marketBySlugResponse
 	if err := json.Unmarshal(body, &resp); err != nil {
-		return nil, fmt.Errorf("polymarket: parse market list: %w", err)
+		return gatewayMarket{}, fmt.Errorf("polymarket: parse market by slug: %w", err)
 	}
-	if len(resp.Data) == 0 {
-		return nil, fmt.Errorf("polymarket: market not found: %q", slug)
+	if firstNonEmpty(resp.Market.Slug, resp.Market.Question, resp.Market.Title) == "" {
+		return gatewayMarket{}, fmt.Errorf("polymarket: market not found: %q", slug)
 	}
 
-	m := &resp.Data[0]
-	for _, tok := range m.Tokens {
-		switch tok.Outcome {
-		case "Yes":
-			m.YesTokenID = tok.TokenID
-		case "No":
-			m.NoTokenID = tok.TokenID
-		}
-	}
-	if m.MarketSlug == "" {
-		m.MarketSlug = slug
-	}
-	return m, nil
+	return resp.Market, nil
 }
 
-func (c *Client) fetchMidPrices(ctx context.Context, _, yesTokenID, noTokenID string) (yesPrice, noPrice float64, err error) {
-	if yesTokenID == "" || noTokenID == "" {
-		return 0, 0, nil
-	}
-
-	params := url.Values{"token_ids": []string{yesTokenID + "," + noTokenID}}
-	body, err := c.Get(ctx, "/prices", params)
+func (c *Client) fetchMarketBook(ctx context.Context, slug string) (marketBookData, error) {
+	body, err := c.GetPublic(ctx, "/v1/markets/"+slug+"/book", nil)
 	if err != nil {
-		return 0, 0, err
+		return marketBookData{}, err
 	}
 
-	// Response: {"<tokenID>": "0.72", ...}
-	var prices map[string]json.Number
-	if err := json.Unmarshal(body, &prices); err != nil {
-		return 0, 0, fmt.Errorf("polymarket: parse prices: %w", err)
-	}
-
-	if v, ok := prices[yesTokenID]; ok {
-		if f, err := v.Float64(); err == nil {
-			yesPrice = f
-		}
-	}
-	if v, ok := prices[noTokenID]; ok {
-		if f, err := v.Float64(); err == nil {
-			noPrice = f
-		}
-	}
-	return yesPrice, noPrice, nil
-}
-
-func (c *Client) fetchBook(ctx context.Context, tokenID string) (bookSide, error) {
-	if tokenID == "" {
-		return bookSide{}, nil
-	}
-	params := url.Values{"token_id": []string{tokenID}}
-	body, err := c.Get(ctx, "/book", params)
-	if err != nil {
-		return bookSide{}, err
-	}
-
-	var resp clobBookResponse
+	var resp marketBookResponse
 	if err := json.Unmarshal(body, &resp); err != nil {
-		return bookSide{}, fmt.Errorf("polymarket: parse book: %w", err)
+		return marketBookData{}, fmt.Errorf("polymarket: parse market book: %w", err)
 	}
 
-	var best bookSide
-	if len(resp.Bids) > 0 {
-		best.bestBid = resp.Bids[0].Price
+	return resp.MarketData, nil
+}
+
+func (c *Client) fetchMarketBBO(ctx context.Context, slug string) (marketBBOData, error) {
+	body, err := c.GetPublic(ctx, "/v1/markets/"+slug+"/bbo", nil)
+	if err != nil {
+		return marketBBOData{}, err
 	}
-	if len(resp.Asks) > 0 {
-		best.bestAsk = resp.Asks[0].Price
+
+	var resp marketBBOResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return marketBBOData{}, fmt.Errorf("polymarket: parse market bbo: %w", err)
 	}
-	return best, nil
+
+	return resp.MarketData, nil
+}
+
+func (m gatewayMarket) sidePrice(long bool) float64 {
+	if len(m.MarketSides) > 0 {
+		for _, side := range m.MarketSides {
+			if side.Long != nil && *side.Long == long {
+				return parseDecimalOrZero(side.Price)
+			}
+		}
+	}
+
+	trimmed := strings.TrimSpace(m.OutcomePrices)
+	if trimmed == "" {
+		return 0
+	}
+	var raw []string
+	if err := json.Unmarshal([]byte(trimmed), &raw); err != nil {
+		return 0
+	}
+	if len(raw) < 2 {
+		return 0
+	}
+	if long {
+		return parseDecimalOrZero(raw[0])
+	}
+	return parseDecimalOrZero(raw[1])
+}
+
+func parseDecimalOrZero(value string) float64 {
+	parsed, err := strconvParse(value)
+	if err != nil {
+		return 0
+	}
+	return parsed
+}
+
+func strconvParse(value string) (float64, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return 0, fmt.Errorf("empty decimal")
+	}
+	return strconv.ParseFloat(trimmed, 64)
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
+}
+
+func max0(value float64) float64 {
+	if value < 0 {
+		return 0
+	}
+	return value
 }

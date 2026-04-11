@@ -27,14 +27,14 @@ type StoredSignal struct {
 
 // StoredTrigger is a TriggerEvent captured for the trigger log UI.
 type StoredTrigger struct {
-	ID         uuid.UUID `json:"id"`
-	FiredAt    time.Time `json:"fired_at"`
-	StrategyID uuid.UUID `json:"strategy_id"`
-	Action     string    `json:"action"`
-	Priority   int       `json:"priority"`
-	SignalTitle string   `json:"signal_title"`
-	SignalSummary string `json:"signal_summary"`
-	Source     string    `json:"source"`
+	ID            uuid.UUID `json:"id"`
+	FiredAt       time.Time `json:"fired_at"`
+	StrategyID    uuid.UUID `json:"strategy_id"`
+	Action        string    `json:"action"`
+	Priority      int       `json:"priority"`
+	SignalTitle   string    `json:"signal_title"`
+	SignalSummary string    `json:"signal_summary"`
+	Source        string    `json:"source"`
 }
 
 // EventStore is a bounded in-memory ring buffer that accumulates evaluated

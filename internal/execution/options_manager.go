@@ -85,17 +85,17 @@ func (m *OptionsOrderManager) ProcessOptionSignal(
 	intent := inferPositionIntent(side, true) // opening trade
 
 	order := &domain.Order{
-		ID:               uuid.New(),
-		StrategyID:       &strategyID,
-		PipelineRunID:    &runID,
-		Ticker:           plan.Ticker,
-		Side:             side,
-		OrderType:        entryTypeToOrderType(plan.EntryType),
-		Quantity:         plan.PositionSize,
-		Status:           domain.OrderStatusPending,
-		AssetClass:       domain.AssetClassOption,
-		PositionIntent:   &intent,
-		CreatedAt:        now,
+		ID:             uuid.New(),
+		StrategyID:     &strategyID,
+		PipelineRunID:  &runID,
+		Ticker:         plan.Ticker,
+		Side:           side,
+		OrderType:      entryTypeToOrderType(plan.EntryType),
+		Quantity:       plan.PositionSize,
+		Status:         domain.OrderStatusPending,
+		AssetClass:     domain.AssetClassOption,
+		PositionIntent: &intent,
+		CreatedAt:      now,
 	}
 
 	if plan.EntryPrice > 0 {

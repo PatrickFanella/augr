@@ -33,13 +33,13 @@ func TestApplyStrategyRiskOverrides_NilGuards(t *testing.T) {
 func TestApplyStrategyRiskOverrides_ConfidenceGate(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name           string
-		confidence     float64
-		minConfidence  float64
-		inputSignal    domain.PipelineSignal
-		wantSignal     domain.PipelineSignal
-		wantPosition   float64
-		wantRationale  bool
+		name          string
+		confidence    float64
+		minConfidence float64
+		inputSignal   domain.PipelineSignal
+		wantSignal    domain.PipelineSignal
+		wantPosition  float64
+		wantRationale bool
 	}{
 		{
 			name:          "below threshold flips to hold",

@@ -74,22 +74,22 @@ type SpreadLeg struct {
 type OptionStrategyType string
 
 const (
-	StrategyLongCall        OptionStrategyType = "long_call"
-	StrategyLongPut         OptionStrategyType = "long_put"
-	StrategyCoveredCall     OptionStrategyType = "covered_call"
-	StrategyCashSecuredPut  OptionStrategyType = "cash_secured_put"
-	StrategyBullCallSpread  OptionStrategyType = "bull_call_spread"
-	StrategyBearPutSpread   OptionStrategyType = "bear_put_spread"
-	StrategyBullPutSpread   OptionStrategyType = "bull_put_spread"
-	StrategyBearCallSpread  OptionStrategyType = "bear_call_spread"
-	StrategyIronCondor      OptionStrategyType = "iron_condor"
-	StrategyIronButterfly   OptionStrategyType = "iron_butterfly"
-	StrategyLongStraddle    OptionStrategyType = "long_straddle"
-	StrategyLongStrangle    OptionStrategyType = "long_strangle"
-	StrategyShortStraddle   OptionStrategyType = "short_straddle"
-	StrategyShortStrangle   OptionStrategyType = "short_strangle"
-	StrategyCalendarSpread  OptionStrategyType = "calendar_spread"
-	StrategyDiagonalSpread  OptionStrategyType = "diagonal_spread"
+	StrategyLongCall       OptionStrategyType = "long_call"
+	StrategyLongPut        OptionStrategyType = "long_put"
+	StrategyCoveredCall    OptionStrategyType = "covered_call"
+	StrategyCashSecuredPut OptionStrategyType = "cash_secured_put"
+	StrategyBullCallSpread OptionStrategyType = "bull_call_spread"
+	StrategyBearPutSpread  OptionStrategyType = "bear_put_spread"
+	StrategyBullPutSpread  OptionStrategyType = "bull_put_spread"
+	StrategyBearCallSpread OptionStrategyType = "bear_call_spread"
+	StrategyIronCondor     OptionStrategyType = "iron_condor"
+	StrategyIronButterfly  OptionStrategyType = "iron_butterfly"
+	StrategyLongStraddle   OptionStrategyType = "long_straddle"
+	StrategyLongStrangle   OptionStrategyType = "long_strangle"
+	StrategyShortStraddle  OptionStrategyType = "short_straddle"
+	StrategyShortStrangle  OptionStrategyType = "short_strangle"
+	StrategyCalendarSpread OptionStrategyType = "calendar_spread"
+	StrategyDiagonalSpread OptionStrategyType = "diagonal_spread"
 )
 
 // OptionSpread describes a multi-leg options position.

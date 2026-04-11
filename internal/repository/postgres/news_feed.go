@@ -25,13 +25,13 @@ type NewsFeedItem struct {
 
 // SocialSentimentRow is a row in the social_sentiment table.
 type SocialSentimentRow struct {
-	Ticker    string    `json:"ticker"`
-	Source    string    `json:"source"`
-	Sentiment float64  `json:"sentiment"`
-	Bullish   float64   `json:"bullish"`
-	Bearish   float64   `json:"bearish"`
-	PostCount int       `json:"post_count"`
-	Trending  bool      `json:"trending"`
+	Ticker     string    `json:"ticker"`
+	Source     string    `json:"source"`
+	Sentiment  float64   `json:"sentiment"`
+	Bullish    float64   `json:"bullish"`
+	Bearish    float64   `json:"bearish"`
+	PostCount  int       `json:"post_count"`
+	Trending   bool      `json:"trending"`
 	MeasuredAt time.Time `json:"measured_at"`
 }
 

@@ -13,6 +13,7 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/discovery"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/llm"
+	"github.com/PatrickFanella/get-rich-quick/internal/service"
 	"github.com/PatrickFanella/get-rich-quick/internal/signal"
 	"github.com/PatrickFanella/get-rich-quick/internal/universe"
 	"github.com/go-chi/chi/v5"
@@ -86,6 +87,11 @@ type Server struct {
 	// Signal intelligence (optional; nil = feature not running).
 	signalStore *signal.EventStore
 	watchIndex  *signal.WatchIndex
+
+	// Services — constructed from deps in NewServer.
+	backtestSvc     *service.BacktestService
+	conversationSvc *service.ConversationService
+	runSvc          *service.RunService
 }
 
 // StrategyRunResult captures the persisted artifacts created by a manual run.
@@ -143,20 +149,20 @@ func DefaultServerConfig() ServerConfig {
 
 // Deps groups the repository and service dependencies required by the Server.
 type Deps struct {
-	Strategies     repository.StrategyRepository
-	Runs           repository.PipelineRunRepository
-	Decisions      repository.AgentDecisionRepository
-	Orders         repository.OrderRepository
-	Positions      repository.PositionRepository
-	Trades         repository.TradeRepository
-	Memories       repository.MemoryRepository
-	APIKeys        repository.APIKeyRepository
-	Users          repository.UserRepository
-	Conversations  repository.ConversationRepository
-	AuditLog       repository.AuditLogRepository
-	Events          repository.AgentEventRepository
-	Snapshots       repository.PipelineRunSnapshotRepository
-	LLMProvider     llm.Provider
+	Strategies       repository.StrategyRepository
+	Runs             repository.PipelineRunRepository
+	Decisions        repository.AgentDecisionRepository
+	Orders           repository.OrderRepository
+	Positions        repository.PositionRepository
+	Trades           repository.TradeRepository
+	Memories         repository.MemoryRepository
+	APIKeys          repository.APIKeyRepository
+	Users            repository.UserRepository
+	Conversations    repository.ConversationRepository
+	AuditLog         repository.AuditLogRepository
+	Events           repository.AgentEventRepository
+	Snapshots        repository.PipelineRunSnapshotRepository
+	LLMProvider      llm.Provider
 	BacktestConfigs  repository.BacktestConfigRepository
 	BacktestRuns     repository.BacktestRunRepository
 	DataService      *data.DataService
@@ -168,12 +174,12 @@ type Deps struct {
 	UniverseRepo     universe.UniverseRepository
 	Automation       *automation.JobOrchestrator
 	NewsFeedRepo     *pgrepo.NewsFeedRepo
-	Risk            risk.RiskEngine
-	Settings       SettingsService
-	Runner         StrategyRunner
-	DBHealth       HealthCheck
-	RedisHealth    HealthCheck
-	MetricsHandler http.Handler
+	Risk             risk.RiskEngine
+	Settings         SettingsService
+	Runner           StrategyRunner
+	DBHealth         HealthCheck
+	RedisHealth      HealthCheck
+	MetricsHandler   http.Handler
 
 	// Signal intelligence (optional; nil = feature not enabled).
 	SignalStore *signal.EventStore
@@ -243,27 +249,27 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 	}
 
 	s := &Server{
-		logger:         logger,
-		dbHealth:       deps.DBHealth,
-		redisHealth:    deps.RedisHealth,
-		strategies:     deps.Strategies,
-		runs:           deps.Runs,
-		decisions:      deps.Decisions,
-		orders:         deps.Orders,
-		positions:      deps.Positions,
-		trades:         deps.Trades,
-		memories:       deps.Memories,
-		users:          deps.Users,
-		conversations:  deps.Conversations,
-		snapshots:      deps.Snapshots,
-		llmProvider:    deps.LLMProvider,
-		auditLog:       deps.AuditLog,
-		events:         deps.Events,
-		backtestConfigs: deps.BacktestConfigs,
-		backtestRuns:    deps.BacktestRuns,
+		logger:           logger,
+		dbHealth:         deps.DBHealth,
+		redisHealth:      deps.RedisHealth,
+		strategies:       deps.Strategies,
+		runs:             deps.Runs,
+		decisions:        deps.Decisions,
+		orders:           deps.Orders,
+		positions:        deps.Positions,
+		trades:           deps.Trades,
+		memories:         deps.Memories,
+		users:            deps.Users,
+		conversations:    deps.Conversations,
+		snapshots:        deps.Snapshots,
+		llmProvider:      deps.LLMProvider,
+		auditLog:         deps.AuditLog,
+		events:           deps.Events,
+		backtestConfigs:  deps.BacktestConfigs,
+		backtestRuns:     deps.BacktestRuns,
 		dataService:      deps.DataService,
-		optionsProvider:   deps.OptionsProvider,
-		eventsProvider:    deps.EventsProvider,
+		optionsProvider:  deps.OptionsProvider,
+		eventsProvider:   deps.EventsProvider,
 		discoveryDeps:    deps.DiscoveryDeps,
 		discoveryRunRepo: deps.DiscoveryRunRepo,
 		universe:         deps.Universe,
@@ -271,15 +277,26 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 		automation:       deps.Automation,
 		newsFeedRepo:     deps.NewsFeedRepo,
 		risk:             deps.Risk,
-		settings:        settingsService,
-		runner:          deps.Runner,
-		auth:           authManager,
-		hub:            hub,
-		wsUpgrader:     newUpgrader(cfg.CORSConfig.AllowedOrigins),
-		metricsHandler: deps.MetricsHandler,
-		signalStore:    deps.SignalStore,
-		watchIndex:     deps.WatchIndex,
+		settings:         settingsService,
+		runner:           deps.Runner,
+		auth:             authManager,
+		hub:              hub,
+		wsUpgrader:       newUpgrader(cfg.CORSConfig.AllowedOrigins),
+		metricsHandler:   deps.MetricsHandler,
+		signalStore:      deps.SignalStore,
+		watchIndex:       deps.WatchIndex,
 	}
+
+	// Construct services from the assembled deps.
+	s.backtestSvc = service.NewBacktestService(
+		deps.BacktestConfigs, deps.BacktestRuns, deps.Strategies, deps.AuditLog,
+		deps.DataService, deps.LLMProvider, logger,
+	)
+	s.conversationSvc = service.NewConversationService(
+		deps.Conversations, deps.Decisions, deps.Snapshots, deps.Memories,
+		deps.LLMProvider, logger,
+	)
+	s.runSvc = service.NewRunService(deps.Runs)
 
 	r := chi.NewRouter()
 

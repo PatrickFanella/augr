@@ -14,11 +14,10 @@ import (
 
 	"github.com/PatrickFanella/get-rich-quick/internal/agent"
 	"github.com/PatrickFanella/get-rich-quick/internal/api"
+	"github.com/PatrickFanella/get-rich-quick/internal/automation"
 	"github.com/PatrickFanella/get-rich-quick/internal/cli"
 	"github.com/PatrickFanella/get-rich-quick/internal/config"
 	"github.com/PatrickFanella/get-rich-quick/internal/data"
-	"github.com/PatrickFanella/get-rich-quick/internal/automation"
-	"github.com/PatrickFanella/get-rich-quick/internal/discovery"
 	alpacaData "github.com/PatrickFanella/get-rich-quick/internal/data/alpaca"
 	"github.com/PatrickFanella/get-rich-quick/internal/data/alphavantage"
 	"github.com/PatrickFanella/get-rich-quick/internal/data/binance"
@@ -29,6 +28,7 @@ import (
 	polymarketData "github.com/PatrickFanella/get-rich-quick/internal/data/polymarket"
 	"github.com/PatrickFanella/get-rich-quick/internal/data/tradier"
 	"github.com/PatrickFanella/get-rich-quick/internal/data/yahoo"
+	"github.com/PatrickFanella/get-rich-quick/internal/discovery"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution/paper"
@@ -43,6 +43,7 @@ import (
 	pgrepo "github.com/PatrickFanella/get-rich-quick/internal/repository/postgres"
 	"github.com/PatrickFanella/get-rich-quick/internal/risk"
 	"github.com/PatrickFanella/get-rich-quick/internal/scheduler"
+	"github.com/PatrickFanella/get-rich-quick/internal/signal"
 	"github.com/PatrickFanella/get-rich-quick/internal/universe"
 )
 
@@ -103,25 +104,25 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 		WithPersister(ctx, pgrepo.NewSettingsPersister(db.Pool), logger)
 
 	deps := api.Deps{
-		Strategies:      strategyRepo,
-		Runs:            runRepo,
-		Decisions:       decisionRepo,
-		Orders:          orderRepo,
-		Positions:       positionRepo,
-		Trades:          tradeRepo,
-		Memories:        memoryRepo,
-		APIKeys:         apiKeyRepo,
-		Users:           userRepo,
-		Risk:            riskEngine,
-		Settings:        settingsSvc,
-		DBHealth:        api.HealthCheckFunc(db.Pool.Ping),
-		RedisHealth:     redisHealth,
-		Conversations:   conversationRepo,
-		AuditLog:        auditLogRepo,
-		Events:          eventRepo,
-		MetricsHandler:  appMetrics.Handler(),
-		Snapshots:       snapshotRepo,
-		LLMProvider:     throttleLLM(newLLMProviderFromConfig(cfg.LLM, logger)),
+		Strategies:       strategyRepo,
+		Runs:             runRepo,
+		Decisions:        decisionRepo,
+		Orders:           orderRepo,
+		Positions:        positionRepo,
+		Trades:           tradeRepo,
+		Memories:         memoryRepo,
+		APIKeys:          apiKeyRepo,
+		Users:            userRepo,
+		Risk:             riskEngine,
+		Settings:         settingsSvc,
+		DBHealth:         api.HealthCheckFunc(db.Pool.Ping),
+		RedisHealth:      redisHealth,
+		Conversations:    conversationRepo,
+		AuditLog:         auditLogRepo,
+		Events:           eventRepo,
+		MetricsHandler:   appMetrics.Handler(),
+		Snapshots:        snapshotRepo,
+		LLMProvider:      throttleLLM(newLLMProviderFromConfig(cfg.LLM, logger)),
 		BacktestConfigs:  pgrepo.NewBacktestConfigRepo(db.Pool),
 		BacktestRuns:     pgrepo.NewBacktestRunRepo(db.Pool),
 		NewsFeedRepo:     newsFeedRepo,
@@ -275,13 +276,64 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 
 	// Wire signal intelligence: EventStore, WatchIndex, SignalHub, TriggerHandler.
 	// Pass the scheduler as the trigger runner (it satisfies signal.StrategyTriggerer).
-	// If the scheduler is nil (scheduler feature disabled), buildSignalInfra still
-	// returns a live store and watch index for the API, but the hub won't start.
-	signalStore, signalWatchIndex, signalShutdown := buildSignalInfra(
-		ctx, cfg, strategyRepo, polymarketAccountRepo, deps.LLMProvider, sched, logger,
+	// If the scheduler is nil (smoke / scheduler-disabled mode), Start is a no-op but
+	// the store and watch index are still wired into API deps for read endpoints.
+	clobURL := cfg.Brokers.Polymarket.CLOBURL
+	if clobURL == "" {
+		clobURL = "https://clob.polymarket.com"
+	}
+	var signalSources []signal.SignalSource
+	signalSources = append(signalSources,
+		signal.NewRSSSource(signal.DefaultRSSFeeds(), 60*time.Second, logger),
+		signal.NewRedditSource(signal.DefaultSubreddits(), 60*time.Second, logger),
+		signal.NewPolymarketSource(signal.PolymarketSourceConfig{
+			CLOBURL:               clobURL,
+			Interval:              10 * time.Minute,
+			PriceMoveThreshold:    0.05,
+			VolumeSpikeMultiplier: 3.0,
+		}, logger),
 	)
-	deps.SignalStore = signalStore
-	deps.WatchIndex = signalWatchIndex
+	if polymarketAccountRepo != nil {
+		signalSources = append(signalSources, signal.NewWhaleSource(signal.WhaleSourceConfig{
+			CLOBURL:      clobURL,
+			Interval:     30 * time.Second,
+			MinTradeUSDC: 5000,
+			MinWinRate:   0.65,
+		}, polymarketAccountRepo, logger))
+	}
+
+	var sigEvaluator *signal.Evaluator
+	if deps.LLMProvider != nil {
+		sigEvaluator = signal.NewEvaluator(deps.LLMProvider, cfg.LLM.QuickThinkModel, logger)
+	}
+
+	stratProvider := signal.NewStrategyProviderWithCache(
+		signal.NewRepositoryStrategyProvider(strategyRepo), 0,
+	)
+	sigOrch := signal.NewOrchestrator(
+		signal.OrchestratorConfig{
+			EventStoreSize: 200,
+			LLMEvaluator:   sigEvaluator,
+			Sources:        signalSources,
+		},
+		signal.OrchestratorDeps{
+			StrategyProvider: stratProvider,
+			StrategyLoader:   strategyRepo,
+			ThesisLoader:     strategyRepo,
+			Runner:           sched,
+			Logger:           logger,
+		},
+	)
+	if sched != nil {
+		if err := sigOrch.Start(ctx); err != nil {
+			logger.Warn("signal hub: failed to start", slog.Any("error", err))
+		} else {
+			logger.Info("signal intelligence: hub started", slog.Int("sources", len(signalSources)))
+		}
+	}
+	deps.SignalStore = sigOrch.Store()
+	deps.WatchIndex = sigOrch.WatchIndex()
+	signalShutdown := sigOrch.Stop
 
 	// Wire universe to API deps if not already set (non-discovery path).
 	if deps.Universe == nil && strings.TrimSpace(cfg.DataProviders.Polygon.APIKey) != "" {
@@ -577,6 +629,7 @@ func (r *smokeStrategyRunner) RunStrategy(ctx context.Context, strategy domain.S
 			Confidence:   state.TradingPlan.Confidence,
 			Rationale:    state.TradingPlan.Rationale,
 			RiskReward:   state.TradingPlan.RiskReward,
+			Side:         state.TradingPlan.Side,
 		},
 		strategy.ID,
 		run.ID,
@@ -865,8 +918,6 @@ func newSmokeRunner(
 		},
 	)
 }
-
-
 
 type smokeAnalysisAgent struct {
 	name   string

@@ -45,8 +45,8 @@ func NewIndicatorAnalystNode(bars []domain.OHLCV, startDate time.Time, logger *s
 }
 
 func (n *IndicatorAnalystNode) Name() string          { return "indicator_analyst" }
-func (n *IndicatorAnalystNode) Role() agent.AgentRole  { return agent.AgentRoleMarketAnalyst }
-func (n *IndicatorAnalystNode) Phase() agent.Phase     { return agent.PhaseAnalysis }
+func (n *IndicatorAnalystNode) Role() agent.AgentRole { return agent.AgentRoleMarketAnalyst }
+func (n *IndicatorAnalystNode) Phase() agent.Phase    { return agent.PhaseAnalysis }
 
 // Execute computes indicators from bars[:cursor+1] and populates state.Market.
 // If the cursor is exhausted (e.g., walk-forward reuse), it wraps back to the

@@ -4,24 +4,24 @@ import "time"
 
 // PolymarketAccount profiles a known Polymarket trader by wallet address.
 type PolymarketAccount struct {
-	Address                           string         `json:"address"`
-	DisplayName                       string         `json:"display_name,omitempty"`
-	FirstSeen                         time.Time      `json:"first_seen"`
-	LastActive                        *time.Time     `json:"last_active,omitempty"`
-	TotalTrades                       int            `json:"total_trades"`
-	TotalVolume                       float64        `json:"total_volume"`
-	MarketsEntered                    int            `json:"markets_entered"`
-	MarketsWon                        int            `json:"markets_won"`
-	MarketsLost                       int            `json:"markets_lost"`
-	WinRate                           float64        `json:"win_rate"`
-	CategoryStats                     map[string]any `json:"category_stats,omitempty"`
-	AvgPosition                       float64        `json:"avg_position"`
-	MaxPosition                       float64        `json:"max_position"`
-	AvgEntryHoursBeforeResolution     float64        `json:"avg_entry_hours_before_resolution,omitempty"`
-	EarlyEntryRate                    float64        `json:"early_entry_rate"`
-	Tags                              []string       `json:"tags,omitempty"`
-	Tracked                           bool           `json:"tracked"`
-	UpdatedAt                         time.Time      `json:"updated_at"`
+	Address                       string         `json:"address"`
+	DisplayName                   string         `json:"display_name,omitempty"`
+	FirstSeen                     time.Time      `json:"first_seen"`
+	LastActive                    *time.Time     `json:"last_active,omitempty"`
+	TotalTrades                   int            `json:"total_trades"`
+	TotalVolume                   float64        `json:"total_volume"`
+	MarketsEntered                int            `json:"markets_entered"`
+	MarketsWon                    int            `json:"markets_won"`
+	MarketsLost                   int            `json:"markets_lost"`
+	WinRate                       float64        `json:"win_rate"`
+	CategoryStats                 map[string]any `json:"category_stats,omitempty"`
+	AvgPosition                   float64        `json:"avg_position"`
+	MaxPosition                   float64        `json:"max_position"`
+	AvgEntryHoursBeforeResolution float64        `json:"avg_entry_hours_before_resolution,omitempty"`
+	EarlyEntryRate                float64        `json:"early_entry_rate"`
+	Tags                          []string       `json:"tags,omitempty"`
+	Tracked                       bool           `json:"tracked"`
+	UpdatedAt                     time.Time      `json:"updated_at"`
 }
 
 // PolymarketAccountTrade records a single trade by a known account.

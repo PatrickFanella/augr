@@ -675,8 +675,6 @@ func (r *Runner) currentTime() time.Time {
 	return r.now()
 }
 
-
-
 func (r *Runner) canonicalSignal(state *PipelineState) domain.PipelineSignal {
 	if state == nil {
 		return domain.PipelineSignalHold
@@ -769,4 +767,3 @@ func runtimeDebateTimeout(resolved ResolvedConfig) time.Duration {
 	}
 	return time.Duration(resolved.PipelineConfig.DebateTimeoutSeconds) * time.Second
 }
-

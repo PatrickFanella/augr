@@ -352,12 +352,12 @@ func TestRunnerRun_SeedsInitialStateBeforeAnalysis(t *testing.T) {
 	now := time.Date(2026, 4, 5, 14, 30, 0, 0, time.UTC)
 	prepped.InitialState = InitialStateSeed{
 		Market: &MarketData{
-			Bars: []domain.OHLCV{{Timestamp: now, Open: 100, High: 110, Low: 95, Close: 108, Volume: 2_500}},
+			Bars:       []domain.OHLCV{{Timestamp: now, Open: 100, High: 110, Low: 95, Close: 108, Volume: 2_500}},
 			Indicators: []domain.Indicator{{Name: "rsi_14", Value: 62.5, Timestamp: now}},
 		},
-		News: []data.NewsArticle{{Title: "AAPL rallies", Summary: "Revenue beats expectations.", PublishedAt: now, Sentiment: 0.8}},
+		News:         []data.NewsArticle{{Title: "AAPL rallies", Summary: "Revenue beats expectations.", PublishedAt: now, Sentiment: 0.8}},
 		Fundamentals: &data.Fundamentals{Ticker: "AAPL", MarketCap: 3_000_000_000_000, FetchedAt: now},
-		Social: &data.SocialSentiment{Ticker: "AAPL", Score: 0.71, MeasuredAt: now},
+		Social:       &data.SocialSentiment{Ticker: "AAPL", Score: 0.71, MeasuredAt: now},
 	}
 
 	if _, err := runner.Run(context.Background(), prepped); err != nil {

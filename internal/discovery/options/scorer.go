@@ -31,7 +31,7 @@ func DefaultOptionsScoringConfig() OptionsScoringConfig {
 
 // OptionsScoredCandidate is a screened ticker with options-specific scores.
 type OptionsScoredCandidate struct {
-	OptionsScreenResult        // embed
+	OptionsScreenResult // embed
 	IVRank              float64
 	IVPercentile        float64
 	ATMIV               float64
@@ -164,7 +164,7 @@ func chainMetrics(chain []domain.OptionSnapshot, close float64) (atmIV, putCallR
 	if callVol > 0 {
 		putCallRatio = putVol / callVol
 	}
-	return
+	return atmIV, putCallRatio
 }
 
 func normalize(v, lo, hi float64) float64 {

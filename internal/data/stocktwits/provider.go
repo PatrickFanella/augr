@@ -18,12 +18,12 @@ const (
 
 // TrendingSymbol is a trending ticker from StockTwits.
 type TrendingSymbol struct {
-	Symbol        string  `json:"symbol"`
-	Title         string  `json:"title"`
-	TrendingScore float64 `json:"trending_score"`
-	WatchlistCount int    `json:"watchlist_count"`
-	Sector        string  `json:"sector"`
-	Summary       string  // from trends.summary
+	Symbol         string  `json:"symbol"`
+	Title          string  `json:"title"`
+	TrendingScore  float64 `json:"trending_score"`
+	WatchlistCount int     `json:"watchlist_count"`
+	Sector         string  `json:"sector"`
+	Summary        string  // from trends.summary
 }
 
 // SymbolSentiment is the sentiment breakdown for a ticker.
@@ -62,12 +62,12 @@ func (c *Client) GetTrending(ctx context.Context) ([]TrendingSymbol, error) {
 
 	var resp struct {
 		Symbols []struct {
-			Symbol        string  `json:"symbol"`
-			Title         string  `json:"title"`
-			TrendingScore float64 `json:"trending_score"`
-			WatchlistCount int    `json:"watchlist_count"`
-			Sector        string  `json:"sector"`
-			Trends        struct {
+			Symbol         string  `json:"symbol"`
+			Title          string  `json:"title"`
+			TrendingScore  float64 `json:"trending_score"`
+			WatchlistCount int     `json:"watchlist_count"`
+			Sector         string  `json:"sector"`
+			Trends         struct {
 				Summary string `json:"summary"`
 			} `json:"trends"`
 		} `json:"symbols"`

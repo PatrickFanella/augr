@@ -291,8 +291,6 @@ func (p *Pipeline) executeAnalysisPhase(ctx context.Context, state *PipelineStat
 	return p.helper.persistAnalysisSnapshots(phaseCtx, state)
 }
 
-
-
 // executeTradingPhase runs the single registered Trader node. If no Trader
 // node is registered an error is returned immediately. On success an
 // AgentDecisionMade event is emitted (non-blocking). If config.PhaseTimeout
@@ -655,8 +653,6 @@ func (p *Pipeline) currentTime() time.Time {
 
 	return p.now()
 }
-
-
 
 func (p *Pipeline) decisionPayload(state *PipelineState, node Node, roundNumber *int) (string, *DecisionLLMResponse, error) {
 	if decision, ok := state.Decision(node.Role(), node.Phase(), roundNumber); ok {

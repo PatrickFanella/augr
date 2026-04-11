@@ -49,14 +49,14 @@ type DeployedStrategy struct {
 
 // DiscoveryResult summarises the pipeline execution.
 type DiscoveryResult struct {
-	Candidates int               `json:"candidates"`
-	Generated  int               `json:"generated"`
-	Swept      int               `json:"swept"`
-	Validated  int               `json:"validated"`
-	Deployed   int               `json:"deployed"`
+	Candidates int                `json:"candidates"`
+	Generated  int                `json:"generated"`
+	Swept      int                `json:"swept"`
+	Validated  int                `json:"validated"`
+	Deployed   int                `json:"deployed"`
 	Winners    []DeployedStrategy `json:"winners"`
-	Duration   time.Duration     `json:"duration"`
-	Errors     []string          `json:"errors,omitempty"`
+	Duration   time.Duration      `json:"duration"`
+	Errors     []string           `json:"errors,omitempty"`
 }
 
 // RunDiscovery executes the full autonomous strategy discovery pipeline.
@@ -312,4 +312,3 @@ func RunDiscovery(ctx context.Context, cfg DiscoveryConfig, deps DiscoveryDeps) 
 
 	return result, nil
 }
-

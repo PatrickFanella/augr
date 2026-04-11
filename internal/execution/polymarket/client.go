@@ -3,6 +3,8 @@ package polymarket
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,18 +17,20 @@ import (
 )
 
 const (
-	clobBaseURL    = "https://clob.polymarket.com"
-	defaultTimeout = 30 * time.Second
+	defaultAPIBaseURL     = "https://api.polymarket.us"
+	defaultGatewayBaseURL = "https://gateway.polymarket.us"
+	defaultTimeout        = 30 * time.Second
 )
 
-// Client is a small HTTP client for the Polymarket CLOB API.
+// Client is a small HTTP client for Polymarket US retail APIs.
 type Client struct {
-	baseURL    string
-	httpClient *http.Client
-	logger     *slog.Logger
-	apiKey     string
-	apiSecret  string
-	passphrase string
+	apiBaseURL     string
+	gatewayBaseURL string
+	httpClient     *http.Client
+	logger         *slog.Logger
+	keyID          string
+	secretKey      string
+	now            func() time.Time
 }
 
 // ErrorResponse captures Polymarket's standard error response shape.
@@ -36,22 +40,22 @@ type ErrorResponse struct {
 	statusCode int
 }
 
-// NewClient constructs a Polymarket CLOB HTTP client.
-// If logger is nil, slog.Default() is used.
-func NewClient(apiKey, apiSecret, passphrase string, logger *slog.Logger) *Client {
+// NewClient constructs a Polymarket US retail HTTP client.
+func NewClient(keyID, secretKey string, logger *slog.Logger) *Client {
 	if logger == nil {
 		logger = slog.Default()
 	}
 
 	return &Client{
-		apiKey:     strings.TrimSpace(apiKey),
-		apiSecret:  strings.TrimSpace(apiSecret),
-		passphrase: strings.TrimSpace(passphrase),
-		baseURL:    clobBaseURL,
+		keyID:          strings.TrimSpace(keyID),
+		secretKey:      strings.TrimSpace(secretKey),
+		apiBaseURL:     defaultAPIBaseURL,
+		gatewayBaseURL: defaultGatewayBaseURL,
 		httpClient: &http.Client{
 			Timeout: defaultTimeout,
 		},
 		logger: logger,
+		now:    time.Now,
 	}
 }
 
@@ -80,13 +84,22 @@ func (e *ErrorResponse) Error() string {
 	return fmt.Sprintf("polymarket: %s (status=%d)", message, e.statusCode)
 }
 
-// SetBaseURL overrides the configured base URL. This is primarily useful for testing.
-func (c *Client) SetBaseURL(baseURL string) {
+// SetAPIBaseURL overrides the configured authenticated API base URL.
+func (c *Client) SetAPIBaseURL(baseURL string) {
 	if c == nil {
 		return
 	}
 
-	c.baseURL = baseURL
+	c.apiBaseURL = strings.TrimSpace(baseURL)
+}
+
+// SetGatewayBaseURL overrides the configured public gateway base URL.
+func (c *Client) SetGatewayBaseURL(baseURL string) {
+	if c == nil {
+		return
+	}
+
+	c.gatewayBaseURL = strings.TrimSpace(baseURL)
 }
 
 // SetHTTPClient replaces the underlying HTTP client. This is primarily useful for testing.
@@ -115,36 +128,54 @@ func (c *Client) SetTimeout(timeout time.Duration) {
 	c.httpClient.Timeout = timeout
 }
 
-// Get issues a GET request and returns the raw response body.
+func (c *Client) setNowFunc(now func() time.Time) {
+	if c == nil || now == nil {
+		return
+	}
+
+	c.now = now
+}
+
+// GetPublic issues a public GET request against the gateway API.
+func (c *Client) GetPublic(ctx context.Context, requestPath string, params url.Values) ([]byte, error) {
+	return c.do(ctx, http.MethodGet, requestPath, params, nil, false)
+}
+
+// Get issues an authenticated GET request.
 func (c *Client) Get(ctx context.Context, requestPath string, params url.Values) ([]byte, error) {
-	return c.do(ctx, http.MethodGet, requestPath, params, nil)
+	return c.do(ctx, http.MethodGet, requestPath, params, nil, true)
 }
 
 // Post issues an authenticated POST request with a JSON body and returns the raw response body.
 func (c *Client) Post(ctx context.Context, requestPath string, body any) ([]byte, error) {
-	return c.do(ctx, http.MethodPost, requestPath, nil, body)
+	return c.do(ctx, http.MethodPost, requestPath, nil, body, true)
 }
 
-// Delete issues an authenticated DELETE request and returns the raw response body.
-func (c *Client) Delete(ctx context.Context, requestPath string, body any) ([]byte, error) {
-	return c.do(ctx, http.MethodDelete, requestPath, nil, body)
+func (c *Client) PostPublic(ctx context.Context, requestPath string, body any) ([]byte, error) {
+	return c.do(ctx, http.MethodPost, requestPath, nil, body, false)
 }
 
-func (c *Client) do(ctx context.Context, method, requestPath string, params url.Values, requestBody any) ([]byte, error) {
+func (c *Client) Delete(ctx context.Context, requestPath string) ([]byte, error) {
+	return c.do(ctx, http.MethodDelete, requestPath, nil, nil, true)
+}
+
+func (c *Client) do(ctx context.Context, method, requestPath string, params url.Values, requestBody any, authenticated bool) ([]byte, error) {
 	if c == nil {
 		return nil, errors.New("polymarket: client is nil")
 	}
-	if c.apiKey == "" {
-		return nil, errors.New("polymarket: api key is required")
-	}
-	if c.apiSecret == "" {
-		return nil, errors.New("polymarket: api secret is required")
+	if authenticated {
+		if c.keyID == "" {
+			return nil, errors.New("polymarket: key id is required")
+		}
+		if c.secretKey == "" {
+			return nil, errors.New("polymarket: secret key is required")
+		}
 	}
 
 	logger := c.getLogger()
 	httpClient := c.getHTTPClient()
 
-	requestURL, err := c.buildURL(requestPath, params)
+	requestURL, signingPath, err := c.buildURL(requestPath, params, authenticated)
 	if err != nil {
 		return nil, err
 	}
@@ -160,19 +191,24 @@ func (c *Client) do(ctx context.Context, method, requestPath string, params url.
 	}
 
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("POLY-ADDRESS", c.apiKey)
-	req.Header.Set("POLY-SIGNATURE", c.apiSecret)
-	if c.passphrase != "" {
-		req.Header.Set("POLY-PASSPHRASE", c.passphrase)
-	}
 	if requestBody != nil {
 		req.Header.Set("Content-Type", "application/json")
+	}
+	if authenticated {
+		headers, err := c.authHeaders(method, signingPath)
+		if err != nil {
+			return nil, err
+		}
+		for key, value := range headers {
+			req.Header.Set(key, value)
+		}
 	}
 
 	startedAt := time.Now()
 	logger.Debug("polymarket: sending request",
 		slog.String("method", req.Method),
 		slog.String("path", req.URL.Path),
+		slog.Bool("authenticated", authenticated),
 	)
 
 	resp, err := httpClient.Do(req)
@@ -229,20 +265,61 @@ func parseErrorResponse(statusCode int, body []byte) *ErrorResponse {
 		return errResp
 	}
 
-	if err := json.Unmarshal(body, errResp); err != nil {
-		errResp.Message = strings.TrimSpace(string(body))
+	var parsed struct {
+		Message string `json:"message"`
+		Error   string `json:"error"`
 	}
-	if strings.TrimSpace(errResp.Message) == "" {
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		errResp.Message = strings.TrimSpace(string(body))
+		return errResp
+	}
+	errResp.Message = strings.TrimSpace(parsed.Error)
+	if errResp.Message == "" {
+		errResp.Message = strings.TrimSpace(parsed.Message)
+	}
+	if errResp.Message == "" {
 		errResp.Message = strings.TrimSpace(string(body))
 	}
 
 	return errResp
 }
 
-func (c *Client) buildURL(requestPath string, params url.Values) (string, error) {
-	baseURL, err := url.Parse(c.baseURL)
+func (c *Client) authHeaders(method, signingPath string) (map[string]string, error) {
+	now := time.Now
+	if c.now != nil {
+		now = c.now
+	}
+	timestamp := fmt.Sprintf("%d", now().UnixMilli())
+	message := timestamp + strings.ToUpper(method) + signingPath
+
+	secretKeyBytes, err := base64.StdEncoding.DecodeString(c.secretKey)
 	if err != nil {
-		return "", fmt.Errorf("polymarket: parse base url: %w", err)
+		return nil, fmt.Errorf("polymarket: decode secret key: %w", err)
+	}
+	if len(secretKeyBytes) == 64 {
+		secretKeyBytes = secretKeyBytes[:32]
+	}
+	if len(secretKeyBytes) != ed25519.SeedSize {
+		return nil, fmt.Errorf("polymarket: secret key must decode to %d or 64 bytes, got %d", ed25519.SeedSize, len(secretKeyBytes))
+	}
+	privateKey := ed25519.NewKeyFromSeed(secretKeyBytes)
+	signature := ed25519.Sign(privateKey, []byte(message))
+
+	return map[string]string{
+		"X-PM-Access-Key": c.keyID,
+		"X-PM-Timestamp":  timestamp,
+		"X-PM-Signature":  base64.StdEncoding.EncodeToString(signature),
+	}, nil
+}
+
+func (c *Client) buildURL(requestPath string, params url.Values, authenticated bool) (string, string, error) {
+	base := c.gatewayBaseURL
+	if authenticated {
+		base = c.apiBaseURL
+	}
+	baseURL, err := url.Parse(base)
+	if err != nil {
+		return "", "", fmt.Errorf("polymarket: parse base url: %w", err)
 	}
 
 	baseURL.Path = joinPath(baseURL.Path, requestPath)
@@ -260,7 +337,15 @@ func (c *Client) buildURL(requestPath string, params url.Values) (string, error)
 	}
 	baseURL.RawQuery = query.Encode()
 
-	return baseURL.String(), nil
+	signingPath := baseURL.EscapedPath()
+	if signingPath == "" {
+		signingPath = "/"
+	}
+	if baseURL.RawQuery != "" {
+		signingPath += "?" + baseURL.RawQuery
+	}
+
+	return baseURL.String(), signingPath, nil
 }
 
 func joinPath(basePath, requestPath string) string {

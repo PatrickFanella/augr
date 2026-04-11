@@ -51,9 +51,9 @@ func TestParseOCC_Errors(t *testing.T) {
 	cases := []string{
 		"",
 		"short",
-		"241220C00150000",  // no root
+		"241220C00150000",            // no root
 		"TOOLONGROOT241220C00150000", // root > 6
-		"AAPL241220X00150000", // bad C/P
+		"AAPL241220X00150000",        // bad C/P
 	}
 	for _, sym := range cases {
 		t.Run(sym, func(t *testing.T) {

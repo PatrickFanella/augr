@@ -22,8 +22,8 @@ type Provider struct {
 var _ data.DataProvider = (*Provider)(nil)
 
 type historicalPriceResponse struct {
-	Symbol     string           `json:"symbol"`
-	Historical []historicalBar  `json:"historical"`
+	Symbol     string          `json:"symbol"`
+	Historical []historicalBar `json:"historical"`
 }
 
 type historicalBar struct {

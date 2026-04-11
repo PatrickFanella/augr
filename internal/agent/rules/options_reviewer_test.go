@@ -27,7 +27,7 @@ func testSpread() *domain.OptionSpread {
 				Side:           domain.OrderSideSell,
 				PositionIntent: domain.PositionIntentSellToOpen,
 				Ratio:          1,
-				Quantity:        1,
+				Quantity:       1,
 			},
 			{
 				Contract: domain.OptionContract{
@@ -41,7 +41,7 @@ func testSpread() *domain.OptionSpread {
 				Side:           domain.OrderSideBuy,
 				PositionIntent: domain.PositionIntentBuyToOpen,
 				Ratio:          1,
-				Quantity:        1,
+				Quantity:       1,
 			},
 		},
 		MaxRisk:   250,
@@ -58,7 +58,7 @@ func testChain() []domain.OptionSnapshot {
 				OptionType: domain.OptionTypePut, Strike: 140, Expiry: expiry, Multiplier: 100,
 			},
 			Greeks: domain.OptionGreeks{Delta: -0.25, Gamma: 0.03, Theta: -0.05, Vega: 0.12, IV: 0.32},
-			Bid: 2.10, Ask: 2.30, Mid: 2.20, Volume: 1200, OpenInterest: 8500,
+			Bid:    2.10, Ask: 2.30, Mid: 2.20, Volume: 1200, OpenInterest: 8500,
 		},
 		{
 			Contract: domain.OptionContract{
@@ -66,7 +66,7 @@ func testChain() []domain.OptionSnapshot {
 				OptionType: domain.OptionTypePut, Strike: 135, Expiry: expiry, Multiplier: 100,
 			},
 			Greeks: domain.OptionGreeks{Delta: -0.15, Gamma: 0.02, Theta: -0.03, Vega: 0.08, IV: 0.34},
-			Bid: 0.80, Ask: 0.95, Mid: 0.875, Volume: 900, OpenInterest: 6200,
+			Bid:    0.80, Ask: 0.95, Mid: 0.875, Volume: 900, OpenInterest: 6200,
 		},
 	}
 }

@@ -130,4 +130,9 @@ type Order struct {
 	ContractMultiplier float64         `json:"contract_multiplier,omitempty"`
 	PositionIntent     *PositionIntent `json:"position_intent,omitempty"`
 	LegGroupID         *uuid.UUID      `json:"leg_group_id,omitempty"`
+
+	// Prediction market fields. These are execution-only today and are not
+	// persisted in the current order storage schema.
+	PredictionSide   string `json:"prediction_side,omitempty"`
+	PolymarketIntent string `json:"polymarket_intent,omitempty"`
 }

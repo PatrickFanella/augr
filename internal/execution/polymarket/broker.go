@@ -13,39 +13,77 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/execution"
 )
 
-const defaultTimeInForce = "GTC"
+const defaultTimeInForce = "TIME_IN_FORCE_GOOD_TILL_CANCEL"
 
-// Broker implements the execution.Broker interface for Polymarket CLOB.
+// Broker implements the execution.Broker interface for Polymarket retail APIs.
 type Broker struct {
 	client *Client
 }
 
-type submitOrderRequest struct {
-	TokenID     string `json:"tokenID"`
-	Price       string `json:"price"`
-	Size        string `json:"size"`
-	Side        string `json:"side"`
-	TimeInForce string `json:"timeInForce"`
+type amount struct {
+	Value    string `json:"value"`
+	Currency string `json:"currency"`
 }
 
-type submitOrderResponse struct {
-	OrderID string `json:"orderID"`
-	Status  string `json:"status,omitempty"`
+type createOrderRequest struct {
+	MarketSlug string  `json:"marketSlug"`
+	Type       string  `json:"type"`
+	Price      *amount `json:"price,omitempty"`
+	Quantity   float64 `json:"quantity,omitempty"`
+	TIF        string  `json:"tif,omitempty"`
+	Intent     string  `json:"intent"`
 }
 
-type orderStatusResponse struct {
-	Status string `json:"status"`
+type createOrderResponse struct {
+	ID string `json:"id"`
 }
 
-type positionResponse struct {
-	Asset    string `json:"asset"`
-	Size     string `json:"size"`
-	AvgPrice string `json:"avgPrice"`
-	Outcome  string `json:"outcome"`
+type getOrderResponse struct {
+	Order retailOrder `json:"order"`
 }
 
-type accountBalanceResponse struct {
-	Balance string `json:"balance"`
+type retailOrder struct {
+	ID             string  `json:"id"`
+	MarketSlug     string  `json:"marketSlug"`
+	State          string  `json:"state"`
+	Intent         string  `json:"intent"`
+	Quantity       float64 `json:"quantity"`
+	CumQuantity    float64 `json:"cumQuantity"`
+	LeavesQuantity float64 `json:"leavesQuantity"`
+	Price          *amount `json:"price,omitempty"`
+	AvgPx          *amount `json:"avgPx,omitempty"`
+	MarketMetadata *struct {
+		Slug    string `json:"slug"`
+		Outcome string `json:"outcome"`
+	} `json:"marketMetadata,omitempty"`
+}
+
+type openOrdersResponse struct {
+	Orders []retailOrder `json:"orders"`
+}
+
+type accountBalancesResponse struct {
+	Balances []struct {
+		CurrentBalance float64 `json:"currentBalance"`
+		Currency       string  `json:"currency"`
+		BuyingPower    float64 `json:"buyingPower"`
+		AssetNotional  float64 `json:"assetNotional"`
+	} `json:"balances"`
+}
+
+type userPositionsResponse struct {
+	Positions map[string]userPosition `json:"positions"`
+}
+
+type userPosition struct {
+	NetPosition    string  `json:"netPosition"`
+	QtyAvailable   string  `json:"qtyAvailable"`
+	Cost           *amount `json:"cost,omitempty"`
+	MarketMetadata *struct {
+		Slug    string `json:"slug"`
+		Outcome string `json:"outcome"`
+		Title   string `json:"title"`
+	} `json:"marketMetadata,omitempty"`
 }
 
 // NewBroker constructs a Polymarket broker adapter.
@@ -53,9 +91,7 @@ func NewBroker(client *Client) *Broker {
 	return &Broker{client: client}
 }
 
-// SubmitOrder sends an order to Polymarket CLOB and returns the external order ID.
-// Only limit orders are supported on Polymarket. The Ticker field is used as the
-// token ID for the binary outcome market.
+// SubmitOrder sends an order to Polymarket retail APIs and returns the external order ID.
 func (b *Broker) SubmitOrder(ctx context.Context, order *domain.Order) (string, error) {
 	if b == nil || b.client == nil {
 		return "", errors.New("polymarket: broker client is required")
@@ -64,25 +100,26 @@ func (b *Broker) SubmitOrder(ctx context.Context, order *domain.Order) (string, 
 		return "", errors.New("polymarket: order is required")
 	}
 
-	request, err := mapSubmitOrderRequest(order)
+	request, err := mapCreateOrderRequest(order)
 	if err != nil {
 		return "", err
 	}
 
-	responseBody, err := b.client.Post(ctx, "/order", request)
+	responseBody, err := b.client.Post(ctx, "/v1/orders", request)
 	if err != nil {
 		return "", fmt.Errorf("polymarket: submit order: %w", err)
 	}
 
-	var response submitOrderResponse
+	var response createOrderResponse
 	if err := json.Unmarshal(responseBody, &response); err != nil {
 		return "", fmt.Errorf("polymarket: decode submit order response: %w", err)
 	}
-	if strings.TrimSpace(response.OrderID) == "" {
+	if strings.TrimSpace(response.ID) == "" {
 		return "", errors.New("polymarket: submit order response missing order id")
 	}
 
-	return response.OrderID, nil
+	order.PolymarketIntent = request.Intent
+	return response.ID, nil
 }
 
 // CancelOrder cancels an existing Polymarket order by external ID.
@@ -96,9 +133,7 @@ func (b *Broker) CancelOrder(ctx context.Context, externalID string) error {
 		return errors.New("polymarket: external order id is required")
 	}
 
-	if _, err := b.client.Delete(ctx, "/order", map[string]string{
-		"orderID": orderID,
-	}); err != nil {
+	if _, err := b.client.Post(ctx, "/v1/order/"+url.PathEscape(orderID)+"/cancel", map[string]string{}); err != nil {
 		return fmt.Errorf("polymarket: cancel order: %w", err)
 	}
 
@@ -116,17 +151,17 @@ func (b *Broker) GetOrderStatus(ctx context.Context, externalID string) (domain.
 		return "", errors.New("polymarket: external order id is required")
 	}
 
-	responseBody, err := b.client.Get(ctx, "/order/"+url.PathEscape(orderID), nil)
+	responseBody, err := b.client.Get(ctx, "/v1/order/"+url.PathEscape(orderID), nil)
 	if err != nil {
 		return "", fmt.Errorf("polymarket: get order status: %w", err)
 	}
 
-	var response orderStatusResponse
+	var response getOrderResponse
 	if err := json.Unmarshal(responseBody, &response); err != nil {
 		return "", fmt.Errorf("polymarket: decode order status response: %w", err)
 	}
 
-	status, err := mapOrderStatus(response.Status)
+	status, err := mapOrderStatus(response.Order.State)
 	if err != nil {
 		return "", err
 	}
@@ -135,25 +170,24 @@ func (b *Broker) GetOrderStatus(ctx context.Context, externalID string) (domain.
 }
 
 // GetPositions returns current Polymarket positions mapped to domain positions.
-// Polymarket positions are binary outcomes (Yes/No) tracked per token.
 func (b *Broker) GetPositions(ctx context.Context) ([]domain.Position, error) {
 	if b == nil || b.client == nil {
 		return nil, errors.New("polymarket: broker client is required")
 	}
 
-	responseBody, err := b.client.Get(ctx, "/positions", nil)
+	responseBody, err := b.client.Get(ctx, "/v1/portfolio/positions", nil)
 	if err != nil {
 		return nil, fmt.Errorf("polymarket: get positions: %w", err)
 	}
 
-	var response []positionResponse
+	var response userPositionsResponse
 	if err := json.Unmarshal(responseBody, &response); err != nil {
 		return nil, fmt.Errorf("polymarket: decode positions response: %w", err)
 	}
 
-	positions := make([]domain.Position, 0, len(response))
-	for _, apiPosition := range response {
-		position, err := mapPosition(apiPosition)
+	positions := make([]domain.Position, 0, len(response.Positions))
+	for slug, apiPosition := range response.Positions {
+		position, err := mapPosition(slug, apiPosition)
 		if err != nil {
 			return nil, err
 		}
@@ -169,117 +203,169 @@ func (b *Broker) GetAccountBalance(ctx context.Context) (execution.Balance, erro
 		return execution.Balance{}, errors.New("polymarket: broker client is required")
 	}
 
-	responseBody, err := b.client.Get(ctx, "/balance", nil)
+	responseBody, err := b.client.Get(ctx, "/v1/account/balances", nil)
 	if err != nil {
 		return execution.Balance{}, fmt.Errorf("polymarket: get account balance: %w", err)
 	}
 
-	var response accountBalanceResponse
+	var response accountBalancesResponse
 	if err := json.Unmarshal(responseBody, &response); err != nil {
 		return execution.Balance{}, fmt.Errorf("polymarket: decode account balance response: %w", err)
 	}
-
-	balance, err := parseRequiredFloat("balance", response.Balance)
-	if err != nil {
-		return execution.Balance{}, err
+	if len(response.Balances) == 0 {
+		return execution.Balance{}, errors.New("polymarket: account balance response missing balances")
 	}
 
+	balance := response.Balances[0]
 	return execution.Balance{
-		Currency:    "USDC",
-		Cash:        balance,
-		BuyingPower: balance,
-		Equity:      balance,
+		Currency:    strings.TrimSpace(balance.Currency),
+		Cash:        balance.CurrentBalance,
+		BuyingPower: balance.BuyingPower,
+		Equity:      balance.CurrentBalance + balance.AssetNotional,
 	}, nil
 }
 
-func mapSubmitOrderRequest(order *domain.Order) (submitOrderRequest, error) {
-	tokenID := strings.TrimSpace(order.Ticker)
-	if tokenID == "" {
-		return submitOrderRequest{}, errors.New("polymarket: order ticker (token ID) is required")
+func mapCreateOrderRequest(order *domain.Order) (createOrderRequest, error) {
+	marketSlug := strings.TrimSpace(order.Ticker)
+	if marketSlug == "" {
+		return createOrderRequest{}, errors.New("polymarket: order ticker (market slug) is required")
 	}
-
-	rawSide := strings.TrimSpace(order.Side.String())
-	if rawSide == "" {
-		return submitOrderRequest{}, errors.New("polymarket: order side is required")
-	}
-	side := strings.ToUpper(rawSide)
-	switch domain.OrderSide(strings.ToLower(side)) {
-	case domain.OrderSideBuy, domain.OrderSideSell:
-	default:
-		return submitOrderRequest{}, fmt.Errorf("polymarket: unsupported order side %q", order.Side)
-	}
-
 	if order.Quantity <= 0 {
-		return submitOrderRequest{}, errors.New("polymarket: order quantity must be greater than zero")
+		return createOrderRequest{}, errors.New("polymarket: order quantity must be greater than zero")
+	}
+
+	intent, err := resolveOrderIntent(order)
+	if err != nil {
+		return createOrderRequest{}, err
+	}
+
+	request := createOrderRequest{
+		MarketSlug: marketSlug,
+		Intent:     intent,
 	}
 
 	switch order.OrderType {
 	case domain.OrderTypeLimit:
 		if order.LimitPrice == nil {
-			return submitOrderRequest{}, errors.New("polymarket: limit order requires limit price")
+			return createOrderRequest{}, errors.New("polymarket: limit order requires limit price")
 		}
 		if *order.LimitPrice < 0 || *order.LimitPrice > 1 {
-			return submitOrderRequest{}, errors.New("polymarket: limit price must be between 0 and 1")
+			return createOrderRequest{}, errors.New("polymarket: limit price must be between 0 and 1")
 		}
+		request.Type = "ORDER_TYPE_LIMIT"
+		request.Price = &amount{Value: formatFloat(*order.LimitPrice), Currency: "USD"}
+		request.Quantity = order.Quantity
+		request.TIF = defaultTimeInForce
+	case domain.OrderTypeMarket:
+		request.Type = "ORDER_TYPE_MARKET"
+		request.Quantity = order.Quantity
 	default:
-		return submitOrderRequest{}, fmt.Errorf("polymarket: unsupported order type %q (only limit orders are supported)", order.OrderType)
+		return createOrderRequest{}, fmt.Errorf("polymarket: unsupported order type %q", order.OrderType)
 	}
 
-	return submitOrderRequest{
-		TokenID:     tokenID,
-		Price:       formatFloat(*order.LimitPrice),
-		Size:        formatFloat(order.Quantity),
-		Side:        side,
-		TimeInForce: defaultTimeInForce,
-	}, nil
+	return request, nil
+}
+
+func resolveOrderIntent(order *domain.Order) (string, error) {
+	if order == nil {
+		return "", errors.New("polymarket: order is required")
+	}
+	if strings.TrimSpace(order.PolymarketIntent) != "" {
+		return strings.TrimSpace(order.PolymarketIntent), nil
+	}
+
+	side := strings.ToLower(strings.TrimSpace(order.Side.String()))
+	predictionSide := strings.ToUpper(strings.TrimSpace(order.PredictionSide))
+	if predictionSide == "" {
+		return "", errors.New("polymarket: prediction side is required")
+	}
+
+	switch predictionSide {
+	case "YES":
+		switch side {
+		case string(domain.OrderSideBuy):
+			return "ORDER_INTENT_BUY_LONG", nil
+		case string(domain.OrderSideSell):
+			return "ORDER_INTENT_SELL_LONG", nil
+		}
+	case "NO":
+		switch side {
+		case string(domain.OrderSideBuy):
+			return "ORDER_INTENT_BUY_SHORT", nil
+		case string(domain.OrderSideSell):
+			return "ORDER_INTENT_SELL_SHORT", nil
+		}
+	default:
+		return "", fmt.Errorf("polymarket: unsupported prediction side %q", order.PredictionSide)
+	}
+
+	return "", fmt.Errorf("polymarket: unsupported order side %q", order.Side)
 }
 
 func mapOrderStatus(rawStatus string) (domain.OrderStatus, error) {
-	status := strings.ToLower(strings.TrimSpace(rawStatus))
+	status := strings.TrimSpace(rawStatus)
 	switch status {
 	case "":
 		return "", errors.New("polymarket: order status is required")
-	case "live", "delayed":
+	case "ORDER_STATE_PENDING_NEW", "ORDER_STATE_PENDING_REPLACE", "ORDER_STATE_PENDING_CANCEL", "ORDER_STATE_PENDING_RISK":
 		return domain.OrderStatusSubmitted, nil
-	case "matched":
+	case "ORDER_STATE_PARTIALLY_FILLED":
 		return domain.OrderStatusPartial, nil
-	case "filled":
+	case "ORDER_STATE_FILLED":
 		return domain.OrderStatusFilled, nil
-	case "cancelled":
+	case "ORDER_STATE_CANCELED", "ORDER_STATE_EXPIRED":
 		return domain.OrderStatusCancelled, nil
-	case "rejected":
+	case "ORDER_STATE_REJECTED":
 		return domain.OrderStatusRejected, nil
 	default:
 		return "", fmt.Errorf("polymarket: unsupported order status %q", rawStatus)
 	}
 }
 
-func mapPosition(response positionResponse) (domain.Position, error) {
-	asset := strings.TrimSpace(response.Asset)
-	if asset == "" {
-		return domain.Position{}, errors.New("polymarket: position asset is required")
+func mapPosition(slug string, response userPosition) (domain.Position, error) {
+	ticker := strings.TrimSpace(slug)
+	if ticker == "" && response.MarketMetadata != nil {
+		ticker = strings.TrimSpace(response.MarketMetadata.Slug)
+	}
+	if ticker == "" {
+		return domain.Position{}, errors.New("polymarket: position market slug is required")
 	}
 
-	size, err := parseRequiredFloat("size", response.Size)
+	quantityString := strings.TrimSpace(response.QtyAvailable)
+	if quantityString == "" {
+		quantityString = strings.TrimSpace(response.NetPosition)
+	}
+	quantity, err := parseRequiredFloat("netPosition", quantityString)
 	if err != nil {
 		return domain.Position{}, err
 	}
-
-	avgPrice, err := parseRequiredFloat("avgPrice", response.AvgPrice)
-	if err != nil {
-		return domain.Position{}, err
+	if quantity < 0 {
+		quantity = -quantity
 	}
 
-	outcome := strings.TrimSpace(response.Outcome)
-	ticker := asset
-	if outcome != "" {
-		ticker = asset + ":" + outcome
+	avgPrice := 0.0
+	if response.Cost != nil {
+		avgPrice, err = parseRequiredFloat("cost", response.Cost.Value)
+		if err != nil {
+			return domain.Position{}, err
+		}
+	}
+	if avgPrice <= 0 {
+		avgPrice = 0.5
+	}
+
+	positionSide := domain.PositionSideLong
+	if strings.TrimSpace(response.NetPosition) != "" {
+		netPosition, err := parseRequiredFloat("netPosition", response.NetPosition)
+		if err == nil && netPosition < 0 {
+			positionSide = domain.PositionSideShort
+		}
 	}
 
 	return domain.Position{
 		Ticker:   ticker,
-		Side:     domain.PositionSideLong,
-		Quantity: size,
+		Side:     positionSide,
+		Quantity: quantity,
 		AvgEntry: avgPrice,
 	}, nil
 }

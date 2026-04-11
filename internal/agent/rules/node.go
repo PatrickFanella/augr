@@ -34,8 +34,8 @@ func NewRulesTraderNode(config RulesEngineConfig, equity float64, journal *Trade
 }
 
 func (n *RulesTraderNode) Name() string          { return "rules_trader" }
-func (n *RulesTraderNode) Role() agent.AgentRole  { return agent.AgentRoleTrader }
-func (n *RulesTraderNode) Phase() agent.Phase     { return agent.PhaseTrading }
+func (n *RulesTraderNode) Role() agent.AgentRole { return agent.AgentRoleTrader }
+func (n *RulesTraderNode) Phase() agent.Phase    { return agent.PhaseTrading }
 
 // Execute evaluates rules against the current bar's indicators and writes a
 // TradingPlan to state.

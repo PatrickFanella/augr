@@ -24,10 +24,12 @@ func (o *JobOrchestrator) registerOvernightJobs() {
 
 var optionsDiscoverySpec = scheduler.ScheduleSpec{Type: scheduler.ScheduleTypeCron, Cron: "30 3 * * 2-6", SkipWeekends: false, SkipHolidays: false}
 
-var overnightBacktestSpec = scheduler.ScheduleSpec{Type: scheduler.ScheduleTypeCron, Cron: "0 1 * * 2-6", SkipWeekends: false, SkipHolidays: false}
-var overnightSweepSpec = scheduler.ScheduleSpec{Type: scheduler.ScheduleTypeCron, Cron: "0 2 * * 2-6", SkipWeekends: false, SkipHolidays: false}
-var overnightGenerateSpec = scheduler.ScheduleSpec{Type: scheduler.ScheduleTypeCron, Cron: "0 3 * * 2-6", SkipWeekends: false, SkipHolidays: false}
-var historyRefreshSpec = scheduler.ScheduleSpec{Type: scheduler.ScheduleTypeCron, Cron: "0 4 * * 2-6", SkipWeekends: false, SkipHolidays: false}
+var (
+	overnightBacktestSpec = scheduler.ScheduleSpec{Type: scheduler.ScheduleTypeCron, Cron: "0 1 * * 2-6", SkipWeekends: false, SkipHolidays: false}
+	overnightSweepSpec    = scheduler.ScheduleSpec{Type: scheduler.ScheduleTypeCron, Cron: "0 2 * * 2-6", SkipWeekends: false, SkipHolidays: false}
+	overnightGenerateSpec = scheduler.ScheduleSpec{Type: scheduler.ScheduleTypeCron, Cron: "0 3 * * 2-6", SkipWeekends: false, SkipHolidays: false}
+	historyRefreshSpec    = scheduler.ScheduleSpec{Type: scheduler.ScheduleTypeCron, Cron: "0 4 * * 2-6", SkipWeekends: false, SkipHolidays: false}
+)
 
 // overnightBacktest runs the full discovery pipeline on the top 50
 // watchlist tickers with 5 years of history.
@@ -374,10 +376,10 @@ func (o *JobOrchestrator) optionsDiscovery(ctx context.Context) error {
 		Screener: optdiscovery.OptionsScreenerConfig{
 			Tickers: tickers,
 		},
-		Scoring:    optdiscovery.DefaultOptionsScoringConfig(),
-		Generator:  discovery.GeneratorConfig{Provider: o.deps.LLMProvider},
+		Scoring:     optdiscovery.DefaultOptionsScoringConfig(),
+		Generator:   discovery.GeneratorConfig{Provider: o.deps.LLMProvider},
 		BacktestCfg: discovery.DefaultScoringConfig(),
-		MaxWinners: 3,
+		MaxWinners:  3,
 	}
 
 	deps := optdiscovery.OptionsDiscoveryDeps{

@@ -8,12 +8,12 @@ import (
 
 // EngineStatus describes the current aggregate status of the risk system.
 type EngineStatus struct {
-	RiskStatus          domain.RiskStatus              `json:"risk_status"`
-	CircuitBreaker      CircuitBreakerStatus            `json:"circuit_breaker"`
-	KillSwitch          KillSwitchStatus                `json:"kill_switch"`
-	MarketKillSwitches  map[domain.MarketType]KillSwitchStatus `json:"market_kill_switches,omitempty"`
-	PositionLimits      PositionLimits                  `json:"position_limits"`
-	UpdatedAt           time.Time                       `json:"updated_at"`
+	RiskStatus         domain.RiskStatus                      `json:"risk_status"`
+	CircuitBreaker     CircuitBreakerStatus                   `json:"circuit_breaker"`
+	KillSwitch         KillSwitchStatus                       `json:"kill_switch"`
+	MarketKillSwitches map[domain.MarketType]KillSwitchStatus `json:"market_kill_switches,omitempty"`
+	PositionLimits     PositionLimits                         `json:"position_limits"`
+	UpdatedAt          time.Time                              `json:"updated_at"`
 }
 
 // CircuitBreakerPhase defines whether trading is allowed or temporarily halted.

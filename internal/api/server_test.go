@@ -2100,6 +2100,7 @@ func (stubDecisionRepo) Create(context.Context, *domain.AgentDecision) error { r
 func (s *stubDecisionRepo) GetByRun(_ context.Context, _ uuid.UUID, _ repository.AgentDecisionFilter, _, _ int) ([]domain.AgentDecision, error) {
 	return s.decisions, nil
 }
+
 func (s *stubDecisionRepo) CountByRun(_ context.Context, _ uuid.UUID, _ repository.AgentDecisionFilter) (int, error) {
 	return len(s.decisions), nil
 }
@@ -2148,9 +2149,11 @@ func (stubPositionRepo) GetOpen(context.Context, repository.PositionFilter, int,
 func (stubPositionRepo) GetByStrategy(context.Context, uuid.UUID, repository.PositionFilter, int, int) ([]domain.Position, error) {
 	return nil, nil
 }
+
 func (stubPositionRepo) Count(context.Context, repository.PositionFilter) (int, error) {
 	return 0, nil
 }
+
 func (stubPositionRepo) CountOpen(context.Context, repository.PositionFilter) (int, error) {
 	return 0, nil
 }
@@ -2268,13 +2271,21 @@ func (b *blockingHealthCheck) Check(ctx context.Context) error {
 	return ctx.Err()
 }
 
-func (stubRiskEngine) IsKillSwitchActive(context.Context) (bool, error)                                   { return false, nil }
-func (stubRiskEngine) ActivateKillSwitch(context.Context, string) error                                   { return nil }
-func (stubRiskEngine) DeactivateKillSwitch(context.Context) error                                         { return nil }
-func (stubRiskEngine) UpdateMetrics(context.Context, float64, float64, int) error                         { return nil }
-func (stubRiskEngine) IsMarketKillSwitchActive(_ context.Context, _ domain.MarketType) (bool, error)     { return false, nil }
-func (stubRiskEngine) ActivateMarketKillSwitch(_ context.Context, _ domain.MarketType, _ string) error  { return nil }
-func (stubRiskEngine) DeactivateMarketKillSwitch(_ context.Context, _ domain.MarketType) error          { return nil }
+func (stubRiskEngine) IsKillSwitchActive(context.Context) (bool, error)           { return false, nil }
+func (stubRiskEngine) ActivateKillSwitch(context.Context, string) error           { return nil }
+func (stubRiskEngine) DeactivateKillSwitch(context.Context) error                 { return nil }
+func (stubRiskEngine) UpdateMetrics(context.Context, float64, float64, int) error { return nil }
+func (stubRiskEngine) IsMarketKillSwitchActive(_ context.Context, _ domain.MarketType) (bool, error) {
+	return false, nil
+}
+
+func (stubRiskEngine) ActivateMarketKillSwitch(_ context.Context, _ domain.MarketType, _ string) error {
+	return nil
+}
+
+func (stubRiskEngine) DeactivateMarketKillSwitch(_ context.Context, _ domain.MarketType) error {
+	return nil
+}
 
 // ---------------------------------------------------------------------------
 // Stubs for new repository dependencies
@@ -2906,6 +2917,7 @@ func (s *stubBacktestConfigRepo) Create(_ context.Context, c *domain.BacktestCon
 	s.items[c.ID] = c
 	return nil
 }
+
 func (s *stubBacktestConfigRepo) Get(_ context.Context, id uuid.UUID) (*domain.BacktestConfig, error) {
 	c, ok := s.items[id]
 	if !ok {
@@ -2913,12 +2925,15 @@ func (s *stubBacktestConfigRepo) Get(_ context.Context, id uuid.UUID) (*domain.B
 	}
 	return c, nil
 }
+
 func (s *stubBacktestConfigRepo) List(_ context.Context, _ repository.BacktestConfigFilter, _, _ int) ([]domain.BacktestConfig, error) {
 	return nil, nil
 }
+
 func (s *stubBacktestConfigRepo) Count(_ context.Context, _ repository.BacktestConfigFilter) (int, error) {
 	return 0, nil
 }
+
 func (s *stubBacktestConfigRepo) Update(_ context.Context, c *domain.BacktestConfig) error {
 	if _, ok := s.items[c.ID]; !ok {
 		return fmt.Errorf("backtest config %v: %w", c.ID, repository.ErrNotFound)
@@ -2926,6 +2941,7 @@ func (s *stubBacktestConfigRepo) Update(_ context.Context, c *domain.BacktestCon
 	s.items[c.ID] = c
 	return nil
 }
+
 func (s *stubBacktestConfigRepo) Delete(_ context.Context, id uuid.UUID) error {
 	delete(s.items, id)
 	return nil

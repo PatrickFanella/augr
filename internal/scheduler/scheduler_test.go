@@ -82,11 +82,15 @@ func (m *mockStrategyRepo) Update(_ context.Context, s *domain.Strategy) error {
 	return nil
 }
 
-func (m *mockStrategyRepo) Delete(context.Context, uuid.UUID) error                        { return nil }
+func (m *mockStrategyRepo) Delete(context.Context, uuid.UUID) error { return nil }
 func (m *mockStrategyRepo) Count(_ context.Context, _ repository.StrategyFilter) (int, error) {
 	return 0, nil
 }
-func (m *mockStrategyRepo) UpdateThesis(context.Context, uuid.UUID, json.RawMessage) error { return nil }
+
+func (m *mockStrategyRepo) UpdateThesis(context.Context, uuid.UUID, json.RawMessage) error {
+	return nil
+}
+
 func (m *mockStrategyRepo) GetThesisRaw(_ context.Context, _ uuid.UUID) (json.RawMessage, error) {
 	return nil, nil
 }
@@ -130,10 +134,10 @@ func (m *mockPipeline) firstContext() (context.Context, bool) {
 }
 
 type mockStrategyExecutor struct {
-	mu         sync.Mutex
-	calls      []domain.Strategy
-	err        error
-	contexts   []context.Context
+	mu       sync.Mutex
+	calls    []domain.Strategy
+	err      error
+	contexts []context.Context
 }
 
 func (m *mockStrategyExecutor) execute(ctx context.Context, strategy domain.Strategy) error {
@@ -318,13 +322,15 @@ func (m *mockRiskEngine) ActivateKillSwitch(context.Context, string) error { ret
 
 func (m *mockRiskEngine) DeactivateKillSwitch(context.Context) error { return nil }
 
-func (m *mockRiskEngine) UpdateMetrics(context.Context, float64, float64, int) error        { return nil }
+func (m *mockRiskEngine) UpdateMetrics(context.Context, float64, float64, int) error { return nil }
 func (m *mockRiskEngine) IsMarketKillSwitchActive(_ context.Context, _ domain.MarketType) (bool, error) {
 	return false, nil
 }
+
 func (m *mockRiskEngine) ActivateMarketKillSwitch(_ context.Context, _ domain.MarketType, _ string) error {
 	return nil
 }
+
 func (m *mockRiskEngine) DeactivateMarketKillSwitch(_ context.Context, _ domain.MarketType) error {
 	return nil
 }

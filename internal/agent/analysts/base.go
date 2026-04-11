@@ -27,8 +27,8 @@ type BaseAnalystConfig struct {
 	Name              string
 	SystemPrompt      string
 	BuildPrompt       PromptBuilder
-	SkipMessage       string                                       // message stored when shouldCall=false
-	BuildSystemPrompt func(input agent.AnalysisInput) string       // optional; overrides SystemPrompt per call
+	SkipMessage       string                                 // message stored when shouldCall=false
+	BuildSystemPrompt func(input agent.AnalysisInput) string // optional; overrides SystemPrompt per call
 }
 
 // BaseAnalyst holds the common dependencies and Execute logic shared by all

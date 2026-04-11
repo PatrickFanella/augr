@@ -9,13 +9,13 @@ import (
 
 // OptionsSnapshot extends Snapshot with options-specific fields.
 type OptionsSnapshot struct {
-	Snapshot                   // embed underlying indicator snapshot
-	IVRank         float64    // IV rank (0-100)
-	IVPercentile   float64    // IV percentile (0-100)
-	ATMImpliedVol  float64    // at-the-money IV
-	PutCallRatio   float64    // volume put/call ratio
-	DTE            int        // days to expiry of current position (0 if flat)
-	PositionPnLPct float64   // current position P&L % (0 if flat)
+	Snapshot               // embed underlying indicator snapshot
+	IVRank         float64 // IV rank (0-100)
+	IVPercentile   float64 // IV percentile (0-100)
+	ATMImpliedVol  float64 // at-the-money IV
+	PutCallRatio   float64 // volume put/call ratio
+	DTE            int     // days to expiry of current position (0 if flat)
+	PositionPnLPct float64 // current position P&L % (0 if flat)
 }
 
 // NewOptionsSnapshot builds an OptionsSnapshot from underlying indicators, an
@@ -74,13 +74,13 @@ func NewOptionsSnapshot(snap Snapshot, chain []domain.OptionSnapshot, pos *OpenP
 
 	// Write derived values back into the embedded Values map so the generic
 	// EvaluateGroup / EvaluateCondition can reference them.
-	os.Snapshot.Values["atm_iv"] = os.ATMImpliedVol
-	os.Snapshot.Values["put_call_ratio"] = os.PutCallRatio
-	os.Snapshot.Values["iv_rank"] = os.IVRank
-	os.Snapshot.Values["iv_percentile"] = os.IVPercentile
+	os.Values["atm_iv"] = os.ATMImpliedVol
+	os.Values["put_call_ratio"] = os.PutCallRatio
+	os.Values["iv_rank"] = os.IVRank
+	os.Values["iv_percentile"] = os.IVPercentile
 	if pos != nil {
-		os.Snapshot.Values["dte"] = float64(os.DTE)
-		os.Snapshot.Values["pnl_pct"] = os.PositionPnLPct
+		os.Values["dte"] = float64(os.DTE)
+		os.Values["pnl_pct"] = os.PositionPnLPct
 	}
 
 	return os

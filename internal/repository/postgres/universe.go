@@ -83,8 +83,8 @@ func (r *UniverseRepo) upsertChunk(ctx context.Context, tickers []universe.Track
 		if i > 0 {
 			b.WriteString(", ")
 		}
-		b.WriteString(fmt.Sprintf("($%d, $%d, $%d, $%d, $%d, $%d, $%d)",
-			argIdx+1, argIdx+2, argIdx+3, argIdx+4, argIdx+5, argIdx+6, argIdx+7))
+		fmt.Fprintf(&b, "($%d, $%d, $%d, $%d, $%d, $%d, $%d)",
+			argIdx+1, argIdx+2, argIdx+3, argIdx+4, argIdx+5, argIdx+6, argIdx+7)
 		args = append(args, t.Ticker, t.Name, t.Exchange, t.IndexGroup, t.WatchScore, t.LastScanned, t.Active)
 		argIdx += 7
 	}

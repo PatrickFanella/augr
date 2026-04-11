@@ -85,9 +85,9 @@ type TradingPlanOutput struct {
 	// Polymarket-only: the token side the plan is acting on.
 	Side string `json:"side,omitempty"`
 	// Thesis fields — populated alongside the trading plan.
-	WatchTerms            []string `json:"watch_terms,omitempty"`
-	ThesisSummary         string   `json:"thesis_summary,omitempty"`
-	Conviction            float64  `json:"conviction,omitempty"`
+	WatchTerms             []string `json:"watch_terms,omitempty"`
+	ThesisSummary          string   `json:"thesis_summary,omitempty"`
+	Conviction             float64  `json:"conviction,omitempty"`
 	InvalidationConditions []string `json:"invalidation_conditions,omitempty"`
 }
 

@@ -223,7 +223,7 @@ func scoreFromSnapshot(changePct, todayVol, prevVol, closePrice float64) float64
 	}
 
 	momentum := math.Abs(changePct)
-	volSurge := math.Log1p(math.Max(0, volRatio-1)) // only reward above-average volume
+	volSurge := math.Log1p(math.Max(0, volRatio-1))           // only reward above-average volume
 	dollarVol := math.Log10(math.Max(1, closePrice*todayVol)) // log10 of dollar volume
 
 	// Weights: liquidity matters most, then momentum, then volume surge.

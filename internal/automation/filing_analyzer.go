@@ -28,8 +28,8 @@ Respond with JSON only:
 }`
 
 const (
-	filingMaxTextLen = 15000
-	filingUserAgent  = "get-rich-quick admin@example.com"
+	filingMaxTextLen   = 15000
+	filingUserAgent    = "get-rich-quick admin@example.com"
 	filingFetchTimeout = 15 * time.Second
 )
 

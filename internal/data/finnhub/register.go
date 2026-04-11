@@ -1,7 +1,6 @@
 package finnhub
 
 import (
-	"log/slog"
 	"time"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/data"
@@ -9,14 +8,14 @@ import (
 
 // Register adds the Finnhub provider factory to the given registry.
 func Register(reg *data.ProviderRegistry) {
-	reg.Finnhub = func(apiKey string, rateLimitPerMinute int, logger *slog.Logger) data.DataProvider {
+	reg.Finnhub = func(cfg data.ProviderConfig) data.DataProvider {
 		var limiters []*data.RateLimiter
-		if rateLimitPerMinute > 0 {
-			limiters = append(limiters, data.NewRateLimiter(rateLimitPerMinute, time.Minute))
+		if cfg.RateLimitPerMinute > 0 {
+			limiters = append(limiters, data.NewRateLimiter(cfg.RateLimitPerMinute, time.Minute))
 		}
 		if gl := data.GetGlobalLimiter(); gl != nil {
 			limiters = append(limiters, gl)
 		}
-		return NewProvider(NewClient(apiKey, logger, limiters...))
+		return NewProvider(NewClient(cfg.APIKey, cfg.Logger, limiters...))
 	}
 }

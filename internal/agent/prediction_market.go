@@ -8,10 +8,10 @@ import "time"
 // of a single pipeline run.
 type PredictionMarketData struct {
 	// Market identity
-	Slug               string  // market slug (= strategy ticker)
-	Question           string  // "Will X happen by Y date?"
-	Description        string  // full market description
-	ResolutionCriteria string  // how the market resolves
+	Slug               string // market slug (= strategy ticker)
+	Question           string // "Will X happen by Y date?"
+	Description        string // full market description
+	ResolutionCriteria string // how the market resolves
 
 	// Resolution
 	EndDate          *time.Time // when the market closes

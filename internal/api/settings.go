@@ -33,9 +33,9 @@ type SettingsService interface {
 
 // SettingsResponse is the API payload returned to the settings page.
 type SettingsResponse struct {
-	LLM    LLMSettingsResponse  `json:"llm"`
-	Risk   domain.RiskSettings  `json:"risk"`
-	System SystemInfo           `json:"system"`
+	LLM    LLMSettingsResponse `json:"llm"`
+	Risk   domain.RiskSettings `json:"risk"`
+	System SystemInfo          `json:"system"`
 }
 
 // LLMSettingsResponse contains provider configuration and model selection state.
@@ -48,11 +48,11 @@ type LLMSettingsResponse struct {
 
 // LLMProvidersResponse groups provider-specific settings.
 type LLMProvidersResponse struct {
-	OpenAI     LLMProviderResponse `json:"openai"`
-	Anthropic  LLMProviderResponse `json:"anthropic"`
-	Google     LLMProviderResponse `json:"google"`
-	OpenRouter LLMProviderResponse `json:"openrouter"`
-	XAI        LLMProviderResponse `json:"xai"`
+	OpenAI     LLMProviderResponse   `json:"openai"`
+	Anthropic  LLMProviderResponse   `json:"anthropic"`
+	Google     LLMProviderResponse   `json:"google"`
+	OpenRouter LLMProviderResponse   `json:"openrouter"`
+	XAI        LLMProviderResponse   `json:"xai"`
 	Ollama     domain.OllamaSettings `json:"ollama"`
 }
 

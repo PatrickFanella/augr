@@ -79,10 +79,10 @@ func TestMapChainResult_MidpointFallback(t *testing.T) {
 	t.Parallel()
 	r := optionsChainResult{
 		Details: &optionsChainDetails{
-			Ticker:       "O:SPY251219P00650000",
-			ContractType: "put",
+			Ticker:         "O:SPY251219P00650000",
+			ContractType:   "put",
 			ExpirationDate: "2025-12-19",
-			StrikePrice:  650,
+			StrikePrice:    650,
 		},
 		LastQuote: &optionsChainQuote{Bid: 10.0, Ask: 12.0, Midpoint: 0},
 	}

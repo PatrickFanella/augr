@@ -261,7 +261,7 @@ func spreadRiskReward(spread *domain.OptionSpread, netPremium float64) (maxProfi
 	if maxRisk < 0 {
 		maxRisk = math.Abs(netPremium)
 	}
-	return
+	return maxProfit, maxRisk
 }
 
 // checkManagement evaluates automated management rules.

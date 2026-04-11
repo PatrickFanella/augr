@@ -23,9 +23,11 @@ func (o *JobOrchestrator) registerPostMarketJobs() {
 	o.Register("options_scan", "Scan options chains for next-day setups", optionsScanSpec, o.optionsScan)
 }
 
-var dailyReviewSpec = scheduler.ScheduleSpec{Type: scheduler.ScheduleTypeAfterHours, Cron: "30 20 * * 1-5", SkipWeekends: true, SkipHolidays: true}
-var strategyResweepSpec = scheduler.ScheduleSpec{Type: scheduler.ScheduleTypeAfterHours, Cron: "0 21 * * 1-5", SkipWeekends: true, SkipHolidays: true}
-var optionsScanSpec = scheduler.ScheduleSpec{Type: scheduler.ScheduleTypeAfterHours, Cron: "0 22 * * 1-5", SkipWeekends: true, SkipHolidays: true}
+var (
+	dailyReviewSpec     = scheduler.ScheduleSpec{Type: scheduler.ScheduleTypeAfterHours, Cron: "30 20 * * 1-5", SkipWeekends: true, SkipHolidays: true}
+	strategyResweepSpec = scheduler.ScheduleSpec{Type: scheduler.ScheduleTypeAfterHours, Cron: "0 21 * * 1-5", SkipWeekends: true, SkipHolidays: true}
+	optionsScanSpec     = scheduler.ScheduleSpec{Type: scheduler.ScheduleTypeAfterHours, Cron: "0 22 * * 1-5", SkipWeekends: true, SkipHolidays: true}
+)
 
 // dailyReview checks all active strategies' pipeline runs from today
 // and logs a summary per strategy.

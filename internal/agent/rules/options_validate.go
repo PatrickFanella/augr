@@ -29,9 +29,9 @@ var knownStrategyTypes = map[domain.OptionStrategyType]bool{
 
 // knownOptionsSizingMethods enumerates valid sizing methods for options.
 var knownOptionsSizingMethods = map[string]bool{
-	"max_risk":         true,
-	"fixed_contracts":  true,
-	"premium_budget":   true,
+	"max_risk":        true,
+	"fixed_contracts": true,
+	"premium_budget":  true,
 }
 
 // ValidateOptions checks that an OptionsRulesConfig is well-formed.

@@ -17,16 +17,16 @@ import (
 // watched prediction markets, emitting RawSignalEvents when YES price moves
 // exceed a threshold or volume spikes beyond a rolling average multiplier.
 type PolymarketSource struct {
-	clobURL              string
-	client               *http.Client
-	interval             time.Duration
-	priceMoveThreshold   float64 // emit if |ΔpYES| >= this (e.g. 0.05 = 5pp)
+	clobURL               string
+	client                *http.Client
+	interval              time.Duration
+	priceMoveThreshold    float64 // emit if |ΔpYES| >= this (e.g. 0.05 = 5pp)
 	volumeSpikeMultiplier float64 // emit if vol > multiplier * rolling avg
-	logger               *slog.Logger
+	logger                *slog.Logger
 
-	mu       sync.Mutex
-	markets  []string // watched market slugs
-	state    map[string]*marketState
+	mu      sync.Mutex
+	markets []string // watched market slugs
+	state   map[string]*marketState
 }
 
 type marketState struct {

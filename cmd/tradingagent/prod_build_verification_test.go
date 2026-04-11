@@ -24,7 +24,7 @@ func TestProductionBuildVerificationScriptContainsExpectedSteps(t *testing.T) {
 		`find "${ROOT_DIR}/migrations" -maxdepth 1 -type f -name '*.up.sql' -printf '%f\n' | sort`,
 		`compose exec -T postgres`,
 		`wget -qO- http://127.0.0.1:8080/healthz`,
-		`"status") == "all-ok"`,
+		`"status") == "ok" and body.get("db") == "ok" and body.get("redis") == "ok"`,
 		`Authorization: Bearer ${AUTH_TOKEN}`,
 		`http://127.0.0.1:8080/api/v1/strategies`,
 	} {

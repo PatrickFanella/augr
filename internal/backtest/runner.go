@@ -57,15 +57,15 @@ type ExitReviewFunc func(ctx context.Context, pos *rules.OpenPosition, state *ag
 // advances the simulated clock, feeds each bar to the BrokerAdapter, executes
 // the full analysis pipeline, and records equity snapshots.
 type Runner struct {
-	config       RunnerConfig
-	pipeline     *agent.Pipeline
-	broker       *BrokerAdapter
-	tracker      *PositionTracker
-	replay       *ReplayIterator
-	entryReview  EntryReviewFunc
-	exitReview   ExitReviewFunc
-	journal      *rules.TradeJournal
-	logger       *slog.Logger
+	config      RunnerConfig
+	pipeline    *agent.Pipeline
+	broker      *BrokerAdapter
+	tracker     *PositionTracker
+	replay      *ReplayIterator
+	entryReview EntryReviewFunc
+	exitReview  ExitReviewFunc
+	journal     *rules.TradeJournal
+	logger      *slog.Logger
 }
 
 // NewRunner constructs a Runner from the given configuration, historical bars,

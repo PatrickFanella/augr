@@ -33,14 +33,14 @@ var ErrHistoricalOHLCVUnavailable = errors.New("data: historical ohlcv repositor
 // Pass an explicit registry to NewDataService instead of relying on init()-time
 // global registration.
 type ProviderRegistry struct {
-	Polygon      func(apiKey string, logger *slog.Logger) DataProvider
-	AlphaVantage func(apiKey string, rateLimitPerMinute int, logger *slog.Logger) DataProvider
-	Finnhub      func(apiKey string, rateLimitPerMinute int, logger *slog.Logger) DataProvider
-	FMP          func(apiKey string, rateLimitPerMinute int, logger *slog.Logger) DataProvider
-	NewsAPI      func(apiKey string, logger *slog.Logger) DataProvider
-	Yahoo        func(logger *slog.Logger) DataProvider
-	Binance      func(logger *slog.Logger) DataProvider
-	Polymarket   func(clobURL string, logger *slog.Logger) DataProvider
+	Polygon      ProviderFactory
+	AlphaVantage ProviderFactory
+	Finnhub      ProviderFactory
+	FMP          ProviderFactory
+	NewsAPI      ProviderFactory
+	Yahoo        ProviderFactory
+	Binance      ProviderFactory
+	Polymarket   ProviderFactory
 }
 
 // NewProviderRegistry returns an empty registry. Callers should populate the
@@ -51,14 +51,14 @@ func NewProviderRegistry() *ProviderRegistry {
 
 // DataService wraps market-data provider chains with cache lookups and writes.
 type DataService struct {
-	stockChain       DataProvider
-	cryptoChain      DataProvider
-	polymarketChain  DataProvider
-	cacheRepo        repository.MarketDataCacheRepository
-	historyRepo      repository.HistoricalOHLCVRepository
-	logger           *slog.Logger
-	nowMu            sync.RWMutex
-	now              func() time.Time
+	stockChain      DataProvider
+	cryptoChain     DataProvider
+	polymarketChain DataProvider
+	cacheRepo       repository.MarketDataCacheRepository
+	historyRepo     repository.HistoricalOHLCVRepository
+	logger          *slog.Logger
+	nowMu           sync.RWMutex
+	now             func() time.Time
 }
 
 // NewDataService constructs provider chains for each supported market type and
@@ -81,32 +81,32 @@ func NewDataService(cfg config.Config, reg *ProviderRegistry, cacheRepo reposito
 	//   - AlphaVantage free: 25 req/day, rejects outputsize=full
 	stockProviders := make([]DataProvider, 0, 5)
 	if reg.Yahoo != nil {
-		stockProviders = append(stockProviders, reg.Yahoo(logger))
+		stockProviders = append(stockProviders, reg.Yahoo(ProviderConfig{Logger: logger}))
 	}
 	if apiKey := strings.TrimSpace(cfg.DataProviders.Polygon.APIKey); apiKey != "" && reg.Polygon != nil {
-		stockProviders = append(stockProviders, reg.Polygon(apiKey, logger))
+		stockProviders = append(stockProviders, reg.Polygon(ProviderConfig{APIKey: apiKey, Logger: logger}))
 	}
 	if apiKey := strings.TrimSpace(cfg.DataProviders.Finnhub.APIKey); apiKey != "" && reg.Finnhub != nil {
-		stockProviders = append(stockProviders, reg.Finnhub(apiKey, cfg.DataProviders.Finnhub.RateLimitPerMinute, logger))
+		stockProviders = append(stockProviders, reg.Finnhub(ProviderConfig{APIKey: apiKey, RateLimitPerMinute: cfg.DataProviders.Finnhub.RateLimitPerMinute, Logger: logger}))
 	}
 	if apiKey := strings.TrimSpace(cfg.DataProviders.FMP.APIKey); apiKey != "" && reg.FMP != nil {
-		stockProviders = append(stockProviders, reg.FMP(apiKey, cfg.DataProviders.FMP.RateLimitPerMinute, logger))
+		stockProviders = append(stockProviders, reg.FMP(ProviderConfig{APIKey: apiKey, RateLimitPerMinute: cfg.DataProviders.FMP.RateLimitPerMinute, Logger: logger}))
 	}
 	if apiKey := strings.TrimSpace(cfg.DataProviders.AlphaVantage.APIKey); apiKey != "" && reg.AlphaVantage != nil {
-		stockProviders = append(stockProviders, reg.AlphaVantage(apiKey, cfg.DataProviders.AlphaVantage.RateLimitPerMinute, logger))
+		stockProviders = append(stockProviders, reg.AlphaVantage(ProviderConfig{APIKey: apiKey, RateLimitPerMinute: cfg.DataProviders.AlphaVantage.RateLimitPerMinute, Logger: logger}))
 	}
 	if apiKey := strings.TrimSpace(cfg.DataProviders.NewsAPI.APIKey); apiKey != "" && reg.NewsAPI != nil {
-		stockProviders = append(stockProviders, reg.NewsAPI(apiKey, logger))
+		stockProviders = append(stockProviders, reg.NewsAPI(ProviderConfig{APIKey: apiKey, Logger: logger}))
 	}
 
 	cryptoProviders := make([]DataProvider, 0, 1)
 	if reg.Binance != nil {
-		cryptoProviders = append(cryptoProviders, reg.Binance(logger))
+		cryptoProviders = append(cryptoProviders, reg.Binance(ProviderConfig{Logger: logger}))
 	}
 
 	polymarketProviders := make([]DataProvider, 0, 1)
 	if reg.Polymarket != nil && strings.TrimSpace(cfg.Brokers.Polymarket.CLOBURL) != "" {
-		polymarketProviders = append(polymarketProviders, reg.Polymarket(cfg.Brokers.Polymarket.CLOBURL, logger))
+		polymarketProviders = append(polymarketProviders, reg.Polymarket(ProviderConfig{BaseURL: cfg.Brokers.Polymarket.CLOBURL, Logger: logger}))
 	}
 
 	return &DataService{

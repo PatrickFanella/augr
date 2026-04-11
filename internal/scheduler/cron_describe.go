@@ -121,7 +121,7 @@ func describeMonth(month string) string {
 	if err != nil || n < 1 || n > 12 {
 		return month
 	}
-	var monthNames = [12]string{
+	monthNames := [12]string{
 		"January", "February", "March", "April", "May", "June",
 		"July", "August", "September", "October", "November", "December",
 	}

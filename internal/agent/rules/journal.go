@@ -23,31 +23,31 @@ const (
 
 // JournalEntry records a single decision event for a position.
 type JournalEntry struct {
-	Type       EventType              `json:"type"`
-	Timestamp  time.Time              `json:"timestamp"`
-	BarIndex   int                    `json:"bar_index"`
-	Signal     domain.PipelineSignal  `json:"signal,omitempty"`
-	Verdict    string                 `json:"verdict,omitempty"`
-	Confidence float64                `json:"confidence,omitempty"`
-	Reasoning  string                 `json:"reasoning,omitempty"`
-	Indicators map[string]float64     `json:"indicators,omitempty"`
-	Price      float64                `json:"price"`
+	Type       EventType             `json:"type"`
+	Timestamp  time.Time             `json:"timestamp"`
+	BarIndex   int                   `json:"bar_index"`
+	Signal     domain.PipelineSignal `json:"signal,omitempty"`
+	Verdict    string                `json:"verdict,omitempty"`
+	Confidence float64               `json:"confidence,omitempty"`
+	Reasoning  string                `json:"reasoning,omitempty"`
+	Indicators map[string]float64    `json:"indicators,omitempty"`
+	Price      float64               `json:"price"`
 }
 
 // OpenPosition tracks a live position with its full context.
 type OpenPosition struct {
-	Ticker            string           `json:"ticker"`
+	Ticker            string              `json:"ticker"`
 	Side              domain.PositionSide `json:"side"`
-	EntryPrice        float64          `json:"entry_price"`
-	EntryDate         time.Time        `json:"entry_date"`
-	Quantity          float64          `json:"quantity"`
-	CostBasis         float64          `json:"cost_basis"`
-	HardStopLoss      float64          `json:"hard_stop_loss"`
-	TrailingStopPct   float64          `json:"trailing_stop_pct,omitempty"`
-	TrailingStopLevel float64          `json:"trailing_stop_level,omitempty"`
-	TakeProfit        float64          `json:"take_profit"`
-	HoldingStrategy   string           `json:"holding_strategy,omitempty"`
-	Journal           []JournalEntry   `json:"journal"`
+	EntryPrice        float64             `json:"entry_price"`
+	EntryDate         time.Time           `json:"entry_date"`
+	Quantity          float64             `json:"quantity"`
+	CostBasis         float64             `json:"cost_basis"`
+	HardStopLoss      float64             `json:"hard_stop_loss"`
+	TrailingStopPct   float64             `json:"trailing_stop_pct,omitempty"`
+	TrailingStopLevel float64             `json:"trailing_stop_level,omitempty"`
+	TakeProfit        float64             `json:"take_profit"`
+	HoldingStrategy   string              `json:"holding_strategy,omitempty"`
+	Journal           []JournalEntry      `json:"journal"`
 }
 
 // UnrealizedPnL returns the per-share unrealized P&L at the given price.

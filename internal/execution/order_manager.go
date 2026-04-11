@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"strings"
 	"sync"
 	"time"
 
@@ -43,6 +44,7 @@ type TradingPlan struct {
 	Confidence   float64               `json:"confidence,omitempty"`
 	Rationale    string                `json:"rationale,omitempty"`
 	RiskReward   float64               `json:"risk_reward,omitempty"`
+	Side         string                `json:"side,omitempty"`
 }
 
 // SizingConfig holds the parameters used to size positions.
@@ -230,16 +232,17 @@ func (m *OrderManager) ProcessSignal(
 	orderType := m.entryTypeToOrderType(plan.EntryType)
 
 	order := &domain.Order{
-		ID:            uuid.New(),
-		StrategyID:    &strategyID,
-		PipelineRunID: &runID,
-		Ticker:        plan.Ticker,
-		Side:          side,
-		OrderType:     orderType,
-		Quantity:      quantity,
-		Status:        domain.OrderStatusPending,
-		Broker:        m.brokerName,
-		CreatedAt:     now,
+		ID:             uuid.New(),
+		StrategyID:     &strategyID,
+		PipelineRunID:  &runID,
+		Ticker:         plan.Ticker,
+		Side:           side,
+		OrderType:      orderType,
+		Quantity:       quantity,
+		Status:         domain.OrderStatusPending,
+		Broker:         m.brokerName,
+		CreatedAt:      now,
+		PredictionSide: strings.ToUpper(strings.TrimSpace(plan.Side)),
 	}
 
 	if plan.EntryPrice > 0 {
