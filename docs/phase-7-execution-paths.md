@@ -7,6 +7,8 @@ tags: [tracking, phase-7, paper-trading, production, production-ready]
 
 # Phase 7: Execution Paths
 
+> Archived planning snapshot. Many items below are now implemented or reprioritized. Prefer `docs/README.md`, `docs/reference/*`, and the live GitHub issue tracker for current state.
+
 > 95 sub-issues across 9 tracks (21 epics). **34 ready now**, 61 blocked by dependencies.
 > Updated: 2026-03-30
 > Tracking issue: [#391](https://github.com/PatrickFanella/get-rich-quick/issues/391)

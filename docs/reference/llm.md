@@ -124,4 +124,4 @@ Trade-off:
 
 ## UI/settings caveat
 
-The settings page lets you edit provider settings, but those edits live in the memory-backed settings service. They do not persist across restart.
+The settings page lets you edit provider settings. In the API server those edits persist via the `app_settings` table when the settings persister is configured; local/dev workflows without a writable database may still behave ephemerally.

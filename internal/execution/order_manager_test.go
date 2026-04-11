@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -432,6 +433,12 @@ type mockAgentEventRepo struct {
 	events []*domain.AgentEvent
 
 	createFn func(ctx context.Context, event *domain.AgentEvent) error
+}
+
+type mockOrderMetrics struct{ records []string }
+
+func (m *mockOrderMetrics) RecordOrder(broker, side, status string) {
+	m.records = append(m.records, broker+":"+side+":"+status)
 }
 
 func (r *mockAgentEventRepo) Create(ctx context.Context, event *domain.AgentEvent) error {
@@ -1074,6 +1081,29 @@ func TestProcessSignal_LimitOrder(t *testing.T) {
 		t.Error("expected limit price to be set")
 	} else if *order.LimitPrice != 150.0 {
 		t.Errorf("expected limit price 150.0, got %f", *order.LimitPrice)
+	}
+}
+
+func TestProcessSignal_RecordsOrderMetrics(t *testing.T) {
+	broker := &mockBroker{}
+	riskEng := &mockRiskEngine{}
+	orderRepo := &mockOrderRepo{}
+	positionRepo := &mockPositionRepo{}
+	tradeRepo := &mockTradeRepo{}
+	auditRepo := &mockAuditLogRepo{}
+	metrics := &mockOrderMetrics{}
+
+	mgr := newTestOrderManager(broker, riskEng, orderRepo, positionRepo, tradeRepo, auditRepo).WithMetrics(metrics)
+
+	err := mgr.ProcessSignal(context.Background(), defaultSignal(), defaultPlan(), uuid.New(), uuid.New())
+	if err != nil {
+		t.Fatalf("ProcessSignal() unexpected error: %v", err)
+	}
+
+	for _, want := range []string{"paper:buy:pending", "paper:buy:submitted", "paper:buy:filled"} {
+		if !slices.Contains(metrics.records, want) {
+			t.Fatalf("metrics records = %v, want entry %q", metrics.records, want)
+		}
 	}
 }
 

@@ -7,20 +7,15 @@ tags: [kanban, tracking]
 
 ## Backlog
 
-- [ ] Data provider chain with cache integration
-- [ ] Alpaca paper trading integration
 - [ ] 60-day validation plan
-- [ ] Backtesting engine core
 
 ## In Progress
 
-- [ ] Pipeline orchestration engine (DAG executor)
-- [ ] Alpaca broker adapter
+- [ ] Repo-health cleanup and merge-conflict resolution pass
 
 ## Blocked
 
-- [ ] Research debate orchestration (needs bull/bear agents)
-- [ ] Risk debate orchestration (needs risk analyst agents)
+- [ ] Public backtest surface in the main API/UI
 
 ## Done
 
@@ -41,6 +36,13 @@ tags: [kanban, tracking]
 - [ ] Configuration system
 - [ ] Structured logging
 - [ ] Database schema + migrations
+- [ ] Data provider chain with cache integration
+- [ ] Alpaca paper trading integration
+- [ ] Alpaca broker adapter
+- [ ] Pipeline orchestration engine
+- [ ] Research debate orchestration
+- [ ] Risk debate orchestration
+- [ ] Backtesting engine core
 
 %% kanban:settings
 

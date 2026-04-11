@@ -50,7 +50,7 @@ the built-in cron engine.
 ### ~~Polymarket support is incomplete~~ ✓ More complete than documented
 
 The production strategy runner now handles `market_type: polymarket` strategies through the retail Polymarket US API:
-- Preserves trader-selected YES/NO side through execution and maps it to retail order intents
+- Preserves trader-selected outcome side through execution and maps YES/NO plus Up/Down/Over/Under intents for supported retail markets
 - Routes live orders through `polymarketexecution.Broker` when `POLYMARKET_KEY_ID` and `POLYMARKET_SECRET_KEY` are set
 - Falls back to local paper broker when `is_paper: true` (Polymarket has no native paper mode)
 - Enforces per-market exposure, liquidity, spread, and resolution-timeline risk limits
@@ -88,6 +88,14 @@ are unchanged and always re-evaluated at runtime.
 `runtimePipelineTimeout` now derives a finite wall-clock budget from the per-phase
 timeout settings: `(analysts × analysis_timeout) + (2 × rounds × debate_timeout) + overhead`.
 Falls back to 30 minutes when any constituent is unconfigured.
+
+### ~~Stale runs remained stuck at `running` forever~~ ✓ Fixed
+
+The runtime now starts a stale-run reconciler that sweeps `pipeline_runs` for
+`status='running'` rows older than `STALE_RUN_TTL` (default `30m`), marks them
+`failed`, writes a `pipeline_run.stale_reconciled` audit entry, increments
+`tradingagent_stale_runs_reconciled_total`, and best-effort cancels any still-registered
+in-process run context.
 
 ### ~~Pagination `total` field never populated~~ ✓ Fixed (except memories, conversation messages)
 

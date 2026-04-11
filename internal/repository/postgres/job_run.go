@@ -23,12 +23,14 @@ type JobRun struct {
 
 // JobRunSummary holds aggregate stats for a single job name.
 type JobRunSummary struct {
-	JobName    string     `json:"job_name"`
-	LastRun    *time.Time `json:"last_run,omitempty"`
-	LastResult string     `json:"last_result"`
-	LastError  string     `json:"last_error,omitempty"`
-	RunCount   int        `json:"run_count"`
-	ErrorCount int        `json:"error_count"`
+	JobName             string     `json:"job_name"`
+	LastRun             *time.Time `json:"last_run,omitempty"`
+	LastResult          string     `json:"last_result"`
+	LastError           string     `json:"last_error,omitempty"`
+	LastErrorAt         *time.Time `json:"last_error_at,omitempty"`
+	RunCount            int        `json:"run_count"`
+	ErrorCount          int        `json:"error_count"`
+	ConsecutiveFailures int        `json:"consecutive_failures"`
 }
 
 // JobRunRepo persists automation job runs to PostgreSQL.
@@ -124,18 +126,47 @@ func (r *JobRunRepo) Summaries(ctx context.Context) ([]JobRunSummary, error) {
 	for i, s := range summaries {
 		var status string
 		var errStr *string
+		var startedAt time.Time
 		err := r.pool.QueryRow(ctx,
-			`SELECT status, error FROM automation_job_runs
+			`SELECT status, error, started_at FROM automation_job_runs
 			 WHERE job_name = $1 ORDER BY started_at DESC LIMIT 1`,
 			s.JobName,
-		).Scan(&status, &errStr)
+		).Scan(&status, &errStr, &startedAt)
 		if err == nil {
 			summaries[i].LastResult = status
 			if errStr != nil {
 				summaries[i].LastError = *errStr
+				summaries[i].LastErrorAt = &startedAt
 			}
+			summaries[i].ConsecutiveFailures = r.countConsecutiveFailures(ctx, s.JobName)
 		}
 	}
 
 	return summaries, nil
+}
+
+func (r *JobRunRepo) countConsecutiveFailures(ctx context.Context, jobName string) int {
+	rows, err := r.pool.Query(ctx,
+		`SELECT status FROM automation_job_runs
+		 WHERE job_name = $1
+		 ORDER BY started_at DESC`,
+		jobName,
+	)
+	if err != nil {
+		return 0
+	}
+	defer rows.Close()
+
+	count := 0
+	for rows.Next() {
+		var status string
+		if err := rows.Scan(&status); err != nil {
+			return count
+		}
+		if status != "error" {
+			break
+		}
+		count++
+	}
+	return count
 }

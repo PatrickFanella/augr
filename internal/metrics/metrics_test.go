@@ -35,6 +35,9 @@ func TestNew(t *testing.T) {
 	if m.OrdersTotal == nil {
 		t.Fatal("OrdersTotal is nil")
 	}
+	if m.StaleRunsReconciled == nil {
+		t.Fatal("StaleRunsReconciled is nil")
+	}
 	if m.PortfolioValue == nil {
 		t.Fatal("PortfolioValue is nil")
 	}
@@ -60,6 +63,7 @@ func TestConvenienceMethods(t *testing.T) {
 	m.RecordLLMTokens(100, 200)
 	m.ObserveLLMLatency("openai", "gpt-4", 0.8)
 	m.RecordOrder("alpaca", "buy", "filled")
+	m.RecordStaleRunReconciled()
 	m.SetPortfolioValue(50000.0)
 	m.SetPositionsOpen(3)
 	m.SetCircuitBreakerState(true)
@@ -79,6 +83,7 @@ func TestHandler(t *testing.T) {
 	m.RecordLLMTokens(100, 200)
 	m.ObserveLLMLatency("openai", "gpt-4", 0.8)
 	m.RecordOrder("alpaca", "buy", "filled")
+	m.RecordStaleRunReconciled()
 
 	h := m.Handler()
 	if h == nil {
@@ -102,6 +107,7 @@ func TestHandler(t *testing.T) {
 		"tradingagent_llm_tokens_total",
 		"tradingagent_llm_latency_seconds",
 		"tradingagent_orders_total",
+		"tradingagent_stale_runs_reconciled_total",
 		"tradingagent_portfolio_value",
 		"tradingagent_positions_open",
 		"tradingagent_circuit_breaker_state",

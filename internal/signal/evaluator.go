@@ -64,7 +64,7 @@ recommended_action:
 Only include strategy IDs that are genuinely affected by this signal.`
 
 // Evaluate scores a signal event against the provided strategies.
-// On LLM failure, returns a fallback EvaluatedSignal with urgency 3 rather than an error.
+// On LLM failure, returns a low-urgency fallback EvaluatedSignal rather than an error.
 // Returns nil if strategies is empty.
 func (e *Evaluator) Evaluate(ctx context.Context, event RawSignalEvent, strategies []StrategyContext) (*EvaluatedSignal, error) {
 	if len(strategies) == 0 {
@@ -171,14 +171,10 @@ func (e *Evaluator) parseResponse(content string, event RawSignalEvent, strategi
 }
 
 func (e *Evaluator) fallback(event RawSignalEvent, strategies []StrategyContext) *EvaluatedSignal {
-	ids := make([]uuid.UUID, len(strategies))
-	for i, s := range strategies {
-		ids[i] = s.ID
-	}
 	return &EvaluatedSignal{
 		Raw:                event,
-		AffectedStrategies: ids,
-		Urgency:            3,
+		AffectedStrategies: nil,
+		Urgency:            1,
 		Summary:            event.Title,
 		RecommendedAction:  "monitor",
 	}

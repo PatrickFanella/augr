@@ -56,10 +56,11 @@ type RunPersister = DecisionPersister
 
 // Dependencies holds runner infrastructure dependencies.
 type Dependencies struct {
-	Persister RunPersister
-	Events    chan<- PipelineEvent
-	Logger    *slog.Logger
-	Clock     func() time.Time
+	Persister   RunPersister
+	Events      chan<- PipelineEvent
+	Logger      *slog.Logger
+	Clock       func() time.Time
+	RunRegistry *RunContextRegistry
 }
 
 // Definition describes the concrete participants for each stage.
@@ -143,13 +144,14 @@ type RunResult struct {
 
 // Runner owns immutable run preparation and execution.
 type Runner struct {
-	def       Definition
-	persister RunPersister
-	events    chan<- PipelineEvent
-	logger    *slog.Logger
-	nowMu     sync.RWMutex
-	now       func() time.Time
-	helper    PhaseHelper
+	def         Definition
+	persister   RunPersister
+	events      chan<- PipelineEvent
+	logger      *slog.Logger
+	nowMu       sync.RWMutex
+	now         func() time.Time
+	helper      PhaseHelper
+	runRegistry *RunContextRegistry
 }
 
 // NewRunner constructs a runner with the supplied participants and dependencies.
@@ -163,11 +165,12 @@ func NewRunner(def Definition, deps Dependencies) *Runner {
 		clock = time.Now
 	}
 	r := &Runner{
-		def:       def,
-		persister: deps.Persister,
-		events:    deps.Events,
-		logger:    logger,
-		now:       clock,
+		def:         def,
+		persister:   deps.Persister,
+		events:      deps.Events,
+		logger:      logger,
+		now:         clock,
+		runRegistry: deps.RunRegistry,
 	}
 	r.helper = newPhaseHelper(deps.Persister, deps.Events, logger, r.currentTime)
 	return r
@@ -231,11 +234,13 @@ func (r *Runner) Run(ctx context.Context, prepared PreparedRun) (*RunResult, err
 		return nil, fmt.Errorf("agent/runner: persister is required")
 	}
 
+	var cancel context.CancelFunc
 	if prepared.Runtime.PipelineTimeout > 0 {
-		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, prepared.Runtime.PipelineTimeout)
-		defer cancel()
+	} else {
+		ctx, cancel = context.WithCancel(ctx)
 	}
+	defer cancel()
 
 	cacheStatsCollector := llm.NewCacheStatsCollector()
 	ctx = llm.WithCacheStatsCollector(ctx, cacheStatsCollector)
@@ -252,6 +257,10 @@ func (r *Runner) Run(ctx context.Context, prepared PreparedRun) (*RunResult, err
 	}
 	if err := r.persister.RecordRunStart(ctx, &run); err != nil {
 		return nil, err
+	}
+	if r.runRegistry != nil {
+		r.runRegistry.Register(run.ID, cancel)
+		defer r.runRegistry.Deregister(run.ID)
 	}
 
 	state := &PipelineState{

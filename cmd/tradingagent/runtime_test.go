@@ -17,6 +17,7 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution/paper"
 	"github.com/PatrickFanella/get-rich-quick/internal/llm"
+	"github.com/PatrickFanella/get-rich-quick/internal/metrics"
 	"github.com/PatrickFanella/get-rich-quick/internal/notification"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 	"github.com/PatrickFanella/get-rich-quick/internal/risk"
@@ -293,6 +294,30 @@ func (stubPositionRepo) CountOpen(context.Context, repository.PositionFilter) (i
 	return 0, nil
 }
 
+type metricPositionRepo struct{ count int }
+
+func (m metricPositionRepo) Create(context.Context, *domain.Position) error { return nil }
+func (m metricPositionRepo) Get(context.Context, uuid.UUID) (*domain.Position, error) {
+	return nil, repository.ErrNotFound
+}
+func (m metricPositionRepo) List(context.Context, repository.PositionFilter, int, int) ([]domain.Position, error) {
+	return nil, nil
+}
+func (m metricPositionRepo) Update(context.Context, *domain.Position) error { return nil }
+func (m metricPositionRepo) Delete(context.Context, uuid.UUID) error        { return nil }
+func (m metricPositionRepo) GetOpen(context.Context, repository.PositionFilter, int, int) ([]domain.Position, error) {
+	return nil, nil
+}
+func (m metricPositionRepo) GetByStrategy(context.Context, uuid.UUID, repository.PositionFilter, int, int) ([]domain.Position, error) {
+	return nil, nil
+}
+func (m metricPositionRepo) Count(context.Context, repository.PositionFilter) (int, error) {
+	return m.count, nil
+}
+func (m metricPositionRepo) CountOpen(context.Context, repository.PositionFilter) (int, error) {
+	return m.count, nil
+}
+
 func TestSelectedAnalysisRoles_RejectsNonAnalysisRoles(t *testing.T) {
 	t.Parallel()
 
@@ -313,7 +338,7 @@ func TestBuildAnalysisAgents_RespectsAnalystSelection(t *testing.T) {
 		},
 	}
 
-	agents, err := buildAnalysisAgents(nil, "openai", resolved, nil)
+	agents, err := buildAnalysisAgents(nil, "openai", resolved, nil, nil)
 	if err != nil {
 		t.Fatalf("buildAnalysisAgents() error = %v", err)
 	}
@@ -439,6 +464,40 @@ func TestRealStrategyRunnerNewOrderManager_WiresRiskPortfolioSnapshot(t *testing
 	}
 }
 
+func TestRealStrategyRunnerExecutionMetricsHelpers(t *testing.T) {
+	t.Parallel()
+
+	positionRepo := metricPositionRepo{count: 2}
+	engine := risk.NewRiskEngine(risk.DefaultPositionLimits(), risk.DefaultCircuitBreakerConfig(), positionRepo, slogDiscardLogger())
+	if err := engine.ActivateKillSwitch(context.Background(), "test"); err != nil {
+		t.Fatalf("ActivateKillSwitch() error = %v", err)
+	}
+	if err := engine.TripCircuitBreaker(context.Background(), "trip"); err != nil {
+		t.Fatalf("TripCircuitBreaker() error = %v", err)
+	}
+	m := metrics.New()
+	runner := &realStrategyRunner{positionRepo: positionRepo, riskEngine: engine, metrics: m}
+	completedAt := time.Date(2026, 4, 11, 12, 30, 0, 0, time.UTC)
+	runner.recordPipelineMetrics(domain.PipelineRun{
+		Ticker:      "AAPL",
+		Signal:      domain.PipelineSignalBuy,
+		Status:      domain.PipelineStatusCompleted,
+		StartedAt:   completedAt.Add(-2 * time.Minute),
+		CompletedAt: &completedAt,
+	})
+	runner.refreshExecutionMetrics(context.Background())
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	m.Handler().ServeHTTP(rec, req)
+	body := rec.Body.String()
+	for _, want := range []string{"tradingagent_pipeline_runs_total", "ticker=\"AAPL\"", "tradingagent_pipeline_duration_seconds", "tradingagent_positions_open 2", "tradingagent_circuit_breaker_state 1", "tradingagent_kill_switch_active 1"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("metrics output missing %q", want)
+		}
+	}
+}
+
 func TestBuildRunnerDefinition_AppliesPromptOverridesBeyondAnalysis(t *testing.T) {
 	t.Parallel()
 
@@ -459,7 +518,7 @@ func TestBuildRunnerDefinition_AppliesPromptOverridesBeyondAnalysis(t *testing.T
 		},
 	}
 
-	definition, err := buildRunnerDefinition(captureProvider{}, "openai", resolved, slogDiscardLogger())
+	definition, err := buildRunnerDefinition(captureProvider{}, "openai", resolved, 30*time.Second, nil, slogDiscardLogger())
 	if err != nil {
 		t.Fatalf("buildRunnerDefinition() error = %v", err)
 	}

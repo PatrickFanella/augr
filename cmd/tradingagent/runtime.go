@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"strings"
 	"time"
 
@@ -75,6 +76,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 	optionsScanRepo := pgrepo.NewOptionsScanRepo(db.Pool)
 	newsFeedRepo := pgrepo.NewNewsFeedRepo(db.Pool)
 	polymarketAccountRepo := pgrepo.NewPolymarketAccountRepo(db.Pool)
+	runRegistry := agent.NewRunContextRegistry()
 
 	riskEngine := risk.NewRiskEngine(
 		risk.PositionLimits{
@@ -203,7 +205,9 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 			tradeRepo,
 			auditLogRepo,
 			riskEngine,
+			appMetrics,
 			notificationManager,
+			runRegistry,
 			logger,
 		)
 		deps.Runner = strategyRunner
@@ -372,11 +376,45 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 		schedLifecycle = sched
 	}
 
+	staleRunTTL := loadStaleRunTTL(logger)
+	var staleRunReconcilerCancel context.CancelFunc = func() {}
+	if staleRunTTL > 0 {
+		reconciler := agent.NewStaleRunReconciler(
+			runRepo,
+			auditLogRepo,
+			runRegistry,
+			appMetrics,
+			logger,
+			agent.StaleRunReconcilerConfig{TTL: staleRunTTL, Interval: time.Minute},
+		)
+		var reconcileCtx context.Context
+		reconcileCtx, staleRunReconcilerCancel = context.WithCancel(context.Background())
+		reconciler.Start(reconcileCtx)
+		logger.Info("stale run reconciler started", slog.Duration("ttl", staleRunTTL), slog.Duration("interval", time.Minute))
+	}
+
 	return server, schedLifecycle, func() {
+		staleRunReconcilerCancel()
 		signalShutdown()
 		closeRedis()
 		db.Close()
 	}, nil
+}
+
+func loadStaleRunTTL(logger *slog.Logger) time.Duration {
+	const fallback = 30 * time.Minute
+	raw := strings.TrimSpace(os.Getenv("STALE_RUN_TTL"))
+	if raw == "" {
+		return fallback
+	}
+	ttl, err := time.ParseDuration(raw)
+	if err != nil || ttl <= 0 {
+		if logger != nil {
+			logger.Warn("invalid STALE_RUN_TTL, using default", slog.String("value", raw), slog.Duration("default", fallback))
+		}
+		return fallback
+	}
+	return ttl
 }
 
 // throttleLLM wraps a provider with a global concurrency limiter so that

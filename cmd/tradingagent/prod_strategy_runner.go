@@ -27,6 +27,7 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/execution/paper"
 	polymarketexecution "github.com/PatrickFanella/get-rich-quick/internal/execution/polymarket"
 	"github.com/PatrickFanella/get-rich-quick/internal/llm"
+	"github.com/PatrickFanella/get-rich-quick/internal/metrics"
 	"github.com/PatrickFanella/get-rich-quick/internal/notification"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 	"github.com/PatrickFanella/get-rich-quick/internal/risk"
@@ -66,7 +67,9 @@ type realStrategyRunner struct {
 	tradeRepo           repository.TradeRepository
 	auditLogRepo        repository.AuditLogRepository
 	riskEngine          risk.RiskEngine
+	metrics             *metrics.Metrics
 	notificationManager *notification.Manager
+	runRegistry         *agent.RunContextRegistry
 	logger              *slog.Logger
 	localPaperMu        sync.Mutex
 	localPaperBroker    *paper.PaperBroker
@@ -86,7 +89,9 @@ func newRealStrategyRunner(
 	tradeRepo repository.TradeRepository,
 	auditLogRepo repository.AuditLogRepository,
 	riskEngine risk.RiskEngine,
+	appMetrics *metrics.Metrics,
 	notificationManager *notification.Manager,
+	runRegistry *agent.RunContextRegistry,
 	logger *slog.Logger,
 ) *realStrategyRunner {
 	if logger == nil {
@@ -106,7 +111,9 @@ func newRealStrategyRunner(
 		tradeRepo:           tradeRepo,
 		auditLogRepo:        auditLogRepo,
 		riskEngine:          riskEngine,
+		metrics:             appMetrics,
 		notificationManager: notificationManager,
+		runRegistry:         runRegistry,
 		logger:              logger,
 		localPaperBroker:    paper.NewPaperBroker(localPaperBuyingPower, 0, 0),
 	}
@@ -140,6 +147,10 @@ func (r *realStrategyRunner) RunStrategy(ctx context.Context, strategy domain.St
 	// Close the channel regardless of success/failure — the drainer exits via range.
 	if eventsCh != nil {
 		close(eventsCh)
+	}
+	defer r.refreshExecutionMetrics(context.Background())
+	if result != nil {
+		r.recordPipelineMetrics(result.Run)
 	}
 
 	if err != nil {
@@ -177,15 +188,11 @@ func (r *realStrategyRunner) RunStrategy(ctx context.Context, strategy domain.St
 
 	planTicker := result.State.TradingPlan.Ticker
 	if strategy.MarketType.Normalize() == domain.MarketTypePolymarket {
-		side := result.State.TradingPlan.Side
-		if side == "" {
-			return nil, fmt.Errorf("polymarket strategy %s: trader did not specify Side (YES/NO)", strategy.Name)
+		normalizedSide, err := normalizePolymarketStrategySide(result.State.TradingPlan.Side)
+		if err != nil {
+			return nil, fmt.Errorf("polymarket strategy %s: %w", strategy.Name, err)
 		}
-		switch strings.ToUpper(side) {
-		case "YES", "NO":
-		default:
-			return nil, fmt.Errorf("polymarket strategy %s: invalid Side %q (want YES or NO)", strategy.Name, side)
-		}
+		result.State.TradingPlan.Side = normalizedSide
 		entryPrice := result.State.TradingPlan.EntryPrice
 		if entryPrice > 0 && entryPrice > 1 {
 			return nil, fmt.Errorf("polymarket strategy %s: entry price %.4f outside valid range [0,1]", strategy.Name, entryPrice)
@@ -235,6 +242,27 @@ func (r *realStrategyRunner) RunStrategy(ctx context.Context, strategy domain.St
 	}, nil
 }
 
+func normalizePolymarketStrategySide(side string) (string, error) {
+	switch strings.ToUpper(strings.TrimSpace(side)) {
+	case "YES":
+		return "YES", nil
+	case "NO":
+		return "NO", nil
+	case "UP":
+		return "Up", nil
+	case "DOWN":
+		return "Down", nil
+	case "OVER":
+		return "Over", nil
+	case "UNDER":
+		return "Under", nil
+	case "":
+		return "", fmt.Errorf("trader did not specify Side (YES/NO/Up/Down/Over/Under)")
+	default:
+		return "", fmt.Errorf("invalid Side %q (want YES, NO, Up, Down, Over, or Under)", side)
+	}
+}
+
 func (r *realStrategyRunner) prepareStrategyRun(ctx context.Context, strategy domain.Strategy) (*agent.Runner, agent.PreparedRun, *agent.StrategyConfig, chan agent.PipelineEvent, error) {
 	strategyConfig, err := parseStrategyConfig(strategy.Config)
 	if err != nil {
@@ -247,7 +275,7 @@ func (r *realStrategyRunner) prepareStrategyRun(ctx context.Context, strategy do
 		return nil, agent.PreparedRun{}, nil, nil, fmt.Errorf("build llm provider for strategy %s: %w", strategy.Name, err)
 	}
 
-	definition, err := buildRunnerDefinition(provider, resolved.LLMConfig.Provider, resolved, r.logger)
+	definition, err := buildRunnerDefinition(provider, resolved.LLMConfig.Provider, resolved, r.cfg.LLM.Timeout, r.metrics, r.logger)
 	if err != nil {
 		return nil, agent.PreparedRun{}, nil, nil, err
 	}
@@ -257,9 +285,10 @@ func (r *realStrategyRunner) prepareStrategyRun(ctx context.Context, strategy do
 		eventsCh = make(chan agent.PipelineEvent, 64)
 	}
 	runner := agent.NewRunner(definition, agent.Dependencies{
-		Persister: agent.NewRepoPersister(r.runRepo, r.snapshotRepo, r.decisionRepo, r.eventRepo, r.logger),
-		Events:    eventsCh,
-		Logger:    r.logger,
+		Persister:   agent.NewRepoPersister(r.runRepo, r.snapshotRepo, r.decisionRepo, r.eventRepo, r.logger),
+		Events:      eventsCh,
+		Logger:      r.logger,
+		RunRegistry: r.runRegistry,
 	})
 
 	prepared, err := runner.Prepare(strategy, r.globals)
@@ -348,33 +377,49 @@ func (r *realStrategyRunner) loadInitialState(ctx context.Context, strategy doma
 	return seed, nil
 }
 
-func buildRunnerDefinition(provider llm.Provider, providerName string, resolved agent.ResolvedConfig, logger *slog.Logger) (agent.Definition, error) {
-	analysisAgents, err := buildAnalysisAgents(provider, providerName, resolved, logger)
+func buildRunnerDefinition(provider llm.Provider, providerName string, resolved agent.ResolvedConfig, llmTimeout time.Duration, appMetrics *metrics.Metrics, logger *slog.Logger) (agent.Definition, error) {
+	analysisAgents, err := buildAnalysisAgents(provider, providerName, resolved, appMetrics, logger)
 	if err != nil {
 		return agent.Definition{}, err
 	}
 
 	deepModel := strings.TrimSpace(resolved.LLMConfig.DeepThinkModel)
+	quickModel := strings.TrimSpace(resolved.LLMConfig.QuickThinkModel)
+	debateProvider := newDebateTimeoutFallbackProvider(provider, quickModel, effectiveDebateCallTimeout(llmTimeout, resolved), logger)
 
 	return agent.Definition{
 		Analysis: analysisAgents,
 		Research: agent.ResearchDebateStage{
 			Debaters: []agent.DebateAgent{
-				agentdebate.NewBullResearcherWithPrompt(provider, providerName, deepModel, promptOverride(resolved.PromptOverrides, agent.AgentRoleBullResearcher, agentdebate.BullResearcherSystemPrompt), logger),
-				agentdebate.NewBearResearcherWithPrompt(provider, providerName, deepModel, promptOverride(resolved.PromptOverrides, agent.AgentRoleBearResearcher, agentdebate.BearResearcherSystemPrompt), logger),
+				agentdebate.NewBullResearcherWithPrompt(newLLMMetricsProvider(debateProvider, providerName, agent.AgentRoleBullResearcher.String(), appMetrics), providerName, deepModel, promptOverride(resolved.PromptOverrides, agent.AgentRoleBullResearcher, agentdebate.BullResearcherSystemPrompt), logger),
+				agentdebate.NewBearResearcherWithPrompt(newLLMMetricsProvider(debateProvider, providerName, agent.AgentRoleBearResearcher.String(), appMetrics), providerName, deepModel, promptOverride(resolved.PromptOverrides, agent.AgentRoleBearResearcher, agentdebate.BearResearcherSystemPrompt), logger),
 			},
-			Judge: agentdebate.NewResearchManagerWithPrompt(provider, providerName, deepModel, promptOverride(resolved.PromptOverrides, agent.AgentRoleInvestJudge, agentdebate.ResearchManagerSystemPrompt), logger),
+			Judge: agentdebate.NewResearchManagerWithPrompt(newLLMMetricsProvider(debateProvider, providerName, agent.AgentRoleInvestJudge.String(), appMetrics), providerName, deepModel, promptOverride(resolved.PromptOverrides, agent.AgentRoleInvestJudge, agentdebate.ResearchManagerSystemPrompt), logger),
 		},
-		Trader: agenttrader.NewTraderWithPrompt(provider, providerName, deepModel, promptOverride(resolved.PromptOverrides, agent.AgentRoleTrader, agenttrader.TraderSystemPrompt), logger),
+		Trader: agenttrader.NewTraderWithPrompt(newLLMMetricsProvider(provider, providerName, agent.AgentRoleTrader.String(), appMetrics), providerName, deepModel, promptOverride(resolved.PromptOverrides, agent.AgentRoleTrader, agenttrader.TraderSystemPrompt), logger),
 		Risk: agent.RiskDebateStage{
 			Debaters: []agent.DebateAgent{
-				agentrisk.NewAggressiveRiskWithPrompt(provider, providerName, deepModel, promptOverride(resolved.PromptOverrides, agent.AgentRoleAggressiveAnalyst, agentrisk.AggressiveRiskSystemPrompt), logger),
-				agentrisk.NewConservativeRiskWithPrompt(provider, providerName, deepModel, promptOverride(resolved.PromptOverrides, agent.AgentRoleConservativeAnalyst, agentrisk.ConservativeRiskSystemPrompt), logger),
-				agentrisk.NewNeutralRiskWithPrompt(provider, providerName, deepModel, promptOverride(resolved.PromptOverrides, agent.AgentRoleNeutralAnalyst, agentrisk.NeutralRiskSystemPrompt), logger),
+				agentrisk.NewAggressiveRiskWithPrompt(newLLMMetricsProvider(debateProvider, providerName, agent.AgentRoleAggressiveAnalyst.String(), appMetrics), providerName, deepModel, promptOverride(resolved.PromptOverrides, agent.AgentRoleAggressiveAnalyst, agentrisk.AggressiveRiskSystemPrompt), logger),
+				agentrisk.NewConservativeRiskWithPrompt(newLLMMetricsProvider(debateProvider, providerName, agent.AgentRoleConservativeAnalyst.String(), appMetrics), providerName, deepModel, promptOverride(resolved.PromptOverrides, agent.AgentRoleConservativeAnalyst, agentrisk.ConservativeRiskSystemPrompt), logger),
+				agentrisk.NewNeutralRiskWithPrompt(newLLMMetricsProvider(debateProvider, providerName, agent.AgentRoleNeutralAnalyst.String(), appMetrics), providerName, deepModel, promptOverride(resolved.PromptOverrides, agent.AgentRoleNeutralAnalyst, agentrisk.NeutralRiskSystemPrompt), logger),
 			},
-			Judge: agentrisk.NewRiskManagerWithPrompt(provider, providerName, deepModel, promptOverride(resolved.PromptOverrides, agent.AgentRoleRiskManager, agentrisk.RiskManagerSystemPrompt), logger),
+			Judge: agentrisk.NewRiskManagerWithPrompt(newLLMMetricsProvider(debateProvider, providerName, agent.AgentRoleRiskManager.String(), appMetrics), providerName, deepModel, promptOverride(resolved.PromptOverrides, agent.AgentRoleRiskManager, agentrisk.RiskManagerSystemPrompt), logger),
 		},
 	}, nil
+}
+
+func effectiveDebateCallTimeout(llmTimeout time.Duration, resolved agent.ResolvedConfig) time.Duration {
+	var timeout time.Duration
+	if llmTimeout > 0 {
+		timeout = llmTimeout
+	}
+	if resolved.PipelineConfig.DebateTimeoutSeconds > 0 {
+		debateTimeout := time.Duration(resolved.PipelineConfig.DebateTimeoutSeconds) * time.Second
+		if timeout <= 0 || debateTimeout < timeout {
+			timeout = debateTimeout
+		}
+	}
+	return timeout
 }
 
 func promptOverride(overrides map[agent.AgentRole]string, role agent.AgentRole, fallback string) string {
@@ -385,7 +430,7 @@ func promptOverride(overrides map[agent.AgentRole]string, role agent.AgentRole, 
 	return prompt
 }
 
-func buildAnalysisAgents(provider llm.Provider, providerName string, resolved agent.ResolvedConfig, logger *slog.Logger) ([]agent.AnalysisAgent, error) {
+func buildAnalysisAgents(provider llm.Provider, providerName string, resolved agent.ResolvedConfig, appMetrics *metrics.Metrics, logger *slog.Logger) ([]agent.AnalysisAgent, error) {
 	roles, err := selectedAnalysisRoles(resolved.AnalystSelection)
 	if err != nil {
 		return nil, err
@@ -394,7 +439,7 @@ func buildAnalysisAgents(provider llm.Provider, providerName string, resolved ag
 	model := strings.TrimSpace(resolved.LLMConfig.QuickThinkModel)
 	agents := make([]agent.AnalysisAgent, 0, len(roles))
 	for _, role := range roles {
-		agentImpl, err := newAnalysisAgent(provider, providerName, model, role, resolved.PromptOverrides[role], logger)
+		agentImpl, err := newAnalysisAgent(provider, providerName, model, role, resolved.PromptOverrides[role], appMetrics, logger)
 		if err != nil {
 			return nil, err
 		}
@@ -444,10 +489,12 @@ func isAnalysisRole(role agent.AgentRole) bool {
 	}
 }
 
-func newAnalysisAgent(provider llm.Provider, providerName, model string, role agent.AgentRole, promptOverride string, logger *slog.Logger) (agent.AnalysisAgent, error) {
+func newAnalysisAgent(provider llm.Provider, providerName, model string, role agent.AgentRole, promptOverride string, appMetrics *metrics.Metrics, logger *slog.Logger) (agent.AnalysisAgent, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
+
+	provider = newLLMMetricsProvider(provider, providerName, role.String(), appMetrics)
 
 	prompt := strings.TrimSpace(promptOverride)
 	switch role {
@@ -605,7 +652,34 @@ func (r *realStrategyRunner) newOrderManager(strategy domain.Strategy, resolved 
 			FractionPct: resolved.RiskConfig.PositionSizePct / 100.0,
 		},
 		r.logger,
-	), nil
+	).WithMetrics(r.metrics), nil
+}
+
+func (r *realStrategyRunner) recordPipelineMetrics(run domain.PipelineRun) {
+	if r == nil || r.metrics == nil {
+		return
+	}
+	signal := run.Signal.String()
+	if signal == "" {
+		signal = string(domain.PipelineSignalHold)
+	}
+	r.metrics.RecordPipelineRun(run.Ticker, signal, run.Status.String())
+	if run.CompletedAt != nil {
+		r.metrics.ObservePipelineDuration(run.Ticker, run.CompletedAt.Sub(run.StartedAt).Seconds())
+	}
+}
+
+func (r *realStrategyRunner) refreshExecutionMetrics(ctx context.Context) {
+	if r == nil || r.metrics == nil {
+		return
+	}
+	if count, err := r.positionRepo.CountOpen(ctx, repository.PositionFilter{}); err == nil {
+		r.metrics.SetPositionsOpen(float64(count))
+	}
+	if status, err := r.riskEngine.GetStatus(ctx); err == nil {
+		r.metrics.SetCircuitBreakerState(status.CircuitBreaker.State == risk.CircuitBreakerPhaseTripped)
+		r.metrics.SetKillSwitchActive(status.KillSwitch.Active)
+	}
 }
 
 func (r *realStrategyRunner) newBrokerForStrategy(strategy domain.Strategy) (execution.Broker, string, error) {

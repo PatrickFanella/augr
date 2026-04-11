@@ -73,6 +73,12 @@ type OrderManager struct {
 	logger         *slog.Logger
 	nowMu          sync.RWMutex
 	nowFunc        func() time.Time
+	metrics        OrderMetricsRecorder
+}
+
+// OrderMetricsRecorder records order lifecycle metrics.
+type OrderMetricsRecorder interface {
+	RecordOrder(broker, side, status string)
 }
 
 // NewOrderManager constructs an OrderManager with the given dependencies.
@@ -105,6 +111,15 @@ func NewOrderManager(
 		logger:         logger,
 		nowFunc:        time.Now,
 	}
+}
+
+// WithMetrics wires an optional metrics recorder into the manager.
+func (m *OrderManager) WithMetrics(metrics OrderMetricsRecorder) *OrderManager {
+	if m == nil {
+		return nil
+	}
+	m.metrics = metrics
+	return m
 }
 
 // SetNowFunc overrides the order manager time source, allowing callers to
@@ -256,6 +271,7 @@ func (m *OrderManager) ProcessSignal(
 	if err := m.orderRepo.Create(ctx, order); err != nil {
 		return fmt.Errorf("order_manager: create order: %w", err)
 	}
+	m.recordOrderMetric(order.Side, order.Status)
 
 	if auditErr := m.audit(ctx, "order_created", "order", &order.ID, map[string]any{
 		"ticker":      plan.Ticker,
@@ -279,6 +295,7 @@ func (m *OrderManager) ProcessSignal(
 		if updateErr := m.orderRepo.Update(ctx, order); updateErr != nil {
 			m.logger.ErrorContext(ctx, "failed to update rejected order", "error", updateErr)
 		}
+		m.recordOrderMetric(order.Side, order.Status)
 
 		if auditErr := m.audit(ctx, "pre_trade_rejected", "order", &order.ID, map[string]any{
 			"reason": reason,
@@ -296,6 +313,7 @@ func (m *OrderManager) ProcessSignal(
 		if updateErr := m.orderRepo.Update(ctx, order); updateErr != nil {
 			m.logger.ErrorContext(ctx, "failed to update rejected order", "error", updateErr)
 		}
+		m.recordOrderMetric(order.Side, order.Status)
 
 		if auditErr := m.audit(ctx, "order_rejected", "order", &order.ID, map[string]any{
 			"error": err.Error(),
@@ -316,6 +334,7 @@ func (m *OrderManager) ProcessSignal(
 	if err := m.orderRepo.Update(ctx, order); err != nil {
 		return fmt.Errorf("order_manager: update submitted order: %w", err)
 	}
+	m.recordOrderMetric(order.Side, order.Status)
 
 	if auditErr := m.audit(ctx, "order_submitted", "order", &order.ID, map[string]any{
 		"external_id": externalID,
@@ -340,6 +359,7 @@ func (m *OrderManager) ProcessSignal(
 		if err := m.orderRepo.Update(ctx, order); err != nil {
 			return fmt.Errorf("order_manager: update %s order: %w", status, err)
 		}
+		m.recordOrderMetric(order.Side, order.Status)
 
 		if auditErr := m.audit(ctx, "order_"+string(status), "order", &order.ID, nil); auditErr != nil {
 			m.logger.ErrorContext(ctx, "audit log failed", "error", auditErr)
@@ -352,6 +372,7 @@ func (m *OrderManager) ProcessSignal(
 		if err := m.orderRepo.Update(ctx, order); err != nil {
 			return fmt.Errorf("order_manager: update %s order: %w", status, err)
 		}
+		m.recordOrderMetric(order.Side, order.Status)
 
 		if auditErr := m.audit(ctx, "order_"+string(status), "order", &order.ID, nil); auditErr != nil {
 			m.logger.ErrorContext(ctx, "audit log failed", "error", auditErr)
@@ -365,6 +386,7 @@ func (m *OrderManager) ProcessSignal(
 		if err := m.orderRepo.Update(ctx, order); err != nil {
 			return fmt.Errorf("order_manager: update order status: %w", err)
 		}
+		m.recordOrderMetric(order.Side, order.Status)
 
 		return nil
 	}
@@ -388,6 +410,7 @@ func (m *OrderManager) handleFill(
 	if err := m.orderRepo.Update(ctx, order); err != nil {
 		return fmt.Errorf("order_manager: update filled order: %w", err)
 	}
+	m.recordOrderMetric(order.Side, order.Status)
 
 	// Determine fill price.
 	fillPrice := plan.EntryPrice
@@ -557,4 +580,11 @@ func (m *OrderManager) emitOrderEvent(
 	if err := m.agentEventRepo.Create(ctx, event); err != nil {
 		m.logger.ErrorContext(ctx, "order_manager: emit order event", "error", err, "kind", eventKind)
 	}
+}
+
+func (m *OrderManager) recordOrderMetric(side domain.OrderSide, status domain.OrderStatus) {
+	if m == nil || m.metrics == nil {
+		return
+	}
+	m.metrics.RecordOrder(m.brokerName, string(side), string(status))
 }

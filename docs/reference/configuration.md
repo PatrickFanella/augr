@@ -15,7 +15,7 @@ All durable server configuration currently starts in the environment.
 - `internal/config.Load()` reads environment variables
 - `.env` is auto-loaded only when `APP_ENV=development`
 - validation runs after loading
-- the API settings surface is separate and currently memory-backed
+- the API settings surface is separate and persists via the `app_settings` table when a database-backed persister is available
 
 ## Major configuration groups
 
@@ -40,6 +40,7 @@ All durable server configuration currently starts in the environment.
 - `LLM_DEEP_THINK_MODEL`
 - `LLM_QUICK_THINK_MODEL`
 - `LLM_TIMEOUT`
+- `STALE_RUN_TTL` - duration string for stale-run reconciliation (default `30m`)
 - provider-specific keys and base URLs
 
 ### Data providers

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -140,12 +141,16 @@ func (r *PolymarketAccountRepo) InsertTrades(ctx context.Context, trades []domai
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	for _, t := range trades {
-		_, err := tx.Exec(ctx, `
+		normalizedSide, err := normalizePolymarketTradeSide(t.Side)
+		if err != nil {
+			return fmt.Errorf("postgres: normalize trade side for %s: %w", t.AccountAddress, err)
+		}
+		_, err = tx.Exec(ctx, `
 			INSERT INTO polymarket_account_trades
 				(account_address, market_slug, side, action, price, size_usdc, timestamp, outcome, pnl)
 			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
 			ON CONFLICT DO NOTHING`,
-			t.AccountAddress, t.MarketSlug, t.Side, t.Action,
+			t.AccountAddress, t.MarketSlug, normalizedSide, t.Action,
 			t.Price, t.SizeUSDC, t.Timestamp, nilStr(t.Outcome), t.PnL,
 		)
 		if err != nil {
@@ -202,6 +207,25 @@ func (r *PolymarketAccountRepo) MarkTracked(ctx context.Context, minWinRate floa
 		return 0, fmt.Errorf("postgres: mark tracked: %w", err)
 	}
 	return result.RowsAffected(), nil
+}
+
+func normalizePolymarketTradeSide(side string) (string, error) {
+	switch strings.ToUpper(strings.TrimSpace(side)) {
+	case "YES":
+		return "YES", nil
+	case "NO":
+		return "NO", nil
+	case "UP":
+		return "Up", nil
+	case "DOWN":
+		return "Down", nil
+	case "OVER":
+		return "Over", nil
+	case "UNDER":
+		return "Under", nil
+	default:
+		return "", fmt.Errorf("unsupported side %q", side)
+	}
 }
 
 // scanAccount scans one row into a PolymarketAccount.

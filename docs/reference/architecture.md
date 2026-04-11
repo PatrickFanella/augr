@@ -292,6 +292,6 @@ type RiskEngine interface {
 
 - The production runner supports OpenAI, Anthropic, Google, OpenRouter, xAI, and Ollama.
 - `openrouter` and `xai` are handled through OpenAI-compatible transport wiring in the runtime.
-- The settings service used by the API/UI is currently memory-backed rather than persistent.
+- The settings service used by the API/UI persists through the `app_settings` table when the settings persister is wired; fallback in-memory behavior is only for degraded/local scenarios.
 - The repository includes backtest support, but the main API server does not yet expose a full public backtest surface.
 - Some files in the repo currently contain merge-conflict markers; treat repo-health as a real architecture constraint until they are resolved.

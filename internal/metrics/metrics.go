@@ -16,6 +16,7 @@ type Metrics struct {
 	LLMTokensTotal      *prometheus.CounterVec
 	LLMLatency          *prometheus.HistogramVec
 	OrdersTotal         *prometheus.CounterVec
+	StaleRunsReconciled prometheus.Counter
 	PortfolioValue      prometheus.Gauge
 	PositionsOpen       prometheus.Gauge
 	CircuitBreakerState prometheus.Gauge
@@ -65,6 +66,11 @@ func New() *Metrics {
 			Help: "Total orders by broker, side, and status.",
 		}, []string{"broker", "side", "status"}),
 
+		StaleRunsReconciled: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "tradingagent_stale_runs_reconciled_total",
+			Help: "Total number of stale pipeline runs force-failed by the reconciler.",
+		}),
+
 		PortfolioValue: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "tradingagent_portfolio_value",
 			Help: "Current portfolio value.",
@@ -93,6 +99,7 @@ func New() *Metrics {
 		m.LLMTokensTotal,
 		m.LLMLatency,
 		m.OrdersTotal,
+		m.StaleRunsReconciled,
 		m.PortfolioValue,
 		m.PositionsOpen,
 		m.CircuitBreakerState,
@@ -125,6 +132,10 @@ func (m *Metrics) ObserveLLMLatency(provider, model string, seconds float64) {
 
 func (m *Metrics) RecordOrder(broker, side, status string) {
 	m.OrdersTotal.WithLabelValues(broker, side, status).Inc()
+}
+
+func (m *Metrics) RecordStaleRunReconciled() {
+	m.StaleRunsReconciled.Inc()
 }
 
 func (m *Metrics) SetPortfolioValue(value float64) {
