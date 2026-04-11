@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -282,6 +283,7 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	// Authenticate before upgrading; once the connection is upgraded the
 	// HTTP response headers are committed and cannot carry a 401.
 	if _, err := s.auth.AuthenticateWSRequest(r); err != nil {
+		s.logger.Warn("ws authentication failed", "reason", wsAuthFailureReason(err), "remote_addr", r.RemoteAddr)
 		http.Error(w, "authentication required", http.StatusUnauthorized)
 		return
 	}
@@ -309,5 +311,24 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	case <-s.hub.done:
 		s.logger.Error("ws hub not accepting registrations")
 		_ = conn.Close()
+	}
+}
+
+func wsAuthFailureReason(err error) string {
+	switch {
+	case errors.Is(err, errMissingCredentials):
+		return "missing_credentials"
+	case errors.Is(err, errExpiredToken):
+		return "token_expired"
+	case errors.Is(err, errInvalidToken):
+		return "invalid_token"
+	case errors.Is(err, errInvalidAPIKey):
+		return "invalid_api_key"
+	case errors.Is(err, errAPIKeyExpired):
+		return "api_key_expired"
+	case errors.Is(err, errAPIKeyRevoked):
+		return "api_key_revoked"
+	default:
+		return "unknown"
 	}
 }

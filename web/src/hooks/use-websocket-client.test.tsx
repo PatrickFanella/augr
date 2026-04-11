@@ -3,6 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useWebSocketClient } from '@/hooks/use-websocket-client'
 
+const getAccessTokenMock = vi.hoisted(() => vi.fn())
+
+vi.mock('@/lib/auth', () => ({
+  getAccessToken: getAccessTokenMock,
+}))
+
 class MockWebSocket {
   static instances: MockWebSocket[] = []
   static CONNECTING = 0
@@ -38,6 +44,7 @@ describe('useWebSocketClient', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     MockWebSocket.instances = []
+    getAccessTokenMock.mockReset()
     vi.stubGlobal('WebSocket', MockWebSocket)
   })
 
@@ -70,5 +77,31 @@ describe('useWebSocketClient', () => {
     })
 
     expect(MockWebSocket.instances).toHaveLength(1)
+  })
+
+  it('attaches token query param when access token exists', () => {
+    getAccessTokenMock.mockReturnValue('abc123token')
+
+    renderHook(() =>
+      useWebSocketClient({
+        url: 'ws://localhost:8080/ws',
+      }),
+    )
+
+    expect(MockWebSocket.instances).toHaveLength(1)
+    expect(MockWebSocket.instances[0]?.url).toBe('ws://localhost:8080/ws?token=abc123token')
+  })
+
+  it('keeps existing token query param unchanged', () => {
+    getAccessTokenMock.mockReturnValue('newtoken')
+
+    renderHook(() =>
+      useWebSocketClient({
+        url: 'ws://localhost:8080/ws?token=existing',
+      }),
+    )
+
+    expect(MockWebSocket.instances).toHaveLength(1)
+    expect(MockWebSocket.instances[0]?.url).toBe('ws://localhost:8080/ws?token=existing')
   })
 })

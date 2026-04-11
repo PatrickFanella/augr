@@ -358,6 +358,46 @@ func TestHealthEndpointLogsFailuresAtInfo(t *testing.T) {
 	}
 }
 
+func TestGetEconomicCalendarProviderAccessDeniedReturnsEmpty(t *testing.T) {
+	t.Parallel()
+
+	deps := testDeps()
+	deps.EventsProvider = &stubEventsProvider{
+		economicErr: errors.New("finnhub: GetEconomicCalendar: finnhub: You don't have access to this resource. (status=403)"),
+	}
+	srv := newTestServerWithDeps(t, deps)
+
+	rr := doRequest(t, srv, http.MethodGet, "/api/v1/calendar/economic", nil)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", rr.Code, http.StatusOK, rr.Body.String())
+	}
+
+	var body []domain.EconomicEvent
+	if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body) != 0 {
+		t.Fatalf("len(body) = %d, want 0", len(body))
+	}
+}
+
+func TestGetEconomicCalendarProviderFailureReturnsInternal(t *testing.T) {
+	t.Parallel()
+
+	deps := testDeps()
+	deps.EventsProvider = &stubEventsProvider{economicErr: errors.New("upstream timeout")}
+	srv := newTestServerWithDeps(t, deps)
+
+	rr := doRequest(t, srv, http.MethodGet, "/api/v1/calendar/economic", nil)
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d; body: %s", rr.Code, http.StatusInternalServerError, rr.Body.String())
+	}
+	body := decodeJSON[ErrorResponse](t, rr)
+	if body.Code != ErrCodeInternal {
+		t.Fatalf("code = %q, want %q", body.Code, ErrCodeInternal)
+	}
+}
+
 func TestMetricsEndpointIsPublic(t *testing.T) {
 	t.Parallel()
 	srv := newTestServer(t)
@@ -2259,6 +2299,37 @@ type stubHealthCheck struct {
 func (s *stubHealthCheck) Check(context.Context) error {
 	s.calls.Add(1)
 	return s.err
+}
+
+type stubEventsProvider struct {
+	earnings    []domain.EarningsEvent
+	earningsErr error
+	filings     []domain.SECFiling
+	filingsErr  error
+	economic    []domain.EconomicEvent
+	economicErr error
+	ipos        []domain.IPOEvent
+	iposErr     error
+}
+
+func (s *stubEventsProvider) GetEarningsCalendar(_ context.Context, _, _ time.Time) ([]domain.EarningsEvent, error) {
+	return s.earnings, s.earningsErr
+}
+
+func (s *stubEventsProvider) GetNextEarnings(_ context.Context, _ string) (*domain.EarningsEvent, error) {
+	return nil, nil
+}
+
+func (s *stubEventsProvider) GetFilings(_ context.Context, _, _ string, _, _ time.Time) ([]domain.SECFiling, error) {
+	return s.filings, s.filingsErr
+}
+
+func (s *stubEventsProvider) GetEconomicCalendar(_ context.Context) ([]domain.EconomicEvent, error) {
+	return s.economic, s.economicErr
+}
+
+func (s *stubEventsProvider) GetIPOCalendar(_ context.Context, _, _ time.Time) ([]domain.IPOEvent, error) {
+	return s.ipos, s.iposErr
 }
 
 type blockingHealthCheck struct {

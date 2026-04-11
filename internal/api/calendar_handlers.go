@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 )
 
 func (s *Server) handleGetEarningsCalendar(w http.ResponseWriter, r *http.Request) {
@@ -35,12 +37,28 @@ func (s *Server) handleGetEconomicCalendar(w http.ResponseWriter, r *http.Reques
 
 	events, err := s.eventsProvider.GetEconomicCalendar(r.Context())
 	if err != nil {
+		if isEconomicCalendarAccessDenied(err) {
+			s.logger.Warn("economic calendar provider access denied; returning degraded empty response", "error", err)
+			respondJSON(w, http.StatusOK, []domain.EconomicEvent{})
+			return
+		}
 		s.logger.Error("economic calendar request failed", "error", err)
 		respondError(w, http.StatusInternalServerError, "failed to fetch economic calendar", ErrCodeInternal)
 		return
 	}
 
 	respondJSON(w, http.StatusOK, events)
+}
+
+func isEconomicCalendarAccessDenied(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "status=403") ||
+		strings.Contains(msg, "forbidden") ||
+		strings.Contains(msg, "don't have access to this resource")
 }
 
 func (s *Server) handleGetFilings(w http.ResponseWriter, r *http.Request) {
