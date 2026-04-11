@@ -4,18 +4,27 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"time"
 )
+
+const defaultFallbackTimeout = 60 * time.Second
+
+// FallbackMetrics captures fallback events for observability.
+type FallbackMetrics interface {
+	RecordLLMFallback(reason string)
+}
 
 // FallbackProvider wraps a primary and secondary Provider. If the primary
 // provider fails, the request is retried against the secondary provider.
 // Fallback events are logged for observability.
 //
-// Context errors (Canceled, DeadlineExceeded) are returned immediately
-// without attempting the secondary provider.
+// Context cancellation errors are returned immediately. DeadlineExceeded
+// errors are retried against the secondary provider using a fresh context.
 type FallbackProvider struct {
 	primary   Provider
 	secondary Provider
 	logger    *slog.Logger
+	metrics   FallbackMetrics
 }
 
 // NewFallbackProvider constructs a FallbackProvider that tries primary first
@@ -39,25 +48,59 @@ func NewFallbackProvider(primary, secondary Provider, logger *slog.Logger) (*Fal
 	}, nil
 }
 
+// WithMetrics wires an optional metrics recorder into the provider.
+func (f *FallbackProvider) WithMetrics(metrics FallbackMetrics) *FallbackProvider {
+	if f == nil {
+		return nil
+	}
+	f.metrics = metrics
+	return f
+}
+
 // Complete tries the primary provider first. On failure it logs the event and
-// attempts the secondary provider. Context errors (Canceled, DeadlineExceeded)
-// are returned immediately without fallback. If both providers fail the
-// secondary error is returned.
+// attempts the secondary provider. Context.Canceled is returned immediately
+// without fallback. Context.DeadlineExceeded is retried against the secondary
+// provider with a fresh context. If both providers fail the secondary error is
+// returned.
 func (f *FallbackProvider) Complete(ctx context.Context, request CompletionRequest) (*CompletionResponse, error) {
 	resp, err := f.primary.Complete(ctx, request)
 	if err == nil {
 		return resp, nil
 	}
 
-	// Context errors mean the caller canceled or timed out; don't waste
-	// resources calling the secondary provider.
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+	if errors.Is(err, context.Canceled) {
 		return nil, err
+	}
+
+	secondaryCtx := ctx
+	if errors.Is(err, context.DeadlineExceeded) {
+		secondaryCtx, cancel := newFallbackContext(ctx)
+		defer cancel()
+		if f.metrics != nil {
+			f.metrics.RecordLLMFallback("deadline_exceeded")
+		}
+		f.logger.Warn("llm: primary provider timed out, falling back to secondary",
+			slog.Any("error", err),
+		)
+		return f.secondary.Complete(secondaryCtx, request)
+	}
+	if f.metrics != nil {
+		f.metrics.RecordLLMFallback("provider_error")
 	}
 
 	f.logger.Warn("llm: primary provider failed, falling back to secondary",
 		slog.Any("error", err),
 	)
 
-	return f.secondary.Complete(ctx, request)
+	return f.secondary.Complete(secondaryCtx, request)
+}
+
+func newFallbackContext(parent context.Context) (context.Context, context.CancelFunc) {
+	if deadline, ok := parent.Deadline(); ok {
+		if remaining := time.Until(deadline); remaining > 0 {
+			return context.WithTimeout(context.Background(), remaining)
+		}
+	}
+
+	return context.WithTimeout(context.Background(), defaultFallbackTimeout)
 }

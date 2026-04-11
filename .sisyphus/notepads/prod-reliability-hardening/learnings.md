@@ -28,3 +28,5 @@
 
 2026-04-11: DeadlineExceeded now non-retryable; snip added public/internal tests covering immediate fail-fast and no secondary retry.
 2026-04-11: DeadlineExceeded now non-retryable; tests cover direct timeout and fail-fast behavior.
+2026-04-11: fallback.go now treats context.DeadlineExceeded differently from context.Canceled: canceled still returns immediately, timeout now retries secondary with fresh background-derived timeout context.
+2026-04-11: FallbackProvider metrics hook matches OrderManager pattern via WithMetrics(...); reasons used: "deadline_exceeded" and "provider_error".
