@@ -851,7 +851,7 @@ func pipelineEventToWSMessage(e agent.PipelineEvent) api.WSMessage {
 			Type:       api.EventError,
 			StrategyID: e.StrategyID,
 			RunID:      e.PipelineRunID,
-			Data:       map[string]any{"error": e.Error},
+			Data:       map[string]any{"error": e.Error, "timed_out": e.TimedOut, "used_fallback": e.UsedFallback},
 			Timestamp:  e.OccurredAt,
 		}
 	default:

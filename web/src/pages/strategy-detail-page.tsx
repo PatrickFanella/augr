@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Pause, Play, SkipForward, Trash2 } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Pause, Play, SkipForward, Trash2, Zap } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
@@ -9,8 +9,9 @@ import { StrategyRunHistory } from '@/components/strategies/strategy-run-history
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { useWebSocketClient } from '@/hooks/use-websocket-client'
 import { ApiClientError, apiClient } from '@/lib/api/client'
-import type { StrategyStatus, StrategyUpdateRequest } from '@/lib/api/types'
+import type { PipelineErrorData, StrategyStatus, StrategyUpdateRequest } from '@/lib/api/types'
 import { describeCron } from '@/lib/cron-describe'
 
 function resolveStrategyStatus(strategy: { status?: StrategyStatus; is_active?: boolean }): StrategyStatus {
@@ -37,6 +38,17 @@ export function StrategyDetailPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [actionError, setActionError] = useState<string | null>(null)
+  const [lastPipelineError, setLastPipelineError] = useState<PipelineErrorData | null>(null)
+
+  useWebSocketClient({
+    onMessage: (msg) => {
+      if (!('type' in msg) || !('strategy_id' in msg)) return
+      const wsMsg = msg as { type: string; strategy_id?: string; data?: PipelineErrorData }
+      if (wsMsg.type === 'error' && wsMsg.strategy_id === id && wsMsg.data) {
+        setLastPipelineError(wsMsg.data)
+      }
+    },
+  })
 
   const { data: strategy, isLoading, isError } = useQuery({
     queryKey: ['strategy', id],
@@ -177,6 +189,18 @@ export function StrategyDetailPage() {
             </Badge>
             {strategy.is_paper ? <Badge variant="warning">paper</Badge> : null}
             {strategy.skip_next_run ? <Badge variant="outline">skip next queued</Badge> : null}
+            {lastPipelineError?.timed_out && (
+              <Badge variant="destructive" className="gap-1" title="Last run hit a deadline timeout">
+                <AlertTriangle className="size-3" />
+                timeout
+              </Badge>
+            )}
+            {lastPipelineError?.used_fallback && (
+              <Badge variant="outline" className="gap-1 border-amber-500 text-amber-500" title="Last run used fallback LLM model">
+                <Zap className="size-3" />
+                fallback model
+              </Badge>
+            )}
           </>
         )}
         actions={(

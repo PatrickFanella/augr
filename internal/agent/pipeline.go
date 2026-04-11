@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -589,6 +590,7 @@ func (p *Pipeline) Execute(ctx context.Context, strategyID uuid.UUID, ticker str
 				StrategyID:    strategyID,
 				Ticker:        ticker,
 				Error:         err.Error(),
+				TimedOut:      errors.Is(err, context.DeadlineExceeded),
 				OccurredAt:    p.currentTime().UTC(),
 			})
 
