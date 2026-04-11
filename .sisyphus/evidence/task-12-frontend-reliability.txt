@@ -1,0 +1,33 @@
+Task: task-12-frontend-reliability
+Date: 2026-04-11
+
+Files created/modified:
+- web/src/pages/reliability-page.tsx (new)
+- web/src/lib/api/types.ts (added AutomationJobHealth, AutomationHealthResponse)
+- web/src/lib/api/client.ts (added AutomationHealthResponse import, getAutomationHealth method)
+- web/src/App.tsx (added /reliability route, ReliabilityPage import)
+- web/src/components/layout/app-shell.tsx (added Reliability nav link with ShieldCheck icon)
+
+LSP diagnostics (errors):
+- reliability-page.tsx: 0 errors
+- client.ts: 0 errors
+- App.tsx: 0 errors
+- app-shell.tsx: 0 errors
+- types.ts: 0 errors
+
+Build note: npm run build exits non-zero due to pre-existing TS errors in:
+  - src/components/backtests/backtest-equity-chart.tsx
+  - src/components/universe/watchlist-table.tsx
+  - src/pages/order-detail-page.tsx
+  - src/pages/pipeline-run-page.tsx
+  - src/pages/strategies-page.tsx
+These errors existed before this task (verified via git stash test).
+My new files introduce 0 new TS errors.
+
+Outcomes:
+[x] web/src/pages/reliability-page.tsx exists
+[x] web/src/App.tsx has /reliability route
+[x] web/src/components/layout/app-shell.tsx has nav link
+[x] web/src/lib/api/types.ts has AutomationHealthResponse type
+[x] No new TS errors introduced
+[x] Evidence file written

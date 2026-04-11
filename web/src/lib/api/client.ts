@@ -7,6 +7,7 @@ import type {
   AgentMemory,
   AnalyzeFilingRequest,
   AuditLogEntry,
+  AutomationHealthResponse,
   EarningsEvent,
   EconomicEvent,
   EngineStatus,
@@ -493,6 +494,10 @@ export class ApiClient {
   // Automation
   async getAutomationStatus() {
     return this.request<JobStatus[]>('/api/v1/automation/status')
+  }
+
+  async getAutomationHealth() {
+    return this.request<AutomationHealthResponse>('/api/v1/automation/health')
   }
 
   async runAutomationJob(name: string) {
