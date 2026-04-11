@@ -379,6 +379,12 @@ export interface WebSocketMessage<TData = unknown> {
   timestamp?: ISODateString
 }
 
+export interface PipelineErrorData {
+  error: string
+  timed_out?: boolean
+  used_fallback?: boolean
+}
+
 
 export interface LoginRequest {
   username: string
