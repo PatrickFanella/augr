@@ -106,3 +106,34 @@ func TestBuildRunnerDefinition_UsesEnvBoundedDebateTimeoutFallback(t *testing.T)
 		t.Fatalf("risk judge call error = %v", err)
 	}
 }
+
+func TestEffectiveDebateCallTimeout(t *testing.T) {
+	t.Run("uses llm timeout default when no overrides", func(t *testing.T) {
+		t.Setenv("LLM_DEBATE_TIMEOUT", "")
+
+		resolved := agent.ResolvedConfig{}
+		if got := effectiveDebateCallTimeout(30*time.Second, resolved); got != 30*time.Second {
+			t.Fatalf("effectiveDebateCallTimeout() = %s, want %s", got, 30*time.Second)
+		}
+	})
+
+	t.Run("uses strategy override when present", func(t *testing.T) {
+		t.Setenv("LLM_DEBATE_TIMEOUT", "45s")
+
+		resolved := agent.ResolvedConfig{
+			PipelineConfig: agent.ResolvedPipelineConfig{DebateTimeoutSeconds: 10},
+		}
+		if got := effectiveDebateCallTimeout(30*time.Second, resolved); got != 10*time.Second {
+			t.Fatalf("effectiveDebateCallTimeout() = %s, want %s", got, 10*time.Second)
+		}
+	})
+
+	t.Run("uses env override when strategy override absent", func(t *testing.T) {
+		t.Setenv("LLM_DEBATE_TIMEOUT", "45s")
+
+		resolved := agent.ResolvedConfig{}
+		if got := effectiveDebateCallTimeout(30*time.Second, resolved); got != 45*time.Second {
+			t.Fatalf("effectiveDebateCallTimeout() = %s, want %s", got, 45*time.Second)
+		}
+	})
+}
