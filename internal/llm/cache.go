@@ -28,6 +28,12 @@ type ResponseCache interface {
 	Set(key string, response *CompletionResponse)
 }
 
+// CacheMetrics records aggregate cache hits and misses.
+type CacheMetrics interface {
+	RecordLLMCacheHit()
+	RecordLLMCacheMiss()
+}
+
 // MemoryResponseCache is an in-memory ResponseCache implementation.
 type MemoryResponseCache struct {
 	mu    sync.RWMutex
@@ -75,6 +81,20 @@ type CacheProvider struct {
 	provider Provider
 	cache    ResponseCache
 	version  string
+	metrics  CacheMetrics
+}
+
+// CachedProvider is a compatibility alias for CacheProvider.
+type CachedProvider = CacheProvider
+
+// NewCachedProvider wraps provider with a response cache using the default
+// cache version. It returns nil when provider or cache is invalid.
+func NewCachedProvider(provider Provider, cache ResponseCache) *CachedProvider {
+	wrapped, err := NewCacheProvider(provider, cache, "")
+	if err != nil {
+		return nil
+	}
+	return wrapped
 }
 
 // NewCacheProvider wraps provider with a response cache. An empty version uses
@@ -99,6 +119,15 @@ func NewCacheProvider(provider Provider, cache ResponseCache, version string) (*
 	}, nil
 }
 
+// WithCacheMetrics attaches optional cache metrics.
+func (c *CacheProvider) WithCacheMetrics(m CacheMetrics) *CacheProvider {
+	if c == nil {
+		return nil
+	}
+	c.metrics = m
+	return c
+}
+
 // Complete returns a cached response when available, otherwise it delegates to
 // the wrapped provider and stores the result.
 func (c *CacheProvider) Complete(ctx context.Context, request CompletionRequest) (*CompletionResponse, error) {
@@ -113,10 +142,16 @@ func (c *CacheProvider) Complete(ctx context.Context, request CompletionRequest)
 
 	if resp, ok := c.cache.Get(key); ok {
 		recordCacheHit(ctx)
+		if c.metrics != nil {
+			c.metrics.RecordLLMCacheHit()
+		}
 		return resp, nil
 	}
 
 	recordCacheMiss(ctx)
+	if c.metrics != nil {
+		c.metrics.RecordLLMCacheMiss()
+	}
 
 	resp, err := c.provider.Complete(ctx, request)
 	if err != nil {

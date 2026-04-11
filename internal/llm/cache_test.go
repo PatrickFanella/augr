@@ -7,6 +7,25 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/llm"
 )
 
+type mockCacheMetrics struct {
+	hits   int
+	misses int
+}
+
+func (m *mockCacheMetrics) RecordLLMCacheHit() {
+	if m == nil {
+		return
+	}
+	m.hits++
+}
+
+func (m *mockCacheMetrics) RecordLLMCacheMiss() {
+	if m == nil {
+		return
+	}
+	m.misses++
+}
+
 func TestCacheProviderCachesResponsesAndTracksStats(t *testing.T) {
 	t.Parallel()
 
@@ -177,5 +196,35 @@ func TestCacheProviderRequestOptionsInvalidateEntries(t *testing.T) {
 
 	if mock.calls.Load() != 2 {
 		t.Fatalf("underlying calls = %d, want 2", mock.calls.Load())
+	}
+}
+
+func TestCachedProviderRecordsMetricsOnHitAndMiss(t *testing.T) {
+	t.Parallel()
+
+	mock := newMockProvider([]*llm.CompletionResponse{{
+		Content: "cached response",
+		Model:   "gpt-5-mini",
+	}}, []error{nil})
+
+	metrics := &mockCacheMetrics{}
+	provider := llm.NewCachedProvider(mock, llm.NewMemoryResponseCache()).WithCacheMetrics(metrics)
+	request := llm.CompletionRequest{
+		Model:    "gpt-5-mini",
+		Messages: []llm.Message{{Role: "system", Content: "sys"}, {Role: "user", Content: "prompt"}},
+	}
+
+	if _, err := provider.Complete(context.Background(), request); err != nil {
+		t.Fatalf("Complete(first) error = %v", err)
+	}
+	if _, err := provider.Complete(context.Background(), request); err != nil {
+		t.Fatalf("Complete(second) error = %v", err)
+	}
+
+	if metrics.misses != 1 {
+		t.Fatalf("misses = %d, want 1", metrics.misses)
+	}
+	if metrics.hits != 1 {
+		t.Fatalf("hits = %d, want 1", metrics.hits)
 	}
 }

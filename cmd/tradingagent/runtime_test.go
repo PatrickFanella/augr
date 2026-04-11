@@ -592,6 +592,23 @@ func TestNewLLMProviderForSelection_SupportsOpenRouterAndXAI(t *testing.T) {
 	}
 }
 
+func TestLLMCacheEnabled(t *testing.T) {
+	t.Setenv("LLM_CACHE_ENABLED", "")
+	if !llmCacheEnabled() {
+		t.Fatal("llmCacheEnabled() = false, want true when unset")
+	}
+
+	t.Setenv("LLM_CACHE_ENABLED", "true")
+	if !llmCacheEnabled() {
+		t.Fatal("llmCacheEnabled() = false, want true when env=true")
+	}
+
+	t.Setenv("LLM_CACHE_ENABLED", "false")
+	if llmCacheEnabled() {
+		t.Fatal("llmCacheEnabled() = true, want false when env=false")
+	}
+}
+
 func slogDiscardLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }

@@ -1,0 +1,22 @@
+=== RUN   TestCachedProviderRecordsMetricsOnHitAndMiss
+=== PAUSE TestCachedProviderRecordsMetricsOnHitAndMiss
+=== CONT  TestCachedProviderRecordsMetricsOnHitAndMiss
+--- PASS: TestCachedProviderRecordsMetricsOnHitAndMiss (0.00s)
+PASS
+ok  	github.com/PatrickFanella/get-rich-quick/internal/llm	(cached)
+testing: warning: no tests to run
+PASS
+ok  	github.com/PatrickFanella/get-rich-quick/internal/llm/anthropic	(cached) [no tests to run]
+testing: warning: no tests to run
+PASS
+ok  	github.com/PatrickFanella/get-rich-quick/internal/llm/google	(cached) [no tests to run]
+testing: warning: no tests to run
+PASS
+ok  	github.com/PatrickFanella/get-rich-quick/internal/llm/ollama	(cached) [no tests to run]
+testing: warning: no tests to run
+PASS
+ok  	github.com/PatrickFanella/get-rich-quick/internal/llm/openai	(cached) [no tests to run]
+testing: warning: no tests to run
+PASS
+ok  	github.com/PatrickFanella/get-rich-quick/internal/llm/parse	(cached) [no tests to run]
+go build ./... completed successfully

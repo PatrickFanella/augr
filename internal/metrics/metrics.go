@@ -16,6 +16,8 @@ type Metrics struct {
 	LLMFallbackTotal         *prometheus.CounterVec
 	LLMTokensTotal           *prometheus.CounterVec
 	LLMLatency               *prometheus.HistogramVec
+	LLMCacheHitsTotal        prometheus.Counter
+	LLMCacheMissesTotal      prometheus.Counter
 	OrdersTotal              *prometheus.CounterVec
 	SignalParseFailuresTotal prometheus.Counter
 	SchedulerTickTotal       *prometheus.CounterVec
@@ -70,6 +72,16 @@ func New() *Metrics {
 			Buckets: prometheus.DefBuckets,
 		}, []string{"provider", "model"}),
 
+		LLMCacheHitsTotal: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "tradingagent_llm_cache_hits_total",
+			Help: "Total LLM response cache hits.",
+		}),
+
+		LLMCacheMissesTotal: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "tradingagent_llm_cache_misses_total",
+			Help: "Total LLM response cache misses.",
+		}),
+
 		OrdersTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "tradingagent_orders_total",
 			Help: "Total orders by broker, side, and status.",
@@ -123,6 +135,8 @@ func New() *Metrics {
 		m.LLMFallbackTotal,
 		m.LLMTokensTotal,
 		m.LLMLatency,
+		m.LLMCacheHitsTotal,
+		m.LLMCacheMissesTotal,
 		m.OrdersTotal,
 		m.SignalParseFailuresTotal,
 		m.SchedulerTickTotal,
@@ -160,6 +174,20 @@ func (m *Metrics) RecordLLMTokens(promptTokens, completionTokens int) {
 
 func (m *Metrics) ObserveLLMLatency(provider, model string, seconds float64) {
 	m.LLMLatency.WithLabelValues(provider, model).Observe(seconds)
+}
+
+func (m *Metrics) RecordLLMCacheHit() {
+	if m == nil {
+		return
+	}
+	m.LLMCacheHitsTotal.Inc()
+}
+
+func (m *Metrics) RecordLLMCacheMiss() {
+	if m == nil {
+		return
+	}
+	m.LLMCacheMissesTotal.Inc()
 }
 
 func (m *Metrics) RecordOrder(broker, side, status string) {
