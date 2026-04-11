@@ -60,33 +60,39 @@ type OrchestratorDeps struct {
 
 // RegisteredJob tracks a single automated job and its runtime state.
 type RegisteredJob struct {
-	Name        string
-	Description string
-	Schedule    scheduler.ScheduleSpec
-	Fn          func(ctx context.Context) error
-	DependsOn   []string // job names that must not be running
-	mu          sync.Mutex
-	LastRun     *time.Time
-	LastResult  string
-	LastError   string
-	RunCount    int
-	ErrorCount  int
-	Running     bool
-	Enabled     bool
+	Name                string
+	Description         string
+	Schedule            scheduler.ScheduleSpec
+	Fn                  func(ctx context.Context) error
+	DependsOn           []string // job names that must not be running
+	mu                  sync.Mutex
+	StartedAt           *time.Time
+	LastRun             *time.Time
+	LastResult          string
+	LastError           string
+	LastErrorAt         *time.Time
+	RunCount            int
+	ErrorCount          int
+	ConsecutiveFailures int
+	Running             bool
+	Enabled             bool
 }
 
 // JobStatus is the read-only snapshot returned by Status.
 type JobStatus struct {
-	Name        string     `json:"name"`
-	Description string     `json:"description"`
-	Schedule    string     `json:"schedule"`
-	LastRun     *time.Time `json:"last_run,omitempty"`
-	LastResult  string     `json:"last_result"`
-	LastError   string     `json:"last_error,omitempty"`
-	RunCount    int        `json:"run_count"`
-	ErrorCount  int        `json:"error_count"`
-	Running     bool       `json:"running"`
-	Enabled     bool       `json:"enabled"`
+	Name                string         `json:"name"`
+	Description         string         `json:"description"`
+	Schedule            string         `json:"schedule"`
+	LastRun             *time.Time     `json:"last_run,omitempty"`
+	LastResult          string         `json:"last_result"`
+	LastError           string         `json:"last_error,omitempty"`
+	LastErrorAt         *time.Time     `json:"last_error_at,omitempty"`
+	RunCount            int            `json:"run_count"`
+	ErrorCount          int            `json:"error_count"`
+	ConsecutiveFailures int            `json:"consecutive_failures"`
+	StuckFor            *time.Duration `json:"stuck_for,omitempty"`
+	Running             bool           `json:"running"`
+	Enabled             bool           `json:"enabled"`
 }
 
 // JobOrchestrator is the central registry and cron runner for all automated jobs.
@@ -172,17 +178,25 @@ func (o *JobOrchestrator) Status() []JobStatus {
 	statuses := make([]JobStatus, 0, len(o.jobs))
 	for _, job := range o.jobs {
 		job.mu.Lock()
+		var stuckFor *time.Duration
+		if job.Running && job.StartedAt != nil {
+			d := time.Since(*job.StartedAt)
+			stuckFor = &d
+		}
 		s := JobStatus{
-			Name:        job.Name,
-			Description: job.Description,
-			Schedule:    job.Schedule.Describe(),
-			LastRun:     job.LastRun,
-			LastResult:  job.LastResult,
-			LastError:   job.LastError,
-			RunCount:    job.RunCount,
-			ErrorCount:  job.ErrorCount,
-			Running:     job.Running,
-			Enabled:     job.Enabled,
+			Name:                job.Name,
+			Description:         job.Description,
+			Schedule:            job.Schedule.Describe(),
+			LastRun:             job.LastRun,
+			LastResult:          job.LastResult,
+			LastError:           job.LastError,
+			LastErrorAt:         job.LastErrorAt,
+			RunCount:            job.RunCount,
+			ErrorCount:          job.ErrorCount,
+			ConsecutiveFailures: job.ConsecutiveFailures,
+			StuckFor:            stuckFor,
+			Running:             job.Running,
+			Enabled:             job.Enabled,
 		}
 		job.mu.Unlock()
 		statuses = append(statuses, s)
@@ -213,7 +227,9 @@ func (o *JobOrchestrator) runDirect(job *RegisteredJob) {
 		o.logger.Warn("automation: skipping overlapping run", slog.String("job", job.Name))
 		return
 	}
+	startedAt := time.Now()
 	job.Running = true
+	job.StartedAt = &startedAt
 	job.mu.Unlock()
 
 	// Check dependencies.
@@ -238,6 +254,7 @@ func (o *JobOrchestrator) runDirect(job *RegisteredJob) {
 	defer func() {
 		job.mu.Lock()
 		job.Running = false
+		job.StartedAt = nil
 		job.mu.Unlock()
 	}()
 
@@ -254,10 +271,13 @@ func (o *JobOrchestrator) runDirect(job *RegisteredJob) {
 		job.ErrorCount++
 		job.LastResult = "failed"
 		job.LastError = err.Error()
+		job.LastErrorAt = &now
+		job.ConsecutiveFailures++
 		o.logger.Error("automation: job failed", slog.String("job", job.Name), slog.Duration("elapsed", elapsed), slog.Any("error", err))
 	} else {
 		job.LastResult = "success"
 		job.LastError = ""
+		job.ConsecutiveFailures = 0
 		o.logger.Info("automation: job completed", slog.String("job", job.Name), slog.Duration("elapsed", elapsed))
 	}
 	job.mu.Unlock()
@@ -299,7 +319,9 @@ func (o *JobOrchestrator) wrapAndRun(job *RegisteredJob) {
 		o.logger.Warn("automation: skipping overlapping run", slog.String("job", job.Name))
 		return
 	}
+	startedAt := time.Now()
 	job.Running = true
+	job.StartedAt = &startedAt
 	job.mu.Unlock()
 
 	// Check dependencies — skip if any dependency is currently running.
@@ -324,6 +346,7 @@ func (o *JobOrchestrator) wrapAndRun(job *RegisteredJob) {
 	defer func() {
 		job.mu.Lock()
 		job.Running = false
+		job.StartedAt = nil
 		job.mu.Unlock()
 	}()
 
@@ -341,9 +364,12 @@ func (o *JobOrchestrator) wrapAndRun(job *RegisteredJob) {
 	if err != nil {
 		job.ErrorCount++
 		job.LastError = err.Error()
+		job.LastErrorAt = &now
+		job.ConsecutiveFailures++
 		job.LastResult = fmt.Sprintf("error after %s", elapsed.Truncate(time.Millisecond))
 	} else {
 		job.LastError = ""
+		job.ConsecutiveFailures = 0
 		job.LastResult = fmt.Sprintf("ok in %s", elapsed.Truncate(time.Millisecond))
 	}
 	job.mu.Unlock()
@@ -417,8 +443,10 @@ func (o *JobOrchestrator) hydrateFromDB() {
 		job.LastRun = s.LastRun
 		job.LastResult = s.LastResult
 		job.LastError = s.LastError
+		job.LastErrorAt = s.LastErrorAt
 		job.RunCount = s.RunCount
 		job.ErrorCount = s.ErrorCount
+		job.ConsecutiveFailures = s.ConsecutiveFailures
 		job.mu.Unlock()
 	}
 
