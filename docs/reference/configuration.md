@@ -2,9 +2,12 @@
 title: "Configuration"
 description: "Environment variables, feature flags, runtime settings, and persistence semantics."
 status: "canonical"
-updated: "2026-04-08"
+updated: "2026-04-11"
+last-verified: "2026-04-11"
 tags: [configuration, env, reference]
 ---
+
+<!-- Last verified: 2026-04-11 -->
 
 # Configuration
 
@@ -41,6 +44,9 @@ All durable server configuration currently starts in the environment.
 - `LLM_QUICK_THINK_MODEL`
 - `LLM_TIMEOUT`
 - `STALE_RUN_TTL` - duration string for stale-run reconciliation (default `30m`)
+- `SIGNAL_FALLBACK_MODE` - controls signal evaluation fallback behavior: `drop` (default, urgency=1 dropped by hub) or `legacy` (urgency=3 + all strategies); set via runtime env
+- `LLM_DEBATE_TIMEOUT` - per-round debate LLM call timeout in seconds (default `120`); overridable per-strategy via `pipeline_config.debate_timeout_seconds`
+- `LLM_CACHE_ENABLED` - enables in-memory LLM response cache (default `true`)
 - provider-specific keys and base URLs
 
 ### Data providers

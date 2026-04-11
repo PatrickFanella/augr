@@ -1,0 +1,5 @@
+T10 PASS: All 4 env vars found in docs/reference/configuration.md
+- `STALE_RUN_TTL` - duration string for stale-run reconciliation (default `30m`)
+- `SIGNAL_FALLBACK_MODE` - controls signal evaluation fallback behavior: `drop` (default, urgency=1 dropped by hub) or `legacy` (urgency=3 + all strategies); set via runtime env
+- `LLM_DEBATE_TIMEOUT` - per-round debate LLM call timeout in seconds (default `120`); overridable per-strategy via `pipeline_config.debate_timeout_seconds`
+- `LLM_CACHE_ENABLED` - enables in-memory LLM response cache (default `true`)
