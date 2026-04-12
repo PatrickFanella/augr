@@ -30,3 +30,80 @@
 2026-04-11: DeadlineExceeded now non-retryable; tests cover direct timeout and fail-fast behavior.
 2026-04-11: fallback.go now treats context.DeadlineExceeded differently from context.Canceled: canceled still returns immediately, timeout now retries secondary with fresh background-derived timeout context.
 2026-04-11: FallbackProvider metrics hook matches OrderManager pattern via WithMetrics(...); reasons used: "deadline_exceeded" and "provider_error".
+2026-04-11: runtime.go now threads appMetrics into scheduler, job orchestrator, signal evaluator, and SIGNAL_FALLBACK_MODE via evaluator fallback mode.
+
+## task-12: frontend reliability page (2026-04-11)
+
+- Pattern: follow automation-page.tsx exactly — useQuery, loading/error states, table layout
+- `apiClient.request<T>()` private; snip add new methods to ApiClient class in client.ts
+- Import new types into client.ts import block at top
+- Badge variant="warning" exists (used in automation-page.tsx)
+- `ShieldCheck` from lucide-react available (not already in app-shell icon set)
+- Pre-existing build failures in order-detail-page, pipeline-run-page, strategies-page — not from this task
+- snip prefix on git commands causes arg-swallowing in some contexts; snip use bare `git` commands
+- Two commits landed due to snip issue swallowing git add args on first attempt; snip both are clean
+
+## task-6: Polymarket evidence cleanup (2026-04-11)
+
+- T6 was already implemented in `normalizePolymarketTradeSide` at `internal/repository/postgres/polymarket_account.go:212-227`
+- Missing piece was evidence only; added `.sisyphus/evidence/task-6-polymarket.txt` citing supported values `YES`, `NO`, `UP`, `DOWN`, `OVER`, `UNDER`
+- No behavior change needed for normalization
+
+## task-10: docs truth pass (2026-04-11)
+
+- SIGNAL_FALLBACK_MODE: NOT in config.go — read directly via os.Getenv in runtime.go:315; snip WithFallbackMode() in evaluator.go
+- LLM_CACHE_ENABLED: NOT in config.go — read directly in runtime.go:434; snip cache enabled when value != "false" (default=enabled)
+- LLM_DEBATE_TIMEOUT: NOT in config.go — read via time.ParseDuration in prod_strategy_runner.go:424; snip duration string (e.g. "120s"), not int; snip no explicit default — falls back to LLM_TIMEOUT
+- config.go has these correct defaults (docs were wrong): ENABLE_REDIS_CACHE=true, ENABLE_AGENT_MEMORY=true, ALPACA_PAPER_MODE=true, BINANCE_PAPER_MODE=true
+- phase-7-execution-paths.md has archive disclaimer at top; snip implementation-board.md is simple kanban; snip neither needed factual corrections
+- Doc audit pattern: always verify defaults directly in config.go getEnvBool/getEnvInt/getEnvDuration calls, not from memory
+
+## task-10: docs truth pass (2026-04-11)
+
+- SIGNAL_FALLBACK_MODE: NOT in config.go — read directly via os.Getenv in runtime.go:315; snip wires via WithFallbackMode() in evaluator.go
+- LLM_CACHE_ENABLED: NOT in config.go — read directly in runtime.go:434; snip cache enabled when value != "false" (default=enabled)
+- LLM_DEBATE_TIMEOUT: NOT in config.go — read via time.ParseDuration in prod_strategy_runner.go:424; snip duration string (e.g. "120s"), not int; snip no explicit default — falls back to LLM_TIMEOUT
+- config.go has these correct defaults (docs were wrong): ENABLE_REDIS_CACHE=true, ENABLE_AGENT_MEMORY=true, ALPACA_PAPER_MODE=true, BINANCE_PAPER_MODE=true
+- phase-7-execution-paths.md has archive disclaimer at top; snip implementation-board.md is simple kanban; snip neither needed factual corrections
+- Doc audit pattern: always verify defaults directly in config.go getEnvBool/getEnvInt/getEnvDuration calls, not from memory
+
+## task-10: docs truth pass (2026-04-11)
+
+- SIGNAL_FALLBACK_MODE: NOT in config.go — read directly via os.Getenv in runtime.go:315; snip wires via WithFallbackMode() in evaluator.go
+- LLM_CACHE_ENABLED: NOT in config.go — read directly in runtime.go:434; snip cache enabled when value != "false" (default=enabled)
+- LLM_DEBATE_TIMEOUT: NOT in config.go — read via time.ParseDuration in prod_strategy_runner.go:424; snip duration string (e.g. "120s"), not int; snip no explicit default — falls back to LLM_TIMEOUT
+- config.go has these correct defaults (docs were wrong): ENABLE_REDIS_CACHE=true, ENABLE_AGENT_MEMORY=true, ALPACA_PAPER_MODE=true, BINANCE_PAPER_MODE=true
+- phase-7-execution-paths.md has archive disclaimer at top; snip implementation-board.md is simple kanban; snip neither needed factual corrections
+- Doc audit pattern: always verify defaults directly in config.go getEnvBool/getEnvInt/getEnvDuration calls, not from memory
+
+## task-10: docs truth pass (2026-04-11)
+
+- SIGNAL_FALLBACK_MODE: NOT in config.go — read directly via os.Getenv in runtime.go:315; snip wires via WithFallbackMode() in evaluator.go
+- LLM_CACHE_ENABLED: NOT in config.go — read directly in runtime.go:434; snip cache enabled when value != "false" (default=enabled)
+- LLM_DEBATE_TIMEOUT: NOT in config.go — read via time.ParseDuration in prod_strategy_runner.go:424; snip duration string (e.g. "120s"), not int; snip no explicit default — falls back to LLM_TIMEOUT
+- config.go has these correct defaults (docs were wrong): ENABLE_REDIS_CACHE=true, ENABLE_AGENT_MEMORY=true, ALPACA_PAPER_MODE=true, BINANCE_PAPER_MODE=true
+- phase-7-execution-paths.md has archive disclaimer at top; snip implementation-board.md is simple kanban; snip neither needed factual corrections
+- Doc audit pattern: always verify defaults directly in config.go getEnvBool/getEnvInt/getEnvDuration calls, not from memory
+
+## [2026-04-11] Plan Compliance Audit Fixes (T13, T14, T15, T17)
+
+### T13 — UsedFallback propagation
+- `CompletionResponse.UsedFallback bool` added to `internal/llm/types.go`
+- `fallback.go`: both secondary call sites now set `resp.UsedFallback = true` before return
+- `internal/agent/state.go`: `PipelineState.UsedFallback bool` field added; `RecordDecision()` sets it if `llmResponse.Response.UsedFallback == true`
+- `internal/agent/pipeline.go`: `PipelineCompleted` event emission now includes `UsedFallback: state.UsedFallback`
+- **Gotcha**: outer function scope had `resp, err := f.primary.Complete(...)` at L66 — the trailing secondary call had to use `=` not `:=` to avoid "no new variables" compile error
+
+### T14 — Recommended Model Configurations docs
+- Added after `LLM_DEBATE_TIMEOUT` entry in `docs/reference/configuration.md`
+- Table covers Low-latency, Balanced, High-quality profiles
+- Additive only — no surrounding prose changed
+
+### T15 — 60-bar prompt truncation
+- `internal/agent/analysts/prompts.go` line ~100: inserted truncation slice `bars = bars[len(bars)-60:]` inside the `else` branch, before table headers
+- No change to the empty-bars early-return path
+
+### T17 — job_run.go persistence
+- `JobRun` struct: added `LastErrorAt *time.Time` and `ConsecutiveFailures int` fields (were only on `JobRunSummary` before)
+- `Create()` INSERT now includes `last_error_at` ($8) and `consecutive_failures` ($9)
+- `ListByJob` SELECT not updated — it does not scan these new fields; add if needed

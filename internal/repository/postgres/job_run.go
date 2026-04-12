@@ -63,7 +63,7 @@ func (r *JobRunRepo) ListByJob(ctx context.Context, jobName string, limit int) (
 		limit = 50
 	}
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, job_name, status, started_at, completed_at, duration_ns, error, created_at
+		`SELECT id, job_name, status, started_at, completed_at, duration_ns, error, last_error_at, consecutive_failures, created_at
 		 FROM automation_job_runs
 		 WHERE job_name = $1
 		 ORDER BY started_at DESC
@@ -81,8 +81,9 @@ func (r *JobRunRepo) ListByJob(ctx context.Context, jobName string, limit int) (
 			run       JobRun
 			errStr    *string
 			completed *time.Time
+			lastErrAt *time.Time
 		)
-		if err := rows.Scan(&run.ID, &run.JobName, &run.Status, &run.StartedAt, &completed, &run.DurationNs, &errStr, &run.CreatedAt); err != nil {
+		if err := rows.Scan(&run.ID, &run.JobName, &run.Status, &run.StartedAt, &completed, &run.DurationNs, &errStr, &lastErrAt, &run.ConsecutiveFailures, &run.CreatedAt); err != nil {
 			return nil, fmt.Errorf("postgres: scan job run: %w", err)
 		}
 		if completed != nil {
@@ -90,6 +91,9 @@ func (r *JobRunRepo) ListByJob(ctx context.Context, jobName string, limit int) (
 		}
 		if errStr != nil {
 			run.Error = *errStr
+		}
+		if lastErrAt != nil {
+			run.LastErrorAt = lastErrAt
 		}
 		runs = append(runs, run)
 	}
