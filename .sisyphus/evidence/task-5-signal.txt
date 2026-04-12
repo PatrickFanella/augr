@@ -1,0 +1,30 @@
+Task: Add parse failure metric and SIGNAL_FALLBACK_MODE env var to internal/signal/evaluator.go
+
+Files changed:
+  internal/signal/evaluator.go
+  internal/signal/evaluator_test.go
+  cmd/tradingagent/runtime.go
+
+Changes:
+1. Added SignalEvalMetrics interface (RecordSignalParseFailure method)
+2. Added metrics/fallbackMode fields to Evaluator struct
+3. Added WithMetrics(m SignalEvalMetrics) *Evaluator setter
+4. Added WithFallbackMode(mode string) *Evaluator setter
+5. Emit metric on LLM failure path (line ~115)
+6. Emit metric on JSON parse failure path (line ~143)
+7. fallback() now respects fallbackMode:
+   - "drop" (default): urgency=1, AffectedStrategies=nil
+   - "legacy": urgency=3, AffectedStrategies=all strategies
+8. runtime.go: .WithFallbackMode(os.Getenv("SIGNAL_FALLBACK_MODE")) wired
+
+Test results:
+=== RUN   TestEvaluatorEvaluate_ProviderErrorFallsBackToLowUrgency --- PASS
+=== RUN   TestEvaluatorParseResponse_InvalidJSONFallsBackToLowUrgency --- PASS
+=== RUN   TestEvaluatorFallback_DropMode --- PASS
+=== RUN   TestEvaluatorFallback_LegacyMode --- PASS
+=== RUN   TestEvaluatorFallback_ParseFailure_LegacyMode --- PASS
+=== RUN   TestEvaluatorSuccess_NoMetricFired --- PASS
+=== RUN   TestEvaluatorFallback_NilMetrics_NoPanic --- PASS
+=== RUN   TestSignalHubProcess_DropsLowUrgencyFallback --- PASS
+
+ok  github.com/PatrickFanella/get-rich-quick/internal/signal 0.001s

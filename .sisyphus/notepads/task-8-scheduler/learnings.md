@@ -1,0 +1,3 @@
+- Metrics emit best at job entry, before dedup/guards, so every cron fire counts.
+- Separate tick type per scheduler path: strategy, backtest, discovery.
+- Test needs a fake metrics sink plus one path that can panic after emission to prove call order.

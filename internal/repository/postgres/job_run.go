@@ -11,14 +11,16 @@ import (
 
 // JobRun represents a single execution of an automation job.
 type JobRun struct {
-	ID          uuid.UUID  `json:"id"`
-	JobName     string     `json:"job_name"`
-	Status      string     `json:"status"`
-	StartedAt   time.Time  `json:"started_at"`
-	CompletedAt *time.Time `json:"completed_at,omitempty"`
-	DurationNs  int64      `json:"duration_ns,omitempty"`
-	Error       string     `json:"error,omitempty"`
-	CreatedAt   time.Time  `json:"created_at"`
+	ID                  uuid.UUID  `json:"id"`
+	JobName             string     `json:"job_name"`
+	Status              string     `json:"status"`
+	StartedAt           time.Time  `json:"started_at"`
+	CompletedAt         *time.Time `json:"completed_at,omitempty"`
+	DurationNs          int64      `json:"duration_ns,omitempty"`
+	Error               string     `json:"error,omitempty"`
+	LastErrorAt         *time.Time `json:"last_error_at,omitempty"`
+	ConsecutiveFailures int        `json:"consecutive_failures"`
+	CreatedAt           time.Time  `json:"created_at"`
 }
 
 // JobRunSummary holds aggregate stats for a single job name.
@@ -47,10 +49,10 @@ func NewJobRunRepo(pool *pgxpool.Pool) *JobRunRepo {
 func (r *JobRunRepo) Create(ctx context.Context, run *JobRun) error {
 	run.ID = uuid.New()
 	row := r.pool.QueryRow(ctx,
-		`INSERT INTO automation_job_runs (id, job_name, status, started_at, completed_at, duration_ns, error)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7)
+		`INSERT INTO automation_job_runs (id, job_name, status, started_at, completed_at, duration_ns, error, last_error_at, consecutive_failures)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		 RETURNING created_at`,
-		run.ID, run.JobName, run.Status, run.StartedAt, run.CompletedAt, run.DurationNs, nullString(run.Error),
+		run.ID, run.JobName, run.Status, run.StartedAt, run.CompletedAt, run.DurationNs, nullString(run.Error), run.LastErrorAt, run.ConsecutiveFailures,
 	)
 	return row.Scan(&run.CreatedAt)
 }
@@ -61,7 +63,7 @@ func (r *JobRunRepo) ListByJob(ctx context.Context, jobName string, limit int) (
 		limit = 50
 	}
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, job_name, status, started_at, completed_at, duration_ns, error, created_at
+		`SELECT id, job_name, status, started_at, completed_at, duration_ns, error, last_error_at, consecutive_failures, created_at
 		 FROM automation_job_runs
 		 WHERE job_name = $1
 		 ORDER BY started_at DESC
@@ -79,8 +81,9 @@ func (r *JobRunRepo) ListByJob(ctx context.Context, jobName string, limit int) (
 			run       JobRun
 			errStr    *string
 			completed *time.Time
+			lastErrAt *time.Time
 		)
-		if err := rows.Scan(&run.ID, &run.JobName, &run.Status, &run.StartedAt, &completed, &run.DurationNs, &errStr, &run.CreatedAt); err != nil {
+		if err := rows.Scan(&run.ID, &run.JobName, &run.Status, &run.StartedAt, &completed, &run.DurationNs, &errStr, &lastErrAt, &run.ConsecutiveFailures, &run.CreatedAt); err != nil {
 			return nil, fmt.Errorf("postgres: scan job run: %w", err)
 		}
 		if completed != nil {
@@ -88,6 +91,9 @@ func (r *JobRunRepo) ListByJob(ctx context.Context, jobName string, limit int) (
 		}
 		if errStr != nil {
 			run.Error = *errStr
+		}
+		if lastErrAt != nil {
+			run.LastErrorAt = lastErrAt
 		}
 		runs = append(runs, run)
 	}
@@ -122,51 +128,28 @@ func (r *JobRunRepo) Summaries(ctx context.Context) ([]JobRunSummary, error) {
 		return nil, err
 	}
 
-	// Fill in last_result and last_error from the most recent run per job.
+	// Fill in last_result, last_error, last_error_at, and consecutive_failures
+	// from persisted columns on the most recent run per job.
 	for i, s := range summaries {
 		var status string
 		var errStr *string
-		var startedAt time.Time
+		var lastErrAt *time.Time
+		var consecutiveFailures int
 		err := r.pool.QueryRow(ctx,
-			`SELECT status, error, started_at FROM automation_job_runs
+			`SELECT status, error, last_error_at, consecutive_failures
+			 FROM automation_job_runs
 			 WHERE job_name = $1 ORDER BY started_at DESC LIMIT 1`,
 			s.JobName,
-		).Scan(&status, &errStr, &startedAt)
+		).Scan(&status, &errStr, &lastErrAt, &consecutiveFailures)
 		if err == nil {
 			summaries[i].LastResult = status
 			if errStr != nil {
 				summaries[i].LastError = *errStr
-				summaries[i].LastErrorAt = &startedAt
 			}
-			summaries[i].ConsecutiveFailures = r.countConsecutiveFailures(ctx, s.JobName)
+			summaries[i].LastErrorAt = lastErrAt
+			summaries[i].ConsecutiveFailures = consecutiveFailures
 		}
 	}
 
 	return summaries, nil
-}
-
-func (r *JobRunRepo) countConsecutiveFailures(ctx context.Context, jobName string) int {
-	rows, err := r.pool.Query(ctx,
-		`SELECT status FROM automation_job_runs
-		 WHERE job_name = $1
-		 ORDER BY started_at DESC`,
-		jobName,
-	)
-	if err != nil {
-		return 0
-	}
-	defer rows.Close()
-
-	count := 0
-	for rows.Next() {
-		var status string
-		if err := rows.Scan(&status); err != nil {
-			return count
-		}
-		if status != "error" {
-			break
-		}
-		count++
-	}
-	return count
 }

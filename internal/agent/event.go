@@ -55,5 +55,7 @@ type PipelineEvent struct {
 	Round         int               `json:"round,omitempty"`
 	Payload       json.RawMessage   `json:"payload,omitempty"`
 	Error         string            `json:"error,omitempty"`
+	UsedFallback  bool              `json:"used_fallback,omitempty"`
+	TimedOut      bool              `json:"timed_out,omitempty"`
 	OccurredAt    time.Time         `json:"occurred_at"`
 }

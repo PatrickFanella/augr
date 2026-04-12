@@ -1,0 +1,20 @@
+Task 3 evidence — fallback DeadlineExceeded behavior
+
+Changed files:
+- internal/llm/fallback.go
+- internal/llm/fallback_test.go
+
+Verification:
+- lsp_diagnostics clean: internal/llm/fallback.go
+- lsp_diagnostics clean: internal/llm/fallback_test.go
+- go test ./internal/llm/... -run TestFallback -v
+
+Observed result:
+- PASS
+- ok   github.com/PatrickFanella/get-rich-quick/internal/llm
+
+Behavior covered:
+- primary DeadlineExceeded -> secondary called with fresh context
+- primary Canceled -> secondary not called
+- provider error -> secondary called, metric reason "provider_error"
+- DeadlineExceeded fallback -> metric reason "deadline_exceeded"

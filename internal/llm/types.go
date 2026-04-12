@@ -59,9 +59,11 @@ type CompletionUsage struct {
 
 // CompletionResponse captures the provider-agnostic result of a chat completion.
 type CompletionResponse struct {
-	Content   string          `json:"content"`
-	Usage     CompletionUsage `json:"usage"`
-	Model     string          `json:"model,omitempty"`
-	LatencyMS int             `json:"latency_ms,omitempty"`
-	CostUSD   float64         `json:"cost_usd,omitempty"`
+	Content      string          `json:"content"`
+	Usage        CompletionUsage `json:"usage"`
+	Model        string          `json:"model,omitempty"`
+	LatencyMS    int             `json:"latency_ms,omitempty"`
+	CostUSD      float64         `json:"cost_usd,omitempty"`
+	UsedFallback bool            `json:"used_fallback,omitempty"`
+	TimedOut     bool            `json:"timed_out,omitempty"`
 }

@@ -1,0 +1,3 @@
+- Added 4 counters using same private-registry pattern as existing metrics.
+- `prometheus/testutil` needed a `go.mod` indirect update (`github.com/kylelemons/godebug`).
+- Table-driven tests can validate both Counter and CounterVec via `testutil.CollectAndCompare`.

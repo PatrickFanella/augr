@@ -9,18 +9,24 @@ import (
 
 // Metrics holds all Prometheus instruments for the trading agent.
 type Metrics struct {
-	registry            *prometheus.Registry
-	PipelineRunsTotal   *prometheus.CounterVec
-	PipelineDuration    *prometheus.HistogramVec
-	LLMCallsTotal       *prometheus.CounterVec
-	LLMTokensTotal      *prometheus.CounterVec
-	LLMLatency          *prometheus.HistogramVec
-	OrdersTotal         *prometheus.CounterVec
-	StaleRunsReconciled prometheus.Counter
-	PortfolioValue      prometheus.Gauge
-	PositionsOpen       prometheus.Gauge
-	CircuitBreakerState prometheus.Gauge
-	KillSwitchActive    prometheus.Gauge
+	registry                 *prometheus.Registry
+	PipelineRunsTotal        *prometheus.CounterVec
+	PipelineDuration         *prometheus.HistogramVec
+	LLMCallsTotal            *prometheus.CounterVec
+	LLMFallbackTotal         *prometheus.CounterVec
+	LLMTokensTotal           *prometheus.CounterVec
+	LLMLatency               *prometheus.HistogramVec
+	LLMCacheHitsTotal        prometheus.Counter
+	LLMCacheMissesTotal      prometheus.Counter
+	OrdersTotal              *prometheus.CounterVec
+	SignalParseFailuresTotal prometheus.Counter
+	SchedulerTickTotal       *prometheus.CounterVec
+	AutomationJobErrorsTotal *prometheus.CounterVec
+	StaleRunsReconciled      prometheus.Counter
+	PortfolioValue           prometheus.Gauge
+	PositionsOpen            prometheus.Gauge
+	CircuitBreakerState      prometheus.Gauge
+	KillSwitchActive         prometheus.Gauge
 }
 
 // New creates a new isolated Prometheus registry, registers all trading-agent
@@ -50,6 +56,11 @@ func New() *Metrics {
 			Help: "Total LLM API calls by provider, model, and agent role.",
 		}, []string{"provider", "model", "agent_role"}),
 
+		LLMFallbackTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "tradingagent_llm_fallback_total",
+			Help: "Total LLM fallback events by reason.",
+		}, []string{"reason"}),
+
 		LLMTokensTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "tradingagent_llm_tokens_total",
 			Help: "Total LLM tokens consumed by type (prompt or completion).",
@@ -61,10 +72,35 @@ func New() *Metrics {
 			Buckets: prometheus.DefBuckets,
 		}, []string{"provider", "model"}),
 
+		LLMCacheHitsTotal: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "tradingagent_llm_cache_hits_total",
+			Help: "Total LLM response cache hits.",
+		}),
+
+		LLMCacheMissesTotal: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "tradingagent_llm_cache_misses_total",
+			Help: "Total LLM response cache misses.",
+		}),
+
 		OrdersTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "tradingagent_orders_total",
 			Help: "Total orders by broker, side, and status.",
 		}, []string{"broker", "side", "status"}),
+
+		SignalParseFailuresTotal: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "tradingagent_signal_parse_failures_total",
+			Help: "Total signal parse failures.",
+		}),
+
+		SchedulerTickTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "tradingagent_scheduler_tick_total",
+			Help: "Total scheduler ticks by type.",
+		}, []string{"type"}),
+
+		AutomationJobErrorsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "tradingagent_automation_job_errors_total",
+			Help: "Total automation job errors by job name.",
+		}, []string{"job_name"}),
 
 		StaleRunsReconciled: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "tradingagent_stale_runs_reconciled_total",
@@ -96,9 +132,15 @@ func New() *Metrics {
 		m.PipelineRunsTotal,
 		m.PipelineDuration,
 		m.LLMCallsTotal,
+		m.LLMFallbackTotal,
 		m.LLMTokensTotal,
 		m.LLMLatency,
+		m.LLMCacheHitsTotal,
+		m.LLMCacheMissesTotal,
 		m.OrdersTotal,
+		m.SignalParseFailuresTotal,
+		m.SchedulerTickTotal,
+		m.AutomationJobErrorsTotal,
 		m.StaleRunsReconciled,
 		m.PortfolioValue,
 		m.PositionsOpen,
@@ -121,6 +163,10 @@ func (m *Metrics) RecordLLMCall(provider, model, agentRole string) {
 	m.LLMCallsTotal.WithLabelValues(provider, model, agentRole).Inc()
 }
 
+func (m *Metrics) RecordLLMFallback(reason string) {
+	m.LLMFallbackTotal.WithLabelValues(reason).Inc()
+}
+
 func (m *Metrics) RecordLLMTokens(promptTokens, completionTokens int) {
 	m.LLMTokensTotal.WithLabelValues("prompt").Add(float64(promptTokens))
 	m.LLMTokensTotal.WithLabelValues("completion").Add(float64(completionTokens))
@@ -130,8 +176,34 @@ func (m *Metrics) ObserveLLMLatency(provider, model string, seconds float64) {
 	m.LLMLatency.WithLabelValues(provider, model).Observe(seconds)
 }
 
+func (m *Metrics) RecordLLMCacheHit() {
+	if m == nil {
+		return
+	}
+	m.LLMCacheHitsTotal.Inc()
+}
+
+func (m *Metrics) RecordLLMCacheMiss() {
+	if m == nil {
+		return
+	}
+	m.LLMCacheMissesTotal.Inc()
+}
+
 func (m *Metrics) RecordOrder(broker, side, status string) {
 	m.OrdersTotal.WithLabelValues(broker, side, status).Inc()
+}
+
+func (m *Metrics) RecordSignalParseFailure() {
+	m.SignalParseFailuresTotal.Inc()
+}
+
+func (m *Metrics) RecordSchedulerTick(tickType string) {
+	m.SchedulerTickTotal.WithLabelValues(tickType).Inc()
+}
+
+func (m *Metrics) RecordAutomationJobError(jobName string) {
+	m.AutomationJobErrorsTotal.WithLabelValues(jobName).Inc()
 }
 
 func (m *Metrics) RecordStaleRunReconciled() {

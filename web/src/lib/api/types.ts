@@ -61,6 +61,7 @@ export type WebSocketEventType =
   | 'position_update'
   | 'circuit_breaker'
   | 'error'
+  | 'pipeline_health'
 
 export interface ErrorResponse {
   error: string
@@ -377,6 +378,12 @@ export interface WebSocketMessage<TData = unknown> {
   run_id?: UUID
   data?: TData
   timestamp?: ISODateString
+}
+
+export interface PipelineErrorData {
+  error?: string
+  timed_out?: boolean
+  used_fallback?: boolean
 }
 
 
@@ -785,4 +792,25 @@ export interface WatchTerm {
 export interface AddWatchTermRequest {
   term: string
   strategy_id?: UUID
+}
+
+// ---------- Automation Health ----------
+
+export interface AutomationJobHealth {
+  name: string
+  enabled: boolean
+  running: boolean
+  last_run?: ISODateString
+  last_error?: string
+  error_count: number
+  consecutive_failures: number
+  run_count: number
+}
+
+export interface AutomationHealthResponse {
+  jobs: AutomationJobHealth[]
+  healthy: boolean
+  total_jobs: number
+  failing_jobs: number
+  degraded_jobs: number
 }

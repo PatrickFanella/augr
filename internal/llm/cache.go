@@ -28,16 +28,42 @@ type ResponseCache interface {
 	Set(key string, response *CompletionResponse)
 }
 
-// MemoryResponseCache is an in-memory ResponseCache implementation.
-type MemoryResponseCache struct {
-	mu    sync.RWMutex
-	items map[string]*CompletionResponse
+// CacheMetrics records aggregate cache hits and misses.
+type CacheMetrics interface {
+	RecordLLMCacheHit()
+	RecordLLMCacheMiss()
 }
 
-// NewMemoryResponseCache returns an empty in-memory response cache.
+// defaultMemoryCacheMaxItems is the default capacity for MemoryResponseCache.
+// Entries are evicted (FIFO-approximated) when this limit is reached to bound
+// memory growth in long-lived processes that receive mostly-unique prompts.
+const defaultMemoryCacheMaxItems = 1000
+
+// MemoryResponseCache is a capacity-bounded in-memory ResponseCache
+// implementation. When the cache is full an arbitrary entry is evicted before
+// inserting the new one, bounding memory consumption to at most maxItems
+// entries.
+type MemoryResponseCache struct {
+	mu       sync.RWMutex
+	items    map[string]*CompletionResponse
+	maxItems int
+}
+
+// NewMemoryResponseCache returns an empty in-memory response cache bounded to
+// defaultMemoryCacheMaxItems entries.
 func NewMemoryResponseCache() *MemoryResponseCache {
+	return NewMemoryResponseCacheWithLimit(defaultMemoryCacheMaxItems)
+}
+
+// NewMemoryResponseCacheWithLimit returns an empty in-memory response cache
+// bounded to maxItems entries. If maxItems is <= 0 the default limit is used.
+func NewMemoryResponseCacheWithLimit(maxItems int) *MemoryResponseCache {
+	if maxItems <= 0 {
+		maxItems = defaultMemoryCacheMaxItems
+	}
 	return &MemoryResponseCache{
-		items: make(map[string]*CompletionResponse),
+		items:    make(map[string]*CompletionResponse),
+		maxItems: maxItems,
 	}
 }
 
@@ -58,7 +84,8 @@ func (c *MemoryResponseCache) Get(key string) (*CompletionResponse, bool) {
 	return cloneCompletionResponse(resp), true
 }
 
-// Set stores a cloned response for the given key.
+// Set stores a cloned response for the given key. If the cache is at capacity
+// an arbitrary entry is evicted first to keep the total entry count bounded.
 func (c *MemoryResponseCache) Set(key string, response *CompletionResponse) {
 	if c == nil || response == nil {
 		return
@@ -66,6 +93,14 @@ func (c *MemoryResponseCache) Set(key string, response *CompletionResponse) {
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	// Evict one arbitrary entry when at capacity to prevent unbounded growth.
+	if _, exists := c.items[key]; !exists && len(c.items) >= c.maxItems {
+		for k := range c.items {
+			delete(c.items, k)
+			break
+		}
+	}
 
 	c.items[key] = cloneCompletionResponse(response)
 }
@@ -75,6 +110,20 @@ type CacheProvider struct {
 	provider Provider
 	cache    ResponseCache
 	version  string
+	metrics  CacheMetrics
+}
+
+// CachedProvider is a compatibility alias for CacheProvider.
+type CachedProvider = CacheProvider
+
+// NewCachedProvider wraps provider with a response cache using the default
+// cache version. It returns nil when provider or cache is invalid.
+func NewCachedProvider(provider Provider, cache ResponseCache) *CachedProvider {
+	wrapped, err := NewCacheProvider(provider, cache, "")
+	if err != nil {
+		return nil
+	}
+	return wrapped
 }
 
 // NewCacheProvider wraps provider with a response cache. An empty version uses
@@ -99,6 +148,15 @@ func NewCacheProvider(provider Provider, cache ResponseCache, version string) (*
 	}, nil
 }
 
+// WithCacheMetrics attaches optional cache metrics.
+func (c *CacheProvider) WithCacheMetrics(m CacheMetrics) *CacheProvider {
+	if c == nil {
+		return nil
+	}
+	c.metrics = m
+	return c
+}
+
 // Complete returns a cached response when available, otherwise it delegates to
 // the wrapped provider and stores the result.
 func (c *CacheProvider) Complete(ctx context.Context, request CompletionRequest) (*CompletionResponse, error) {
@@ -113,10 +171,16 @@ func (c *CacheProvider) Complete(ctx context.Context, request CompletionRequest)
 
 	if resp, ok := c.cache.Get(key); ok {
 		recordCacheHit(ctx)
+		if c.metrics != nil {
+			c.metrics.RecordLLMCacheHit()
+		}
 		return resp, nil
 	}
 
 	recordCacheMiss(ctx)
+	if c.metrics != nil {
+		c.metrics.RecordLLMCacheMiss()
+	}
 
 	resp, err := c.provider.Complete(ctx, request)
 	if err != nil {

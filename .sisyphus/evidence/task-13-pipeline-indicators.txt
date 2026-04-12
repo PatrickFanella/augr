@@ -1,0 +1,2 @@
+PASS: pipeline health indicators added to phase-progress.tsx and strategy-detail-page.tsx
+timed_out and used_fallback fields added to PipelineEvent (Go) and wired to WS events

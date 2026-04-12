@@ -25,6 +25,7 @@ The frontend lives in `web/` and is mounted through the route map in `web/src/Ap
 | `/settings` | provider/risk/system settings |
 | `/risk` | kill switch, circuit breaker, utilization, audit view |
 | `/realtime` | live event and conversation surface |
+| `/reliability` | automation job health, pipeline failure indicators |
 
 ## Auth behavior
 

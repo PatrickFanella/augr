@@ -95,6 +95,12 @@ type JobStatus struct {
 	Enabled             bool           `json:"enabled"`
 }
 
+// AutomationJobMetrics is implemented by *metrics.Metrics.
+// It is defined here as an interface to avoid an import cycle.
+type AutomationJobMetrics interface {
+	RecordAutomationJobError(jobName string)
+}
+
 // JobOrchestrator is the central registry and cron runner for all automated jobs.
 type JobOrchestrator struct {
 	jobs          map[string]*RegisteredJob
@@ -102,6 +108,7 @@ type JobOrchestrator struct {
 	deps          OrchestratorDeps
 	logger        *slog.Logger
 	rssAggregator *rss.Aggregator
+	metrics       AutomationJobMetrics
 }
 
 // NewJobOrchestrator constructs a new orchestrator.
@@ -115,6 +122,22 @@ func NewJobOrchestrator(deps OrchestratorDeps) *JobOrchestrator {
 		cron:   cron.New(cron.WithLocation(easternTime)),
 		deps:   deps,
 		logger: logger,
+	}
+}
+
+// WithJobMetrics attaches a metrics sink to the orchestrator.
+// Call before Start(). Safe to call with nil (disables metrics).
+func (o *JobOrchestrator) WithJobMetrics(m AutomationJobMetrics) {
+	o.metrics = m
+}
+
+// SetConsecutiveFailures sets the ConsecutiveFailures counter on a job.
+// Primarily for testing and operational resets.
+func (o *JobOrchestrator) SetConsecutiveFailures(name string, n int) {
+	if job, ok := o.jobs[name]; ok {
+		job.mu.Lock()
+		job.ConsecutiveFailures = n
+		job.mu.Unlock()
 	}
 }
 
@@ -274,6 +297,9 @@ func (o *JobOrchestrator) runDirect(job *RegisteredJob) {
 		job.LastErrorAt = &now
 		job.ConsecutiveFailures++
 		o.logger.Error("automation: job failed", slog.String("job", job.Name), slog.Duration("elapsed", elapsed), slog.Any("error", err))
+		if o.metrics != nil {
+			o.metrics.RecordAutomationJobError(job.Name)
+		}
 	} else {
 		job.LastResult = "success"
 		job.LastError = ""
@@ -367,6 +393,9 @@ func (o *JobOrchestrator) wrapAndRun(job *RegisteredJob) {
 		job.LastErrorAt = &now
 		job.ConsecutiveFailures++
 		job.LastResult = fmt.Sprintf("error after %s", elapsed.Truncate(time.Millisecond))
+		if o.metrics != nil {
+			o.metrics.RecordAutomationJobError(job.Name)
+		}
 	} else {
 		job.LastError = ""
 		job.ConsecutiveFailures = 0
@@ -404,13 +433,25 @@ func (o *JobOrchestrator) persistRun(jobName string, start time.Time, elapsed ti
 		errMsg = jobErr.Error()
 	}
 
+	job := o.jobs[jobName]
+	var lastErrorAt *time.Time
+	var consecutiveFailures int
+	if job != nil {
+		job.mu.Lock()
+		lastErrorAt = job.LastErrorAt
+		consecutiveFailures = job.ConsecutiveFailures
+		job.mu.Unlock()
+	}
+
 	run := &pgrepo.JobRun{
-		JobName:     jobName,
-		Status:      status,
-		StartedAt:   start.UTC(),
-		CompletedAt: &completed,
-		DurationNs:  elapsed.Nanoseconds(),
-		Error:       errMsg,
+		JobName:             jobName,
+		Status:              status,
+		StartedAt:           start.UTC(),
+		CompletedAt:         &completed,
+		DurationNs:          elapsed.Nanoseconds(),
+		Error:               errMsg,
+		LastErrorAt:         lastErrorAt,
+		ConsecutiveFailures: consecutiveFailures,
 	}
 
 	if err := o.deps.JobRunRepo.Create(context.Background(), run); err != nil {

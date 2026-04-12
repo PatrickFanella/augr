@@ -1,0 +1,11 @@
+go test ./internal/metrics/... -v
+=== RUN   TestNew
+=== RUN   TestConvenienceMethods
+=== RUN   TestHandler
+=== RUN   TestNewCounters
+PASS
+ok   github.com/PatrickFanella/get-rich-quick/internal/metrics 0.002s
+
+Diagnostics:
+- lsp_diagnostics internal/metrics/metrics.go: clean
+- lsp_diagnostics internal/metrics/metrics_test.go: 1 hint only (forvar copy unneeded)

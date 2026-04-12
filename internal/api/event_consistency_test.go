@@ -25,6 +25,7 @@ func TestEventTypeVocabularyConsistency(t *testing.T) {
 		"position_update",
 		"circuit_breaker",
 		"error",
+		"pipeline_health",
 	}
 
 	// API hub event types (internal/api/hub.go EventType constants).
@@ -38,6 +39,7 @@ func TestEventTypeVocabularyConsistency(t *testing.T) {
 		api.EventPositionUpdate: true,
 		api.EventCircuitBreaker: true,
 		api.EventError:          true,
+		api.EventPipelineHealth: true,
 	}
 
 	// Every expected WebSocket type must have a matching API EventType constant.

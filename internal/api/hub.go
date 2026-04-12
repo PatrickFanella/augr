@@ -20,15 +20,16 @@ type EventType string
 // All three vocabularies must stay in sync; see
 // TestEventTypeVocabularyConsistency in event_consistency_test.go.
 const (
-	EventPipelineStart  EventType = "pipeline_start"
-	EventAgentDecision  EventType = "agent_decision"
-	EventDebateRound    EventType = "debate_round"
-	EventSignal         EventType = "signal"
-	EventOrderSubmitted EventType = "order_submitted"
-	EventOrderFilled    EventType = "order_filled"
-	EventPositionUpdate EventType = "position_update"
-	EventCircuitBreaker EventType = "circuit_breaker"
-	EventError          EventType = "error"
+	EventPipelineStart   EventType = "pipeline_start"
+	EventAgentDecision   EventType = "agent_decision"
+	EventDebateRound     EventType = "debate_round"
+	EventSignal          EventType = "signal"
+	EventOrderSubmitted  EventType = "order_submitted"
+	EventOrderFilled     EventType = "order_filled"
+	EventPositionUpdate  EventType = "position_update"
+	EventCircuitBreaker  EventType = "circuit_breaker"
+	EventError           EventType = "error"
+	EventPipelineHealth  EventType = "pipeline_health"
 )
 
 // WSMessage is the envelope for every WebSocket event sent to clients.

@@ -1,0 +1,11 @@
+go test ./internal/scheduler/... -run TestSchedulerMetrics -v
+=== RUN   TestSchedulerMetrics
+=== RUN   TestSchedulerMetrics/strategy
+=== RUN   TestSchedulerMetrics/backtest
+=== RUN   TestSchedulerMetrics/discovery
+--- PASS: TestSchedulerMetrics (0.00s)
+    --- PASS: TestSchedulerMetrics/strategy (0.00s)
+    --- PASS: TestSchedulerMetrics/backtest (0.00s)
+    --- PASS: TestSchedulerMetrics/discovery (0.00s)
+PASS
+ok   github.com/PatrickFanella/get-rich-quick/internal/scheduler 0.001s

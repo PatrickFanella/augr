@@ -1,0 +1,4 @@
+T6 satisfied by existing DB-insert normalization, not a new code change.
+
+Evidence: `internal/repository/postgres/polymarket_account.go:212-227`
+Behavior: `normalizePolymarketTradeSide` accepts supported values `YES`, `NO`, `UP`, `DOWN`, `OVER`, `UNDER` and normalizes case/trim before insert-time use.

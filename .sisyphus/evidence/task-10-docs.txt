@@ -1,0 +1,16 @@
+T10 PASS: All 4 env vars found in docs/reference/configuration.md
+- `STALE_RUN_TTL` - duration string for stale-run reconciliation (default `30m`)
+- `SIGNAL_FALLBACK_MODE` - controls signal evaluation fallback behavior: `drop` (default, urgency=1 dropped by hub) or `legacy` (urgency=3 + all strategies); set via runtime env
+- `LLM_DEBATE_TIMEOUT` - per-round debate LLM call timeout as a duration string (e.g. `120s`); when unset, falls back to `LLM_TIMEOUT`; overridable per-strategy via `pipeline_config.debate_timeout_seconds`
+- `LLM_CACHE_ENABLED` - enables in-memory LLM response cache (default `true`)
+
+Additional factual corrections made (2026-04-11):
+- ENABLE_REDIS_CACHE default: false -> true (verified: config.go getEnvBool("ENABLE_REDIS_CACHE", true))
+- ENABLE_AGENT_MEMORY default: false -> true (verified: config.go getEnvBool("ENABLE_AGENT_MEMORY", true))
+- ALPACA_PAPER_MODE doc said "default false" -> corrected to "default true" (config.go getEnvBool("ALPACA_PAPER_MODE", true))
+- BINANCE_PAPER_MODE doc said "default false" -> corrected to "default true" (config.go getEnvBool("BINANCE_PAPER_MODE", true))
+- LLM_DEBATE_TIMEOUT corrected from "int seconds" to "duration string" (prod_strategy_runner.go L425: time.ParseDuration)
+
+Audit results:
+- docs/phase-7-execution-paths.md: archive doc, has disclaimer, no factual errors
+- docs/implementation-board.md: simple kanban, no factual claims to verify

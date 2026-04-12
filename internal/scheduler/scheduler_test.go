@@ -68,10 +68,7 @@ func (m *mockStrategyRepo) List(_ context.Context, filter repository.StrategyFil
 	if offset >= len(pool) {
 		return nil, nil
 	}
-	end := offset + limit
-	if end > len(pool) {
-		end = len(pool)
-	}
+	end := min(offset+limit, len(pool))
 	return append([]domain.Strategy(nil), pool[offset:end]...), nil
 }
 
@@ -140,6 +137,23 @@ type mockStrategyExecutor struct {
 	contexts []context.Context
 }
 
+type mockSchedulerMetrics struct {
+	mu    sync.Mutex
+	calls []string
+}
+
+func (m *mockSchedulerMetrics) RecordSchedulerTick(tickType string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.calls = append(m.calls, tickType)
+}
+
+func (m *mockSchedulerMetrics) snapshot() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]string(nil), m.calls...)
+}
+
 func (m *mockStrategyExecutor) execute(ctx context.Context, strategy domain.Strategy) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -188,10 +202,7 @@ func (m *mockBacktestConfigRepo) List(_ context.Context, filter repository.Backt
 		return nil, nil
 	}
 
-	end := offset + limit
-	if end > len(m.configs) {
-		end = len(m.configs)
-	}
+	end := min(offset+limit, len(m.configs))
 
 	return append([]domain.BacktestConfig(nil), m.configs[offset:end]...), nil
 }
@@ -452,6 +463,78 @@ func TestSchedulerStartTriggersPipelineExecution(t *testing.T) {
 	}
 }
 
+func TestSchedulerStartSkipsDuplicateActiveSchedules(t *testing.T) {
+	strategyA := uuid.New()
+	strategyB := uuid.New()
+	repo := &mockStrategyRepo{
+		strategies: []domain.Strategy{
+			{
+				ID:           strategyA,
+				Ticker:       "SMX",
+				MarketType:   domain.MarketTypeStock,
+				ScheduleCron: "0 */2 * * 1-5",
+				Status:       domain.StrategyStatusActive,
+			},
+			{
+				ID:           strategyB,
+				Ticker:       "SMX",
+				MarketType:   domain.MarketTypeStock,
+				ScheduleCron: "0 */2 * * 1-5",
+				Status:       domain.StrategyStatusActive,
+			},
+		},
+	}
+	fakeCron := &fakeCronEngine{}
+	pipeline := &mockPipeline{}
+	s := NewScheduler(repo, pipeline, &mockRiskEngine{}, testLogger())
+	s.newCron = func() cronEngine { return fakeCron }
+
+	if err := s.Start(); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	defer s.Stop()
+
+	if got := fakeCron.jobCount(); got != 1 {
+		t.Fatalf("registered jobs = %d, want 1 (duplicate active schedule should be skipped)", got)
+	}
+}
+
+func TestSchedulerStartAllowsDuplicateWhenPaused(t *testing.T) {
+	strategyA := uuid.New()
+	strategyB := uuid.New()
+	repo := &mockStrategyRepo{
+		strategies: []domain.Strategy{
+			{
+				ID:           strategyA,
+				Ticker:       "SMX",
+				MarketType:   domain.MarketTypeStock,
+				ScheduleCron: "0 */2 * * 1-5",
+				Status:       domain.StrategyStatusActive,
+			},
+			{
+				ID:           strategyB,
+				Ticker:       "SMX",
+				MarketType:   domain.MarketTypeStock,
+				ScheduleCron: "0 */2 * * 1-5",
+				Status:       domain.StrategyStatusPaused,
+			},
+		},
+	}
+	fakeCron := &fakeCronEngine{}
+	pipeline := &mockPipeline{}
+	s := NewScheduler(repo, pipeline, &mockRiskEngine{}, testLogger())
+	s.newCron = func() cronEngine { return fakeCron }
+
+	if err := s.Start(); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	defer s.Stop()
+
+	if got := fakeCron.jobCount(); got != 2 {
+		t.Fatalf("registered jobs = %d, want 2 (paused schedule should still register)", got)
+	}
+}
+
 func TestSchedulerRunStrategySkipsWhenKillSwitchActive(t *testing.T) {
 	strategyID := uuid.New()
 	repo := &mockStrategyRepo{
@@ -490,14 +573,12 @@ func TestSchedulerStartIsIdempotentWhenAlreadyStarted(t *testing.T) {
 	s := NewScheduler(repo, &mockPipeline{}, &mockRiskEngine{}, testLogger())
 	s.newCron = func() cronEngine { return &fakeCronEngine{} }
 
-	var wg sync.WaitGroup
 	results := make(chan error, 2)
-	for i := 0; i < 2; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	var wg sync.WaitGroup
+	for range 2 {
+		wg.Go(func() {
 			results <- s.Start()
-		}()
+		})
 	}
 	wg.Wait()
 	close(results)
@@ -720,6 +801,60 @@ func TestSchedulerStartTriggersScheduledBacktestAndPersistsRun(t *testing.T) {
 	if len(curve) != 1 || !curve[0].Timestamp.Equal(triggeredAt) {
 		t.Fatalf("equity curve = %+v, want timestamp %s", curve, triggeredAt)
 	}
+}
+
+func TestSchedulerMetrics(t *testing.T) {
+	t.Run("strategy", func(t *testing.T) {
+		strategyID := uuid.New()
+		repo := &mockStrategyRepo{
+			strategies: []domain.Strategy{{
+				ID:         strategyID,
+				Ticker:     "BTCUSD",
+				MarketType: domain.MarketTypeCrypto,
+				Status:     domain.StrategyStatusActive,
+			}},
+		}
+		metrics := &mockSchedulerMetrics{}
+		s := NewScheduler(repo, &mockPipeline{}, &mockRiskEngine{}, testLogger(), WithMetrics(metrics))
+		s.ctx = context.Background()
+		s.strategySem = make(chan struct{}, 1)
+
+		s.runStrategy(repo.strategies[0])
+
+		if got := metrics.snapshot(); len(got) != 1 || got[0] != "strategy" {
+			t.Fatalf("metrics calls = %#v, want [strategy]", got)
+		}
+	})
+
+	t.Run("backtest", func(t *testing.T) {
+		metrics := &mockSchedulerMetrics{}
+		s := NewScheduler(&mockStrategyRepo{}, &mockPipeline{}, &mockRiskEngine{}, testLogger(), WithMetrics(metrics))
+		s.backtestRunner = &mockBacktestRunner{result: &backtest.OrchestratorResult{}}
+		s.backtestPersister = backtest.NewRepoPersister(&mockBacktestRunRepo{})
+
+		s.runBacktest(domain.BacktestConfig{ID: uuid.New(), Name: "nightly"})
+
+		if got := metrics.snapshot(); len(got) != 1 || got[0] != "backtest" {
+			t.Fatalf("metrics calls = %#v, want [backtest]", got)
+		}
+	})
+
+	t.Run("discovery", func(t *testing.T) {
+		metrics := &mockSchedulerMetrics{}
+		s := NewScheduler(&mockStrategyRepo{}, &mockPipeline{}, &mockRiskEngine{}, testLogger(), WithMetrics(metrics))
+		s.tickerDiscovery = &tickerDiscoveryDeps{}
+
+		defer func() {
+			if r := recover(); r == nil {
+				t.Fatal("expected discovery to panic after tick emission")
+			}
+			if got := metrics.snapshot(); len(got) != 1 || got[0] != "discovery" {
+				t.Fatalf("metrics calls = %#v, want [discovery]", got)
+			}
+		}()
+
+		s.runTickerDiscovery()
+	})
 }
 
 func TestRunStrategy_PausedIsSkipped(t *testing.T) {

@@ -1,0 +1,14 @@
+Task 15: Prompt Truncation Evidence
+
+File: internal/agent/analysts/prompts.go
+Lines: 100-107
+
+Code (lines 100-107):
+  // Limit to last 60 bars to reduce token count.
+  if len(bars) > 60 {
+      bars = bars[len(bars)-60:]
+  }
+
+Bars are truncated to the last 60 entries before rendering the OHLCV prompt table.
+This prevents unbounded token growth for strategies with long price history.
+The truncation happens in the market analyst prompt table, in the OHLCV section.

@@ -46,6 +46,11 @@ type backtestRunner interface {
 
 type strategyExecutor func(ctx context.Context, strategy domain.Strategy) error
 
+// SchedulerMetrics is implemented by *metrics.Metrics.
+type SchedulerMetrics interface {
+	RecordSchedulerTick(tickType string)
+}
+
 type Option func(*Scheduler)
 
 // WithStrategyExecution routes scheduled strategy triggers through a full
@@ -53,6 +58,13 @@ type Option func(*Scheduler)
 func WithStrategyExecution(execute strategyExecutor) Option {
 	return func(s *Scheduler) {
 		s.strategyExecution = execute
+	}
+}
+
+// WithMetrics wires scheduler tick emissions into the provided metrics sink.
+func WithMetrics(m SchedulerMetrics) Option {
+	return func(s *Scheduler) {
+		s.metrics = m
 	}
 }
 
@@ -106,6 +118,7 @@ type Scheduler struct {
 	strategyRepo       repository.StrategyRepository
 	pipeline           pipelineExecutor
 	strategyExecution  strategyExecutor
+	metrics            SchedulerMetrics
 	riskEngine         risk.RiskEngine
 	backtestConfigRepo repository.BacktestConfigRepository
 	backtestPersister  backtest.BacktestPersister
@@ -122,6 +135,12 @@ type Scheduler struct {
 	discoveryDedup     strategyDedup
 	riskMonitor        *riskMonitor
 	strategySem        chan struct{} // limits concurrent strategy executions
+}
+
+type strategyScheduleKey struct {
+	Ticker     string
+	MarketType domain.MarketType
+	Schedule   string
 }
 
 // NewScheduler constructs a Scheduler with the supplied dependencies.
@@ -204,11 +223,31 @@ func (s *Scheduler) Start() error {
 	s.cron = engine
 	s.ctx = runCtx
 	s.cancel = cancel
+	seenActiveStrategySchedules := make(map[strategyScheduleKey]uuid.UUID)
 
 	for _, strategy := range strategies {
 		spec := strings.TrimSpace(strategy.ScheduleCron)
 		if spec == "" {
 			continue
+		}
+
+		if strategy.Status == domain.StrategyStatusActive {
+			key := strategyScheduleKey{
+				Ticker:     strings.ToUpper(strings.TrimSpace(strategy.Ticker)),
+				MarketType: strategy.MarketType,
+				Schedule:   spec,
+			}
+			if owner, exists := seenActiveStrategySchedules[key]; exists {
+				s.logger.Warn("scheduler: duplicate active strategy schedule detected; skipping duplicate",
+					slog.String("strategy_id", strategy.ID.String()),
+					slog.String("existing_strategy_id", owner.String()),
+					slog.String("ticker", strategy.Ticker),
+					slog.String("market_type", strategy.MarketType.String()),
+					slog.String("schedule", spec),
+				)
+				continue
+			}
+			seenActiveStrategySchedules[key] = strategy.ID
 		}
 
 		strategy := strategy
@@ -367,6 +406,10 @@ func (s *Scheduler) loadScheduledBacktests(ctx context.Context) ([]domain.Backte
 }
 
 func (s *Scheduler) runStrategy(strategy domain.Strategy) {
+	if s.metrics != nil {
+		s.metrics.RecordSchedulerTick("strategy")
+	}
+
 	// Concurrency gate: limit how many strategies run in parallel to avoid
 	// overwhelming the LLM backend (Ollama is single-threaded by default).
 	s.strategySem <- struct{}{}
@@ -490,6 +533,10 @@ func (s *Scheduler) runStrategy(strategy domain.Strategy) {
 }
 
 func (s *Scheduler) runBacktest(config domain.BacktestConfig) {
+	if s.metrics != nil {
+		s.metrics.RecordSchedulerTick("backtest")
+	}
+
 	if !s.backtestDedup.TryAcquire(config.ID) {
 		s.logger.Warn("scheduler: skipping backtest; already in flight",
 			slog.String("backtest_config_id", config.ID.String()),
@@ -541,6 +588,10 @@ func (s *Scheduler) runBacktest(config domain.BacktestConfig) {
 var discoveryDedupKey = uuid.MustParse("00000000-0000-0000-0000-000000000001")
 
 func (s *Scheduler) runTickerDiscovery() {
+	if s.metrics != nil {
+		s.metrics.RecordSchedulerTick("discovery")
+	}
+
 	if !s.discoveryDedup.TryAcquire(discoveryDedupKey) {
 		s.logger.Warn("scheduler: skipping ticker discovery; already in flight")
 		return

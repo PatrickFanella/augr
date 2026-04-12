@@ -71,6 +71,10 @@ type PipelineState struct {
 	RiskDebate       RiskDebateState       `json:"risk_debate"`
 	FinalSignal      FinalSignal           `json:"final_signal"`
 	LLMCacheStats    llm.CacheStats        `json:"llm_cache_stats"`
+	// UsedFallback is set to true when any LLM call during the run used the
+	// fallback provider instead of the primary.
+	UsedFallback bool `json:"used_fallback,omitempty"`
+	TimedOut     bool `json:"timed_out,omitempty"`
 	// Errors holds internal errors encountered during pipeline execution.
 	// It is intentionally excluded from JSON output via `json:"-"`.
 	Errors []error `json:"-"`
@@ -136,6 +140,12 @@ func (s *PipelineState) RecordDecision(role AgentRole, phase Phase, roundNumber 
 	s.decisions[newDecisionKey(role, phase, roundNumber)] = NodeDecision{
 		OutputText:  output,
 		LLMResponse: llmResponse,
+	}
+	if llmResponse != nil && llmResponse.Response != nil && llmResponse.Response.UsedFallback {
+		s.UsedFallback = true
+	}
+	if llmResponse != nil && llmResponse.Response != nil && llmResponse.Response.TimedOut {
+		s.TimedOut = true
 	}
 }
 

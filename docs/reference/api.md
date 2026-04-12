@@ -546,6 +546,33 @@ The automation subsystem runs named background jobs on a schedule. Requires `ENA
 - enables or disables the named job's scheduled execution
 - returns `400 Bad Request` if the name is unknown
 
+#### `GET /api/v1/automation/health`
+
+- auth: required
+- returns structured health summary for all registered automation jobs
+- response shape:
+  ```json
+  {
+    "healthy": true,
+    "total_jobs": 3,
+    "failing_jobs": 0,
+    "jobs": [
+      {
+        "name": "ticker_discovery",
+        "enabled": true,
+        "running": false,
+        "last_run": "2026-04-11T12:00:00Z",
+        "last_error": "",
+        "error_count": 0,
+        "consecutive_failures": 0,
+        "run_count": 42
+      }
+    ]
+  }
+  ```
+- `healthy` is `false` when any job has `consecutive_failures >= 3`
+- returns `503 Service Unavailable` when automation is not configured
+
 ### News
 
 Requires `newsFeedRepo` to be wired at startup (depends on `FINNHUB_API_KEY` or a news provider).

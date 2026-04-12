@@ -124,7 +124,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 		Events:           eventRepo,
 		MetricsHandler:   appMetrics.Handler(),
 		Snapshots:        snapshotRepo,
-		LLMProvider:      throttleLLM(newLLMProviderFromConfig(cfg.LLM, logger)),
+		LLMProvider:      wrapLLMProvider(throttleLLM(newLLMProviderFromConfig(cfg.LLM, logger)), appMetrics),
 		BacktestConfigs:  pgrepo.NewBacktestConfigRepo(db.Pool),
 		BacktestRuns:     pgrepo.NewBacktestRunRepo(db.Pool),
 		NewsFeedRepo:     newsFeedRepo,
@@ -148,6 +148,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 			pipeline,
 			riskEngine,
 			logger,
+			scheduler.WithMetrics(appMetrics),
 			scheduler.WithStrategyExecution(func(ctx context.Context, strategy domain.Strategy) error {
 				_, err := strategyRunner.RunStrategy(ctx, strategy)
 				return err
@@ -241,7 +242,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 				nil,
 				riskEngine,
 				logger,
-				schedOpts...,
+				append([]scheduler.Option{scheduler.WithMetrics(appMetrics)}, schedOpts...)...,
 			)
 		}
 
@@ -268,6 +269,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 				StrategyTrigger:       sched,
 				Logger:                logger,
 			})
+			orch.WithJobMetrics(appMetrics)
 			orch.RegisterAll()
 			if err := orch.Start(); err != nil {
 				logger.Warn("automation: failed to start job orchestrator", slog.Any("error", err))
@@ -308,7 +310,9 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 
 	var sigEvaluator *signal.Evaluator
 	if deps.LLMProvider != nil {
-		sigEvaluator = signal.NewEvaluator(deps.LLMProvider, cfg.LLM.QuickThinkModel, logger)
+		sigEvaluator = signal.NewEvaluator(deps.LLMProvider, cfg.LLM.QuickThinkModel, logger).
+			WithMetrics(appMetrics).
+			WithFallbackMode(os.Getenv("SIGNAL_FALLBACK_MODE"))
 	}
 
 	stratProvider := signal.NewStrategyProviderWithCache(
@@ -426,6 +430,23 @@ func throttleLLM(p llm.Provider) llm.Provider {
 	return llm.NewThrottledProvider(p, 4)
 }
 
+func llmCacheEnabled() bool {
+	return !strings.EqualFold(strings.TrimSpace(os.Getenv("LLM_CACHE_ENABLED")), "false")
+}
+
+func wrapLLMProvider(provider llm.Provider, appMetrics *metrics.Metrics) llm.Provider {
+	if provider == nil || !llmCacheEnabled() {
+		return provider
+	}
+
+	cached := llm.NewCachedProvider(provider, llm.NewMemoryResponseCache())
+	if cached == nil {
+		return provider
+	}
+
+	return cached.WithCacheMetrics(appMetrics)
+}
+
 // newLLMProviderFromConfig builds an llm.Provider from application config.
 // Returns nil (logged as a warning) when no provider is configured or the
 // required credentials are missing so callers can handle the absent provider
@@ -441,6 +462,7 @@ func newLLMProviderFromConfig(cfg config.LLMConfig, logger *slog.Logger) llm.Pro
 }
 
 func newLLMProviderForSelection(cfg config.LLMConfig, providerName, model string, logger *slog.Logger) (llm.Provider, error) {
+	_ = logger
 	providerName = strings.ToLower(strings.TrimSpace(providerName))
 	// resolveModel prefers the explicit runtime model and then falls back to the
 	// provider-specific configured model.

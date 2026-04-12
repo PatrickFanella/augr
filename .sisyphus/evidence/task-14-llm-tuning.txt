@@ -1,0 +1,18 @@
+Task 14 evidence
+Date: 2026-04-11
+
+Files changed:
+- internal/agent/strategy_config.go: DebateTimeoutSeconds already present in StrategyPipelineConfig; snip no change needed.
+- cmd/tradingagent/prod_strategy_runner.go: effectiveDebateCallTimeout now uses strategy override first, then LLM_DEBATE_TIMEOUT env var, else existing llmTimeout fallback. Added globalDebateCallTimeout().
+- cmd/tradingagent/debate_timeout_provider_test.go: added TestEffectiveDebateCallTimeout for default, strategy override, and env override.
+- .env.example: added LLM_DEBATE_TIMEOUT.
+
+Verification:
+1) lsp_diagnostics cmd/tradingagent/prod_strategy_runner.go -> clean
+2) lsp_diagnostics cmd/tradingagent/debate_timeout_provider_test.go -> clean
+3) go test ./cmd/tradingagent/... -run TestEffectiveDebate -v
+   Result: PASS
+4) go test ./cmd/tradingagent/... -v -timeout 60s 2>&1 | grep -E "PASS|FAIL|panic" | head -30
+   Result: filtered output shows PASS lines including TestEffectiveDebateCallTimeout; snip no FAIL/panic in captured head.
+5) go test ./cmd/tradingagent/... -timeout 60s
+   Result: 46 passed, 0 failed

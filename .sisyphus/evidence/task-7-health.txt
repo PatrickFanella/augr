@@ -1,0 +1,23 @@
+snip: no filter for "go", passing through -- you can run "go" directly
+=== RUN   TestAutomationHealth
+=== PAUSE TestAutomationHealth
+=== RUN   TestAutomationHealthNilAutomation
+=== PAUSE TestAutomationHealthNilAutomation
+=== RUN   TestAutomationHealthAllHealthy
+=== PAUSE TestAutomationHealthAllHealthy
+=== RUN   TestAutomationHealthUnhealthy
+=== PAUSE TestAutomationHealthUnhealthy
+=== RUN   TestAutomationHealthFailingJobsCount
+=== PAUSE TestAutomationHealthFailingJobsCount
+=== CONT  TestAutomationHealth
+=== CONT  TestAutomationHealthUnhealthy
+--- PASS: TestAutomationHealth (0.00s)
+=== CONT  TestAutomationHealthAllHealthy
+--- PASS: TestAutomationHealthAllHealthy (0.00s)
+=== CONT  TestAutomationHealthNilAutomation
+--- PASS: TestAutomationHealthNilAutomation (0.00s)
+=== CONT  TestAutomationHealthFailingJobsCount
+--- PASS: TestAutomationHealthUnhealthy (0.00s)
+--- PASS: TestAutomationHealthFailingJobsCount (0.00s)
+PASS
+ok  	github.com/PatrickFanella/get-rich-quick/internal/api	(cached)

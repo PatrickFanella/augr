@@ -168,10 +168,10 @@ func (r *RetryProvider) backoffDelay(retryIndex int) time.Duration {
 // isRetryable classifies an error as retryable. Retryable errors include:
 //   - Rate limit (HTTP 429)
 //   - Server errors (HTTP 5xx)
-//   - Context deadline exceeded (timeout)
 //
 // Non-retryable errors include:
 //   - Context canceled (caller-initiated)
+//   - Context deadline exceeded (timeout)
 //   - Bad request (HTTP 400)
 //   - Authentication errors (HTTP 401, 403)
 //   - Other 4xx client errors
@@ -186,9 +186,9 @@ func isRetryable(err error) bool {
 		return false
 	}
 
-	// Context deadline exceeded (timeout): retryable.
+	// Context deadline exceeded (timeout): non-retryable.
 	if errors.Is(err, context.DeadlineExceeded) {
-		return true
+		return false
 	}
 
 	// Check for HTTP status code via interface.

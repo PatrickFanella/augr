@@ -134,24 +134,37 @@ func TestRetryProviderRetriesOnRateLimit(t *testing.T) {
 	}
 }
 
-func TestRetryProviderRetriesOnTimeout(t *testing.T) {
+func TestRetryProviderDoesNotRetryOnTimeout(t *testing.T) {
 	t.Parallel()
 
-	want := &llm.CompletionResponse{Content: "ok"}
-	mock := newMockProvider(
-		[]*llm.CompletionResponse{nil, want},
-		[]error{fmt.Errorf("timed out: %w", context.DeadlineExceeded), nil},
-	)
+	mock := newMockProvider(nil, []error{fmt.Errorf("timed out: %w", context.DeadlineExceeded)})
 
 	rp := llm.NewRetryProvider(mock, discardLogger())
 	rp.SetTimerFn(immediateTimerFn())
 
-	got, err := rp.Complete(context.Background(), llm.CompletionRequest{})
-	if err != nil {
-		t.Fatalf("Complete() error = %v, want nil", err)
+	_, err := rp.Complete(context.Background(), llm.CompletionRequest{})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Complete() error = %v, want context.DeadlineExceeded", err)
 	}
-	if got.Content != "ok" {
-		t.Errorf("Complete() content = %q, want %q", got.Content, "ok")
+	if mock.calls.Load() != 1 {
+		t.Errorf("Complete() calls = %d, want 1 (no retry)", mock.calls.Load())
+	}
+}
+
+func TestRetryProviderDoesNotRetryOnDeadlineExceeded(t *testing.T) {
+	t.Parallel()
+
+	mock := newMockProvider(nil, []error{context.DeadlineExceeded})
+
+	rp := llm.NewRetryProvider(mock, discardLogger(), llm.WithMaxAttempts(3))
+	rp.SetTimerFn(immediateTimerFn())
+
+	_, err := rp.Complete(context.Background(), llm.CompletionRequest{})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Complete() error = %v, want context.DeadlineExceeded", err)
+	}
+	if mock.calls.Load() != 1 {
+		t.Errorf("Complete() calls = %d, want 1 (no retry)", mock.calls.Load())
 	}
 }
 

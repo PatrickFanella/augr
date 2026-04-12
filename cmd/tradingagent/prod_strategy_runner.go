@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -274,6 +275,7 @@ func (r *realStrategyRunner) prepareStrategyRun(ctx context.Context, strategy do
 	if err != nil {
 		return nil, agent.PreparedRun{}, nil, nil, fmt.Errorf("build llm provider for strategy %s: %w", strategy.Name, err)
 	}
+	provider = wrapLLMProvider(provider, r.metrics)
 
 	definition, err := buildRunnerDefinition(provider, resolved.LLMConfig.Provider, resolved, r.cfg.LLM.Timeout, r.metrics, r.logger)
 	if err != nil {
@@ -409,17 +411,22 @@ func buildRunnerDefinition(provider llm.Provider, providerName string, resolved 
 }
 
 func effectiveDebateCallTimeout(llmTimeout time.Duration, resolved agent.ResolvedConfig) time.Duration {
-	var timeout time.Duration
-	if llmTimeout > 0 {
-		timeout = llmTimeout
-	}
 	if resolved.PipelineConfig.DebateTimeoutSeconds > 0 {
-		debateTimeout := time.Duration(resolved.PipelineConfig.DebateTimeoutSeconds) * time.Second
-		if timeout <= 0 || debateTimeout < timeout {
-			timeout = debateTimeout
+		return time.Duration(resolved.PipelineConfig.DebateTimeoutSeconds) * time.Second
+	}
+	if timeout := globalDebateCallTimeout(); timeout > 0 {
+		return timeout
+	}
+	return llmTimeout
+}
+
+func globalDebateCallTimeout() time.Duration {
+	if t := os.Getenv("LLM_DEBATE_TIMEOUT"); t != "" {
+		if d, err := time.ParseDuration(t); err == nil {
+			return d
 		}
 	}
-	return timeout
+	return 0
 }
 
 func promptOverride(overrides map[agent.AgentRole]string, role agent.AgentRole, fallback string) string {
@@ -844,11 +851,22 @@ func pipelineEventToWSMessage(e agent.PipelineEvent) api.WSMessage {
 			Type:       api.EventError,
 			StrategyID: e.StrategyID,
 			RunID:      e.PipelineRunID,
-			Data:       map[string]any{"error": e.Error},
+			Data:       map[string]any{"error": e.Error, "timed_out": e.TimedOut, "used_fallback": e.UsedFallback},
+			Timestamp:  e.OccurredAt,
+		}
+	case agent.PipelineCompleted:
+		if !e.UsedFallback && !e.TimedOut {
+			return api.WSMessage{}
+		}
+		return api.WSMessage{
+			Type:       api.EventPipelineHealth,
+			StrategyID: e.StrategyID,
+			RunID:      e.PipelineRunID,
+			Data:       map[string]any{"timed_out": e.TimedOut, "used_fallback": e.UsedFallback},
 			Timestamp:  e.OccurredAt,
 		}
 	default:
-		// LLMCacheStatsReported, PipelineCompleted — no WS mapping needed.
+		// LLMCacheStatsReported — no WS mapping needed.
 		return api.WSMessage{}
 	}
 }

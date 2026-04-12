@@ -11,6 +11,11 @@ import (
 	"github.com/google/uuid"
 )
 
+// SignalEvalMetrics is implemented by *metrics.Metrics.
+type SignalEvalMetrics interface {
+	RecordSignalParseFailure()
+}
+
 // EvaluatedSignal is a RawSignalEvent that has passed the keyword filter
 // and been scored by the LLM evaluator.
 type EvaluatedSignal struct {
@@ -32,9 +37,11 @@ type StrategyContext struct {
 
 // Evaluator uses an LLM to score RawSignalEvents against active strategies.
 type Evaluator struct {
-	provider llm.Provider
-	model    string
-	logger   *slog.Logger
+	provider     llm.Provider
+	model        string
+	logger       *slog.Logger
+	metrics      SignalEvalMetrics // nil-safe
+	fallbackMode string            // "drop" (default) or "legacy"
 }
 
 // NewEvaluator creates an Evaluator backed by the given LLM provider and model.
@@ -43,6 +50,24 @@ func NewEvaluator(provider llm.Provider, model string, logger *slog.Logger) *Eva
 		logger = slog.Default()
 	}
 	return &Evaluator{provider: provider, model: model, logger: logger}
+}
+
+// WithMetrics attaches a metrics sink for parse-failure tracking.
+func (e *Evaluator) WithMetrics(m SignalEvalMetrics) *Evaluator {
+	e.metrics = m
+	return e
+}
+
+// WithFallbackMode sets the fallback behaviour on LLM/parse failures.
+// Valid values: "drop" (default, urgency=1, no strategies) or "legacy"
+// (urgency=3, all registered strategies — the old broken behaviour).
+func (e *Evaluator) WithFallbackMode(mode string) *Evaluator {
+	if mode == "legacy" {
+		e.fallbackMode = "legacy"
+	} else {
+		e.fallbackMode = "drop"
+	}
+	return e
 }
 
 const evaluatorSystemPrompt = `You are a financial signal evaluator. Given a news or market signal event and a list of active trading strategies, evaluate the signal's relevance and urgency.
@@ -107,6 +132,9 @@ func (e *Evaluator) Evaluate(ctx context.Context, event RawSignalEvent, strategi
 			slog.String("title", event.Title),
 			slog.Any("error", err),
 		)
+		if e.metrics != nil {
+			e.metrics.RecordSignalParseFailure()
+		}
 		return e.fallback(event, strategies), nil
 	}
 
@@ -127,6 +155,9 @@ func (e *Evaluator) parseResponse(content string, event RawSignalEvent, strategi
 			slog.String("content", content),
 			slog.Any("error", err),
 		)
+		if e.metrics != nil {
+			e.metrics.RecordSignalParseFailure()
+		}
 		return e.fallback(event, strategies), nil
 	}
 
@@ -171,6 +202,21 @@ func (e *Evaluator) parseResponse(content string, event RawSignalEvent, strategi
 }
 
 func (e *Evaluator) fallback(event RawSignalEvent, strategies []StrategyContext) *EvaluatedSignal {
+	if e.fallbackMode == "legacy" {
+		// Legacy: urgency=3, all registered strategies (old broken behaviour).
+		ids := make([]uuid.UUID, len(strategies))
+		for i, s := range strategies {
+			ids[i] = s.ID
+		}
+		return &EvaluatedSignal{
+			Raw:                event,
+			AffectedStrategies: ids,
+			Urgency:            3,
+			Summary:            event.Title,
+			RecommendedAction:  "monitor",
+		}
+	}
+	// Drop mode (default): urgency=1, no affected strategies → hub drops it.
 	return &EvaluatedSignal{
 		Raw:                event,
 		AffectedStrategies: nil,

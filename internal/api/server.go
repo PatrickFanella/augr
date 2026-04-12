@@ -456,6 +456,7 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 		// Automation
 		v1.Route("/automation", func(ar chi.Router) {
 			ar.Get("/status", s.handleGetAutomationStatus)
+			ar.Get("/health", s.handleGetAutomationHealth)
 			ar.Post("/jobs/{name}/run", s.handleRunAutomationJob)
 			ar.Post("/jobs/{name}/enable", s.handleSetAutomationJobEnabled)
 		})

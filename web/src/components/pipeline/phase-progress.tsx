@@ -1,4 +1,4 @@
-import { CheckCircle2, Circle, Loader2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Circle, Loader2, Zap } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 
@@ -8,6 +8,8 @@ export interface PhaseInfo {
   label: string;
   status: PhaseStatus;
   latencyMs?: number;
+  timedOut?: boolean;
+  usedFallback?: boolean;
 }
 
 function formatLatency(ms: number) {
@@ -15,7 +17,8 @@ function formatLatency(ms: number) {
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
-function PhaseIcon({ status }: { status: PhaseStatus }) {
+function PhaseIcon({ status, timedOut }: { status: PhaseStatus; timedOut?: boolean }) {
+  if (timedOut) return <AlertTriangle className="size-5 text-destructive" />;
   switch (status) {
     case 'completed':
       return <CheckCircle2 className="size-5 text-primary" />;
@@ -47,8 +50,13 @@ export function PhaseProgress({ phases }: PhaseProgressProps) {
                 )}
               />
             )}
-            <div className="flex min-w-19 flex-col items-center gap-1.5 rounded-md border border-border bg-background px-2 py-2 text-center">
-              <PhaseIcon status={phase.status} />
+            <div
+              className={cn(
+                'flex min-w-19 flex-col items-center gap-1.5 rounded-md border bg-background px-2 py-2 text-center',
+                phase.timedOut ? 'border-destructive/50' : 'border-border',
+              )}
+            >
+              <PhaseIcon status={phase.status} timedOut={phase.timedOut} />
               <span
                 className={cn(
                   'font-mono text-[11px] font-medium uppercase tracking-[0.16em]',
@@ -61,6 +69,18 @@ export function PhaseProgress({ phases }: PhaseProgressProps) {
                 <span className="font-mono text-[10px] text-muted-foreground">
                   {formatLatency(phase.latencyMs)}
                 </span>
+              )}
+              {phase.usedFallback && (
+                <span
+                  className="flex items-center gap-0.5 font-mono text-[9px] text-amber-500"
+                  title="Used fallback model"
+                >
+                  <Zap className="size-2.5" />
+                  fallback
+                </span>
+              )}
+              {phase.timedOut && (
+                <span className="font-mono text-[9px] text-destructive">timeout</span>
               )}
             </div>
           </div>

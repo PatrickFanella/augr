@@ -97,6 +97,10 @@ func FormatMarketAnalystUserPrompt(ticker string, bars []domain.OHLCV, indicator
 	if len(bars) == 0 {
 		b.WriteString("No OHLCV data available.\n")
 	} else {
+		// Limit to last 60 bars to reduce token count.
+		if len(bars) > 60 {
+			bars = bars[len(bars)-60:]
+		}
 		b.WriteString("| Date | Open | High | Low | Close | Volume |\n")
 		b.WriteString("|------|------|------|-----|-------|--------|\n")
 		for _, bar := range bars {
