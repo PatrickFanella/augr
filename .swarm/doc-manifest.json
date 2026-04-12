@@ -1,0 +1,706 @@
+{
+  "schema_version": 1,
+  "scanned_at": "2026-04-11T05:52:41.373Z",
+  "files": [
+    {
+      "path": ".github/dependabot.yml",
+      "title": "dependabot.yml",
+      "summary": "[Warning: 100+ docs found, listing first 100] version: 2 updates: - package-ecosystem: gomod directory: / schedule: interval: weekly day: monday open-pull-requests-limit: 10 labels: - type:infra - priority:p2-normal commit-message: prefix: \"de...",
+      "lines": 49,
+      "mtime": 1774111530821.4338
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/agent_task.yml",
+      "title": "agent_task.yml",
+      "summary": "name: Agent task description: Structured task for autonomous agent execution. title: \"agent: \" labels: - workflow:agent-ready - type: devex body: - type: input id: issue_title attributes: label: Title",
+      "lines": 74,
+      "mtime": 1774056415279.374
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/architecture_decision.yml",
+      "title": "architecture_decision.yml",
+      "summary": "name: Architecture decision description: Propose and document an architectural or process decision. title: \"decision: \" labels: - type: decision body: - type: input id: issue_title attributes: labe...",
+      "lines": 48,
+      "mtime": 1774056415280.0557
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/bug_report.yml",
+      "title": "bug_report.yml",
+      "summary": "name: Bug report description: Report a bug with clear reproduction steps and expected behavior. title: \"bug: \" labels: - type: bug body: - type: input id: issue_title attributes: label: Title descr...",
+      "lines": 44,
+      "mtime": 1774056415280.0557
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/config.yml",
+      "title": "config.yml",
+      "summary": "blank_issues_enabled: false contact_links: - name: Questions and discussion url: https://github.com/PatrickFanella/get-rich-quick/discussions about: Please use GitHub Discussions for questions and ...",
+      "lines": 6,
+      "mtime": 1774056415280.0557
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/feature_request.yml",
+      "title": "feature_request.yml",
+      "summary": "name: Feature request description: Propose a new capability with clear value and scope. title: \"feat: \" labels: - type: feature body: - type: input id: issue_title attributes: label: Title descript...",
+      "lines": 43,
+      "mtime": 1774056415280.0557
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/infra_task.yml",
+      "title": "infra_task.yml",
+      "summary": "name: Infrastructure task description: Track infrastructure, CI/CD, deployment, or platform work. title: \"infra: \" labels: - type: infra body: - type: input id: issue_title attributes: label: Title...",
+      "lines": 42,
+      "mtime": 1774056415280.0557
+    },
+    {
+      "path": ".github/labels.yml",
+      "title": "Type labels",
+      "summary": "- name: type:epic color: \"5319E7\" description: Epic-level tracking issue - name: type:feature color: \"0E8A16\" description: Feature implementation - name: type:infra color: \"D93F0B\" description: Inf...",
+      "lines": 197,
+      "mtime": 1774112050200.9805
+    },
+    {
+      "path": ".github/milestones.yml",
+      "title": "milestones.yml",
+      "summary": "- title: \"Phase 0: Project Setup & Planning Foundation\" description: >- Establish project governance, repository conventions, planning infrastructure, and team processes to enable coordinated phase...",
+      "lines": 43,
+      "mtime": 1774056415280.0557
+    },
+    {
+      "path": ".github/pull_request_template.md",
+      "title": "pull_request_template.md",
+      "summary": "Briefly describe the purpose of this PR and the problem it solves. - List the key changes made in this PR. - Keep items concise and reviewer-focused. - Describe how this was validated (commands, ma...",
+      "lines": 26,
+      "mtime": 1774056415280.0557
+    },
+    {
+      "path": ".github/workflows/auto-project.yml",
+      "title": "auto-project.yml",
+      "summary": "name: Auto-add issues to project on: issues: types: [opened] permissions: contents: read jobs: add-to-project: runs-on: ubuntu-latest steps: - name: Add issue to Trading Agent Implementation projec...",
+      "lines": 19,
+      "mtime": 1774112057031.0093
+    },
+    {
+      "path": ".github/workflows/cd.yml",
+      "title": "cd.yml",
+      "summary": "name: CD on: push: branches: [main] permissions: contents: read packages: write jobs: publish-image: name: Publish Docker image runs-on: ubuntu-latest concurrency: group: cd-main-latest cancel-in-p...",
+      "lines": 43,
+      "mtime": 1774667211617.3972
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "title": "ci.yml",
+      "summary": "name: CI on: push: branches: [main] pull_request: permissions: contents: read jobs: changes: name: Detect backend changes runs-on: ubuntu-latest permissions: contents: read pull-requests: read outp...",
+      "lines": 264,
+      "mtime": 1775074955045.2634
+    },
+    {
+      "path": ".github/workflows/codeql.yml",
+      "title": "codeql.yml",
+      "summary": "name: CodeQL on: push: branches: [main] pull_request: branches: [main] schedule: - cron: '0 6 * * 1' # Weekly Monday 6am UTC permissions: security-events: write contents: read jobs: analyze-go: nam...",
+      "lines": 57,
+      "mtime": 1774445455733.7688
+    },
+    {
+      "path": ".github/workflows/frontend-ci.yml",
+      "title": "frontend-ci.yml",
+      "summary": "name: Frontend CI on: push: branches: [main] paths: - 'web/**' - '.github/workflows/frontend-ci.yml' pull_request: paths: - 'web/**' - '.github/workflows/frontend-ci.yml' permissions: contents: rea...",
+      "lines": 89,
+      "mtime": 1774445455733.7688
+    },
+    {
+      "path": ".github/workflows/issue-lifecycle.yml",
+      "title": "issue-lifecycle.yml",
+      "summary": "name: Issue Lifecycle on: issues: types: [closed] pull_request: types: [closed] permissions: issues: write contents: read jobs: update-tracker-on-close: name: Update Phase 3 tracker if: github.even...",
+      "lines": 114,
+      "mtime": 1774445455733.7688
+    },
+    {
+      "path": ".github/workflows/pr-checks.yml",
+      "title": "pr-checks.yml",
+      "summary": "name: PR Hygiene on: pull_request: types: [opened, edited, synchronize] permissions: contents: read pull-requests: write jobs: check-linked-issue: name: Verify linked issue runs-on: ubuntu-latest s...",
+      "lines": 75,
+      "mtime": 1774123247421.1326
+    },
+    {
+      "path": ".github/workflows/security.yml",
+      "title": "security.yml",
+      "summary": "name: Security on: push: branches: [main] pull_request: branches: [main] schedule: - cron: '0 8 * * 1' # Weekly Monday 8am UTC permissions: contents: read jobs: go-dependency-audit: name: Go Depend...",
+      "lines": 89,
+      "mtime": 1774445455733.7688
+    },
+    {
+      "path": ".github/workflows/stale.yml",
+      "title": "stale.yml",
+      "summary": "name: Stale issue management on: schedule: - cron: '0 9 * * 1' # Weekly Monday 9am UTC workflow_dispatch: permissions: issues: write jobs: stale: runs-on: ubuntu-latest steps: - uses: actions/stale...",
+      "lines": 28,
+      "mtime": 1774445455733.7688
+    },
+    {
+      "path": ".github/workflows/sync-labels.yml",
+      "title": "sync-labels.yml",
+      "summary": "name: Sync labels on: push: branches: - main paths: - .github/labels.yml - .github/workflows/sync-labels.yml workflow_dispatch: permissions: issues: write jobs: sync-labels: runs-on: ubuntu-latest ...",
+      "lines": 27,
+      "mtime": 1774445455733.7688
+    },
+    {
+      "path": ".github/workflows/sync-milestones.yml",
+      "title": "sync-milestones.yml",
+      "summary": "name: Sync milestones on: push: branches: - main paths: - .github/milestones.yml - .github/workflows/sync-milestones.yml workflow_dispatch: permissions: issues: write jobs: sync-milestones: runs-on...",
+      "lines": 72,
+      "mtime": 1774445455733.7688
+    },
+    {
+      "path": "CONTRIBUTING.md",
+      "title": "Contributing",
+      "summary": "Thanks for contributing to this repository. Autonomous agents should follow the execution conventions in: - [`docs/agent-execution-guide.md`](docs/agent-execution-guide.md) At a minimum: - Pick up ...",
+      "lines": 195,
+      "mtime": 1774846704013.9414
+    },
+    {
+      "path": "docs/.obsidian/.gitignore",
+      "title": "Obsidian runtime files (regenerated on open)",
+      "summary": "workspace-*.json workspace.json plugins/*/main.js plugins/*/manifest.json plugins/*/styles.css themes/*/manifest.json themes/*/theme.css cache/",
+      "lines": 16,
+      "mtime": 1774115173776.303
+    },
+    {
+      "path": "docs/.obsidian/app.json",
+      "title": "app.json",
+      "summary": "{ \"vimMode\": false, \"showLineNumber\": true, \"strictLineBreaks\": false, \"readableLineLength\": true, \"livePreview\": true, \"defaultViewMode\": \"source\", \"showFrontmatter\": true, \"foldHeading\": true, \"f...",
+      "lines": 32,
+      "mtime": 1774115045417.908
+    },
+    {
+      "path": "docs/.obsidian/appearance.json",
+      "title": "appearance.json",
+      "summary": "{ \"accentColor\": \"#7c3aed\", \"baseFontSize\": 16, \"textFontFamily\": \"Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif\", \"monospaceFontFamily\": \"JetBrains Mono, Fira Code, Menl...",
+      "lines": 12,
+      "mtime": 1774115048370.917
+    },
+    {
+      "path": "docs/.obsidian/bookmarks.json",
+      "title": "bookmarks.json",
+      "summary": "{ \"items\": [ { \"type\": \"file\", \"ctime\": 1711000000000, \"path\": \"README.md\", \"title\": \"Home\" }, { \"type\": \"file\", \"ctime\": 1711000001000, \"path\": \"design/index.md\", \"title\": \"System Design\" }, { \"ty...",
+      "lines": 13,
+      "mtime": 1774115071849.9893
+    },
+    {
+      "path": "docs/.obsidian/community-plugins.json",
+      "title": "community-plugins.json",
+      "summary": "[ \"dataview\", \"templater-obsidian\", \"obsidian-kanban\", \"table-editor-obsidian\", \"obsidian-git\", \"obsidian-style-settings\", \"homepage\", \"breadcrumbs\", \"tag-wrangler\", \"obsidian-excalidraw-plugin\" ]",
+      "lines": 13,
+      "mtime": 1774115054065.9346
+    },
+    {
+      "path": "docs/.obsidian/core-plugins-migration.json",
+      "title": "core-plugins-migration.json",
+      "summary": "{ \"file-explorer\": true, \"global-search\": true, \"switcher\": true, \"graph\": true, \"backlink\": true, \"outgoing-link\": true, \"tag-pane\": true, \"page-preview\": true, \"templates\": true, \"note-composer\":...",
+      "lines": 29,
+      "mtime": 1774115052956.9312
+    },
+    {
+      "path": "docs/.obsidian/core-plugins.json",
+      "title": "core-plugins.json",
+      "summary": "[ \"file-explorer\", \"global-search\", \"switcher\", \"graph\", \"backlink\", \"outgoing-link\", \"tag-pane\", \"page-preview\", \"templates\", \"note-composer\", \"command-palette\", \"editor-status\", \"bookmarks\", \"mar...",
+      "lines": 22,
+      "mtime": 1774115050440.9233
+    },
+    {
+      "path": "docs/.obsidian/graph.json",
+      "title": "graph.json",
+      "summary": "{ \"collapse-filter\": false, \"search\": \"\", \"showTags\": true, \"showAttachments\": false, \"hideUnresolved\": false, \"showOrphans\": true, \"collapse-color-groups\": false, \"colorGroups\": [ { \"query\": \"path...",
+      "lines": 56,
+      "mtime": 1774115065257.969
+    },
+    {
+      "path": "docs/.obsidian/hotkeys.json",
+      "title": "hotkeys.json",
+      "summary": "{ \"app:go-back\": [{ \"modifiers\": [\"Alt\"], \"key\": \"ArrowLeft\" }], \"app:go-forward\": [{ \"modifiers\": [\"Alt\"], \"key\": \"ArrowRight\" }], \"editor:toggle-fold\": [{ \"modifiers\": [\"Mod\", \"Shift\"], \"key\": \"....",
+      "lines": 12,
+      "mtime": 1774115068081.9775
+    },
+    {
+      "path": "docs/.obsidian/plugins/dataview/data.json",
+      "title": "data.json",
+      "summary": "{ \"renderNullAs\": \"—\", \"taskCompletionTracking\": true, \"taskCompletionUseEmojiShorthand\": false, \"taskCompletionText\": \"completion\", \"recursiveSubTaskCompletion\": false, \"warnOnEmptyResult\": true, ...",
+      "lines": 26,
+      "mtime": 1774115081327.0183
+    },
+    {
+      "path": "docs/.obsidian/plugins/homepage/data.json",
+      "title": "data.json",
+      "summary": "{ \"version\": 3, \"defaultNote\": \"README\", \"openMode\": \"replace all\", \"manualOpenMode\": \"default\", \"view\": \"default\", \"refreshDataview\": true, \"autoCreate\": false, \"autoScroll\": true, \"pin\": false, \"...",
+      "lines": 16,
+      "mtime": 1774115092256.052
+    },
+    {
+      "path": "docs/.obsidian/plugins/obsidian-git/data.json",
+      "title": "data.json",
+      "summary": "{ \"commitMessage\": \"docs: vault sync {{date}}\", \"autoCommitMessage\": \"docs: auto-sync {{date}}\", \"autoPullOnOpen\": true, \"autoPullInterval\": 10, \"autoPushInterval\": 0, \"autoSaveInterval\": 0, \"curre...",
+      "lines": 19,
+      "mtime": 1774115090547.0466
+    },
+    {
+      "path": "docs/.obsidian/plugins/obsidian-kanban/data.json",
+      "title": "data.json",
+      "summary": "{ \"prepend-archive-separator\": false, \"prepend-archive-format\": \"\", \"new-card-insertion-method\": \"prepend-compact\", \"link-date-to-daily-note\": false, \"archive-with-date\": false, \"hide-card-count\": ...",
+      "lines": 18,
+      "mtime": 1774115096408.0647
+    },
+    {
+      "path": "docs/.obsidian/plugins/table-editor-obsidian/data.json",
+      "title": "data.json",
+      "summary": "{ \"formatType\": \"normal\", \"showRibbonIcon\": true, \"bindEnter\": true, \"bindTab\": true }",
+      "lines": 7,
+      "mtime": 1774115097812.069
+    },
+    {
+      "path": "docs/.obsidian/plugins/templater-obsidian/data.json",
+      "title": "data.json",
+      "summary": "{ \"templates_folder\": \"templates\", \"templates_pairs\": [[\"\", \"\"]], \"trigger_on_file_creation\": false, \"auto_jump_to_cursor\": true, \"enable_system_commands\": false, \"shell_path\": \"\", \"user_scripts_fo...",
+      "lines": 21,
+      "mtime": 1774115085206.0303
+    },
+    {
+      "path": "docs/.obsidian/snippets/trading-agent.css",
+      "title": "trading-agent.css",
+      "summary": "/* Trading Agent vault custom styles */ /* Colored tags */ .tag[href=\"#adr\"] { background-color: var(--color-purple) !important; color: white !important; } .tag[href=\"#design\"] { background-color: ...",
+      "lines": 51,
+      "mtime": 1774115126482.1572
+    },
+    {
+      "path": "docs/.obsidian/workspace.json",
+      "title": "workspace.json",
+      "summary": "{ \"main\": { \"id\": \"main\", \"type\": \"split\", \"children\": [ { \"id\": \"editor\", \"type\": \"leaf\", \"state\": { \"type\": \"markdown\", \"state\": { \"file\": \"README.md\", \"mode\": \"preview\", \"source\": false } } } ],...",
+      "lines": 117,
+      "mtime": 1774115134580.1821
+    },
+    {
+      "path": "docs/adr/001-go-backend.md",
+      "title": "ADR-001: Use Go for backend services",
+      "summary": "--- title: \"ADR-001: Use Go for backend services\" description: \"Architecture decision record.\" status: \"canonical\" updated: \"2026-04-03\" tags: [adr] --- - **Status:** accepted - **Date:** 2026-03-2...",
+      "lines": 47,
+      "mtime": 1775198046989.1292
+    },
+    {
+      "path": "docs/adr/002-two-tier-llm-strategy.md",
+      "title": "ADR-002: Two-tier LLM model strategy (DeepThink vs QuickThink)",
+      "summary": "--- title: \"ADR-002: Two-tier LLM model strategy (DeepThink vs QuickThink)\" description: \"Architecture decision record.\" status: \"canonical\" updated: \"2026-04-03\" tags: [adr] --- - **Status:** acce...",
+      "lines": 168,
+      "mtime": 1775198047011.579
+    },
+    {
+      "path": "docs/adr/003-postgres-fts-memory.md",
+      "title": "ADR-003: PostgreSQL full-text search for agent memory retrieval",
+      "summary": "--- title: \"ADR-003: PostgreSQL full-text search for agent memory retrieval\" description: \"Architecture decision record.\" status: \"canonical\" updated: \"2026-04-03\" tags: [adr] --- - **Status:** acc...",
+      "lines": 102,
+      "mtime": 1775198047003.281
+    },
+    {
+      "path": "docs/adr/004-custom-dag-engine.md",
+      "title": "ADR-004: Custom DAG engine vs LangGraph",
+      "summary": "--- title: \"ADR-004: Custom DAG engine vs LangGraph\" description: \"Architecture decision record.\" status: \"canonical\" updated: \"2026-04-03\" tags: [adr] --- - **Status:** accepted - **Date:** 2026-0...",
+      "lines": 67,
+      "mtime": 1775198046994.6262
+    },
+    {
+      "path": "docs/adr/005-position-sizing-strategy.md",
+      "title": "ADR-005: Position sizing strategy selection",
+      "summary": "--- title: \"ADR-005: Position sizing strategy selection\" description: \"Architecture decision record.\" status: \"canonical\" updated: \"2026-04-03\" tags: [adr] --- - **Status:** accepted - **Date:** 20...",
+      "lines": 51,
+      "mtime": 1775198046985.1292
+    },
+    {
+      "path": "docs/adr/006-paper-trading-assumptions.md",
+      "title": "ADR-006: Paper trading slippage and fee assumptions",
+      "summary": "--- title: \"ADR-006: Paper trading slippage and fee assumptions\" description: \"Architecture decision record.\" status: \"canonical\" updated: \"2026-04-03\" tags: [adr] --- - **Status:** accepted - **Da...",
+      "lines": 56,
+      "mtime": 1775198047019.1294
+    },
+    {
+      "path": "docs/adr/007-deployment-topology.md",
+      "title": "ADR-007: Deployment topology and scaling strategy",
+      "summary": "--- title: \"ADR-007: Deployment topology and scaling strategy\" description: \"Architecture decision record.\" status: \"canonical\" updated: \"2026-04-03\" tags: [adr] --- - **Status:** accepted - **Date...",
+      "lines": 64,
+      "mtime": 1775198046998.1292
+    },
+    {
+      "path": "docs/adr/008-correlated-exposure.md",
+      "title": "ADR-008: Correlated asset exposure management",
+      "summary": "--- title: \"ADR-008: Correlated asset exposure management\" description: \"Architecture decision record.\" status: \"canonical\" updated: \"2026-04-03\" tags: [adr] --- - **Status:** accepted (deferred im...",
+      "lines": 54,
+      "mtime": 1775198047024.4314
+    },
+    {
+      "path": "docs/adr/009-human-review-gate.md",
+      "title": "ADR-009: Human review gate before live trading",
+      "summary": "--- title: \"ADR-009: Human review gate before live trading\" description: \"Architecture decision record.\" status: \"canonical\" updated: \"2026-04-03\" tags: [adr] --- - **Status:** accepted - **Date:**...",
+      "lines": 60,
+      "mtime": 1775198047015.631
+    },
+    {
+      "path": "docs/adr/README.md",
+      "title": "Architecture Decision Records",
+      "summary": "--- title: \"Architecture Decision Records\" description: \"Index and authoring rules for ADRs in get-rich-quick.\" status: \"canonical\" updated: \"2026-04-03\" tags: [adr, architecture, decisions] --- Th...",
+      "lines": 52,
+      "mtime": 1775197622020.8806
+    },
+    {
+      "path": "docs/adr/template.md",
+      "title": "ADR-XXX: <Title>",
+      "summary": "--- title: \"ADR-XXX: <Title>\" description: \"Template for creating new architecture decision records.\" status: \"template\" updated: \"2026-04-03\" tags: [adr, template] --- - **Status:** proposed - **D...",
+      "lines": 39,
+      "mtime": 1775198047007.543
+    },
+    {
+      "path": "docs/agent-execution-guide.md",
+      "title": "Agent Execution Guide",
+      "summary": "--- title: \"Agent Execution Guide\" description: \"Legacy execution guidance retained for historical context.\" status: \"archive\" updated: \"2026-04-03\" tags: [agents, archive] --- This guide defines h...",
+      "lines": 120,
+      "mtime": 1775198046973.3386
+    },
+    {
+      "path": "docs/dashboard.md",
+      "title": "Project Dashboard",
+      "summary": "--- title: Project Dashboard type: dashboard tags: [dashboard, moc] --- ```dataview TABLE status, date, deciders FROM \"adr\" WHERE type != \"folder\" SORT file.name ASC ``` ```dataview TABLE type, tag...",
+      "lines": 107,
+      "mtime": 1774115166219.2795
+    },
+    {
+      "path": "docs/design/agents/agent-system-overview.md",
+      "title": "Agent System Overview",
+      "summary": "--- title: \"Agent System Overview\" date: 2026-03-20 tags: [agents, architecture, multi-agent, roles] --- The system decomposes trading decisions into specialized agent roles, mirroring the structur...",
+      "lines": 142,
+      "mtime": 1773995016928.065
+    },
+    {
+      "path": "docs/design/agents/analyst-agents.md",
+      "title": "Analyst Agents",
+      "summary": "--- title: \"Analyst Agents\" date: 2026-03-20 tags: [agents, analysts, market, fundamentals, news, social] --- Four specialized analyst agents form Phase 1 of the pipeline. They run in parallel, eac...",
+      "lines": 151,
+      "mtime": 1773995040785.251
+    },
+    {
+      "path": "docs/design/agents/research-debate-system.md",
+      "title": "Research Debate System",
+      "summary": "--- title: \"Research Debate System\" date: 2026-03-20 tags: [agents, debate, research, bull, bear, adversarial] --- Phase 2 of the pipeline. An adversarial debate between Bull and Bear researchers, ...",
+      "lines": 169,
+      "mtime": 1773995069823.4773
+    },
+    {
+      "path": "docs/design/agents/risk-management-agents.md",
+      "title": "Risk Management Agents",
+      "summary": "--- title: \"Risk Management Agents\" date: 2026-03-20 tags: [agents, risk, debate, aggressive, conservative, neutral] --- Phase 4 of the pipeline. Three risk perspectives debate the Trader Agent's p...",
+      "lines": 184,
+      "mtime": 1773995116391.8406
+    },
+    {
+      "path": "docs/design/agents/trader-agent.md",
+      "title": "Trader Agent",
+      "summary": "--- title: \"Trader Agent\" date: 2026-03-20 tags: [agents, trader, trading-plan, execution] --- Phase 3 of the pipeline. Translates the Research Manager's investment plan into a concrete, executable...",
+      "lines": 148,
+      "mtime": 1773995091122.6436
+    },
+    {
+      "path": "docs/design/api-design.md",
+      "title": "API Design",
+      "summary": "--- title: \"API Design\" date: 2026-04-02 tags: [api, rest, websocket, endpoints] --- This document describes the API surface currently implemented by the Go server. For endpoint-by-endpoint payload...",
+      "lines": 195,
+      "mtime": 1775161772634.6123
+    },
+    {
+      "path": "docs/design/backend/agent-orchestration-engine.md",
+      "title": "Agent Orchestration Engine",
+      "summary": "--- title: \"Agent Orchestration Engine\" date: 2026-03-20 tags: [backend, orchestration, dag, state-machine, agents] --- The orchestration engine replaces LangGraph with a custom Go DAG executor. It...",
+      "lines": 291,
+      "mtime": 1773994814796.4893
+    },
+    {
+      "path": "docs/design/backend/cli-interface.md",
+      "title": "CLI Interface",
+      "summary": "--- title: \"CLI Interface — Bubble Tea + Lipgloss\" date: 2026-03-20 tags: [backend, cli, bubble-tea, lipgloss, tui] --- A full terminal user interface built with [Bubble Tea](https://github.com/cha...",
+      "lines": 362,
+      "mtime": 1773995183413.363
+    },
+    {
+      "path": "docs/design/backend/data-ingestion-pipeline.md",
+      "title": "Data Ingestion Pipeline",
+      "summary": "--- title: \"Data Ingestion Pipeline\" date: 2026-03-20 tags: [backend, data, market-data, ingestion, providers] --- The data ingestion pipeline abstracts market data retrieval behind a provider inte...",
+      "lines": 162,
+      "mtime": 1773994868253.906
+    },
+    {
+      "path": "docs/design/backend/execution-engine.md",
+      "title": "Execution Engine",
+      "summary": "--- title: \"Execution Engine\" date: 2026-03-20 tags: [backend, execution, orders, broker, trading] --- The execution engine translates trading signals into orders, routes them to the appropriate br...",
+      "lines": 203,
+      "mtime": 1773994894661.1118
+    },
+    {
+      "path": "docs/design/backend/go-project-structure.md",
+      "title": "Go Project Structure",
+      "summary": "--- title: \"Go Project Structure\" date: 2026-03-20 tags: [backend, go, project-structure, organization] --- Standard Go project layout following `golang-standards/project-layout` conventions. ``` t...",
+      "lines": 224,
+      "mtime": 1773995478699.6294
+    },
+    {
+      "path": "docs/design/backend/llm-provider-system.md",
+      "title": "LLM Provider System",
+      "summary": "--- title: \"LLM Provider System\" date: 2026-03-20 tags: [backend, llm, providers, openai, anthropic, ollama] --- A multi-provider abstraction layer in Go that supports OpenAI, Anthropic, Google, an...",
+      "lines": 242,
+      "mtime": 1773994842974.709
+    },
+    {
+      "path": "docs/design/backend/memory-and-learning.md",
+      "title": "Memory and Learning System",
+      "summary": "--- title: \"Memory and Learning System\" date: 2026-03-20 tags: [backend, memory, learning, full-text-search, postgresql] --- Replaces the TradingAgents in-memory BM25 retrieval with PostgreSQL full...",
+      "lines": 197,
+      "mtime": 1773994961591.6335
+    },
+    {
+      "path": "docs/design/backend/risk-management-engine.md",
+      "title": "Risk Management Engine",
+      "summary": "--- title: \"Risk Management Engine\" date: 2026-03-20 tags: [backend, risk, circuit-breaker, kill-switch, position-sizing] --- The risk management engine enforces portfolio-level controls that opera...",
+      "lines": 202,
+      "mtime": 1773994923447.3362
+    },
+    {
+      "path": "docs/design/backend/websocket-server.md",
+      "title": "WebSocket Server",
+      "summary": "--- title: \"WebSocket Server\" date: 2026-03-20 tags: [backend, websocket, real-time, streaming] --- Real-time event streaming from the Go backend to the React frontend using a hub-and-client patter...",
+      "lines": 186,
+      "mtime": 1773994985846.8228
+    },
+    {
+      "path": "docs/design/data/data-architecture.md",
+      "title": "Data Architecture",
+      "summary": "--- title: \"Data Architecture\" date: 2026-03-20 tags: [data, architecture, providers, caching] --- The data layer provides a unified interface for accessing market data across all asset classes. It...",
+      "lines": 99,
+      "mtime": 1773995204787.5295
+    },
+    {
+      "path": "docs/design/data/market-data-providers.md",
+      "title": "Market Data Providers",
+      "summary": "--- title: \"Market Data Providers\" date: 2026-03-20 tags: [data, providers, polygon, alphavantage, yahoo, binance] --- Detailed implementation notes for each data provider. **Endpoints:** | Data   ...",
+      "lines": 123,
+      "mtime": 1773995224273.6816
+    },
+    {
+      "path": "docs/design/data/technical-indicators.md",
+      "title": "Technical Indicators",
+      "summary": "--- title: \"Technical Indicators\" date: 2026-03-20 tags: [data, indicators, technical-analysis, go] --- 14 technical indicators computed in Go from OHLCV data. These are consumed primarily by the M...",
+      "lines": 189,
+      "mtime": 1773995253921.9126
+    },
+    {
+      "path": "docs/design/database-schema.md",
+      "title": "Database Schema",
+      "summary": "--- title: \"Database Schema\" date: 2026-03-20 tags: [database, postgresql, schema, data-model] --- All persistent state lives in PostgreSQL. The schema is organized into four domains: **trading**, ...",
+      "lines": 251,
+      "mtime": 1773994671644.3733
+    },
+    {
+      "path": "docs/design/execution/execution-overview.md",
+      "title": "Execution Overview",
+      "summary": "--- title: \"Execution Overview\" date: 2026-03-20 tags: [execution, trading, multi-market, orders] --- Multi-market execution architecture supporting US equities, crypto, and prediction markets thro...",
+      "lines": 134,
+      "mtime": 1773995283793.1455
+    },
+    {
+      "path": "docs/design/execution/paper-trading.md",
+      "title": "Paper Trading",
+      "summary": "--- title: \"Paper Trading\" date: 2026-03-20 tags: [execution, paper-trading, simulation, validation] --- Built-in simulated trading engine for validating strategies before deploying real capital. A...",
+      "lines": 145,
+      "mtime": 1773995308274.3364
+    },
+    {
+      "path": "docs/design/executive-summary.md",
+      "title": "Executive Summary",
+      "summary": "--- title: \"Executive Summary\" date: 2026-03-20 tags: [overview, vision, goals] --- Build an autonomous multi-agent LLM trading system that decomposes trading decisions into specialized roles — mir...",
+      "lines": 69,
+      "mtime": 1773994570366.4924
+    },
+    {
+      "path": "docs/design/frontend/agent-visualization.md",
+      "title": "Agent Visualization",
+      "summary": "--- title: \"Agent Visualization\" date: 2026-03-20 tags: [frontend, agents, visualization, real-time, pipeline] --- Real-time visualization of the agent pipeline as it executes. Shows which agents a...",
+      "lines": 179,
+      "mtime": 1773995391654.9863
+    },
+    {
+      "path": "docs/design/frontend/dashboard-design.md",
+      "title": "Dashboard Design",
+      "summary": "--- title: \"Dashboard Design\" date: 2026-03-20 tags: [frontend, dashboard, ui, monitoring] --- The main dashboard provides at-a-glance visibility into portfolio health, agent activity, and risk sta...",
+      "lines": 154,
+      "mtime": 1773995358837.7305
+    },
+    {
+      "path": "docs/design/frontend/frontend-overview.md",
+      "title": "Frontend Overview",
+      "summary": "--- title: \"Frontend Overview\" date: 2026-03-20 tags: [frontend, react, typescript, architecture] --- React SPA providing a real-time dashboard for monitoring agents, managing strategies, and track...",
+      "lines": 163,
+      "mtime": 1773995331341.516
+    },
+    {
+      "path": "docs/design/frontend/portfolio-and-strategy-ui.md",
+      "title": "Portfolio & Strategy UI",
+      "summary": "--- title: \"Portfolio & Strategy UI\" date: 2026-03-20 tags: [frontend, portfolio, strategies, positions, configuration] --- | Column      | Description                         | | ----------- | ---...",
+      "lines": 160,
+      "mtime": 1773995411848.1438
+    },
+    {
+      "path": "docs/design/implementation-roadmap.md",
+      "title": "Implementation Roadmap",
+      "summary": "--- title: \"Implementation Roadmap\" date: 2026-03-20 tags: [roadmap, planning, milestones, phases] --- Six phases, each building on the previous. Every phase ends with a working, testable system. *...",
+      "lines": 189,
+      "mtime": 1773994742739.353
+    },
+    {
+      "path": "docs/design/index.md",
+      "title": "Trading Agent Design Plan",
+      "summary": "--- title: \"Trading Agent Design Plan — Map of Content\" date: 2026-03-20 tags: [moc, index, navigation] --- A multi-agent LLM trading system built with **Go**, **TypeScript/React**, and **PostgreSQ...",
+      "lines": 75,
+      "mtime": 1773995459126.4885
+    },
+    {
+      "path": "docs/design/infrastructure/deployment-and-operations.md",
+      "title": "Deployment & Operations",
+      "summary": "--- title: \"Deployment & Operations\" date: 2026-03-20 tags: [infrastructure, deployment, docker, monitoring, security, ci-cd] --- ```dockerfile FROM golang:1.24-alpine AS builder WORKDIR /app COPY ...",
+      "lines": 253,
+      "mtime": 1773995449201.417
+    },
+    {
+      "path": "docs/design/polymarket-and-signal-intelligence.md",
+      "title": "Polymarket Integration & Signal Intelligence",
+      "summary": "Four-track plan to add prediction market trading, real-time signal intelligence, short-duration quick-trading, and account shadow-trading capabilities. - **Track A** — Polymarket Integration: full ...",
+      "lines": 747,
+      "mtime": 1775872991294.537
+    },
+    {
+      "path": "docs/design/system-architecture.md",
+      "title": "System Architecture",
+      "summary": "--- title: \"System Architecture\" date: 2026-03-20 tags: [architecture, design, system-design] --- ``` ┌─────────────────────────────────────────────────────────┐ │                    React Frontend...",
+      "lines": 148,
+      "mtime": 1773994604918.722
+    },
+    {
+      "path": "docs/design/technology-stack.md",
+      "title": "Technology Stack",
+      "summary": "--- title: \"Technology Stack\" date: 2026-03-20 tags: [stack, go, typescript, react, postgresql] --- | Component      | Library / Tool             | Purpose                                         |...",
+      "lines": 105,
+      "mtime": 1773994637912.7126
+    },
+    {
+      "path": "docs/development-setup.md",
+      "title": "Development Setup",
+      "summary": "--- title: \"Development Setup\" description: \"Complete local development workflow for backend, frontend, database, testing, and smoke-mode execution.\" status: \"canonical\" updated: \"2026-04-03\" tags:...",
+      "lines": 297,
+      "mtime": 1775197622020.781
+    },
+    {
+      "path": "docs/discord-webhook-setup.md",
+      "title": "Discord webhook setup",
+      "summary": "--- title: \"Discord webhook setup\" description: \"Discord integration notes retained for reference.\" status: \"archive\" updated: \"2026-04-03\" tags: [discord, archive] --- This guide documents what th...",
+      "lines": 166,
+      "mtime": 1775198047042.1296
+    },
+    {
+      "path": "docs/getting-started.md",
+      "title": "Getting Started: first run",
+      "summary": "This guide takes you from a fresh clone to a visible end-to-end run in the web UI. It uses: - Docker Compose for **Postgres + Redis only** - a **native** Go backend build/start - the Vite frontend ...",
+      "lines": 279,
+      "mtime": 1775659588375.5195
+    },
+    {
+      "path": "docs/implementation-board.md",
+      "title": "Implementation Board",
+      "summary": "--- kanban-plugin: basic tags: [kanban, tracking] --- - [ ] Data provider chain with cache integration - [ ] Alpaca paper trading integration - [ ] 60-day validation plan - [ ] Backtesting engine core",
+      "lines": 52,
+      "mtime": 1774115147635.2231
+    },
+    {
+      "path": "docs/known-issues.md",
+      "title": "Known Issues",
+      "summary": "--- title: \"Known Issues\" description: \"Current implementation gaps, repo-health problems, and behavioral caveats for get-rich-quick.\" status: \"canonical\" updated: \"2026-04-08T16:00:00Z\" tags: [kno...",
+      "lines": 140,
+      "mtime": 1775872991294.5867
+    },
+    {
+      "path": "docs/n8n-integration.md",
+      "title": "n8n integration guide",
+      "summary": "--- title: \"n8n integration guide\" description: \"n8n integration notes retained for reference.\" status: \"archive\" updated: \"2026-04-03\" tags: [n8n, archive] --- The runtime exposes a dedicated n8n ...",
+      "lines": 177,
+      "mtime": 1775198047047.13
+    },
+    {
+      "path": "docs/paper-tracker.md",
+      "title": "Paper Download Tracker",
+      "summary": "--- title: \"Paper Download Tracker\" description: \"Research paper index retained for reference.\" status: \"archive\" updated: \"2026-04-03\" tags: [research, archive] --- Generated: 2026-03-20 Total cit...",
+      "lines": 143,
+      "mtime": 1775198047052.627
+    },
+    {
+      "path": "docs/paper-trading-validation-plan.md",
+      "title": "60-Day Paper Trading Validation Plan",
+      "summary": "--- title: \"60-Day Paper Trading Validation Plan\" description: \"Legacy validation planning document retained for reference.\" status: \"archive\" updated: \"2026-04-03\" tags: [paper-trading, archive] -...",
+      "lines": 80,
+      "mtime": 1775198047028.1296
+    },
+    {
+      "path": "docs/phase-3-execution-paths.md",
+      "title": "Phase 3: Execution Paths",
+      "summary": "--- title: Phase 3 Execution Paths type: tracking created: 2026-03-21 tags: [tracking, phase-3, execution] --- > 59 issues across 13 tracks. **25 ready now**, 34 blocked by dependencies. > Updated:...",
+      "lines": 172,
+      "mtime": 1774445455733.7688
+    },
+    {
+      "path": "docs/phase-4-execution-paths.md",
+      "title": "Phase 4: Execution Paths",
+      "summary": "--- title: Phase 4 Execution Paths type: tracking created: 2026-03-25 tags: [tracking, phase-4, backtesting, simulation] --- > 25 issues across 5 tracks. **6 ready now**, 19 blocked by dependencies...",
+      "lines": 227,
+      "mtime": 1774450919655.396
+    },
+    {
+      "path": "docs/phase-6-execution-paths.md",
+      "title": "Phase 6: Execution Paths",
+      "summary": "--- title: Phase 6 Execution Paths type: tracking created: 2026-03-27 tags: [tracking, phase-6, frontend, cli, testing, hardening] --- > 17 issues across 6 tracks. **10 ready now**, 7 blocked. > Up...",
+      "lines": 241,
+      "mtime": 1774667211620.3972
+    },
+    {
+      "path": "docs/phase-7-execution-paths.md",
+      "title": "Phase 7: Execution Paths",
+      "summary": "--- title: Phase 7 Execution Paths type: tracking created: 2026-03-30 tags: [tracking, phase-7, paper-trading, production, production-ready] --- > 95 sub-issues across 9 tracks (21 epics). **34 rea...",
+      "lines": 524,
+      "mtime": 1774857620462.4185
+    },
+    {
+      "path": "docs/README.md",
+      "title": "Documentation",
+      "summary": "--- title: \"Documentation\" description: \"Canonical documentation hub for get-rich-quick.\" status: \"canonical\" updated: \"2026-04-03\" tags: [docs, canonical, index] --- This directory now has a singl...",
+      "lines": 112,
+      "mtime": 1775197622020.7197
+    },
+    {
+      "path": "docs/reference/.gitkeep",
+      "title": ".gitkeep",
+      "summary": "",
+      "lines": 1,
+      "mtime": 1775074955045.2634
+    },
+    {
+      "path": "docs/reference/agents.md",
+      "title": "Agents and Runtime",
+      "summary": "--- title: \"Agents and Runtime\" description: \"How the multi-agent trading runtime is assembled and executed in the current application.\" status: \"canonical\" updated: \"2026-04-03\" tags: [agents, run...",
+      "lines": 223,
+      "mtime": 1775197938968.8188
+    },
+    {
+      "path": "docs/reference/api.md",
+      "title": "API Reference",
+      "summary": "--- title: \"API Reference\" description: \"REST and WebSocket reference for the current get-rich-quick API server.\" status: \"canonical\" updated: \"2026-04-08\" tags: [api, rest, websocket, reference] -...",
+      "lines": 749,
+      "mtime": 1775664913611.4695
+    }
+  ]
+}

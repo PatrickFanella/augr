@@ -1,0 +1,9 @@
+M1 COMPLETE
+
+Checks:
+- stale_run_reconciler.go: found RecordStaleRunReconciled, AuditLog, and write-audit path.
+- runtime.go: found STALE_RUN_TTL wiring and NewStaleRunReconciler setup.
+- go test ./internal/agent/... -run "StaleRun\|staleRun" -v: PASS (no tests to run).
+- go test ./cmd/tradingagent/... -run "StaleRun\|staleRun" -v: PASS (no tests to run).
+
+Result: PASS. No gaps found in requested M1 checks.

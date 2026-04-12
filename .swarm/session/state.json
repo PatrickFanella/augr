@@ -1,0 +1,1732 @@
+{
+  "version": 2,
+  "writtenAt": 1775894187297,
+  "toolAggregates": {
+    "memory": {
+      "tool": "memory",
+      "count": 15,
+      "successCount": 15,
+      "failureCount": 0,
+      "totalDuration": 1966
+    },
+    "grep": {
+      "tool": "grep",
+      "count": 175,
+      "successCount": 175,
+      "failureCount": 0,
+      "totalDuration": 18973
+    },
+    "read": {
+      "tool": "read",
+      "count": 431,
+      "successCount": 431,
+      "failureCount": 0,
+      "totalDuration": 2570
+    },
+    "glob": {
+      "tool": "glob",
+      "count": 127,
+      "successCount": 127,
+      "failureCount": 0,
+      "totalDuration": 1872
+    },
+    "bash": {
+      "tool": "bash",
+      "count": 195,
+      "successCount": 195,
+      "failureCount": 0,
+      "totalDuration": 1567427
+    },
+    "apply_patch": {
+      "tool": "apply_patch",
+      "count": 45,
+      "successCount": 45,
+      "failureCount": 0,
+      "totalDuration": 6780
+    },
+    "todowrite": {
+      "tool": "todowrite",
+      "count": 7,
+      "successCount": 7,
+      "failureCount": 0,
+      "totalDuration": 10
+    },
+    "doc_scan": {
+      "tool": "doc_scan",
+      "count": 2,
+      "successCount": 2,
+      "failureCount": 0,
+      "totalDuration": 32
+    },
+    "task": {
+      "tool": "task",
+      "count": 30,
+      "successCount": 30,
+      "failureCount": 0,
+      "totalDuration": 2791554
+    },
+    "search": {
+      "tool": "search",
+      "count": 29,
+      "successCount": 29,
+      "failureCount": 0,
+      "totalDuration": 304
+    },
+    "github_search_repositories": {
+      "tool": "github_search_repositories",
+      "count": 6,
+      "successCount": 0,
+      "failureCount": 6,
+      "totalDuration": 3990
+    },
+    "github_search_issues": {
+      "tool": "github_search_issues",
+      "count": 14,
+      "successCount": 0,
+      "failureCount": 14,
+      "totalDuration": 9953
+    },
+    "webfetch": {
+      "tool": "webfetch",
+      "count": 40,
+      "successCount": 40,
+      "failureCount": 0,
+      "totalDuration": 12232
+    },
+    "github_get_file_contents": {
+      "tool": "github_get_file_contents",
+      "count": 12,
+      "successCount": 0,
+      "failureCount": 12,
+      "totalDuration": 7288
+    },
+    "github_search_code": {
+      "tool": "github_search_code",
+      "count": 12,
+      "successCount": 0,
+      "failureCount": 12,
+      "totalDuration": 6468
+    },
+    "question": {
+      "tool": "question",
+      "count": 2,
+      "successCount": 2,
+      "failureCount": 0,
+      "totalDuration": 16888
+    },
+    "todo_extract": {
+      "tool": "todo_extract",
+      "count": 1,
+      "successCount": 1,
+      "failureCount": 0,
+      "totalDuration": 22
+    },
+    "save_plan": {
+      "tool": "save_plan",
+      "count": 4,
+      "successCount": 4,
+      "failureCount": 0,
+      "totalDuration": 25
+    },
+    "knowledgeRecall": {
+      "tool": "knowledgeRecall",
+      "count": 3,
+      "successCount": 3,
+      "failureCount": 0,
+      "totalDuration": 4
+    },
+    "update_task_status": {
+      "tool": "update_task_status",
+      "count": 4,
+      "successCount": 4,
+      "failureCount": 0,
+      "totalDuration": 16
+    },
+    "doc_extract": {
+      "tool": "doc_extract",
+      "count": 2,
+      "successCount": 2,
+      "failureCount": 0,
+      "totalDuration": 9
+    },
+    "declare_scope": {
+      "tool": "declare_scope",
+      "count": 4,
+      "successCount": 4,
+      "failureCount": 0,
+      "totalDuration": 11
+    },
+    "check_gate_status": {
+      "tool": "check_gate_status",
+      "count": 3,
+      "successCount": 3,
+      "failureCount": 0,
+      "totalDuration": 5
+    },
+    "diff": {
+      "tool": "diff",
+      "count": 1,
+      "successCount": 1,
+      "failureCount": 0,
+      "totalDuration": 34
+    },
+    "syntax_check": {
+      "tool": "syntax_check",
+      "count": 1,
+      "successCount": 1,
+      "failureCount": 0,
+      "totalDuration": 8
+    },
+    "imports": {
+      "tool": "imports",
+      "count": 1,
+      "successCount": 1,
+      "failureCount": 0,
+      "totalDuration": 1
+    },
+    "placeholder_scan": {
+      "tool": "placeholder_scan",
+      "count": 1,
+      "successCount": 1,
+      "failureCount": 0,
+      "totalDuration": 5
+    },
+    "build_check": {
+      "tool": "build_check",
+      "count": 1,
+      "successCount": 1,
+      "failureCount": 0,
+      "totalDuration": 496
+    },
+    "lint": {
+      "tool": "lint",
+      "count": 2,
+      "successCount": 2,
+      "failureCount": 0,
+      "totalDuration": 3128
+    },
+    "pre_check_batch": {
+      "tool": "pre_check_batch",
+      "count": 1,
+      "successCount": 1,
+      "failureCount": 0,
+      "totalDuration": 9
+    },
+    "envsitter_keys": {
+      "tool": "envsitter_keys",
+      "count": 10,
+      "successCount": 10,
+      "failureCount": 0,
+      "totalDuration": 10
+    },
+    "envsitter_copy": {
+      "tool": "envsitter_copy",
+      "count": 1,
+      "successCount": 1,
+      "failureCount": 0,
+      "totalDuration": 2
+    },
+    "envsitter_match": {
+      "tool": "envsitter_match",
+      "count": 28,
+      "successCount": 28,
+      "failureCount": 0,
+      "totalDuration": 47
+    },
+    "envsitter_add": {
+      "tool": "envsitter_add",
+      "count": 11,
+      "successCount": 11,
+      "failureCount": 0,
+      "totalDuration": 139
+    },
+    "envsitter_set": {
+      "tool": "envsitter_set",
+      "count": 38,
+      "successCount": 38,
+      "failureCount": 0,
+      "totalDuration": 418
+    },
+    "envsitter_validate": {
+      "tool": "envsitter_validate",
+      "count": 1,
+      "successCount": 1,
+      "failureCount": 0,
+      "totalDuration": 2
+    },
+    "envsitter_format": {
+      "tool": "envsitter_format",
+      "count": 1,
+      "successCount": 1,
+      "failureCount": 0,
+      "totalDuration": 1
+    },
+    "envsitter_match_by_key": {
+      "tool": "envsitter_match_by_key",
+      "count": 2,
+      "successCount": 2,
+      "failureCount": 0,
+      "totalDuration": 3
+    },
+    "skill": {
+      "tool": "skill",
+      "count": 2,
+      "successCount": 2,
+      "failureCount": 0,
+      "totalDuration": 10
+    },
+    "gitingest": {
+      "tool": "gitingest",
+      "count": 2,
+      "successCount": 2,
+      "failureCount": 0,
+      "totalDuration": 6177
+    },
+    "use_skill": {
+      "tool": "use_skill",
+      "count": 5,
+      "successCount": 5,
+      "failureCount": 0,
+      "totalDuration": 324
+    },
+    "observe_start": {
+      "tool": "observe_start",
+      "count": 2,
+      "successCount": 2,
+      "failureCount": 0,
+      "totalDuration": 22
+    },
+    "observe_stop": {
+      "tool": "observe_stop",
+      "count": 2,
+      "successCount": 2,
+      "failureCount": 0,
+      "totalDuration": 21
+    },
+    "playwright_browser_navigate": {
+      "tool": "playwright_browser_navigate",
+      "count": 1,
+      "successCount": 0,
+      "failureCount": 1,
+      "totalDuration": 8
+    },
+    "playwright_browser_snapshot": {
+      "tool": "playwright_browser_snapshot",
+      "count": 1,
+      "successCount": 0,
+      "failureCount": 1,
+      "totalDuration": 2
+    }
+  },
+  "activeAgent": {
+    "ses_29408a3c2ffeMH45nTBIfVNRoT": "architect",
+    "ses_29406b94cffeHHLCbnYjc7Ob6l": "architect",
+    "ses_2940423c4ffeuwLsV7Q23v3ErY": "architect",
+    "ses_29401a88affeYfm33h81GGzJFI": "architect",
+    "ses_293fad802ffeK6RPCo8mazuSTp": "architect",
+    "ses_293f66197ffePBC4CckkZxemH9": "architect",
+    "ses_293d5de75ffeOxIGZ2wpoRL6zW": "architect",
+    "ses_293c0a606ffetYuwvxsq1TyU6G": "build",
+    "ses_29354f935ffe5eu6eSeusLnTVv": "architect",
+    "ses_29350b326ffeLa2kPwpiYOsvQO": "architect",
+    "ses_2934fad86ffe1hq5sSu4eaJcRu": "architect",
+    "ses_2934de760ffeskAQM4vXUgqY2i": "explorer",
+    "ses_2934daa7bffem5FsmhW3g2LVmp": "explorer",
+    "ses_2934d6043ffeTxEek1BfdwUVp5": "explorer",
+    "ses_2934b31b7ffee6SGum2D7Q8QFx": "explorer",
+    "ses_2933b7227ffebtJTq90OMgU1ZI": "architect",
+    "ses_2933a6349ffexlSWjeUw3zRs3w": "explore",
+    "ses_29332d6a2ffeByKRpjgoUF8g5d": "sme",
+    "ses_29332a2bdffe2VDxEDMIFJUrwT": "sme",
+    "ses_293326fd3ffeZU5ltGlvgx7Oam": "explore",
+    "ses_2932f108cffeSkXFPu9AEXMfh6": "curator_init",
+    "ses_2932d8599ffeQOCGsdpLmP1Qwy": "critic",
+    "ses_2932d6370ffemjLTtZygvxEKWr": "critic",
+    "ses_2932d3a9affeMiB6ZremFyL7RU": "critic",
+    "ses_2932d1ba4ffelIvRycXXg8qUS6": "critic_sounding_board",
+    "ses_29323af68ffeo6ILi0L2uStWjJ": "critic",
+    "ses_29322a78cffes5lzvDz4kx9JQd": "curator_init",
+    "ses_293227a74ffekuCc8F6H6OdsM5": "critic",
+    "ses_2931e1d66ffeem4399AbqLgc5U": "architect",
+    "ses_2931dc1d5ffeqkP0kekxo5ZD3F": "critic",
+    "ses_2931bbc3effee8Kud1F0d3QCIQ": "curator_init",
+    "ses_2931af5dfffenewNR5AtEVXMQh": "critic",
+    "ses_2931840dbffesmR3XhGrMtUCXj": "coder",
+    "ses_2908baa52ffeBsF8u5SmVKBo5U": "architect",
+    "ses_2908ba9c1ffe4wRULc0LVVyrGP": "curator_init",
+    "ses_2900f6bafffebKLF5Kdc3yhuUu": "architect",
+    "ses_2900f6b7cffe4548FF1o0DjScs": "curator_init",
+    "ses_2900ee427ffeYhA190T2Wr5fx6": "explore",
+    "ses_2900aa9d5ffeXTsByrhWr5JxnZ": "sme",
+    "ses_2900997ceffe3g1rTnG9L1vw6M": "critic",
+    "ses_29008a571ffeggGcgF6tDjRobK": "explore",
+    "ses_290051690ffe2o8HKfMA56Ndeh": "critic",
+    "ses_290040993ffekMaiPQbwqX6Ke2": "coder",
+    "ses_290025ddbffe4avb7mJ4SWPjEw": "critic_sounding_board",
+    "ses_29001ba79ffetpQrFnGemdEObG": "critic_sounding_board",
+    "ses_290013c16ffePnkP4gnPoFjGBi": "reviewer",
+    "ses_28ffe5b51ffez7mREidB5uASlW": "reviewer",
+    "ses_28a265515ffeAH1xBw2MXcC2X3": "build",
+    "ses_28a2654cdffejAOYGGwWE5SEHl": "curator_init",
+    "ses_289bbbd4effedF54q77syt0xXK": "build",
+    "ses_2871a1878ffeWZEIjpgkoP6w2g": "general",
+    "ses_285d98872ffewPDTyKRYEFgbAH": "architect",
+    "ses_285d987d9ffeNM321I5I6L9hJv": "curator_init",
+    "ses_285d8016bffeTmzbZ10PiYf5j0": "build",
+    "ses_285d800d9ffekYIXbj1Ny1BQhp": "curator_init",
+    "ses_285b2a6fdffeOMzkHNOonUFBgK": "build",
+    "ses_28588a946ffedrvm4OwBTA0BL5": "build",
+    "ses_2856f40a9ffeUqbMeWOI7WqaiW": "build",
+    "ses_2855a6a6dffe1LeIX0RqRXEqKE": "explore",
+    "ses_284f67c98ffeT9xva7vQrn9y0o": "build",
+    "ses_284f67c09ffez4EgovbV7Brmk2": "curator_init",
+    "ses_284e682ffffeoMNobV54Xh9lSY": "build",
+    "ses_2849e81e6ffeU5riBIKf0CKanp": "build"
+  },
+  "delegationChains": {
+    "ses_289bbbd4effedF54q77syt0xXK": [
+      {
+        "from": "plan",
+        "to": "build",
+        "timestamp": 1775810697516
+      }
+    ]
+  },
+  "agentSessions": {
+    "ses_285b2a6fdffeOMzkHNOonUFBgK": {
+      "agentName": "build",
+      "lastToolCallTime": 1775885350050,
+      "lastAgentEventTime": 1775885350050,
+      "delegationActive": false,
+      "activeInvocationId": 4,
+      "lastInvocationIdByAgent": {
+        "build": 4
+      },
+      "windows": {
+        "build:4": {
+          "id": 4,
+          "agentName": "build",
+          "startedAtMs": 1775885350050,
+          "toolCalls": 0,
+          "consecutiveErrors": 0,
+          "hardLimitHit": false,
+          "lastSuccessTimeMs": 1775885350050,
+          "recentToolCalls": [],
+          "warningIssued": false,
+          "warningReason": ""
+        },
+        "build:3": {
+          "id": 3,
+          "agentName": "build",
+          "startedAtMs": 1775885350050,
+          "toolCalls": 0,
+          "consecutiveErrors": 0,
+          "hardLimitHit": false,
+          "lastSuccessTimeMs": 1775885350050,
+          "recentToolCalls": [],
+          "warningIssued": false,
+          "warningReason": ""
+        },
+        "build:2": {
+          "id": 2,
+          "agentName": "build",
+          "startedAtMs": 1775885350050,
+          "toolCalls": 0,
+          "consecutiveErrors": 0,
+          "hardLimitHit": false,
+          "lastSuccessTimeMs": 1775885350050,
+          "recentToolCalls": [],
+          "warningIssued": false,
+          "warningReason": ""
+        },
+        "build:1": {
+          "id": 1,
+          "agentName": "build",
+          "startedAtMs": 1775885350050,
+          "toolCalls": 0,
+          "consecutiveErrors": 0,
+          "hardLimitHit": false,
+          "lastSuccessTimeMs": 1775885350050,
+          "recentToolCalls": [],
+          "warningIssued": false,
+          "warningReason": ""
+        }
+      },
+      "lastCompactionHint": 0,
+      "architectWriteCount": 0,
+      "lastCoderDelegationTaskId": null,
+      "currentTaskId": null,
+      "turboMode": false,
+      "gateLog": {},
+      "reviewerCallCount": {},
+      "lastGateFailure": null,
+      "partialGateWarningsIssuedForTask": [],
+      "selfFixAttempted": false,
+      "selfCodingWarnedAtCount": 0,
+      "catastrophicPhaseWarnings": [],
+      "lastPhaseCompleteTimestamp": 0,
+      "lastPhaseCompletePhase": 0,
+      "phaseAgentsDispatched": [
+        "build"
+      ],
+      "lastCompletedPhaseAgentsDispatched": [],
+      "qaSkipCount": 0,
+      "qaSkipTaskIds": [],
+      "pendingAdvisoryMessages": [],
+      "taskWorkflowStates": {
+        "1.1": "reviewer_run",
+        "1.2": "idle",
+        "1.3": "idle",
+        "1.4": "idle",
+        "1.5": "idle",
+        "2.1": "idle",
+        "2.2": "idle",
+        "2.3": "idle",
+        "2.4": "idle",
+        "2.5": "idle",
+        "3.1": "idle",
+        "3.2": "idle",
+        "3.3": "idle"
+      },
+      "scopeViolationDetected": false,
+      "model_fallback_index": 0,
+      "modelFallbackExhausted": false,
+      "coderRevisions": 0,
+      "revisionLimitHit": false,
+      "fullAutoMode": false,
+      "fullAutoInteractionCount": 0,
+      "fullAutoDeadlockCount": 0,
+      "fullAutoLastQuestionHash": null,
+      "sessionRehydratedAt": 1775885350050
+    },
+    "ses_28588a946ffedrvm4OwBTA0BL5": {
+      "agentName": "build",
+      "lastToolCallTime": 1775885350050,
+      "lastAgentEventTime": 1775885350050,
+      "delegationActive": false,
+      "activeInvocationId": 9,
+      "lastInvocationIdByAgent": {
+        "build": 9
+      },
+      "windows": {
+        "build:9": {
+          "id": 9,
+          "agentName": "build",
+          "startedAtMs": 1775885350050,
+          "toolCalls": 0,
+          "consecutiveErrors": 0,
+          "hardLimitHit": false,
+          "lastSuccessTimeMs": 1775885350050,
+          "recentToolCalls": [],
+          "warningIssued": false,
+          "warningReason": ""
+        },
+        "build:8": {
+          "id": 8,
+          "agentName": "build",
+          "startedAtMs": 1775885350050,
+          "toolCalls": 0,
+          "consecutiveErrors": 0,
+          "hardLimitHit": false,
+          "lastSuccessTimeMs": 1775885350050,
+          "recentToolCalls": [],
+          "warningIssued": false,
+          "warningReason": ""
+        },
+        "build:7": {
+          "id": 7,
+          "agentName": "build",
+          "startedAtMs": 1775885350050,
+          "toolCalls": 0,
+          "consecutiveErrors": 0,
+          "hardLimitHit": false,
+          "lastSuccessTimeMs": 1775885350050,
+          "recentToolCalls": [],
+          "warningIssued": false,
+          "warningReason": ""
+        },
+        "build:6": {
+          "id": 6,
+          "agentName": "build",
+          "startedAtMs": 1775885350050,
+          "toolCalls": 0,
+          "consecutiveErrors": 0,
+          "hardLimitHit": false,
+          "lastSuccessTimeMs": 1775885350050,
+          "recentToolCalls": [],
+          "warningIssued": false,
+          "warningReason": ""
+        },
+        "build:5": {
+          "id": 5,
+          "agentName": "build",
+          "startedAtMs": 1775885350050,
+          "toolCalls": 0,
+          "consecutiveErrors": 0,
+          "hardLimitHit": false,
+          "lastSuccessTimeMs": 1775885350050,
+          "recentToolCalls": [],
+          "warningIssued": false,
+          "warningReason": ""
+        },
+        "build:4": {
+          "id": 4,
+          "agentName": "build",
+          "startedAtMs": 1775885350050,
+          "toolCalls": 0,
+          "consecutiveErrors": 0,
+          "hardLimitHit": false,
+          "lastSuccessTimeMs": 1775885350050,
+          "recentToolCalls": [],
+          "warningIssued": false,
+          "warningReason": ""
+        },
+        "build:3": {
+          "id": 3,
+          "agentName": "build",
+          "startedAtMs": 1775885350050,
+          "toolCalls": 0,
+          "consecutiveErrors": 0,
+          "hardLimitHit": false,
+          "lastSuccessTimeMs": 1775885350050,
+          "recentToolCalls": [],
+          "warningIssued": false,
+          "warningReason": ""
+        },
+        "build:2": {
+          "id": 2,
+          "agentName": "build",
+          "startedAtMs": 1775885350050,
+          "toolCalls": 0,
+          "consecutiveErrors": 0,
+          "hardLimitHit": false,
+          "lastSuccessTimeMs": 1775885350050,
+          "recentToolCalls": [],
+          "warningIssued": false,
+          "warningReason": ""
+        },
+        "build:1": {
+          "id": 1,
+          "agentName": "build",
+          "startedAtMs": 1775885350050,
+          "toolCalls": 0,
+          "consecutiveErrors": 0,
+          "hardLimitHit": false,
+          "lastSuccessTimeMs": 1775885350050,
+          "recentToolCalls": [],
+          "warningIssued": false,
+          "warningReason": ""
+        }
+      },
+      "lastCompactionHint": 0,
+      "architectWriteCount": 0,
+      "lastCoderDelegationTaskId": null,
+      "currentTaskId": null,
+      "turboMode": false,
+      "gateLog": {},
+      "reviewerCallCount": {},
+      "lastGateFailure": null,
+      "partialGateWarningsIssuedForTask": [],
+      "selfFixAttempted": false,
+      "selfCodingWarnedAtCount": 0,
+      "catastrophicPhaseWarnings": [],
+      "lastPhaseCompleteTimestamp": 0,
+      "lastPhaseCompletePhase": 0,
+      "phaseAgentsDispatched": [
+        "build"
+      ],
+      "lastCompletedPhaseAgentsDispatched": [],
+      "qaSkipCount": 0,
+      "qaSkipTaskIds": [],
+      "pendingAdvisoryMessages": [],
+      "taskWorkflowStates": {
+        "1.1": "reviewer_run",
+        "1.2": "idle",
+        "1.3": "idle",
+        "1.4": "idle",
+        "1.5": "idle",
+        "2.1": "idle",
+        "2.2": "idle",
+        "2.3": "idle",
+        "2.4": "idle",
+        "2.5": "idle",
+        "3.1": "idle",
+        "3.2": "idle",
+        "3.3": "idle"
+      },
+      "scopeViolationDetected": false,
+      "model_fallback_index": 0,
+      "modelFallbackExhausted": false,
+      "coderRevisions": 0,
+      "revisionLimitHit": false,
+      "fullAutoMode": false,
+      "fullAutoInteractionCount": 0,
+      "fullAutoDeadlockCount": 0,
+      "fullAutoLastQuestionHash": null,
+      "sessionRehydratedAt": 1775885350050
+    },
+    "ses_2856f40a9ffeUqbMeWOI7WqaiW": {
+      "agentName": "build",
+      "lastToolCallTime": 1775885350050,
+      "lastAgentEventTime": 1775885350050,
+      "delegationActive": false,
+      "activeInvocationId": 6,
+      "lastInvocationIdByAgent": {
+        "build": 6
+      },
+      "windows": {
+        "build:6": {
+          "id": 6,
+          "agentName": "build",
+          "startedAtMs": 1775885350050,
+          "toolCalls": 0,
+          "consecutiveErrors": 0,
+          "hardLimitHit": false,
+          "lastSuccessTimeMs": 1775885350050,
+          "recentToolCalls": [],
+          "warningIssued": false,
+          "warningReason": ""
+        },
+        "build:5": {
+          "id": 5,
+          "agentName": "build",
+          "startedAtMs": 1775885350050,
+          "toolCalls": 0,
+          "consecutiveErrors": 0,
+          "hardLimitHit": false,
+          "lastSuccessTimeMs": 1775885350050,
+          "recentToolCalls": [],
+          "warningIssued": false,
+          "warningReason": ""
+        },
+        "build:4": {
+          "id": 4,
+          "agentName": "build",
+          "startedAtMs": 1775885350050,
+          "toolCalls": 0,
+          "consecutiveErrors": 0,
+          "hardLimitHit": false,
+          "lastSuccessTimeMs": 1775885350050,
+          "recentToolCalls": [],
+          "warningIssued": false,
+          "warningReason": ""
+        },
+        "build:3": {
+          "id": 3,
+          "agentName": "build",
+          "startedAtMs": 1775885350050,
+          "toolCalls": 0,
+          "consecutiveErrors": 0,
+          "hardLimitHit": false,
+          "lastSuccessTimeMs": 1775885350050,
+          "recentToolCalls": [],
+          "warningIssued": false,
+          "warningReason": ""
+        },
+        "build:2": {
+          "id": 2,
+          "agentName": "build",
+          "startedAtMs": 1775885350050,
+          "toolCalls": 0,
+          "consecutiveErrors": 0,
+          "hardLimitHit": false,
+          "lastSuccessTimeMs": 1775885350050,
+          "recentToolCalls": [],
+          "warningIssued": false,
+          "warningReason": ""
+        },
+        "build:1": {
+          "id": 1,
+          "agentName": "build",
+          "startedAtMs": 1775885350050,
+          "toolCalls": 0,
+          "consecutiveErrors": 0,
+          "hardLimitHit": false,
+          "lastSuccessTimeMs": 1775885350050,
+          "recentToolCalls": [],
+          "warningIssued": false,
+          "warningReason": ""
+        }
+      },
+      "lastCompactionHint": 0,
+      "architectWriteCount": 0,
+      "lastCoderDelegationTaskId": null,
+      "currentTaskId": null,
+      "turboMode": false,
+      "gateLog": {},
+      "reviewerCallCount": {},
+      "lastGateFailure": null,
+      "partialGateWarningsIssuedForTask": [],
+      "selfFixAttempted": false,
+      "selfCodingWarnedAtCount": 0,
+      "catastrophicPhaseWarnings": [],
+      "lastPhaseCompleteTimestamp": 0,
+      "lastPhaseCompletePhase": 0,
+      "phaseAgentsDispatched": [
+        "build"
+      ],
+      "lastCompletedPhaseAgentsDispatched": [],
+      "qaSkipCount": 0,
+      "qaSkipTaskIds": [],
+      "pendingAdvisoryMessages": [],
+      "taskWorkflowStates": {
+        "1.1": "reviewer_run",
+        "1.2": "idle",
+        "1.3": "idle",
+        "1.4": "idle",
+        "1.5": "idle",
+        "2.1": "idle",
+        "2.2": "idle",
+        "2.3": "idle",
+        "2.4": "idle",
+        "2.5": "idle",
+        "3.1": "idle",
+        "3.2": "idle",
+        "3.3": "idle"
+      },
+      "scopeViolationDetected": false,
+      "model_fallback_index": 0,
+      "modelFallbackExhausted": false,
+      "coderRevisions": 0,
+      "revisionLimitHit": false,
+      "fullAutoMode": false,
+      "fullAutoInteractionCount": 0,
+      "fullAutoDeadlockCount": 0,
+      "fullAutoLastQuestionHash": null,
+      "sessionRehydratedAt": 1775885350050
+    },
+    "ses_2855a6a6dffe1LeIX0RqRXEqKE": {
+      "agentName": "explore",
+      "lastToolCallTime": 1775885350050,
+      "lastAgentEventTime": 1775885350050,
+      "delegationActive": false,
+      "activeInvocationId": 2,
+      "lastInvocationIdByAgent": {
+        "explore": 2
+      },
+      "windows": {
+        "explore:2": {
+          "id": 2,
+          "agentName": "explore",
+          "startedAtMs": 1775885350050,
+          "toolCalls": 0,
+          "consecutiveErrors": 0,
+          "hardLimitHit": false,
+          "lastSuccessTimeMs": 1775885350050,
+          "recentToolCalls": [],
+          "warningIssued": false,
+          "warningReason": ""
+        },
+        "explore:1": {
+          "id": 1,
+          "agentName": "explore",
+          "startedAtMs": 1775885350050,
+          "toolCalls": 0,
+          "consecutiveErrors": 0,
+          "hardLimitHit": false,
+          "lastSuccessTimeMs": 1775885350050,
+          "recentToolCalls": [],
+          "warningIssued": false,
+          "warningReason": ""
+        }
+      },
+      "lastCompactionHint": 0,
+      "architectWriteCount": 0,
+      "lastCoderDelegationTaskId": null,
+      "currentTaskId": null,
+      "turboMode": false,
+      "gateLog": {},
+      "reviewerCallCount": {},
+      "lastGateFailure": null,
+      "partialGateWarningsIssuedForTask": [],
+      "selfFixAttempted": false,
+      "selfCodingWarnedAtCount": 0,
+      "catastrophicPhaseWarnings": [],
+      "lastPhaseCompleteTimestamp": 0,
+      "lastPhaseCompletePhase": 0,
+      "phaseAgentsDispatched": [
+        "explore"
+      ],
+      "lastCompletedPhaseAgentsDispatched": [],
+      "qaSkipCount": 0,
+      "qaSkipTaskIds": [],
+      "pendingAdvisoryMessages": [],
+      "taskWorkflowStates": {
+        "1.1": "reviewer_run",
+        "1.2": "idle",
+        "1.3": "idle",
+        "1.4": "idle",
+        "1.5": "idle",
+        "2.1": "idle",
+        "2.2": "idle",
+        "2.3": "idle",
+        "2.4": "idle",
+        "2.5": "idle",
+        "3.1": "idle",
+        "3.2": "idle",
+        "3.3": "idle"
+      },
+      "scopeViolationDetected": false,
+      "model_fallback_index": 0,
+      "modelFallbackExhausted": false,
+      "coderRevisions": 0,
+      "revisionLimitHit": false,
+      "fullAutoMode": false,
+      "fullAutoInteractionCount": 0,
+      "fullAutoDeadlockCount": 0,
+      "fullAutoLastQuestionHash": null,
+      "sessionRehydratedAt": 1775885350050
+    },
+    "ses_284f67c98ffeT9xva7vQrn9y0o": {
+      "agentName": "build",
+      "lastToolCallTime": 1775886273834,
+      "lastAgentEventTime": 1775885714300,
+      "delegationActive": true,
+      "activeInvocationId": 2,
+      "lastInvocationIdByAgent": {
+        "build": 2
+      },
+      "windows": {
+        "build:2": {
+          "id": 2,
+          "agentName": "build",
+          "startedAtMs": 1775885714381,
+          "toolCalls": 48,
+          "consecutiveErrors": 0,
+          "hardLimitHit": false,
+          "lastSuccessTimeMs": 1775886273836,
+          "recentToolCalls": [
+            {
+              "tool": "read",
+              "argsHash": 12035489442146513000,
+              "timestamp": 1775886008749
+            },
+            {
+              "tool": "read",
+              "argsHash": 2364245601898330600,
+              "timestamp": 1775886026273
+            },
+            {
+              "tool": "read",
+              "argsHash": 11865964503989470000,
+              "timestamp": 1775886032338
+            },
+            {
+              "tool": "read",
+              "argsHash": 13124669727909585000,
+              "timestamp": 1775886052689
+            },
+            {
+              "tool": "read",
+              "argsHash": 1313108390173527300,
+              "timestamp": 1775886072601
+            },
+            {
+              "tool": "read",
+              "argsHash": 18020876805186535000,
+              "timestamp": 1775886092989
+            },
+            {
+              "tool": "read",
+              "argsHash": 10455458339829383000,
+              "timestamp": 1775886114025
+            },
+            {
+              "tool": "read",
+              "argsHash": 16643881567401490000,
+              "timestamp": 1775886116046
+            },
+            {
+              "tool": "read",
+              "argsHash": 17296574656928977000,
+              "timestamp": 1775886117593
+            },
+            {
+              "tool": "read",
+              "argsHash": 7127189626161594000,
+              "timestamp": 1775886138105
+            },
+            {
+              "tool": "read",
+              "argsHash": 18395579808386507000,
+              "timestamp": 1775886140207
+            },
+            {
+              "tool": "read",
+              "argsHash": 10367413935264315000,
+              "timestamp": 1775886160937
+            },
+            {
+              "tool": "read",
+              "argsHash": 4693527736745364000,
+              "timestamp": 1775886162928
+            },
+            {
+              "tool": "read",
+              "argsHash": 16348442046200490000,
+              "timestamp": 1775886183198
+            },
+            {
+              "tool": "read",
+              "argsHash": 9269315899055557000,
+              "timestamp": 1775886185746
+            },
+            {
+              "tool": "read",
+              "argsHash": 6293175877241118000,
+              "timestamp": 1775886207512
+            },
+            {
+              "tool": "read",
+              "argsHash": 482393414524820500,
+              "timestamp": 1775886228264
+            },
+            {
+              "tool": "read",
+              "argsHash": 12844675970721208000,
+              "timestamp": 1775886230155
+            },
+            {
+              "tool": "read",
+              "argsHash": 12921723968166554000,
+              "timestamp": 1775886251263
+            },
+            {
+              "tool": "read",
+              "argsHash": 8765530731133457000,
+              "timestamp": 1775886273834
+            }
+          ],
+          "warningIssued": false,
+          "warningReason": ""
+        },
+        "build:1": {
+          "id": 1,
+          "agentName": "build",
+          "startedAtMs": 1775885714300,
+          "toolCalls": 0,
+          "consecutiveErrors": 0,
+          "hardLimitHit": false,
+          "lastSuccessTimeMs": 1775885714300,
+          "recentToolCalls": [],
+          "warningIssued": false,
+          "warningReason": ""
+        }
+      },
+      "lastCompactionHint": 0,
+      "architectWriteCount": 0,
+      "lastCoderDelegationTaskId": null,
+      "currentTaskId": null,
+      "turboMode": false,
+      "gateLog": {},
+      "reviewerCallCount": {},
+      "lastGateFailure": null,
+      "partialGateWarningsIssuedForTask": [],
+      "selfFixAttempted": false,
+      "selfCodingWarnedAtCount": 0,
+      "catastrophicPhaseWarnings": [],
+      "lastPhaseCompleteTimestamp": 0,
+      "lastPhaseCompletePhase": 0,
+      "phaseAgentsDispatched": [
+        "build"
+      ],
+      "lastCompletedPhaseAgentsDispatched": [],
+      "qaSkipCount": 0,
+      "qaSkipTaskIds": [],
+      "pendingAdvisoryMessages": [],
+      "taskWorkflowStates": {
+        "1.1": "reviewer_run",
+        "1.2": "idle",
+        "1.3": "idle",
+        "1.4": "idle",
+        "1.5": "idle",
+        "2.1": "idle",
+        "2.2": "idle",
+        "2.3": "idle",
+        "2.4": "idle",
+        "2.5": "idle",
+        "3.1": "idle",
+        "3.2": "idle",
+        "3.3": "idle"
+      },
+      "scopeViolationDetected": false,
+      "model_fallback_index": 0,
+      "modelFallbackExhausted": false,
+      "coderRevisions": 0,
+      "revisionLimitHit": false,
+      "fullAutoMode": false,
+      "fullAutoInteractionCount": 0,
+      "fullAutoDeadlockCount": 0,
+      "fullAutoLastQuestionHash": null,
+      "sessionRehydratedAt": 0
+    },
+    "ses_284f67c09ffez4EgovbV7Brmk2": {
+      "agentName": "curator_init",
+      "lastToolCallTime": 1775885714539,
+      "lastAgentEventTime": 1775885714425,
+      "delegationActive": true,
+      "activeInvocationId": 2,
+      "lastInvocationIdByAgent": {
+        "curator_init": 2
+      },
+      "windows": {
+        "curator_init:2": {
+          "id": 2,
+          "agentName": "curator_init",
+          "startedAtMs": 1775885714539,
+          "toolCalls": 0,
+          "consecutiveErrors": 0,
+          "hardLimitHit": false,
+          "lastSuccessTimeMs": 1775885714539,
+          "recentToolCalls": [],
+          "warningIssued": false,
+          "warningReason": ""
+        },
+        "curator_init:1": {
+          "id": 1,
+          "agentName": "curator_init",
+          "startedAtMs": 1775885714425,
+          "toolCalls": 0,
+          "consecutiveErrors": 0,
+          "hardLimitHit": false,
+          "lastSuccessTimeMs": 1775885714425,
+          "recentToolCalls": [],
+          "warningIssued": false,
+          "warningReason": ""
+        }
+      },
+      "lastCompactionHint": 0,
+      "architectWriteCount": 0,
+      "lastCoderDelegationTaskId": null,
+      "currentTaskId": null,
+      "turboMode": false,
+      "gateLog": {},
+      "reviewerCallCount": {},
+      "lastGateFailure": null,
+      "partialGateWarningsIssuedForTask": [],
+      "selfFixAttempted": false,
+      "selfCodingWarnedAtCount": 0,
+      "catastrophicPhaseWarnings": [],
+      "lastPhaseCompleteTimestamp": 0,
+      "lastPhaseCompletePhase": 0,
+      "phaseAgentsDispatched": [
+        "curator_init"
+      ],
+      "lastCompletedPhaseAgentsDispatched": [],
+      "qaSkipCount": 0,
+      "qaSkipTaskIds": [],
+      "pendingAdvisoryMessages": [],
+      "taskWorkflowStates": {
+        "1.1": "reviewer_run",
+        "1.2": "idle",
+        "1.3": "idle",
+        "1.4": "idle",
+        "1.5": "idle",
+        "2.1": "idle",
+        "2.2": "idle",
+        "2.3": "idle",
+        "2.4": "idle",
+        "2.5": "idle",
+        "3.1": "idle",
+        "3.2": "idle",
+        "3.3": "idle"
+      },
+      "scopeViolationDetected": false,
+      "model_fallback_index": 0,
+      "modelFallbackExhausted": false,
+      "coderRevisions": 0,
+      "revisionLimitHit": false,
+      "fullAutoMode": false,
+      "fullAutoInteractionCount": 0,
+      "fullAutoDeadlockCount": 0,
+      "fullAutoLastQuestionHash": null,
+      "sessionRehydratedAt": 0
+    },
+    "ses_284e682ffffeoMNobV54Xh9lSY": {
+      "agentName": "build",
+      "lastToolCallTime": 1775890681991,
+      "lastAgentEventTime": 1775886761223,
+      "delegationActive": true,
+      "activeInvocationId": 3,
+      "lastInvocationIdByAgent": {
+        "build": 3
+      },
+      "windows": {
+        "build:3": {
+          "id": 3,
+          "agentName": "build",
+          "startedAtMs": 1775890378259,
+          "toolCalls": 43,
+          "consecutiveErrors": 0,
+          "hardLimitHit": false,
+          "lastSuccessTimeMs": 1775890682016,
+          "recentToolCalls": [
+            {
+              "tool": "bash",
+              "argsHash": 10957059239385596000,
+              "timestamp": 1775890539252
+            },
+            {
+              "tool": "bash",
+              "argsHash": 8531177217063866000,
+              "timestamp": 1775890554969
+            },
+            {
+              "tool": "bash",
+              "argsHash": 16009323542330096000,
+              "timestamp": 1775890554972
+            },
+            {
+              "tool": "bash",
+              "argsHash": 16390525805663138000,
+              "timestamp": 1775890554974
+            },
+            {
+              "tool": "bash",
+              "argsHash": 682281326842676000,
+              "timestamp": 1775890579160
+            },
+            {
+              "tool": "bash",
+              "argsHash": 359970751182332160,
+              "timestamp": 1775890594781
+            },
+            {
+              "tool": "bash",
+              "argsHash": 11176105073383510000,
+              "timestamp": 1775890594784
+            },
+            {
+              "tool": "bash",
+              "argsHash": 5273862594006220000,
+              "timestamp": 1775890597975
+            },
+            {
+              "tool": "bash",
+              "argsHash": 13078520127333659000,
+              "timestamp": 1775890597977
+            },
+            {
+              "tool": "bash",
+              "argsHash": 16733506456854575000,
+              "timestamp": 1775890610242
+            },
+            {
+              "tool": "bash",
+              "argsHash": 3864926979107743000,
+              "timestamp": 1775890610245
+            },
+            {
+              "tool": "bash",
+              "argsHash": 6363683967969825000,
+              "timestamp": 1775890626278
+            },
+            {
+              "tool": "bash",
+              "argsHash": 452363300134980160,
+              "timestamp": 1775890626280
+            },
+            {
+              "tool": "bash",
+              "argsHash": 11213020205501805000,
+              "timestamp": 1775890641911
+            },
+            {
+              "tool": "envsitter_match",
+              "argsHash": 8998462761843351000,
+              "timestamp": 1775890650689
+            },
+            {
+              "tool": "bash",
+              "argsHash": 17740865874559943000,
+              "timestamp": 1775890650691
+            },
+            {
+              "tool": "bash",
+              "argsHash": 16727736948503177000,
+              "timestamp": 1775890663547
+            },
+            {
+              "tool": "bash",
+              "argsHash": 9366805577240812000,
+              "timestamp": 1775890663549
+            },
+            {
+              "tool": "bash",
+              "argsHash": 14035968994952219000,
+              "timestamp": 1775890681988
+            },
+            {
+              "tool": "bash",
+              "argsHash": 5985964498653956000,
+              "timestamp": 1775890681991
+            }
+          ],
+          "warningIssued": false,
+          "warningReason": ""
+        },
+        "build:2": {
+          "id": 2,
+          "agentName": "build",
+          "startedAtMs": 1775886761280,
+          "toolCalls": 20,
+          "consecutiveErrors": 0,
+          "hardLimitHit": false,
+          "lastSuccessTimeMs": 1775886830578,
+          "recentToolCalls": [
+            {
+              "tool": "bash",
+              "argsHash": 12365880242789994000,
+              "timestamp": 1775886774830
+            },
+            {
+              "tool": "bash",
+              "argsHash": 362759985874107460,
+              "timestamp": 1775886774833
+            },
+            {
+              "tool": "bash",
+              "argsHash": 14836020578393108000,
+              "timestamp": 1775886774835
+            },
+            {
+              "tool": "bash",
+              "argsHash": 8428667257783614000,
+              "timestamp": 1775886774837
+            },
+            {
+              "tool": "bash",
+              "argsHash": 17990020132507160000,
+              "timestamp": 1775886774838
+            },
+            {
+              "tool": "bash",
+              "argsHash": 16815345752532842000,
+              "timestamp": 1775886774840
+            },
+            {
+              "tool": "bash",
+              "argsHash": 2087743970358359800,
+              "timestamp": 1775886789945
+            },
+            {
+              "tool": "bash",
+              "argsHash": 11048939479466720000,
+              "timestamp": 1775886789948
+            },
+            {
+              "tool": "bash",
+              "argsHash": 131139205710119550,
+              "timestamp": 1775886789949
+            },
+            {
+              "tool": "bash",
+              "argsHash": 4046520246161350000,
+              "timestamp": 1775886789951
+            },
+            {
+              "tool": "bash",
+              "argsHash": 16510262215701710000,
+              "timestamp": 1775886789952
+            },
+            {
+              "tool": "bash",
+              "argsHash": 17236598915527098000,
+              "timestamp": 1775886804166
+            },
+            {
+              "tool": "bash",
+              "argsHash": 11122443760644927000,
+              "timestamp": 1775886804168
+            },
+            {
+              "tool": "bash",
+              "argsHash": 17834974622851551000,
+              "timestamp": 1775886804170
+            },
+            {
+              "tool": "bash",
+              "argsHash": 17329995089177238000,
+              "timestamp": 1775886804171
+            },
+            {
+              "tool": "bash",
+              "argsHash": 3524806039353207000,
+              "timestamp": 1775886804173
+            },
+            {
+              "tool": "bash",
+              "argsHash": 10997564391514298000,
+              "timestamp": 1775886818322
+            },
+            {
+              "tool": "bash",
+              "argsHash": 14036412953393207000,
+              "timestamp": 1775886818325
+            },
+            {
+              "tool": "bash",
+              "argsHash": 12818583068330460000,
+              "timestamp": 1775886818327
+            },
+            {
+              "tool": "read",
+              "argsHash": 15506303563208847000,
+              "timestamp": 1775886830577
+            }
+          ],
+          "warningIssued": false,
+          "warningReason": ""
+        },
+        "build:1": {
+          "id": 1,
+          "agentName": "build",
+          "startedAtMs": 1775886761223,
+          "toolCalls": 0,
+          "consecutiveErrors": 0,
+          "hardLimitHit": false,
+          "lastSuccessTimeMs": 1775886761223,
+          "recentToolCalls": [],
+          "warningIssued": false,
+          "warningReason": ""
+        }
+      },
+      "lastCompactionHint": 0,
+      "architectWriteCount": 0,
+      "lastCoderDelegationTaskId": null,
+      "currentTaskId": null,
+      "turboMode": false,
+      "gateLog": {},
+      "reviewerCallCount": {},
+      "lastGateFailure": null,
+      "partialGateWarningsIssuedForTask": [],
+      "selfFixAttempted": false,
+      "selfCodingWarnedAtCount": 0,
+      "catastrophicPhaseWarnings": [],
+      "lastPhaseCompleteTimestamp": 0,
+      "lastPhaseCompletePhase": 0,
+      "phaseAgentsDispatched": [
+        "build"
+      ],
+      "lastCompletedPhaseAgentsDispatched": [],
+      "qaSkipCount": 0,
+      "qaSkipTaskIds": [],
+      "pendingAdvisoryMessages": [],
+      "taskWorkflowStates": {
+        "1.1": "reviewer_run",
+        "1.2": "idle",
+        "1.3": "idle",
+        "1.4": "idle",
+        "1.5": "idle",
+        "2.1": "idle",
+        "2.2": "idle",
+        "2.3": "idle",
+        "2.4": "idle",
+        "2.5": "idle",
+        "3.1": "idle",
+        "3.2": "idle",
+        "3.3": "idle"
+      },
+      "scopeViolationDetected": false,
+      "model_fallback_index": 0,
+      "modelFallbackExhausted": false,
+      "coderRevisions": 0,
+      "revisionLimitHit": false,
+      "fullAutoMode": false,
+      "fullAutoInteractionCount": 0,
+      "fullAutoDeadlockCount": 0,
+      "fullAutoLastQuestionHash": null,
+      "sessionRehydratedAt": 0
+    },
+    "ses_2849e81e6ffeU5riBIKf0CKanp": {
+      "agentName": "build",
+      "lastToolCallTime": 1775894187290,
+      "lastAgentEventTime": 1775891480095,
+      "delegationActive": true,
+      "activeInvocationId": 9,
+      "lastInvocationIdByAgent": {
+        "build": 9
+      },
+      "windows": {
+        "build:9": {
+          "id": 9,
+          "agentName": "build",
+          "startedAtMs": 1775894177306,
+          "toolCalls": 1,
+          "consecutiveErrors": 0,
+          "hardLimitHit": false,
+          "lastSuccessTimeMs": 1775894187297,
+          "recentToolCalls": [
+            {
+              "tool": "bash",
+              "argsHash": 14078745273216973000,
+              "timestamp": 1775894187290
+            }
+          ],
+          "warningIssued": false,
+          "warningReason": ""
+        },
+        "build:8": {
+          "id": 8,
+          "agentName": "build",
+          "startedAtMs": 1775894153653,
+          "toolCalls": 1,
+          "consecutiveErrors": 0,
+          "hardLimitHit": false,
+          "lastSuccessTimeMs": 1775894153653,
+          "recentToolCalls": [
+            {
+              "tool": "use_skill",
+              "argsHash": 9670142374636320000,
+              "timestamp": 1775894177259
+            }
+          ],
+          "warningIssued": false,
+          "warningReason": ""
+        },
+        "build:7": {
+          "id": 7,
+          "agentName": "build",
+          "startedAtMs": 1775894153593,
+          "toolCalls": 0,
+          "consecutiveErrors": 0,
+          "hardLimitHit": false,
+          "lastSuccessTimeMs": 1775894153593,
+          "recentToolCalls": [],
+          "warningIssued": false,
+          "warningReason": ""
+        },
+        "build:6": {
+          "id": 6,
+          "agentName": "build",
+          "startedAtMs": 1775892401447,
+          "toolCalls": 0,
+          "consecutiveErrors": 0,
+          "hardLimitHit": false,
+          "lastSuccessTimeMs": 1775892401453,
+          "recentToolCalls": [],
+          "warningIssued": false,
+          "warningReason": ""
+        },
+        "build:5": {
+          "id": 5,
+          "agentName": "build",
+          "startedAtMs": 1775892401430,
+          "toolCalls": 0,
+          "consecutiveErrors": 0,
+          "hardLimitHit": false,
+          "lastSuccessTimeMs": 1775892401437,
+          "recentToolCalls": [],
+          "warningIssued": false,
+          "warningReason": ""
+        },
+        "build:4": {
+          "id": 4,
+          "agentName": "build",
+          "startedAtMs": 1775892388203,
+          "toolCalls": 2,
+          "consecutiveErrors": 0,
+          "hardLimitHit": false,
+          "lastSuccessTimeMs": 1775892388203,
+          "recentToolCalls": [
+            {
+              "tool": "use_skill",
+              "argsHash": 9396133431939265000,
+              "timestamp": 1775892401361
+            },
+            {
+              "tool": "use_skill",
+              "argsHash": 13143736588316592000,
+              "timestamp": 1775892401367
+            }
+          ],
+          "warningIssued": false,
+          "warningReason": ""
+        },
+        "build:3": {
+          "id": 3,
+          "agentName": "build",
+          "startedAtMs": 1775892388118,
+          "toolCalls": 0,
+          "consecutiveErrors": 0,
+          "hardLimitHit": false,
+          "lastSuccessTimeMs": 1775892388118,
+          "recentToolCalls": [],
+          "warningIssued": false,
+          "warningReason": ""
+        },
+        "build:2": {
+          "id": 2,
+          "agentName": "build",
+          "startedAtMs": 1775891480150,
+          "toolCalls": 94,
+          "consecutiveErrors": 0,
+          "hardLimitHit": false,
+          "lastSuccessTimeMs": 1775892082639,
+          "recentToolCalls": [
+            {
+              "tool": "envsitter_match",
+              "argsHash": 1110113263345102000,
+              "timestamp": 1775891873396
+            },
+            {
+              "tool": "envsitter_match",
+              "argsHash": 8231590311308219000,
+              "timestamp": 1775891873408
+            },
+            {
+              "tool": "bash",
+              "argsHash": 17353198923795792000,
+              "timestamp": 1775891890094
+            },
+            {
+              "tool": "bash",
+              "argsHash": 16996619542462816000,
+              "timestamp": 1775891896600
+            },
+            {
+              "tool": "bash",
+              "argsHash": 6822681457474477000,
+              "timestamp": 1775891904035
+            },
+            {
+              "tool": "bash",
+              "argsHash": 1981639591220363800,
+              "timestamp": 1775891913851
+            },
+            {
+              "tool": "bash",
+              "argsHash": 3264690218127757000,
+              "timestamp": 1775891929566
+            },
+            {
+              "tool": "bash",
+              "argsHash": 1385277525036083500,
+              "timestamp": 1775891938352
+            },
+            {
+              "tool": "bash",
+              "argsHash": 14753927476184465000,
+              "timestamp": 1775891953172
+            },
+            {
+              "tool": "bash",
+              "argsHash": 1610565234388236500,
+              "timestamp": 1775891962513
+            },
+            {
+              "tool": "read",
+              "argsHash": 17792946739946043000,
+              "timestamp": 1775891967375
+            },
+            {
+              "tool": "bash",
+              "argsHash": 7511981233187194000,
+              "timestamp": 1775891977850
+            },
+            {
+              "tool": "grep",
+              "argsHash": 13607806892659907000,
+              "timestamp": 1775891988312
+            },
+            {
+              "tool": "bash",
+              "argsHash": 7941429735252086000,
+              "timestamp": 1775892004140
+            },
+            {
+              "tool": "bash",
+              "argsHash": 7010438811869356000,
+              "timestamp": 1775892015596
+            },
+            {
+              "tool": "bash",
+              "argsHash": 15035950255058498000,
+              "timestamp": 1775892027496
+            },
+            {
+              "tool": "bash",
+              "argsHash": 7028402416587020000,
+              "timestamp": 1775892047706
+            },
+            {
+              "tool": "bash",
+              "argsHash": 4341983321304973000,
+              "timestamp": 1775892062404
+            },
+            {
+              "tool": "bash",
+              "argsHash": 1312015646852971500,
+              "timestamp": 1775892075266
+            },
+            {
+              "tool": "bash",
+              "argsHash": 5134766850113061000,
+              "timestamp": 1775892082611
+            }
+          ],
+          "warningIssued": false,
+          "warningReason": ""
+        },
+        "build:1": {
+          "id": 1,
+          "agentName": "build",
+          "startedAtMs": 1775891480095,
+          "toolCalls": 0,
+          "consecutiveErrors": 0,
+          "hardLimitHit": false,
+          "lastSuccessTimeMs": 1775891480095,
+          "recentToolCalls": [],
+          "warningIssued": false,
+          "warningReason": ""
+        }
+      },
+      "lastCompactionHint": 0,
+      "architectWriteCount": 0,
+      "lastCoderDelegationTaskId": null,
+      "currentTaskId": null,
+      "turboMode": false,
+      "gateLog": {},
+      "reviewerCallCount": {},
+      "lastGateFailure": null,
+      "partialGateWarningsIssuedForTask": [],
+      "selfFixAttempted": false,
+      "selfCodingWarnedAtCount": 0,
+      "catastrophicPhaseWarnings": [],
+      "lastPhaseCompleteTimestamp": 0,
+      "lastPhaseCompletePhase": 0,
+      "phaseAgentsDispatched": [
+        "build"
+      ],
+      "lastCompletedPhaseAgentsDispatched": [],
+      "qaSkipCount": 0,
+      "qaSkipTaskIds": [],
+      "pendingAdvisoryMessages": [],
+      "taskWorkflowStates": {
+        "1.1": "reviewer_run",
+        "1.2": "idle",
+        "1.3": "idle",
+        "1.4": "idle",
+        "1.5": "idle",
+        "2.1": "idle",
+        "2.2": "idle",
+        "2.3": "idle",
+        "2.4": "idle",
+        "2.5": "idle",
+        "3.1": "idle",
+        "3.2": "idle",
+        "3.3": "idle"
+      },
+      "scopeViolationDetected": false,
+      "model_fallback_index": 0,
+      "modelFallbackExhausted": false,
+      "coderRevisions": 0,
+      "revisionLimitHit": false,
+      "fullAutoMode": false,
+      "fullAutoInteractionCount": 0,
+      "fullAutoDeadlockCount": 0,
+      "fullAutoLastQuestionHash": null,
+      "sessionRehydratedAt": 0
+    }
+  }
+}

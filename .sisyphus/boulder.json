@@ -1,0 +1,72 @@
+{
+  "active_plan": "/home/onnwee/Code/projects/augr/.sisyphus/plans/prod-reliability-hardening.md",
+  "started_at": "2026-04-11T11:01:59.110Z",
+  "session_ids": [
+    "ses_283dda03bffeIIEZd8EBl5vtLD",
+    "ses_27fb6b509ffeBfVyomJUR7pynZ",
+    "ses_27fb6b47fffeBsdw0DiZuKw5lE"
+  ],
+  "session_origins": {
+    "ses_283dda03bffeIIEZd8EBl5vtLD": "direct",
+    "ses_27fb6b509ffeBfVyomJUR7pynZ": "appended",
+    "ses_27fb6b47fffeBsdw0DiZuKw5lE": "appended"
+  },
+  "plan_name": "prod-reliability-hardening",
+  "agent": "atlas",
+  "task_sessions": {
+    "todo:1": {
+      "task_key": "todo:1",
+      "task_label": "1",
+      "task_title": "Add new metric types to `internal/metrics/metrics.go`",
+      "session_id": "ses_283c8a20affeqyk7EVgec1TTMf",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-04-11T11:09:42.374Z"
+    },
+    "todo:3": {
+      "task_key": "todo:3",
+      "task_label": "3",
+      "task_title": "Fix `fallback.go` — attempt secondary on DeadlineExceeded",
+      "session_id": "ses_283c3ad3effeU3t1NeYhxX1hjl",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-04-11T11:14:35.186Z"
+    },
+    "todo:9": {
+      "task_key": "todo:9",
+      "task_label": "9",
+      "task_title": "Wire new metrics in `cmd/tradingagent/runtime.go`",
+      "session_id": "ses_28376881bffeRmEeQA0XzJuxSG",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-04-11T12:39:47.088Z"
+    },
+    "todo:10": {
+      "task_key": "todo:10",
+      "task_label": "10",
+      "task_title": "Documentation truth pass",
+      "session_id": "ses_282d86a4effe59CCDsLV6LpBOq",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-04-11T15:57:20.269Z"
+    },
+    "todo:12": {
+      "task_key": "todo:12",
+      "task_label": "12",
+      "task_title": "Frontend: Reliability dashboard page",
+      "session_id": "ses_282bbe1dfffejy76ZyBkfAJlbE",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-04-11T16:28:30.067Z"
+    },
+    "final-wave:f1": {
+      "task_key": "final-wave:f1",
+      "task_label": "F1",
+      "task_title": "**Plan Compliance Audit** — `oracle`",
+      "session_id": "ses_27fafa6d8ffezxwWSSPQo4KQRY",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-04-12T06:14:55.366Z"
+    }
+  }
+}
