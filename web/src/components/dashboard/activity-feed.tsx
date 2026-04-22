@@ -1,64 +1,111 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Radio, Wifi, WifiOff } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useWebSocketClient } from '@/hooks/use-websocket-client';
-import type { WebSocketEventType, WebSocketMessage, WebSocketServerMessage } from '@/lib/api/types';
+import { apiClient } from '@/lib/api/client';
+import type { AgentEvent, WebSocketMessage, WebSocketServerMessage } from '@/lib/api/types';
 
 const MAX_FEED_ITEMS = 50;
 
 interface FeedItem {
   id: string;
-  type: WebSocketEventType;
+  type: string;
+  title: string;
+  detail?: string;
   strategyId?: string;
   runId?: string;
   timestamp: string;
-  summary: string;
 }
 
-function eventLabel(type: WebSocketEventType): string {
-  const labels: Record<WebSocketEventType, string> = {
+function eventLabel(type: string): string {
+  const labels: Record<string, string> = {
     pipeline_start: 'Pipeline started',
+    pipeline_started: 'Pipeline started',
+    pipeline_completed: 'Pipeline completed',
+    pipeline_failed: 'Pipeline failed',
+    agent_started: 'Agent started',
+    agent_completed: 'Agent completed',
     agent_decision: 'Agent decision',
     debate_round: 'Debate round',
+    debate_round_completed: 'Debate round',
     signal: 'Signal',
+    signal_produced: 'Signal produced',
     order_submitted: 'Order submitted',
     order_filled: 'Order filled',
     position_update: 'Position update',
     circuit_breaker: 'Circuit breaker',
     error: 'Error',
     pipeline_health: 'Pipeline health',
+    phase_started: 'Phase started',
+    phase_completed: 'Phase completed',
   };
-  return labels[type] ?? type;
+  return labels[type] ?? type.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
-function eventVariant(
-  type: WebSocketEventType,
-): 'default' | 'secondary' | 'destructive' | 'success' | 'warning' {
+function eventVariant(type: string): 'default' | 'secondary' | 'destructive' | 'success' | 'warning' {
   switch (type) {
     case 'signal':
+    case 'signal_produced':
     case 'order_filled':
+    case 'pipeline_completed':
       return 'success';
     case 'circuit_breaker':
     case 'error':
+    case 'pipeline_failed':
       return 'destructive';
     case 'order_submitted':
     case 'position_update':
+    case 'pipeline_health':
       return 'warning';
     default:
       return 'secondary';
   }
 }
 
-function toFeedItem(msg: WebSocketMessage): FeedItem {
+function summarizeLiveData(data: unknown) {
+  if (typeof data === 'string') {
+    return data;
+  }
+
+  if (data && typeof data === 'object') {
+    if ('summary' in data && typeof data.summary === 'string') {
+      return data.summary;
+    }
+    if ('signal' in data && typeof data.signal === 'string') {
+      return `Signal ${String(data.signal).toUpperCase()}`;
+    }
+    if ('ticker' in data && typeof data.ticker === 'string') {
+      return `Ticker ${data.ticker}`;
+    }
+  }
+
+  return undefined;
+}
+
+function toHistoricalFeedItem(event: AgentEvent): FeedItem {
   return {
-    id: `${msg.type}-${msg.timestamp ?? Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    id: event.id,
+    type: event.event_kind,
+    title: event.title || eventLabel(event.event_kind),
+    detail: event.summary,
+    strategyId: event.strategy_id,
+    runId: event.pipeline_run_id,
+    timestamp: event.created_at,
+  };
+}
+
+function toLiveFeedItem(msg: WebSocketMessage): FeedItem {
+  return {
+    id: `${msg.type}-${msg.run_id ?? 'none'}-${msg.timestamp ?? Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     type: msg.type,
+    title: eventLabel(msg.type),
+    detail: summarizeLiveData(msg.data),
     strategyId: msg.strategy_id,
     runId: msg.run_id,
     timestamp: msg.timestamp ?? new Date().toISOString(),
-    summary: eventLabel(msg.type),
   };
 }
 
@@ -67,15 +114,20 @@ function isWebSocketMessage(msg: WebSocketServerMessage): msg is WebSocketMessag
 }
 
 export function ActivityFeed() {
-  const [items, setItems] = useState<FeedItem[]>([]);
+  const [liveItems, setLiveItems] = useState<FeedItem[]>([]);
   const subscribedRef = useRef(false);
+  const { data } = useQuery({
+    queryKey: ['events', 'dashboard-activity-feed'],
+    queryFn: () => apiClient.listEvents({ limit: 20 }),
+    refetchInterval: 30_000,
+  });
 
   const handleMessage = useCallback((msg: WebSocketServerMessage) => {
     if (!isWebSocketMessage(msg)) return;
 
-    const item = toFeedItem(msg);
+    const item = toLiveFeedItem(msg);
 
-    setItems((prev) => {
+    setLiveItems((prev) => {
       const next = [item, ...prev];
       return next.length > MAX_FEED_ITEMS ? next.slice(0, MAX_FEED_ITEMS) : next;
     });
@@ -97,6 +149,21 @@ export function ActivityFeed() {
       subscribedRef.current = false;
     }
   }, [isConnected, subscribeAll]);
+
+  const items = useMemo(() => {
+    const historicalItems = (data?.data ?? []).map(toHistoricalFeedItem);
+    const merged = [...liveItems, ...historicalItems];
+    const byId = new Map<string, FeedItem>();
+    for (const item of merged) {
+      if (!byId.has(item.id)) {
+        byId.set(item.id, item);
+      }
+    }
+
+    return Array.from(byId.values())
+      .sort((left, right) => new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime())
+      .slice(0, MAX_FEED_ITEMS);
+  }, [data?.data, liveItems]);
 
   return (
     <Card data-testid="activity-feed">
@@ -131,13 +198,17 @@ export function ActivityFeed() {
                 className="flex items-start gap-3 rounded-lg border border-border p-3 text-sm transition-colors hover:bg-accent/45"
               >
                 <Badge variant={eventVariant(item.type)} className="mt-0.5 shrink-0">
-                  {item.summary}
+                  {eventLabel(item.type)}
                 </Badge>
-                <div className="min-w-0 flex-1 font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
-                  {item.strategyId ? (
-                    <span className="mr-2">Strategy: {item.strategyId.slice(0, 8)}…</span>
-                  ) : null}
-                  {item.runId ? <span>Run: {item.runId.slice(0, 8)}…</span> : null}
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium text-foreground">{item.title}</p>
+                  {item.detail ? <p className="mt-1 text-sm text-muted-foreground">{item.detail}</p> : null}
+                  <div className="mt-2 font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
+                    {item.strategyId ? (
+                      <span className="mr-2">Strategy: {item.strategyId.slice(0, 8)}…</span>
+                    ) : null}
+                    {item.runId ? <span>Run: {item.runId}</span> : null}
+                  </div>
                 </div>
                 <time
                   className="shrink-0 font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground"

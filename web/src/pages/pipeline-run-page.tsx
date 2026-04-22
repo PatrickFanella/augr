@@ -41,6 +41,10 @@ const legacyRiskRoleMap: Partial<Record<AgentRole, AgentRole>> = {
   neutral_risk: 'neutral_analyst',
 };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
 function normalizeAgentRole(role: AgentRole): AgentRole {
   return legacyRiskRoleMap[role] ?? role;
 }
@@ -209,6 +213,8 @@ export function PipelineRunPage() {
     () => computePhases(decisions, run?.status === 'completed', Boolean(run?.signal)),
     [decisions, run?.signal, run?.status],
   );
+  const phaseTimings = isRecord(run?.phase_timings) ? run.phase_timings : null;
+  const configSnapshot = run?.config_snapshot;
 
   if (runLoading) {
     return (
@@ -311,33 +317,31 @@ export function PipelineRunPage() {
         </div>
       )}
 
-      {run.phase_timings && typeof run.phase_timings === 'object' && (
+      {phaseTimings && (
         <Card>
           <CardContent className="py-4">
             <h3 className="mb-2 font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
               Phase Timings
             </h3>
             <ul className="space-y-1 text-sm">
-              {Object.entries(run.phase_timings as Record<string, unknown>).map(
-                ([phase, duration]) => (
-                  <li key={phase} className="flex items-center justify-between">
-                    <span className="font-medium">{phase}</span>
-                    <span className="font-mono text-muted-foreground">{String(duration)}</span>
-                  </li>
-                ),
-              )}
+              {Object.entries(phaseTimings).map(([phase, duration]) => (
+                <li key={phase} className="flex items-center justify-between">
+                  <span className="font-medium">{phase}</span>
+                  <span className="font-mono text-muted-foreground">{String(duration)}</span>
+                </li>
+              ))}
             </ul>
           </CardContent>
         </Card>
       )}
 
-      {run.config_snapshot && (
+      {configSnapshot != null && (
         <details className="rounded-lg border border-border bg-background">
           <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-muted-foreground hover:text-foreground">
             Config Snapshot
           </summary>
           <pre className="overflow-x-auto px-4 pb-4 font-mono text-xs text-muted-foreground">
-            {JSON.stringify(run.config_snapshot, null, 2)}
+            {JSON.stringify(configSnapshot, null, 2)}
           </pre>
         </details>
       )}

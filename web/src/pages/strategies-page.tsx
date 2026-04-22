@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Activity, Clock, Pause, Play, Plus, Search } from 'lucide-react'
+import { Activity, Clock, Pause, Play, Plus } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 
@@ -8,15 +8,9 @@ import { CreateStrategyDialog } from '@/components/strategies/create-strategy-di
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
 import { apiClient } from '@/lib/api/client'
-import type { MarketType, Strategy, StrategyCreateRequest, StrategyStatus } from '@/lib/api/types'
+import type { Strategy, StrategyCreateRequest, StrategyStatus } from '@/lib/api/types'
 import { describeCron } from '@/lib/cron-describe'
-
-const MARKET_TYPE_OPTIONS: MarketType[] = ['stock', 'crypto', 'polymarket']
-const STATUS_OPTIONS: StrategyStatus[] = ['active', 'paused', 'inactive']
-const denseSelectClassName =
-  'flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-sm text-foreground transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
 
 function MarketTypeBadge({ type }: { type: Strategy['market_type'] }) {
   const variants: Record<Strategy['market_type'], 'default' | 'secondary' | 'outline'> = {
@@ -59,44 +53,11 @@ export function StrategiesPage() {
   const [createOpen, setCreateOpen] = useState(false)
   const queryClient = useQueryClient()
 
-  // Filter state (draft -> applied on button click)
-  const [draftTicker, setDraftTicker] = useState('')
-  const [draftMarketType, setDraftMarketType] = useState<MarketType | ''>('')
-  const [draftStatus, setDraftStatus] = useState<StrategyStatus | ''>('')
-  const [draftIsPaper, setDraftIsPaper] = useState<'' | 'true' | 'false'>('')
-
-  const [ticker, setTicker] = useState('')
-  const [marketType, setMarketType] = useState<MarketType | ''>('')
-  const [status, setStatus] = useState<StrategyStatus | ''>('')
-  const [isPaper, setIsPaper] = useState<'' | 'true' | 'false'>('')
-
-  function applyFilters() {
-    setTicker(draftTicker.trim())
-    setMarketType(draftMarketType)
-    setStatus(draftStatus)
-    setIsPaper(draftIsPaper)
-  }
-
-  function clearFilters() {
-    setDraftTicker('')
-    setDraftMarketType('')
-    setDraftStatus('')
-    setDraftIsPaper('')
-    setTicker('')
-    setMarketType('')
-    setStatus('')
-    setIsPaper('')
-  }
-
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['strategies', ticker, marketType, status, isPaper],
+    queryKey: ['strategies'],
     queryFn: () =>
       apiClient.listStrategies({
         limit: 100,
-        ticker: ticker || undefined,
-        market_type: marketType || undefined,
-        status: status || undefined,
-        is_paper: isPaper === 'true' ? true : isPaper === 'false' ? false : undefined,
       }),
     refetchInterval: 30_000,
   })

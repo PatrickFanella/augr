@@ -42,18 +42,16 @@ function Wrapper({ children }: { children: React.ReactNode }) {
 
 describe('DashboardPage', () => {
   beforeEach(() => {
-    vi.useFakeTimers()
     MockWebSocket.instances = []
     vi.stubGlobal('WebSocket', MockWebSocket)
   })
 
   afterEach(() => {
     cleanup()
-    vi.useRealTimers()
     vi.unstubAllGlobals()
   })
 
-  it('renders all dashboard sections', async () => {
+  it('renders dashboard activity and recent runs from the API', async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.toString()
 
@@ -62,6 +60,51 @@ describe('DashboardPage', () => {
           ok: true,
           status: 200,
           json: async () => ({ open_positions: 0, unrealized_pnl: 0, realized_pnl: 0 }),
+        })
+      }
+
+      if (url.includes('/api/v1/runs')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: [
+              {
+                id: 'run-1',
+                strategy_id: 'strategy-1',
+                ticker: 'AAPL',
+                trade_date: '2026-04-22T00:00:00Z',
+                status: 'completed',
+                signal: 'buy',
+                started_at: '2026-04-22T00:00:00Z',
+                completed_at: '2026-04-22T00:03:00Z',
+              },
+            ],
+            limit: 10,
+            offset: 0,
+          }),
+        })
+      }
+
+      if (url.includes('/api/v1/events')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: [
+              {
+                id: 'evt-1',
+                pipeline_run_id: 'run-1',
+                strategy_id: 'strategy-1',
+                event_kind: 'pipeline_started',
+                title: 'Pipeline started',
+                summary: 'AAPL run kicked off',
+                created_at: '2026-04-22T00:00:00Z',
+              },
+            ],
+            limit: 20,
+            offset: 0,
+          }),
         })
       }
 
@@ -93,8 +136,11 @@ describe('DashboardPage', () => {
 
     render(<DashboardPage />, { wrapper: Wrapper })
 
-    expect(screen.getByTestId('dashboard-page')).toBeInTheDocument()
-    expect(screen.getByTestId('activity-feed')).toBeInTheDocument()
+    expect(await screen.findByTestId('dashboard-page')).toBeInTheDocument()
+    expect(await screen.findByText('AAPL run kicked off')).toBeInTheDocument()
+    expect(screen.getAllByText('Pipeline started').length).toBeGreaterThan(0)
+    expect(await screen.findByText('Recent runs')).toBeInTheDocument()
+    expect(await screen.findByText('AAPL')).toBeInTheDocument()
   })
 
   it('renders when the active strategies data array is null', async () => {

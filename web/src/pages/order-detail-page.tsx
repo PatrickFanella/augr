@@ -6,7 +6,7 @@ import { PageHeader } from '@/components/layout/page-header'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { apiClient } from '@/lib/api/client'
-import type { OrderSide, OrderStatus } from '@/lib/api/types'
+import type { Order, OrderSide, OrderStatus } from '@/lib/api/types'
 
 const STATUS_VARIANTS: Record<OrderStatus, 'default' | 'success' | 'destructive' | 'warning' | 'secondary'> = {
   pending: 'default',
@@ -35,6 +35,35 @@ function formatDate(dateStr?: string) {
     hour: '2-digit',
     minute: '2-digit',
   })
+}
+
+function getOptionalStringField(record: Record<string, unknown>, key: string): string | undefined {
+  const value = record[key]
+  return typeof value === 'string' && value.length > 0 ? value : undefined
+}
+
+function getOptionalNumberField(record: Record<string, unknown>, key: string): number | undefined {
+  const value = record[key]
+  return typeof value === 'number' ? value : undefined
+}
+
+function getOrderOptionFields(order: Order): {
+  optionType?: string
+  underlyingTicker?: string
+  strike?: number
+  expiry?: string
+  contractMultiplier?: number
+  positionIntent?: string
+} {
+  const record = order as unknown as Record<string, unknown>
+  return {
+    optionType: getOptionalStringField(record, 'option_type'),
+    underlyingTicker: getOptionalStringField(record, 'underlying_ticker') ?? getOptionalStringField(record, 'underlying'),
+    strike: getOptionalNumberField(record, 'strike'),
+    expiry: getOptionalStringField(record, 'expiry'),
+    contractMultiplier: getOptionalNumberField(record, 'contract_multiplier'),
+    positionIntent: getOptionalStringField(record, 'position_intent'),
+  }
 }
 
 export function OrderDetailPage() {
@@ -77,6 +106,7 @@ export function OrderDetailPage() {
   }
 
   const order = data.order
+  const optionFields = getOrderOptionFields(order)
 
   return (
     <div className="space-y-4" data-testid="order-detail-page">
@@ -181,7 +211,7 @@ export function OrderDetailPage() {
         </Card>
       )}
 
-      {(order as Record<string, unknown>).option_type && (
+      {optionFields.optionType && (
         <Card>
           <CardHeader>
             <CardTitle>Options info</CardTitle>
@@ -189,38 +219,38 @@ export function OrderDetailPage() {
           </CardHeader>
           <CardContent>
             <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {(order as Record<string, unknown>).underlying && (
+              {optionFields.underlyingTicker && (
                 <div>
                   <dt className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Underlying</dt>
-                  <dd className="mt-1 text-sm font-medium">{String((order as Record<string, unknown>).underlying)}</dd>
+                  <dd className="mt-1 text-sm font-medium">{optionFields.underlyingTicker}</dd>
                 </div>
               )}
               <div>
                 <dt className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Option type</dt>
-                <dd className="mt-1 text-sm font-medium">{String((order as Record<string, unknown>).option_type)}</dd>
+                <dd className="mt-1 text-sm font-medium">{optionFields.optionType}</dd>
               </div>
-              {(order as Record<string, unknown>).strike != null && (
+              {optionFields.strike != null && (
                 <div>
                   <dt className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Strike</dt>
-                  <dd className="mt-1 font-mono text-[13px] font-medium">${Number((order as Record<string, unknown>).strike).toFixed(2)}</dd>
+                  <dd className="mt-1 font-mono text-[13px] font-medium">${optionFields.strike.toFixed(2)}</dd>
                 </div>
               )}
-              {(order as Record<string, unknown>).expiry && (
+              {optionFields.expiry && (
                 <div>
                   <dt className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Expiry</dt>
-                  <dd className="mt-1 font-mono text-[13px] font-medium">{formatDate(String((order as Record<string, unknown>).expiry))}</dd>
+                  <dd className="mt-1 font-mono text-[13px] font-medium">{formatDate(optionFields.expiry)}</dd>
                 </div>
               )}
-              {(order as Record<string, unknown>).contract_multiplier != null && (
+              {optionFields.contractMultiplier != null && (
                 <div>
                   <dt className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Contract multiplier</dt>
-                  <dd className="mt-1 font-mono text-[13px] font-medium">{String((order as Record<string, unknown>).contract_multiplier)}</dd>
+                  <dd className="mt-1 font-mono text-[13px] font-medium">{String(optionFields.contractMultiplier)}</dd>
                 </div>
               )}
-              {(order as Record<string, unknown>).position_intent && (
+              {optionFields.positionIntent && (
                 <div>
                   <dt className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Position intent</dt>
-                  <dd className="mt-1 text-sm font-medium">{String((order as Record<string, unknown>).position_intent)}</dd>
+                  <dd className="mt-1 text-sm font-medium">{optionFields.positionIntent}</dd>
                 </div>
               )}
             </dl>

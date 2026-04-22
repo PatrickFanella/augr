@@ -65,10 +65,12 @@ export function BacktestEquityChart({ data }: BacktestEquityChartProps) {
               borderRadius: '0.375rem',
               fontSize: '12px',
             }}
-            labelFormatter={formatDate}
-            formatter={(value: number, name: string) => {
-              if (name === 'drawdown_pct') return [`${(value * 100).toFixed(2)}%`, 'Drawdown']
-              return [formatCurrency(value), 'Portfolio Value']
+            labelFormatter={(label) => (typeof label === 'string' ? formatDate(label) : String(label ?? ''))}
+            formatter={(value, name) => {
+              const numericValue = typeof value === 'number' ? value : Number(value ?? 0)
+              const seriesName = String(name)
+              if (seriesName === 'drawdown_pct') return [`${(numericValue * 100).toFixed(2)}%`, 'Drawdown']
+              return [formatCurrency(numericValue), 'Portfolio Value']
             }}
           />
           <Area

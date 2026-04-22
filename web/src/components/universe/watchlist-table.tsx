@@ -45,8 +45,8 @@ export function WatchlistTable({ tickers }: WatchlistTableProps) {
             >
               <td className="px-2 py-1.5 font-mono font-medium">{t.ticker}</td>
               <td className="px-2 py-1.5">
-                <Badge variant={scoreBadgeVariant(t.score ?? t.watch_score ?? 0)}>
-                  {(t.score ?? t.watch_score ?? 0).toFixed(2)}
+                <Badge variant={scoreBadgeVariant(t.score)}>
+                  {t.score.toFixed(2)}
                 </Badge>
               </td>
               <td

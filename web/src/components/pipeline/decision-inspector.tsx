@@ -123,7 +123,7 @@ export function DecisionInspector({ decision, onClose }: DecisionInspectorProps)
             </pre>
           </section>
 
-          {decision.output_structured && (
+          {decision.output_structured != null && (
             <section className="space-y-1.5">
               <h4 className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
                 Structured Output

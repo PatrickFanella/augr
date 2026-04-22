@@ -1,4 +1,5 @@
-import { act, render, screen } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { act, cleanup, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ActivityFeed } from '@/components/dashboard/activity-feed'
@@ -34,27 +35,74 @@ class MockWebSocket {
   }
 }
 
+function Wrapper({ children }: { children: React.ReactNode }) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return <QueryClientProvider client={client}>{children}</QueryClientProvider>
+}
+
+function jsonResponse(body: unknown, status = 200) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => body,
+  }
+}
+
 describe('ActivityFeed', () => {
   beforeEach(() => {
-    vi.useFakeTimers()
     MockWebSocket.instances = []
     vi.stubGlobal('WebSocket', MockWebSocket)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(jsonResponse({ data: [], limit: 20, offset: 0 }))),
+    )
   })
 
   afterEach(() => {
-    vi.useRealTimers()
+    cleanup()
     vi.unstubAllGlobals()
   })
 
-  it('shows empty state when no events received', () => {
-    render(<ActivityFeed />)
+  it('renders historical events from the API before live websocket updates arrive', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          jsonResponse({
+            data: [
+              {
+                id: 'evt-1',
+                pipeline_run_id: 'run-1',
+                strategy_id: 'strategy-1',
+                event_kind: 'pipeline_started',
+                title: 'Pipeline started',
+                summary: 'AAPL run kicked off',
+                created_at: '2026-04-22T00:00:00Z',
+              },
+            ],
+            limit: 20,
+            offset: 0,
+          }),
+        ),
+      ),
+    )
+
+    render(<ActivityFeed />, { wrapper: Wrapper })
+
+    expect(await screen.findByText('AAPL run kicked off')).toBeInTheDocument()
+    expect(screen.getAllByText('Pipeline started').length).toBeGreaterThan(0)
+    expect(screen.getByText(/Run: run-1/i)).toBeInTheDocument()
+  })
+
+  it('shows empty state when no events received', async () => {
+    render(<ActivityFeed />, { wrapper: Wrapper })
 
     expect(screen.getByTestId('activity-feed')).toBeInTheDocument()
-    expect(screen.getByTestId('activity-feed-empty')).toBeInTheDocument()
+    expect(await screen.findByTestId('activity-feed-empty')).toBeInTheDocument()
   })
 
   it('shows connected badge after WebSocket opens', async () => {
-    render(<ActivityFeed />)
+    render(<ActivityFeed />, { wrapper: Wrapper })
 
     const ws = MockWebSocket.instances[0]
     expect(ws).toBeDefined()
@@ -66,7 +114,7 @@ describe('ActivityFeed', () => {
   })
 
   it('renders pipeline health websocket events with a human-friendly label', async () => {
-    render(<ActivityFeed />)
+    render(<ActivityFeed />, { wrapper: Wrapper })
 
     const ws = MockWebSocket.instances[0]
     expect(ws).toBeDefined()
@@ -84,6 +132,6 @@ describe('ActivityFeed', () => {
       )
     })
 
-    expect(screen.getByText('Pipeline health')).toBeInTheDocument()
+    expect(screen.getAllByText('Pipeline health').length).toBeGreaterThan(0)
   })
 })

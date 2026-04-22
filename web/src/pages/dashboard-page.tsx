@@ -4,6 +4,7 @@ import { UpcomingEventsWidget } from '@/components/calendar/upcoming-events-widg
 import { ActiveStrategies } from '@/components/dashboard/active-strategies'
 import { ActivityFeed } from '@/components/dashboard/activity-feed'
 import { PortfolioSummary } from '@/components/dashboard/portfolio-summary'
+import { RecentRuns } from '@/components/dashboard/recent-runs'
 import { PageHeader } from '@/components/layout/page-header'
 import { RiskStatusBar } from '@/components/dashboard/risk-status-bar'
 import { Badge } from '@/components/ui/badge'
@@ -34,6 +35,7 @@ export function DashboardPage() {
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.9fr)]">
         <div className="space-y-4">
           <ActiveStrategies />
+          <RecentRuns />
           <ActivityFeed />
         </div>
 
