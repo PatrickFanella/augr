@@ -80,6 +80,7 @@ func RunOptionsSweep(
 	if len(bars) < 50 {
 		return nil, nil
 	}
+	indicatorSnapshots := precomputeIndicatorSnapshots(bars)
 
 	rv := realizedVol(cfg.Bars, 60)
 	if rv < 0.05 {
@@ -98,7 +99,7 @@ func RunOptionsSweep(
 			label = "variant"
 		}
 
-		artifacts := runOptionsBacktest(variant, bars, rv, cfg)
+		artifacts := runOptionsBacktest(variant, bars, indicatorSnapshots, rv, cfg)
 		score := discovery.ScoreMetrics(artifacts.Metrics, scoring)
 		if len(artifacts.Trades) > 0 {
 			score += 0.001
@@ -135,6 +136,7 @@ type optionsPosition struct {
 func runOptionsBacktest(
 	config rules.OptionsRulesConfig,
 	bars []domain.OHLCV,
+	indicatorSnapshots []map[string]float64,
 	realizedVol float64,
 	cfg OptionsSweepConfig,
 ) OptionsBacktestArtifacts {
@@ -147,8 +149,7 @@ func runOptionsBacktest(
 	var prevSnap *rules.Snapshot
 
 	for i, bar := range bars {
-		window := bars[:i+1]
-		snap := rules.Snapshot{Values: buildOptionSignalValues(window, bar, position, realizedVol, chainCfg)}
+		snap := rules.Snapshot{Values: buildOptionSignalValues(indicatorSnapshots[i], bar, position, realizedVol, chainCfg)}
 
 		dte := avgDTE(config.LegSelection)
 		chain := backtest.SynthesizeChain(bar.Close, realizedVol, dte, bar.Timestamp, chainCfg)
@@ -512,7 +513,19 @@ func mutateConditionGroup(group rules.ConditionGroup, rng *rand.Rand) rules.Cond
 	return out
 }
 
-func buildOptionSignalValues(bars []domain.OHLCV, bar domain.OHLCV, pos *optionsPosition, rv float64, chainCfg backtest.SyntheticChainConfig) map[string]float64 {
+func precomputeIndicatorSnapshots(bars []domain.OHLCV) []map[string]float64 {
+	snapshots := make([]map[string]float64, len(bars))
+	for i := range bars {
+		snapshot := make(map[string]float64)
+		for _, indicator := range data.IndicatorSnapshotFromBars(bars[:i+1]) {
+			snapshot[indicator.Name] = indicator.Value
+		}
+		snapshots[i] = snapshot
+	}
+	return snapshots
+}
+
+func buildOptionSignalValues(indicators map[string]float64, bar domain.OHLCV, pos *optionsPosition, rv float64, chainCfg backtest.SyntheticChainConfig) map[string]float64 {
 	values := map[string]float64{
 		"close":  bar.Close,
 		"open":   bar.Open,
@@ -520,8 +533,8 @@ func buildOptionSignalValues(bars []domain.OHLCV, bar domain.OHLCV, pos *options
 		"low":    bar.Low,
 		"volume": bar.Volume,
 	}
-	for _, indicator := range data.IndicatorSnapshotFromBars(bars) {
-		values[indicator.Name] = indicator.Value
+	for name, value := range indicators {
+		values[name] = value
 	}
 
 	dte := 30

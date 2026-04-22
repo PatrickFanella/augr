@@ -181,6 +181,40 @@ func RunOptionsPaperBacktest(ctx context.Context, ticker string, bars []domain.O
 	if err != nil {
 		return nil, err
 	}
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal(strategy.Config, &payload); err != nil {
+		return nil, fmt.Errorf("options scaffold: parse strategy config: %w", err)
+	}
+	optCfg, err := rules.ParseOptions(payload["options_rules"])
+	if err != nil {
+		return nil, fmt.Errorf("options scaffold: parse options_rules: %w", err)
+	}
+	if optCfg == nil {
+		return nil, fmt.Errorf("options scaffold: options_rules config missing")
+	}
+
+	return runOptionsPaperBacktest(ctx, strategy, *optCfg, bars, startDate, endDate, initialCash, logger)
+}
+
+func RunOptionsPaperBacktestWithConfig(ctx context.Context, optionsCfg rules.OptionsRulesConfig, bars []domain.OHLCV, startDate, endDate time.Time, initialCash float64, logger *slog.Logger) (*OptionsBacktestSummary, error) {
+	if err := rules.ValidateOptions(&optionsCfg); err != nil {
+		return nil, fmt.Errorf("options scaffold: %w", err)
+	}
+	strategy, err := OptionsPaperBullPutSpread(optionsCfg.Underlying)
+	if err != nil {
+		return nil, err
+	}
+	config, err := marshalConfig(map[string]any{"options_rules": optionsCfg})
+	if err != nil {
+		return nil, err
+	}
+	strategy.Config = config
+	strategy.Ticker = normalizeTicker(optionsCfg.Underlying)
+	strategy.Name = fmt.Sprintf("paper options: %s %s", strategy.Ticker, strings.ReplaceAll(string(optionsCfg.StrategyType), "_", " "))
+	return runOptionsPaperBacktest(ctx, strategy, optionsCfg, bars, startDate, endDate, initialCash, logger)
+}
+
+func runOptionsPaperBacktest(ctx context.Context, strategy domain.Strategy, optionsCfg rules.OptionsRulesConfig, bars []domain.OHLCV, startDate, endDate time.Time, initialCash float64, logger *slog.Logger) (*OptionsBacktestSummary, error) {
 	if len(bars) == 0 {
 		return nil, fmt.Errorf("options scaffold: bars are required")
 	}
@@ -194,18 +228,6 @@ func RunOptionsPaperBacktest(ctx context.Context, ticker string, bars []domain.O
 		logger = slog.Default()
 	}
 
-	var payload map[string]json.RawMessage
-	if err := json.Unmarshal(strategy.Config, &payload); err != nil {
-		return nil, fmt.Errorf("options scaffold: parse strategy config: %w", err)
-	}
-	optCfg, err := rules.ParseOptions(payload["options_rules"])
-	if err != nil {
-		return nil, fmt.Errorf("options scaffold: parse options_rules: %w", err)
-	}
-	if optCfg == nil {
-		return nil, fmt.Errorf("options scaffold: options_rules config missing")
-	}
-
 	sweepCfg := optionsdiscovery.OptionsSweepConfig{
 		Ticker:      strategy.Ticker,
 		Bars:        bars,
@@ -216,7 +238,7 @@ func RunOptionsPaperBacktest(ctx context.Context, ticker string, bars []domain.O
 		// RunOptionsSweep's Variations <= 0 fallback behavior.
 		Variations: 1,
 	}
-	results, err := optionsdiscovery.RunOptionsSweep(ctx, *optCfg, sweepCfg, discoverypkg.DefaultScoringConfig(), logger)
+	results, err := optionsdiscovery.RunOptionsSweep(ctx, optionsCfg, sweepCfg, discoverypkg.DefaultScoringConfig(), logger)
 	if err != nil {
 		return nil, fmt.Errorf("options scaffold: run sweep: %w", err)
 	}

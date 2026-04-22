@@ -167,6 +167,51 @@ func TestRunBacktestExecutesOptionsRulesAndPersistsRun(t *testing.T) {
 	}
 }
 
+func TestRunBacktestOptionsRulesUsesConfiguredUnderlying(t *testing.T) {
+	optionsStrategy, err := strategyscaffold.OptionsPaperBullPutSpread("QQQ")
+	if err != nil {
+		t.Fatalf("OptionsPaperBullPutSpread() error = %v", err)
+	}
+	optionsStrategy.Ticker = "SPY"
+
+	cfg := domain.BacktestConfig{
+		ID:         uuid.New(),
+		StrategyID: optionsStrategy.ID,
+		Name:       "options-underlying-validation",
+		StartDate:  time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC),
+		EndDate:    time.Date(2024, 12, 31, 0, 0, 0, 0, time.UTC),
+		Simulation: domain.BacktestSimulationParameters{InitialCapital: 100_000},
+	}
+
+	provider := &stubDataProvider{bars: syntheticOHLCVSeries(cfg.StartDate.AddDate(-1, 0, 0), 520)}
+	marketDataRepo := &stubMarketDataRepo{bars: provider.bars}
+	dataSvc := data.NewDataService(config.Config{}, &data.ProviderRegistry{
+		Yahoo: func(data.ProviderConfig) data.DataProvider { return provider },
+	}, marketDataRepo, slog.Default(), nil)
+	dataSvc.SetNowFunc(func() time.Time { return cfg.EndDate })
+
+	svc := service.NewBacktestService(
+		stubBacktestConfigRepo{config: &cfg},
+		&recordingBacktestRunRepo{},
+		&stubStrategyRepo{strategy: &optionsStrategy},
+		&recordingAuditLogRepo{},
+		dataSvc,
+		nil,
+		slog.Default(),
+	)
+
+	run, err := svc.RunBacktest(context.Background(), cfg.ID, "tester")
+	if err != nil {
+		t.Fatalf("RunBacktest() error = %v", err)
+	}
+	if run == nil {
+		t.Fatal("RunBacktest() run = nil")
+	}
+	if marketDataRepo.requestedTicker != "QQQ" {
+		t.Fatalf("historical ticker = %q, want %q", marketDataRepo.requestedTicker, "QQQ")
+	}
+}
+
 func TestStockScaffoldConfigIncludesRulesEngineForBacktestService(t *testing.T) {
 	strategy, err := strategyscaffold.StockPaperMovingAverageCrossover("SPY")
 	if err != nil {
@@ -273,10 +318,12 @@ func (recordingAuditLogRepo) Count(context.Context, repository.AuditLogFilter) (
 }
 
 type stubDataProvider struct {
-	bars []domain.OHLCV
+	bars            []domain.OHLCV
+	requestedTicker string
 }
 
-func (s *stubDataProvider) GetOHLCV(context.Context, string, data.Timeframe, time.Time, time.Time) ([]domain.OHLCV, error) {
+func (s *stubDataProvider) GetOHLCV(_ context.Context, ticker string, _ data.Timeframe, _, _ time.Time) ([]domain.OHLCV, error) {
+	s.requestedTicker = ticker
 	return append([]domain.OHLCV(nil), s.bars...), nil
 }
 func (s *stubDataProvider) GetFundamentals(context.Context, string) (data.Fundamentals, error) {
@@ -290,7 +337,8 @@ func (s *stubDataProvider) GetSocialSentiment(context.Context, string, time.Time
 }
 
 type stubMarketDataRepo struct {
-	bars []domain.OHLCV
+	bars            []domain.OHLCV
+	requestedTicker string
 }
 
 func (s *stubMarketDataRepo) Get(context.Context, repository.MarketDataCacheKey) (*domain.MarketData, error) {
@@ -303,7 +351,8 @@ func (s *stubMarketDataRepo) Expire(context.Context, repository.MarketDataCacheE
 func (s *stubMarketDataRepo) UpsertHistoricalOHLCV(context.Context, []domain.HistoricalOHLCV) error {
 	return nil
 }
-func (s *stubMarketDataRepo) ListHistoricalOHLCV(context.Context, repository.HistoricalOHLCVFilter) ([]domain.HistoricalOHLCV, error) {
+func (s *stubMarketDataRepo) ListHistoricalOHLCV(_ context.Context, filter repository.HistoricalOHLCVFilter) ([]domain.HistoricalOHLCV, error) {
+	s.requestedTicker = filter.Ticker
 	result := make([]domain.HistoricalOHLCV, 0, len(s.bars))
 	for _, bar := range s.bars {
 		result = append(result, domain.HistoricalOHLCV{

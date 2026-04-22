@@ -143,6 +143,46 @@ func TestRunOptionsPaperBacktestReturnsSummary(t *testing.T) {
 	}
 }
 
+func TestRunOptionsPaperBacktestWithConfigUsesProvidedRules(t *testing.T) {
+	bars := syntheticBars(340)
+	startDate := bars[40].Timestamp
+	endDate := bars[len(bars)-1].Timestamp
+
+	base, err := strategyscaffold.OptionsPaperBullPutSpread("QQQ")
+	if err != nil {
+		t.Fatalf("OptionsPaperBullPutSpread() error = %v", err)
+	}
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal(base.Config, &payload); err != nil {
+		t.Fatalf("json.Unmarshal(config) error = %v", err)
+	}
+	cfg, err := rules.ParseOptions(payload["options_rules"])
+	if err != nil {
+		t.Fatalf("rules.ParseOptions(options_rules) error = %v", err)
+	}
+	cfg.Underlying = "SPY"
+	cfg.Management.CloseAtProfitPct = 65
+
+	summary, err := strategyscaffold.RunOptionsPaperBacktestWithConfig(context.Background(), *cfg, bars, startDate, endDate, 100_000, nil)
+	if err != nil {
+		t.Fatalf("RunOptionsPaperBacktestWithConfig() error = %v", err)
+	}
+	if summary.Strategy.Ticker != "SPY" {
+		t.Fatalf("Strategy.Ticker = %q, want %q", summary.Strategy.Ticker, "SPY")
+	}
+	var strategyPayload map[string]json.RawMessage
+	if err := json.Unmarshal(summary.Strategy.Config, &strategyPayload); err != nil {
+		t.Fatalf("json.Unmarshal(summary.Strategy.Config) error = %v", err)
+	}
+	strategyCfg, err := rules.ParseOptions(strategyPayload["options_rules"])
+	if err != nil {
+		t.Fatalf("rules.ParseOptions(summary.options_rules) error = %v", err)
+	}
+	if strategyCfg.Management.CloseAtProfitPct != 65 {
+		t.Fatalf("CloseAtProfitPct = %v, want %v", strategyCfg.Management.CloseAtProfitPct, 65.0)
+	}
+}
+
 func TestScaffoldsRejectBlankTicker(t *testing.T) {
 	if _, err := strategyscaffold.StockPaperMovingAverageCrossover("   "); err == nil {
 		t.Fatal("StockPaperMovingAverageCrossover(blank) error = nil, want error")

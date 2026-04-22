@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -193,16 +194,20 @@ func (svc *BacktestService) runOptionsRulesBacktest(
 	if optionsConfig == nil {
 		return nil, &ServiceError{Status: 400, Message: "strategy must have options_rules config for backtesting"}
 	}
+	underlying := strings.ToUpper(strings.TrimSpace(optionsConfig.Underlying))
+	if underlying == "" {
+		underlying = strategy.Ticker
+	}
 
-	allBars, svcErr := svc.loadHistoricalBars(ctx, strategy.Ticker, domain.MarketTypeStock, config)
+	allBars, svcErr := svc.loadHistoricalBars(ctx, underlying, domain.MarketTypeStock, config)
 	if svcErr != nil {
 		return nil, svcErr
 	}
 
 	start := time.Now()
-	summary, err := strategyscaffold.RunOptionsPaperBacktest(
+	summary, err := strategyscaffold.RunOptionsPaperBacktestWithConfig(
 		ctx,
-		strategy.Ticker,
+		*optionsConfig,
 		allBars,
 		config.StartDate,
 		config.EndDate,
@@ -227,7 +232,7 @@ func (svc *BacktestService) runOptionsRulesBacktest(
 		return nil, &ServiceError{Status: 500, Message: "failed to serialize equity curve"}
 	}
 
-	run, svcErr := svc.persistBacktestRun(ctx, actor, config.ID, strategy.Ticker, metricsJSON, tradeLogJSON, equityCurveJSON, start, duration, "options-rules-v1", analysts.CurrentPromptVersionHash())
+	run, svcErr := svc.persistBacktestRun(ctx, actor, config.ID, underlying, metricsJSON, tradeLogJSON, equityCurveJSON, start, duration, "options-rules-v1", analysts.CurrentPromptVersionHash())
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -250,7 +255,6 @@ func (svc *BacktestService) runOptionsRulesBacktest(
 		}
 	}
 
-	_ = optionsConfig
 	return &run, nil
 }
 
