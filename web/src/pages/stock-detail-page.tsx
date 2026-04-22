@@ -8,6 +8,8 @@ import {
   FileText,
   FlaskConical,
   Loader2,
+  MessageSquare,
+  Newspaper,
   Play,
   Receipt,
   Sparkles,
@@ -314,8 +316,58 @@ export function StockDetailPage() {
 
       {/* Two-column layout */}
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.9fr)]">
-        {/* Left column: strategies, orders, trades, positions */}
+        {/* Left column: price chart stub, news stub, social stub, strategies, orders, trades, positions */}
         <div className="space-y-4">
+          {/* Price Chart — stub (endpoint not yet available) */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <BarChart3 className="size-4 text-muted-foreground" />
+                Price chart
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex h-32 items-center justify-center rounded-md border border-dashed border-border bg-muted/20">
+                <p className="text-sm text-muted-foreground">
+                  Price chart data not yet available
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* News — stub (endpoint not yet available) */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Newspaper className="size-4 text-muted-foreground" />
+                News
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex h-24 items-center justify-center rounded-md border border-dashed border-border bg-muted/20">
+                <p className="text-sm text-muted-foreground">
+                  News feed not yet available
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Social Sentiment — stub (endpoint not yet available) */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <MessageSquare className="size-4 text-muted-foreground" />
+                Social sentiment
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex h-24 items-center justify-center rounded-md border border-dashed border-border bg-muted/20">
+                <p className="text-sm text-muted-foreground">
+                  Social sentiment not yet available
+                </p>
+              </div>
+            </CardContent>
+          </Card>
           {/* Active Strategies */}
           <Card>
             <CardHeader>

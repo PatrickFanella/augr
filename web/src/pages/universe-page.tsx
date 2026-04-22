@@ -276,7 +276,7 @@ export function UniversePage() {
             )}
 
             {!scanMutation.data && watchlist.length > 0 && (
-              <WatchlistTable tickers={watchlist as unknown as ScoredTicker[]} />
+              <WatchlistTable tickers={watchlist} />
             )}
 
             {!scanMutation.data &&

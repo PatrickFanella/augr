@@ -117,14 +117,14 @@ export function FinalSignal({ signal, signalDecision, onSelectDecision }: FinalS
                 )}
               </div>
               {signalDecision && (
-                <p className="line-clamp-4 text-xs text-muted-foreground">
-                  {signalDecision.output_text.slice(0, 400)}
+                <p className="whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
+                  {signalDecision.output_text}
                 </p>
               )}
             </div>
           ) : signalDecision ? (
-            <p className="line-clamp-4 text-xs text-muted-foreground">
-              {signalDecision.output_text.slice(0, 400)}
+            <p className="whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
+              {signalDecision.output_text}
             </p>
           ) : (
             <p className="text-xs text-muted-foreground">Waiting for final signal…</p>

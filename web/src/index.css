@@ -63,9 +63,20 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 @layer base {
   * {
     @apply border-border;
+  }
+
+  html {
+    font-size: 93.75%; /* 15px base — density-optimised for 85%-zoom users */
   }
 
   html,

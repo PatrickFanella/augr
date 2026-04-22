@@ -1,5 +1,6 @@
 import {
   Activity,
+  BookOpen,
   Brain,
   BriefcaseBusiness,
   CalendarDays,
@@ -35,6 +36,7 @@ const navigationItems = [
   { to: '/signals', label: 'Signals', icon: Signal },
   { to: '/reliability', label: 'Reliability', icon: ShieldCheck },
   { to: '/memories', label: 'Memories', icon: Brain },
+  { to: '/glossary', label: 'Glossary', icon: BookOpen },
   { to: '/settings', label: 'Settings', icon: Settings2 },
   { to: '/risk', label: 'Risk', icon: ShieldAlert },
   { to: '/realtime', label: 'Realtime', icon: RadioTower },
@@ -49,7 +51,7 @@ export function AppShell() {
         <div className="sticky top-3 flex h-[calc(100vh-1.5rem)] flex-col rounded-lg border border-border bg-card p-3">
           <div className="border-b border-border pb-3">
             <p className="font-mono text-[11px] font-medium uppercase tracking-[0.18em] text-primary">
-              Get Rich Quick
+              Augr
             </p>
           </div>
 
@@ -79,14 +81,14 @@ export function AppShell() {
       <div className="flex min-h-screen min-w-0 flex-1 flex-col gap-3">
         <header className="sticky top-3 z-20 flex items-center justify-between rounded-lg border border-border bg-card px-4 py-2.5">
           <div className="flex items-center gap-2 text-sm">
-            <span className="font-semibold text-foreground">Get Rich Quick</span>
+            <span className="font-semibold text-foreground">Augr</span>
             <span className="text-muted-foreground">/</span>
             <span className="text-muted-foreground">{location.pathname === '/' ? 'overview' : location.pathname.slice(1)}</span>
           </div>
 
           <nav
             aria-label="Primary mobile"
-            className="flex gap-1.5 overflow-x-auto lg:hidden"
+            className="flex gap-1.5 overflow-x-auto scrollbar-none lg:hidden"
           >
             {navigationItems.map(({ to, label, icon: Icon }) => (
               <NavLink

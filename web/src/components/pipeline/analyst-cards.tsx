@@ -74,8 +74,8 @@ export function AnalystCards({
               <CardContent>
                 {decision ? (
                   <>
-                    <p className="line-clamp-3 text-xs text-muted-foreground">
-                      {decision.output_text.slice(0, 200)}
+                    <p className="whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
+                      {decision.output_text}
                     </p>
                     {decision.latency_ms !== undefined && (
                       <Badge variant="outline" className="mt-2 text-[10px]">

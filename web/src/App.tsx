@@ -26,6 +26,7 @@ import { CalendarPage } from '@/pages/calendar-page'
 import { StockDetailPage } from '@/pages/stock-detail-page'
 import { UniversePage } from '@/pages/universe-page'
 import { SignalsPage } from '@/pages/signals-page'
+import { GlossaryPage } from '@/pages/glossary-page'
 import { ReliabilityPage } from '@/pages/reliability-page'
 
 export function AppRoutes() {
@@ -60,6 +61,7 @@ export function AppRoutes() {
           <Route path="realtime" element={<RealtimePage />} />
           <Route path="signals" element={<SignalsPage />} />
           <Route path="reliability" element={<ReliabilityPage />} />
+          <Route path="glossary" element={<GlossaryPage />} />
         </Route>
       </Route>
     </Routes>

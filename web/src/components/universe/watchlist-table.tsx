@@ -7,9 +7,9 @@ interface WatchlistTableProps {
   tickers: ScoredTicker[]
 }
 
-function scoreBadgeVariant(score: number) {
-  if (score > 0.7) return 'success' as const
-  if (score > 0.4) return 'warning' as const
+function scoreBadgeVariant(score: number | undefined) {
+  if ((score ?? 0) > 0.7) return 'success' as const
+  if ((score ?? 0) > 0.4) return 'warning' as const
   return 'destructive' as const
 }
 
@@ -46,7 +46,7 @@ export function WatchlistTable({ tickers }: WatchlistTableProps) {
               <td className="px-2 py-1.5 font-mono font-medium">{t.ticker}</td>
               <td className="px-2 py-1.5">
                 <Badge variant={scoreBadgeVariant(t.score)}>
-                  {t.score.toFixed(2)}
+                  {(t.score ?? 0).toFixed(2)}
                 </Badge>
               </td>
               <td

@@ -47,6 +47,28 @@ describe('WatchlistTable', () => {
     expect(screen.getByText('gap_up')).toBeInTheDocument()
   })
 
+  it('renders 0.00 when score is undefined (null-guard)', () => {
+    render(
+      <WatchlistTable
+        tickers={[
+          {
+            ticker: 'MSFT',
+            score: undefined as unknown as number,
+            reasons: [],
+            day_volume: 500000,
+            day_close: 300,
+            change_pct: 0,
+            gap_pct: 0,
+          },
+        ]}
+      />,
+      { wrapper: Wrapper },
+    )
+
+    expect(screen.getByText('MSFT')).toBeInTheDocument()
+    expect(screen.getByText('0.00')).toBeInTheDocument()
+  })
+
   it('navigates to discovery with selected ticker when row clicked', () => {
     render(
       <WatchlistTable

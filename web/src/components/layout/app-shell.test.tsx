@@ -16,7 +16,7 @@ describe('AppShell', () => {
       </MemoryRouter>,
     )
 
-    expect(screen.getAllByText('Get Rich Quick').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByText('Augr').length).toBeGreaterThanOrEqual(1)
     expect(screen.getAllByRole('link', { name: /memories/i }).length).toBeGreaterThanOrEqual(1)
     expect(screen.getAllByRole('link', { name: /settings/i }).length).toBeGreaterThanOrEqual(1)
     const portfolioLinks = screen.getAllByRole('link', { name: /portfolio/i })

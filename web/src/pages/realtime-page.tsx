@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Activity,
   AlertCircle,
-  ArrowDown,
+  ArrowUp,
   Brain,
   CandlestickChart,
   CircleDot,
@@ -139,7 +139,7 @@ function toFeedItem(message: WebSocketMessage): FeedItem {
 
 function sortEvents(events: FeedItem[]) {
   return [...events].sort(
-    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
   );
 }
 
@@ -707,7 +707,7 @@ export function RealtimePage() {
       return;
     }
 
-    feedRef.current.scrollTop = feedRef.current.scrollHeight;
+    feedRef.current.scrollTop = 0;
   }, [autoScroll, events]);
 
   function handleFeedScroll() {
@@ -716,14 +716,14 @@ export function RealtimePage() {
       return;
     }
 
-    const nearBottom = element.scrollHeight - element.scrollTop - element.clientHeight < 24;
-    setAutoScroll(nearBottom);
+    const nearTop = element.scrollTop < 24;
+    setAutoScroll(nearTop);
   }
 
   function resumeScroll() {
     setAutoScroll(true);
     if (feedRef.current) {
-      feedRef.current.scrollTop = feedRef.current.scrollHeight;
+      feedRef.current.scrollTop = 0;
     }
   }
 
@@ -888,7 +888,7 @@ export function RealtimePage() {
                 onClick={resumeScroll}
                 data-testid="realtime-resume-scroll"
               >
-                <ArrowDown className="size-4" />
+                <ArrowUp className="size-4" />
                 Resume live scroll
               </Button>
             ) : null}
@@ -898,9 +898,9 @@ export function RealtimePage() {
       />
 
       <div className="grid gap-4 xl:h-[calc(100vh-15rem)] xl:grid-cols-[minmax(360px,0.92fr)_minmax(0,1.08fr)]">
-        <div className="flex min-h-115 min-w-0 flex-col rounded-lg border border-border bg-card p-4 xl:min-h-0">
+        {/* Feed panel — second on mobile, first (left) on xl */}
+        <div className="order-2 flex min-h-115 min-w-0 flex-col rounded-lg border border-border bg-card p-4 xl:order-1 xl:min-h-0">
           <div className="mb-4 space-y-3">
-            <div className="flex items-center justify-between gap-3">
               <div className="space-y-1">
                 <h3 className="text-lg font-semibold">Event feed</h3>
                 <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
@@ -1002,7 +1002,8 @@ export function RealtimePage() {
           </div>
         </div>
 
-        <div className="flex min-h-115 w-full flex-1 flex-col rounded-lg border border-border bg-card p-4 xl:min-h-0">
+        {/* Viewer/chat panel — first on mobile, second (right) on xl */}
+        <div className="order-1 flex min-h-115 w-full flex-1 flex-col rounded-lg border border-border bg-card p-4 xl:order-2 xl:min-h-0">
           {selectedEvent ? (
             <div
               className="flex min-h-0 flex-1 flex-col space-y-4"
