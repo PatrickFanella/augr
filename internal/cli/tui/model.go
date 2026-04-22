@@ -495,6 +495,8 @@ func formatEventType(eventType internalapi.EventType) string {
 		return "Circuit breaker"
 	case internalapi.EventError:
 		return "Pipeline error"
+	case internalapi.EventPipelineHealth:
+		return "Pipeline health"
 	default:
 		return string(eventType)
 	}

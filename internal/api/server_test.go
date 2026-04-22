@@ -164,6 +164,118 @@ func TestValidateStrategyConfigPayloadWrapsJSONError(t *testing.T) {
 	}
 }
 
+func TestValidateStrategyConfigPayloadAcceptsRulesAndOptionsScaffolds(t *testing.T) {
+	t.Parallel()
+
+	stockCfg := domain.StrategyConfig(`{
+		"rules_engine": {
+			"version": 1,
+			"name": "paper-sma-crossover",
+			"entry": {
+				"operator": "AND",
+				"conditions": [
+					{"field": "sma_20", "op": "gt", "ref": "sma_50"},
+					{"field": "close", "op": "gt", "ref": "sma_200"}
+				]
+			},
+			"exit": {
+				"operator": "OR",
+				"conditions": [
+					{"field": "sma_20", "op": "lt", "ref": "sma_50"},
+					{"field": "close", "op": "lt", "ref": "sma_200"}
+				]
+			},
+			"position_sizing": {"method": "fixed_fraction", "fraction_pct": 10},
+			"stop_loss": {"method": "atr_multiple", "atr_multiplier": 2},
+			"take_profit": {"method": "risk_reward", "ratio": 3}
+		}
+	}`)
+	if err := validateStrategyConfigPayload(stockCfg); err != nil {
+		t.Fatalf("validateStrategyConfigPayload(stock rules) error = %v", err)
+	}
+
+	optionsCfg := domain.StrategyConfig(`{
+		"options_rules": {
+			"version": 1,
+			"strategy_type": "bull_put_spread",
+			"underlying": "QQQ",
+			"entry": {
+				"operator": "AND",
+				"conditions": [
+					{"field": "close", "op": "gt", "ref": "sma_50"},
+					{"field": "iv_rank", "op": "gt", "value": 50}
+				]
+			},
+			"exit": {
+				"operator": "OR",
+				"conditions": [
+					{"field": "close", "op": "lt", "ref": "sma_50"},
+					{"field": "pnl_pct", "op": "gte", "value": 50}
+				]
+			},
+			"leg_selection": {
+				"short_put": {
+					"option_type": "put",
+					"delta_target": 0.25,
+					"dte_min": 30,
+					"dte_max": 45,
+					"side": "sell",
+					"position_intent": "sell_to_open",
+					"ratio": 1
+				},
+				"long_put": {
+					"option_type": "put",
+					"delta_target": 0.1,
+					"dte_min": 30,
+					"dte_max": 45,
+					"side": "buy",
+					"position_intent": "buy_to_open",
+					"ratio": 1
+				}
+			},
+			"position_sizing": {"method": "max_risk", "max_risk_usd": 1000},
+			"management": {"close_at_profit_pct": 50, "close_at_dte": 7, "stop_loss_pct": 100}
+		}
+	}`)
+	if err := validateStrategyConfigPayload(optionsCfg); err != nil {
+		t.Fatalf("validateStrategyConfigPayload(options rules) error = %v", err)
+	}
+}
+
+func TestValidateStrategyConfigPayloadRejectsInvalidRulesAndOptionsScaffolds(t *testing.T) {
+	t.Parallel()
+
+	stockCfg := domain.StrategyConfig(`{
+		"rules_engine": {
+			"version": 1,
+			"entry": {"operator": "AND", "conditions": [{"field": "not_a_field", "op": "gt", "value": 1}]},
+			"exit": {"operator": "AND", "conditions": [{"field": "close", "op": "lt", "value": 1}]},
+			"position_sizing": {"method": "fixed_fraction", "fraction_pct": 10},
+			"stop_loss": {"method": "fixed_pct", "pct": 2},
+			"take_profit": {"method": "risk_reward", "ratio": 2}
+		}
+	}`)
+	if err := validateStrategyConfigPayload(stockCfg); err == nil || !strings.Contains(err.Error(), "rules_engine") {
+		t.Fatalf("validateStrategyConfigPayload(invalid stock rules) error = %v, want rules_engine error", err)
+	}
+
+	optionsCfg := domain.StrategyConfig(`{
+		"options_rules": {
+			"version": 1,
+			"strategy_type": "bull_put_spread",
+			"underlying": "QQQ",
+			"entry": {"operator": "AND", "conditions": [{"field": "iv_rank", "op": "gt", "value": 50}]},
+			"exit": {"operator": "AND", "conditions": [{"field": "pnl_pct", "op": "gte", "value": 50}]},
+			"leg_selection": {},
+			"position_sizing": {"method": "max_risk", "max_risk_usd": 1000},
+			"management": {"close_at_profit_pct": 50}
+		}
+	}`)
+	if err := validateStrategyConfigPayload(optionsCfg); err == nil || !strings.Contains(err.Error(), "options_rules") {
+		t.Fatalf("validateStrategyConfigPayload(invalid options rules) error = %v, want options_rules error", err)
+	}
+}
+
 func doUnauthenticatedRequest(t *testing.T, srv *Server, method, path string, body any) *httptest.ResponseRecorder {
 	t.Helper()
 

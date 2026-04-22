@@ -16,6 +16,7 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/llm"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
+	"github.com/PatrickFanella/get-rich-quick/internal/strategyscaffold"
 )
 
 // BacktestService encapsulates the multi-step orchestration required to run a
@@ -56,7 +57,6 @@ func NewBacktestService(
 // result. Returns the persisted BacktestRun on success, or a *ServiceError
 // for caller-visible errors.
 func (svc *BacktestService) RunBacktest(ctx context.Context, configID uuid.UUID, actor string) (*domain.BacktestRun, error) {
-	// 1. Load BacktestConfig
 	config, err := svc.backtestConfigs.Get(ctx, configID)
 	if err != nil {
 		if isNotFound(err) {
@@ -65,7 +65,6 @@ func (svc *BacktestService) RunBacktest(ctx context.Context, configID uuid.UUID,
 		return nil, &ServiceError{Status: 500, Message: "failed to get backtest config"}
 	}
 
-	// 2. Load Strategy
 	strategy, err := svc.strategies.Get(ctx, config.StrategyID)
 	if err != nil {
 		if isNotFound(err) {
@@ -74,7 +73,6 @@ func (svc *BacktestService) RunBacktest(ctx context.Context, configID uuid.UUID,
 		return nil, &ServiceError{Status: 500, Message: "failed to get strategy"}
 	}
 
-	// 3. Parse strategy.Config as JSON, extract rules_engine field
 	var stratCfg map[string]json.RawMessage
 	if len(strategy.Config) > 0 {
 		if err := json.Unmarshal(strategy.Config, &stratCfg); err != nil {
@@ -82,12 +80,24 @@ func (svc *BacktestService) RunBacktest(ctx context.Context, configID uuid.UUID,
 		}
 	}
 
-	rulesEngineRaw, ok := stratCfg["rules_engine"]
-	if !ok || len(rulesEngineRaw) == 0 {
-		return nil, &ServiceError{Status: 400, Message: "strategy config must include a \"rules_engine\" JSON key with entry/exit conditions, position sizing, and stop/take-profit rules"}
+	if rulesEngineRaw := stratCfg["rules_engine"]; len(rulesEngineRaw) > 0 {
+		return svc.runRulesEngineBacktest(ctx, config, strategy, rulesEngineRaw, actor)
 	}
 
-	// 4. Parse rules engine config
+	if optionsRulesRaw := stratCfg["options_rules"]; len(optionsRulesRaw) > 0 {
+		return svc.runOptionsRulesBacktest(ctx, config, strategy, optionsRulesRaw, actor)
+	}
+
+	return nil, &ServiceError{Status: 400, Message: "strategy config must include either a \"rules_engine\" or \"options_rules\" JSON key for backtesting"}
+}
+
+func (svc *BacktestService) runRulesEngineBacktest(
+	ctx context.Context,
+	config *domain.BacktestConfig,
+	strategy *domain.Strategy,
+	rulesEngineRaw json.RawMessage,
+	actor string,
+) (*domain.BacktestRun, error) {
 	rulesConfig, err := rules.Parse(rulesEngineRaw)
 	if err != nil {
 		return nil, &ServiceError{Status: 400, Message: "invalid rules_engine config: " + err.Error()}
@@ -96,33 +106,13 @@ func (svc *BacktestService) RunBacktest(ctx context.Context, configID uuid.UUID,
 		return nil, &ServiceError{Status: 400, Message: "strategy must have rules_engine config for backtesting"}
 	}
 
-	// 5. Load historical OHLCV bars — include 400 days before start for indicator warmup
-	if svc.dataService == nil {
-		return nil, &ServiceError{Status: 500, Message: "data service not configured"}
-	}
-	warmupStart := config.StartDate.AddDate(-1, -2, 0) // ~400 calendar days for SMA-200 warmup
-	barsMap, err := svc.dataService.DownloadHistoricalOHLCV(
-		ctx,
-		strategy.MarketType,
-		[]string{strategy.Ticker},
-		data.Timeframe1d,
-		warmupStart,
-		config.EndDate,
-		true,
-	)
-	if err != nil {
-		return nil, &ServiceError{Status: 500, Message: "failed to load historical data: " + err.Error()}
+	allBars, svcErr := svc.loadHistoricalBars(ctx, strategy.Ticker, strategy.MarketType, config)
+	if svcErr != nil {
+		return nil, svcErr
 	}
 
-	allBars := barsMap[strategy.Ticker]
-	if len(allBars) == 0 {
-		return nil, &ServiceError{Status: 400, Message: "no historical bars available for ticker " + strategy.Ticker}
-	}
-
-	// 6. Build pipeline
 	pipeline := rules.NewRulesPipeline(*rulesConfig, allBars, config.StartDate, config.Simulation.InitialCapital, agent.NoopPersister{}, nil, svc.logger)
 
-	// 7. Build orchestrator with default fill config + optional LLM reviewer
 	orchConfig := backtest.OrchestratorConfig{
 		StrategyID:  strategy.ID,
 		Ticker:      strategy.Ticker,
@@ -145,7 +135,6 @@ func (svc *BacktestService) RunBacktest(ctx context.Context, configID uuid.UUID,
 		return nil, &ServiceError{Status: 500, Message: "failed to create backtest orchestrator: " + err.Error()}
 	}
 
-	// 8. Run
 	start := time.Now()
 	result, err := orch.Run(ctx)
 	if err != nil {
@@ -153,7 +142,6 @@ func (svc *BacktestService) RunBacktest(ctx context.Context, configID uuid.UUID,
 	}
 	duration := time.Since(start)
 
-	// 9. Serialize metrics/trades/equity to JSON
 	metricsJSON, err := json.Marshal(result.Metrics)
 	if err != nil {
 		return nil, &ServiceError{Status: 500, Message: "failed to serialize metrics"}
@@ -167,34 +155,11 @@ func (svc *BacktestService) RunBacktest(ctx context.Context, configID uuid.UUID,
 		return nil, &ServiceError{Status: 500, Message: "failed to serialize equity curve"}
 	}
 
-	// 10. Create BacktestRun and persist
-	run := domain.BacktestRun{
-		ID:                uuid.New(),
-		BacktestConfigID:  config.ID,
-		Metrics:           metricsJSON,
-		TradeLog:          tradeLogJSON,
-		EquityCurve:       equityCurveJSON,
-		RunTimestamp:      start.UTC(),
-		Duration:          duration,
-		PromptVersion:     result.PromptVersion,
-		PromptVersionHash: result.PromptVersionHash,
+	run, svcErr := svc.persistBacktestRun(ctx, actor, config.ID, strategy.Ticker, metricsJSON, tradeLogJSON, equityCurveJSON, start, duration, result.PromptVersion, result.PromptVersionHash)
+	if svcErr != nil {
+		return nil, svcErr
 	}
 
-	if run.PromptVersionHash == "" {
-		run.PromptVersionHash = analysts.CurrentPromptVersionHash()
-	}
-	if run.PromptVersion == "" {
-		run.PromptVersion = "rules-v1"
-	}
-
-	if err := svc.backtestRuns.Create(ctx, &run); err != nil {
-		return nil, &ServiceError{Status: 500, Message: "failed to persist backtest run: " + err.Error()}
-	}
-
-	svc.writeAuditLog(ctx, actor, "backtest.run", "backtest_config", &configID,
-		map[string]any{"ticker": strategy.Ticker, "run_id": run.ID})
-
-	// Auto-activate inactive strategies that pass backtesting.
 	if strategy.Status == domain.StrategyStatusInactive &&
 		result.Metrics.SharpeRatio > 0 &&
 		len(result.Trades) > 0 {
@@ -212,6 +177,152 @@ func (svc *BacktestService) RunBacktest(ctx context.Context, configID uuid.UUID,
 	}
 
 	return &run, nil
+}
+
+func (svc *BacktestService) runOptionsRulesBacktest(
+	ctx context.Context,
+	config *domain.BacktestConfig,
+	strategy *domain.Strategy,
+	optionsRulesRaw json.RawMessage,
+	actor string,
+) (*domain.BacktestRun, error) {
+	optionsConfig, err := rules.ParseOptions(optionsRulesRaw)
+	if err != nil {
+		return nil, &ServiceError{Status: 400, Message: "invalid options_rules config: " + err.Error()}
+	}
+	if optionsConfig == nil {
+		return nil, &ServiceError{Status: 400, Message: "strategy must have options_rules config for backtesting"}
+	}
+
+	allBars, svcErr := svc.loadHistoricalBars(ctx, strategy.Ticker, domain.MarketTypeStock, config)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+
+	start := time.Now()
+	summary, err := strategyscaffold.RunOptionsPaperBacktest(
+		ctx,
+		strategy.Ticker,
+		allBars,
+		config.StartDate,
+		config.EndDate,
+		config.Simulation.InitialCapital,
+		svc.logger,
+	)
+	if err != nil {
+		return nil, &ServiceError{Status: 500, Message: "backtest execution failed: " + err.Error()}
+	}
+	duration := time.Since(start)
+
+	metricsJSON, err := json.Marshal(summary.Metrics)
+	if err != nil {
+		return nil, &ServiceError{Status: 500, Message: "failed to serialize metrics"}
+	}
+	tradeLogJSON, err := json.Marshal(summary.Trades)
+	if err != nil {
+		return nil, &ServiceError{Status: 500, Message: "failed to serialize trade log"}
+	}
+	equityCurveJSON, err := json.Marshal(summary.EquityCurve)
+	if err != nil {
+		return nil, &ServiceError{Status: 500, Message: "failed to serialize equity curve"}
+	}
+
+	run, svcErr := svc.persistBacktestRun(ctx, actor, config.ID, strategy.Ticker, metricsJSON, tradeLogJSON, equityCurveJSON, start, duration, "options-rules-v1", analysts.CurrentPromptVersionHash())
+	if svcErr != nil {
+		return nil, svcErr
+	}
+
+	if strategy.Status == domain.StrategyStatusInactive &&
+		summary.Validation != nil &&
+		summary.Validation.Passed &&
+		summary.Metrics.SharpeRatio > 0 &&
+		len(summary.Trades) > 0 {
+		strategy.Status = domain.StrategyStatusActive
+		if err := svc.strategies.Update(ctx, strategy); err != nil {
+			svc.logger.Warn("backtest: failed to auto-activate strategy",
+				"strategy_id", strategy.ID, "error", err)
+		} else {
+			svc.logger.Info("backtest: auto-activated options strategy after passing backtest",
+				"strategy_id", strategy.ID,
+				"sharpe_ratio", summary.Metrics.SharpeRatio,
+				"oos_ratio", summary.Validation.OOSRatio,
+			)
+		}
+	}
+
+	_ = optionsConfig
+	return &run, nil
+}
+
+func (svc *BacktestService) loadHistoricalBars(
+	ctx context.Context,
+	ticker string,
+	marketType domain.MarketType,
+	config *domain.BacktestConfig,
+) ([]domain.OHLCV, *ServiceError) {
+	if svc.dataService == nil {
+		return nil, &ServiceError{Status: 500, Message: "data service not configured"}
+	}
+	warmupStart := config.StartDate.AddDate(-1, -2, 0)
+	barsMap, err := svc.dataService.DownloadHistoricalOHLCV(
+		ctx,
+		marketType,
+		[]string{ticker},
+		data.Timeframe1d,
+		warmupStart,
+		config.EndDate,
+		true,
+	)
+	if err != nil {
+		return nil, &ServiceError{Status: 500, Message: "failed to load historical data: " + err.Error()}
+	}
+	allBars := barsMap[ticker]
+	if len(allBars) == 0 {
+		return nil, &ServiceError{Status: 400, Message: "no historical bars available for ticker " + ticker}
+	}
+	return allBars, nil
+}
+
+func (svc *BacktestService) persistBacktestRun(
+	ctx context.Context,
+	actor string,
+	configID uuid.UUID,
+	ticker string,
+	metricsJSON json.RawMessage,
+	tradeLogJSON json.RawMessage,
+	equityCurveJSON json.RawMessage,
+	start time.Time,
+	duration time.Duration,
+	promptVersion string,
+	promptVersionHash string,
+) (domain.BacktestRun, *ServiceError) {
+	run := domain.BacktestRun{
+		ID:                uuid.New(),
+		BacktestConfigID:  configID,
+		Metrics:           metricsJSON,
+		TradeLog:          tradeLogJSON,
+		EquityCurve:       equityCurveJSON,
+		RunTimestamp:      start.UTC(),
+		Duration:          duration,
+		PromptVersion:     promptVersion,
+		PromptVersionHash: promptVersionHash,
+	}
+
+	if run.PromptVersionHash == "" {
+		run.PromptVersionHash = analysts.CurrentPromptVersionHash()
+	}
+	if run.PromptVersion == "" {
+		run.PromptVersion = "rules-v1"
+	}
+
+	if err := svc.backtestRuns.Create(ctx, &run); err != nil {
+		return domain.BacktestRun{}, &ServiceError{Status: 500, Message: "failed to persist backtest run: " + err.Error()}
+	}
+
+	svc.writeAuditLog(ctx, actor, "backtest.run", "backtest_config", &configID,
+		map[string]any{"ticker": ticker, "run_id": run.ID})
+
+	return run, nil
 }
 
 func (svc *BacktestService) writeAuditLog(ctx context.Context, actor, eventType, entityType string, entityID *uuid.UUID, details any) {

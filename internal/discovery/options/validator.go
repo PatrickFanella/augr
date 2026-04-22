@@ -65,13 +65,13 @@ func ValidateOptionsOutOfSample(
 		sweepCfg.StartDate = w.calStart
 		sweepCfg.EndDate = w.calEnd
 		calMetrics := runOptionsBacktest(optionsConfig, filterBars(bars, w.calStart, w.calEnd), rv, sweepCfg)
-		inSampleMetrics = append(inSampleMetrics, calMetrics)
+		inSampleMetrics = append(inSampleMetrics, calMetrics.Metrics)
 
 		// Out-of-sample (test).
 		sweepCfg.StartDate = w.testStart
 		sweepCfg.EndDate = w.testEnd
 		testMetrics := runOptionsBacktest(optionsConfig, filterBars(bars, w.testStart, w.testEnd), rv, sweepCfg)
-		oosMetrics = append(oosMetrics, testMetrics)
+		oosMetrics = append(oosMetrics, testMetrics.Metrics)
 	}
 
 	// Aggregate.

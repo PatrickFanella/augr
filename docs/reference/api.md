@@ -36,7 +36,6 @@ Ops:        http://localhost:8080/healthz
 - `POST /api/v1/auth/login`
 - `POST /api/v1/auth/refresh`
 - `POST /api/v1/auth/register`
-- `GET /ws`
 
 ### Protected endpoints
 

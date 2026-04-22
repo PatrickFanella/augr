@@ -1,10 +1,41 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { PipelineRunPage } from '@/pages/pipeline-run-page';
+
+class MockWebSocket {
+  static instances: MockWebSocket[] = [];
+  static CONNECTING = 0;
+  static OPEN = 1;
+  static CLOSING = 2;
+  static CLOSED = 3;
+
+  readyState = MockWebSocket.CONNECTING;
+  url: string;
+  onopen: (() => void) | null = null;
+  onmessage: ((event: MessageEvent) => void) | null = null;
+  onerror: ((event: Event) => void) | null = null;
+  onclose: (() => void) | null = null;
+  send = vi.fn();
+
+  constructor(url: string) {
+    this.url = url;
+    MockWebSocket.instances.push(this);
+  }
+
+  close() {
+    this.readyState = MockWebSocket.CLOSED;
+    this.onclose?.();
+  }
+
+  open() {
+    this.readyState = MockWebSocket.OPEN;
+    this.onopen?.();
+  }
+}
 
 const runId = '00000000-0000-0000-0000-000000000099';
 
@@ -174,6 +205,57 @@ describe('PipelineRunPage', () => {
     expect(screen.getByTestId('final-signal')).toBeInTheDocument();
     expect(screen.getByText('Risk Manager Verdict')).toBeInTheDocument();
   });
+
+  it('re-subscribes to the active run after the websocket reconnects', async () => {
+    MockWebSocket.instances = [];
+    vi.stubGlobal('WebSocket', MockWebSocket);
+
+    const runningRun = { ...mockRun, status: 'running' as const, completed_at: undefined };
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.includes('/decisions')) {
+        return Promise.resolve({ ok: true, status: 200, json: async () => mockDecisions });
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => runningRun });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<PipelineRunPage />, { wrapper: Wrapper });
+
+    expect(await screen.findByTestId('pipeline-run-page')).toBeInTheDocument();
+    expect(MockWebSocket.instances).toHaveLength(1);
+
+    act(() => {
+      MockWebSocket.instances[0]?.open();
+    });
+
+    await waitFor(() => {
+      expect(MockWebSocket.instances[0]?.send).toHaveBeenCalledWith(
+        JSON.stringify({ action: 'subscribe', run_ids: [runId] }),
+      );
+    });
+
+    act(() => {
+      MockWebSocket.instances[0]?.close();
+    });
+
+    await waitFor(
+      () => {
+        expect(MockWebSocket.instances).toHaveLength(2);
+      },
+      { timeout: 3_000 },
+    );
+
+    act(() => {
+      MockWebSocket.instances[1]?.open();
+    });
+
+    await waitFor(() => {
+      expect(MockWebSocket.instances[1]?.send).toHaveBeenCalledWith(
+        JSON.stringify({ action: 'subscribe', run_ids: [runId] }),
+      );
+    });
+  }, 5_000);
 
   it('shows error state when run fetch fails', async () => {
     const fetchMock = vi.fn().mockRejectedValue(new Error('Network error'));

@@ -39,6 +39,7 @@ describe('useWebSocketClient', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     MockWebSocket.instances = [];
+    vi.spyOn(auth, 'getAccessToken').mockReturnValue(null);
     vi.stubGlobal('WebSocket', MockWebSocket);
   });
 
@@ -71,6 +72,41 @@ describe('useWebSocketClient', () => {
     });
 
     expect(MockWebSocket.instances).toHaveLength(1);
+  });
+
+  it('reconnects after an unexpected close and preserves the ability to resubscribe on the new socket', async () => {
+    const { result } = renderHook(() =>
+      useWebSocketClient({
+        url: 'ws://localhost:8080/ws',
+        reconnectDelayMs: 250,
+      }),
+    );
+
+    expect(MockWebSocket.instances).toHaveLength(1);
+    act(() => {
+      MockWebSocket.instances[0]?.open();
+    });
+    expect(result.current.status).toBe('open');
+
+    act(() => {
+      MockWebSocket.instances[0]?.close();
+      vi.advanceTimersByTime(250);
+    });
+
+    expect(result.current.status).toBe('connecting');
+    expect(MockWebSocket.instances).toHaveLength(2);
+    act(() => {
+      MockWebSocket.instances[1]?.open();
+    });
+    expect(result.current.status).toBe('open');
+
+    act(() => {
+      result.current.subscribe({ run_ids: ['00000000-0000-0000-0000-000000000099'] });
+    });
+
+    expect(MockWebSocket.instances[1]?.send).toHaveBeenCalledWith(
+      JSON.stringify({ action: 'subscribe', run_ids: ['00000000-0000-0000-0000-000000000099'] }),
+    );
   });
 
   it('appends access token to WebSocket URL', () => {

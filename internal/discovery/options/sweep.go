@@ -8,8 +8,11 @@ import (
 	"sort"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/PatrickFanella/get-rich-quick/internal/agent/rules"
 	"github.com/PatrickFanella/get-rich-quick/internal/backtest"
+	"github.com/PatrickFanella/get-rich-quick/internal/data"
 	"github.com/PatrickFanella/get-rich-quick/internal/discovery"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 )
@@ -25,12 +28,21 @@ type OptionsSweepConfig struct {
 	FillConfig  backtest.OptionsFillConfig
 }
 
+// OptionsBacktestArtifacts captures the full outputs of a single synthetic options backtest.
+type OptionsBacktestArtifacts struct {
+	Metrics     backtest.Metrics
+	Trades      []domain.Trade
+	EquityCurve []backtest.EquityPoint
+}
+
 // OptionsSweepResult pairs an options config with backtest metrics.
 type OptionsSweepResult struct {
-	Label   string
-	Config  rules.OptionsRulesConfig
-	Metrics backtest.Metrics
-	Score   float64
+	Label       string
+	Config      rules.OptionsRulesConfig
+	Metrics     backtest.Metrics
+	Score       float64
+	Trades      []domain.Trade
+	EquityCurve []backtest.EquityPoint
 }
 
 // RunOptionsSweep backtests multiple parameter variants and returns scored results.
@@ -53,14 +65,12 @@ func RunOptionsSweep(
 
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 
-	// Generate variants.
 	variants := make([]rules.OptionsRulesConfig, 0, cfg.Variations+1)
-	variants = append(variants, baseConfig) // base is always first
+	variants = append(variants, baseConfig)
 	for i := 0; i < cfg.Variations; i++ {
 		variants = append(variants, mutateOptionsConfig(baseConfig, rng))
 	}
 
-	// Filter bars to date range.
 	var bars []domain.OHLCV
 	for _, b := range cfg.Bars {
 		if !b.Timestamp.Before(cfg.StartDate) && !b.Timestamp.After(cfg.EndDate) {
@@ -71,10 +81,9 @@ func RunOptionsSweep(
 		return nil, nil
 	}
 
-	// Compute realized vol for synthetic chain generation.
-	rv := realizedVol(cfg.Bars, 60) // 60-day realized vol
+	rv := realizedVol(cfg.Bars, 60)
 	if rv < 0.05 {
-		rv = 0.20 // floor at 20%
+		rv = 0.20
 	}
 
 	var results []OptionsSweepResult
@@ -89,84 +98,81 @@ func RunOptionsSweep(
 			label = "variant"
 		}
 
-		metrics := runOptionsBacktest(variant, bars, rv, cfg)
-		score := discovery.ScoreMetrics(metrics, scoring)
+		artifacts := runOptionsBacktest(variant, bars, rv, cfg)
+		score := discovery.ScoreMetrics(artifacts.Metrics, scoring)
+		if len(artifacts.Trades) > 0 {
+			score += 0.001
+		}
 
 		results = append(results, OptionsSweepResult{
-			Label:   label,
-			Config:  variant,
-			Metrics: metrics,
-			Score:   score,
+			Label:       label,
+			Config:      variant,
+			Metrics:     artifacts.Metrics,
+			Score:       score,
+			Trades:      artifacts.Trades,
+			EquityCurve: artifacts.EquityCurve,
 		})
 	}
 
 	sort.Slice(results, func(i, j int) bool {
+		if results[i].Score == results[j].Score {
+			return len(results[i].Trades) > len(results[j].Trades)
+		}
 		return results[i].Score > results[j].Score
 	})
 
 	return results, nil
 }
 
-// optionsPosition tracks an open options position during backtest.
 type optionsPosition struct {
 	spread    *domain.OptionSpread
 	entryBar  domain.OHLCV
-	entryMid  float64 // net premium received (credit) or paid (debit)
-	maxProfit float64 // max potential profit
-	maxRisk   float64 // max potential loss
+	entryMid  float64
+	maxProfit float64
+	maxRisk   float64
 }
 
-// runOptionsBacktest executes a single options backtest variant.
 func runOptionsBacktest(
 	config rules.OptionsRulesConfig,
 	bars []domain.OHLCV,
 	realizedVol float64,
 	cfg OptionsSweepConfig,
-) backtest.Metrics {
+) OptionsBacktestArtifacts {
 	cash := cfg.InitialCash
 	var position *optionsPosition
 	chainCfg := backtest.DefaultSyntheticChainConfig()
 
 	equityCurve := make([]backtest.EquityPoint, 0, len(bars))
+	trades := make([]domain.Trade, 0, 16)
 	var prevSnap *rules.Snapshot
 
-	for _, bar := range bars {
-		// Build snapshot from bar.
-		snap := rules.Snapshot{
-			Values: map[string]float64{
-				"close":  bar.Close,
-				"open":   bar.Open,
-				"high":   bar.High,
-				"low":    bar.Low,
-				"volume": bar.Volume,
-			},
-		}
+	for i, bar := range bars {
+		window := bars[:i+1]
+		snap := rules.Snapshot{Values: buildOptionSignalValues(window, bar, position, realizedVol, chainCfg)}
 
-		// Compute simple indicators from recent bars context.
-		// (For sweep, we rely on the condition fields that are in the snapshot.)
-
-		// Synthesize options chain.
 		dte := avgDTE(config.LegSelection)
 		chain := backtest.SynthesizeChain(bar.Close, realizedVol, dte, bar.Timestamp, chainCfg)
-
-		// Build options snapshot.
 		optSnap := rules.NewOptionsSnapshot(snap, chain, nil, bar.Timestamp)
 
 		marketValue := 0.0
+		unrealizedPnL := 0.0
 		if position != nil {
-			// Mark-to-market: estimate current spread value from synthetic chain.
 			marketValue = estimateSpreadValue(position, bar.Close, realizedVol, bar.Timestamp, chainCfg)
+			unrealizedPnL = position.entryMid + marketValue
 		}
+		totalPnL := cash + marketValue - cfg.InitialCash
 
 		equityCurve = append(equityCurve, backtest.EquityPoint{
-			Timestamp:   bar.Timestamp,
-			Cash:        cash,
-			MarketValue: marketValue,
-			Equity:      cash + marketValue,
+			Timestamp:     bar.Timestamp,
+			Cash:          cash,
+			MarketValue:   marketValue,
+			Equity:        cash + marketValue,
+			UnrealizedPnL: unrealizedPnL,
+			RealizedPnL:   totalPnL - unrealizedPnL,
+			TotalPnL:      totalPnL,
 		})
 
 		if position == nil {
-			// Evaluate entry.
 			if rules.EvaluateGroup(config.Entry, optSnap.Snapshot, prevSnap) {
 				spread, entryMid := buildSyntheticSpread(config, chain, bar)
 				if spread != nil {
@@ -178,35 +184,54 @@ func runOptionsBacktest(
 						maxProfit: maxProfit,
 						maxRisk:   maxRisk,
 					}
-					cash -= maxRisk // reserve max risk as collateral
+					cash -= maxRisk
+					trades = append(trades, buildOptionsTrades(position, bar, true)...)
 				}
 			}
 		} else {
-			// Check management rules.
 			shouldClose, reason := checkManagement(position, config.Management, bar, realizedVol, chainCfg)
-			if !shouldClose {
-				// Evaluate exit conditions.
-				if rules.EvaluateGroup(config.Exit, optSnap.Snapshot, prevSnap) {
-					shouldClose = true
-					reason = "exit_signal"
-				}
+			if !shouldClose && rules.EvaluateGroup(config.Exit, optSnap.Snapshot, prevSnap) {
+				shouldClose = true
+				reason = "exit_signal"
 			}
 
 			if shouldClose {
-				pnl := closePosition(position, bar, realizedVol, chainCfg)
-				cash += position.maxRisk + pnl // release collateral + P&L
+				closeValue, pnl := closePosition(position, bar, realizedVol, chainCfg)
+				cash += position.maxRisk + pnl
+				trades = append(trades, buildOptionsCloseTrades(position, bar, closeValue, reason)...)
 				position = nil
-				_ = reason
 			}
 		}
 
-		prevSnap = &snap
+		clone := cloneSnapshot(optSnap.Snapshot)
+		prevSnap = &clone
 	}
 
-	return backtest.ComputeMetrics(equityCurve, bars)
+	if position != nil && len(bars) > 0 {
+		lastBar := bars[len(bars)-1]
+		closeValue, pnl := closePosition(position, lastBar, realizedVol, chainCfg)
+		cash += position.maxRisk + pnl
+		trades = append(trades, buildOptionsCloseTrades(position, lastBar, closeValue, "final_bar")...)
+		position = nil
+		equityCurve[len(equityCurve)-1] = backtest.EquityPoint{
+			Timestamp:     lastBar.Timestamp,
+			Cash:          cash,
+			MarketValue:   0,
+			Equity:        cash,
+			UnrealizedPnL: 0,
+			RealizedPnL:   cash - cfg.InitialCash,
+			TotalPnL:      cash - cfg.InitialCash,
+		}
+	}
+
+	metrics := backtest.ComputeMetrics(equityCurve, bars)
+	return OptionsBacktestArtifacts{
+		Metrics:     metrics,
+		Trades:      trades,
+		EquityCurve: equityCurve,
+	}
 }
 
-// buildSyntheticSpread selects legs from the synthetic chain and builds a spread.
 func buildSyntheticSpread(config rules.OptionsRulesConfig, chain []domain.OptionSnapshot, bar domain.OHLCV) (*domain.OptionSpread, float64) {
 	now := bar.Timestamp
 	selectedLegs, err := rules.SelectSpreadLegs(chain, config.LegSelection, now)
@@ -219,7 +244,6 @@ func buildSyntheticSpread(config rules.OptionsRulesConfig, chain []domain.Option
 		return nil, 0
 	}
 
-	// Calculate net premium (positive = credit received).
 	var netPremium float64
 	for legName, snap := range selectedLegs {
 		sel := config.LegSelection[legName]
@@ -233,28 +257,23 @@ func buildSyntheticSpread(config rules.OptionsRulesConfig, chain []domain.Option
 	return spread, netPremium
 }
 
-// spreadRiskReward estimates max profit and max risk for a spread.
 func spreadRiskReward(spread *domain.OptionSpread, netPremium float64) (maxProfit, maxRisk float64) {
 	if len(spread.Legs) < 2 {
-		// Single leg (e.g. covered call) — risk is unlimited, cap at premium * 3.
 		return math.Abs(netPremium), math.Abs(netPremium) * 3
 	}
 
-	// Vertical spread: max risk = width between strikes - net premium.
 	var strikes []float64
 	for _, leg := range spread.Legs {
 		strikes = append(strikes, leg.Contract.Strike)
 	}
 	sort.Float64s(strikes)
-	width := (strikes[len(strikes)-1] - strikes[0]) * 100 // * multiplier
+	width := (strikes[len(strikes)-1] - strikes[0]) * 100
 
 	if netPremium > 0 {
-		// Credit spread.
 		maxProfit = netPremium
 		maxRisk = width - netPremium
 	} else {
-		// Debit spread.
-		maxProfit = width + netPremium // netPremium is negative
+		maxProfit = width + netPremium
 		maxRisk = -netPremium
 	}
 
@@ -264,19 +283,20 @@ func spreadRiskReward(spread *domain.OptionSpread, netPremium float64) (maxProfi
 	return maxProfit, maxRisk
 }
 
-// checkManagement evaluates automated management rules.
 func checkManagement(pos *optionsPosition, mgmt rules.OptionsManagement, bar domain.OHLCV, vol float64, chainCfg backtest.SyntheticChainConfig) (bool, string) {
 	currentValue := estimateSpreadValue(pos, bar.Close, vol, bar.Timestamp, chainCfg)
-	pnl := currentValue + pos.entryMid // for credit spreads: entry is positive, current should decay
+	pnl := currentValue + pos.entryMid
 
-	// Close at profit target.
 	if mgmt.CloseAtProfitPct > 0 && pos.maxProfit > 0 {
-		if pnl >= pos.maxProfit*mgmt.CloseAtProfitPct {
+		profitTargetRatio := mgmt.CloseAtProfitPct
+		if profitTargetRatio > 1 {
+			profitTargetRatio /= 100
+		}
+		if pnl >= pos.maxProfit*profitTargetRatio {
 			return true, "profit_target"
 		}
 	}
 
-	// Close at DTE.
 	if mgmt.CloseAtDTE > 0 && len(pos.spread.Legs) > 0 {
 		expiry := pos.spread.Legs[0].Contract.Expiry
 		dte := int(expiry.Sub(bar.Timestamp).Hours() / 24)
@@ -285,10 +305,13 @@ func checkManagement(pos *optionsPosition, mgmt rules.OptionsManagement, bar dom
 		}
 	}
 
-	// Stop loss.
 	if mgmt.StopLossPct > 0 && pos.maxRisk > 0 {
+		stopLossRatio := mgmt.StopLossPct
+		if stopLossRatio > 1 {
+			stopLossRatio /= 100
+		}
 		loss := -pnl
-		if loss >= pos.maxRisk*mgmt.StopLossPct {
+		if loss >= pos.maxRisk*stopLossRatio {
 			return true, "stop_loss"
 		}
 	}
@@ -296,7 +319,6 @@ func checkManagement(pos *optionsPosition, mgmt rules.OptionsManagement, bar dom
 	return false, ""
 }
 
-// estimateSpreadValue estimates the current mark-to-market value of an open spread.
 func estimateSpreadValue(pos *optionsPosition, underlying, vol float64, now time.Time, chainCfg backtest.SyntheticChainConfig) float64 {
 	if pos == nil || pos.spread == nil {
 		return 0
@@ -310,7 +332,6 @@ func estimateSpreadValue(pos *optionsPosition, underlying, vol float64, now time
 		}
 		chain := backtest.SynthesizeChain(underlying, vol, dte, now, chainCfg)
 
-		// Find the contract in the synthetic chain closest to our strike.
 		bestDist := math.Inf(1)
 		var legValue float64
 		for _, snap := range chain {
@@ -325,22 +346,112 @@ func estimateSpreadValue(pos *optionsPosition, underlying, vol float64, now time
 		}
 
 		if leg.Side == "sell" {
-			value -= legValue // we owe this
+			value -= legValue
 		} else {
-			value += legValue // we own this
+			value += legValue
 		}
 	}
 
 	return value
 }
 
-// closePosition calculates P&L when closing a spread.
-func closePosition(pos *optionsPosition, bar domain.OHLCV, vol float64, chainCfg backtest.SyntheticChainConfig) float64 {
+func closePosition(pos *optionsPosition, bar domain.OHLCV, vol float64, chainCfg backtest.SyntheticChainConfig) (float64, float64) {
 	currentValue := estimateSpreadValue(pos, bar.Close, vol, bar.Timestamp, chainCfg)
-	return pos.entryMid + currentValue
+	return currentValue, pos.entryMid + currentValue
 }
 
-// avgDTE returns the average target DTE from leg selectors.
+func buildOptionsTrades(pos *optionsPosition, bar domain.OHLCV, opening bool) []domain.Trade {
+	if pos == nil || pos.spread == nil {
+		return nil
+	}
+	trades := make([]domain.Trade, 0, len(pos.spread.Legs))
+	for _, leg := range pos.spread.Legs {
+		premium := legMarkPremium(leg, pos.entryBar.Close, bar.Close, pos.entryMid, len(pos.spread.Legs), true)
+		trades = append(trades, domain.Trade{
+			ID:                 uuid.New(),
+			Ticker:             leg.Contract.OCCSymbol,
+			Side:               leg.Side,
+			Quantity:           leg.Quantity,
+			Price:              premium,
+			ExecutedAt:         bar.Timestamp,
+			CreatedAt:          bar.Timestamp,
+			AssetClass:         domain.AssetClassOption,
+			OpenClose:          openCloseValue(opening),
+			ContractMultiplier: leg.Contract.Multiplier,
+			Premium:            premium,
+			Fee:                0,
+		})
+	}
+	return trades
+}
+
+func buildOptionsCloseTrades(pos *optionsPosition, bar domain.OHLCV, closeValue float64, reason string) []domain.Trade {
+	if pos == nil || pos.spread == nil {
+		return nil
+	}
+	trades := make([]domain.Trade, 0, len(pos.spread.Legs))
+	for _, leg := range pos.spread.Legs {
+		closeSide := domain.OrderSideBuy
+		if leg.Side == domain.OrderSideBuy {
+			closeSide = domain.OrderSideSell
+		}
+		premium := legMarkPremium(leg, pos.entryBar.Close, bar.Close, closeValue, len(pos.spread.Legs), false)
+		trades = append(trades, domain.Trade{
+			ID:                 uuid.New(),
+			Ticker:             leg.Contract.OCCSymbol,
+			Side:               closeSide,
+			Quantity:           leg.Quantity,
+			Price:              premium,
+			ExecutedAt:         bar.Timestamp,
+			CreatedAt:          bar.Timestamp,
+			AssetClass:         domain.AssetClassOption,
+			OpenClose:          openCloseValue(false),
+			ContractMultiplier: leg.Contract.Multiplier,
+			Premium:            premium,
+			ExitReason:         reason,
+			Fee:                0,
+		})
+	}
+	return trades
+}
+
+func legMarkPremium(leg domain.SpreadLeg, entryUnderlying, currentUnderlying, netValue float64, legCount int, opening bool) float64 {
+	multiplier := leg.Contract.Multiplier
+	if multiplier <= 0 {
+		multiplier = 100
+	}
+	if legCount < 1 {
+		legCount = 1
+	}
+	base := math.Abs(netValue) / float64(legCount) / multiplier
+	if base > 0 {
+		return base
+	}
+	intrinsic := 0.0
+	switch leg.Contract.OptionType {
+	case domain.OptionTypeCall:
+		if currentUnderlying > leg.Contract.Strike {
+			intrinsic = currentUnderlying - leg.Contract.Strike
+		}
+	case domain.OptionTypePut:
+		if leg.Contract.Strike > currentUnderlying {
+			intrinsic = leg.Contract.Strike - currentUnderlying
+		}
+	}
+	timeValue := math.Max(0.1, math.Abs(currentUnderlying-entryUnderlying)*0.02)
+	if !opening {
+		timeValue = math.Max(0.05, timeValue*0.5)
+	}
+	return intrinsic + timeValue
+}
+
+func openCloseValue(opening bool) string {
+	if opening {
+		return "open"
+	}
+	return "close"
+}
+
 func avgDTE(legs map[string]rules.LegSelector) int {
 	if len(legs) == 0 {
 		return 30
@@ -356,39 +467,32 @@ func avgDTE(legs map[string]rules.LegSelector) int {
 	return avg
 }
 
-// mutateOptionsConfig creates a random variant of an options config.
 func mutateOptionsConfig(base rules.OptionsRulesConfig, rng *rand.Rand) rules.OptionsRulesConfig {
-	cfg := base // shallow copy
+	cfg := base
 
-	// Deep copy leg selection.
 	cfg.LegSelection = make(map[string]rules.LegSelector, len(base.LegSelection))
 	for k, v := range base.LegSelection {
-		// Mutate delta target.
-		v.DeltaTarget = clamp(v.DeltaTarget+rng.Float64()*0.10-0.05, 0.05, 0.50)
-		// Mutate DTE range.
+		v.DeltaTarget = clampFloat(v.DeltaTarget+rng.Float64()*0.10-0.05, 0.05, 0.50)
 		shift := rng.Intn(11) - 5
-		v.DTEMin = max(7, v.DTEMin+shift)
-		v.DTEMax = max(v.DTEMin+7, v.DTEMax+shift)
+		v.DTEMin = maxInt(7, v.DTEMin+shift)
+		v.DTEMax = maxInt(v.DTEMin+7, v.DTEMax+shift)
 		cfg.LegSelection[k] = v
 	}
 
-	// Mutate management.
 	if cfg.Management.CloseAtProfitPct > 0 {
-		cfg.Management.CloseAtProfitPct = clamp(cfg.Management.CloseAtProfitPct*(0.8+rng.Float64()*0.4), 0.20, 0.90)
+		cfg.Management.CloseAtProfitPct = clampFloat(cfg.Management.CloseAtProfitPct*(0.8+rng.Float64()*0.4), 0.20, 90.0)
 	}
 	if cfg.Management.CloseAtDTE > 0 {
-		cfg.Management.CloseAtDTE = max(1, cfg.Management.CloseAtDTE+rng.Intn(5)-2)
+		cfg.Management.CloseAtDTE = maxInt(1, cfg.Management.CloseAtDTE+rng.Intn(5)-2)
 	}
 	if cfg.Management.StopLossPct > 0 {
-		cfg.Management.StopLossPct = clamp(cfg.Management.StopLossPct*(0.7+rng.Float64()*0.6), 0.5, 3.0)
+		cfg.Management.StopLossPct = clampFloat(cfg.Management.StopLossPct*(0.7+rng.Float64()*0.6), 0.5, 300.0)
 	}
 
-	// Mutate sizing.
 	if cfg.PositionSizing.MaxRiskUSD > 0 {
 		cfg.PositionSizing.MaxRiskUSD = cfg.PositionSizing.MaxRiskUSD * (0.7 + rng.Float64()*0.6)
 	}
 
-	// Deep copy conditions (mutate values).
 	cfg.Entry = mutateConditionGroup(base.Entry, rng)
 	cfg.Exit = mutateConditionGroup(base.Exit, rng)
 
@@ -406,4 +510,75 @@ func mutateConditionGroup(group rules.ConditionGroup, rng *rand.Rand) rules.Cond
 		}
 	}
 	return out
+}
+
+func buildOptionSignalValues(bars []domain.OHLCV, bar domain.OHLCV, pos *optionsPosition, rv float64, chainCfg backtest.SyntheticChainConfig) map[string]float64 {
+	values := map[string]float64{
+		"close":  bar.Close,
+		"open":   bar.Open,
+		"high":   bar.High,
+		"low":    bar.Low,
+		"volume": bar.Volume,
+	}
+	for _, indicator := range data.IndicatorSnapshotFromBars(bars) {
+		values[indicator.Name] = indicator.Value
+	}
+
+	dte := 30
+	if pos != nil && pos.spread != nil && len(pos.spread.Legs) > 0 {
+		expiry := pos.spread.Legs[0].Contract.Expiry
+		dte = int(expiry.Sub(bar.Timestamp).Hours() / 24)
+		if dte < 0 {
+			dte = 0
+		}
+		currentValue := estimateSpreadValue(pos, bar.Close, rv, bar.Timestamp, chainCfg)
+		if pos.maxRisk > 0 {
+			values["pnl_pct"] = ((pos.entryMid + currentValue) / pos.maxRisk) * 100
+		} else {
+			values["pnl_pct"] = 0
+		}
+		values["dte"] = float64(dte)
+	}
+
+	chain := backtest.SynthesizeChain(bar.Close, rv, dte, bar.Timestamp, chainCfg)
+	atmIV, putCallRatio := chainMetrics(chain, bar.Close)
+	values["atm_iv"] = atmIV
+	values["put_call_ratio"] = putCallRatio
+
+	ivRank := 0.0
+	if rv > 0 && atmIV > 0 {
+		minVol := rv * 0.7
+		maxVol := rv * 1.5
+		if maxVol > minVol {
+			ivRank = clampFloat((atmIV-minVol)/(maxVol-minVol)*100, 0, 100)
+		}
+	}
+	values["iv_rank"] = ivRank
+	values["iv_percentile"] = ivRank
+	return values
+}
+
+func cloneSnapshot(s rules.Snapshot) rules.Snapshot {
+	values := make(map[string]float64, len(s.Values))
+	for k, v := range s.Values {
+		values[k] = v
+	}
+	return rules.Snapshot{Values: values}
+}
+
+func clampFloat(v, lo, hi float64) float64 {
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
+}
+
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }

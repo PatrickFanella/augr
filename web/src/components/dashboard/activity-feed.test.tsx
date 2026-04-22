@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ActivityFeed } from '@/components/dashboard/activity-feed'
@@ -63,5 +63,27 @@ describe('ActivityFeed', () => {
       ws?.open()
       expect(screen.getByText('Connected')).toBeInTheDocument()
     })
+  })
+
+  it('renders pipeline health websocket events with a human-friendly label', async () => {
+    render(<ActivityFeed />)
+
+    const ws = MockWebSocket.instances[0]
+    expect(ws).toBeDefined()
+
+    await act(async () => {
+      ws?.open()
+      ws?.onmessage?.(
+        new MessageEvent('message', {
+          data: JSON.stringify({
+            type: 'pipeline_health',
+            strategy_id: '11111111-1111-1111-1111-111111111111',
+            timestamp: '2026-04-21T13:45:00.000Z',
+          }),
+        }),
+      )
+    })
+
+    expect(screen.getByText('Pipeline health')).toBeInTheDocument()
   })
 })

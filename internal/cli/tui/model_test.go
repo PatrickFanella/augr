@@ -124,3 +124,28 @@ func TestModelAppliesWebSocketEventsToActivityAndProgress(t *testing.T) {
 		t.Fatalf("activeTab = %d, want %d", shifted.activeTab, 1)
 	}
 }
+
+func TestModelFormatsPipelineHealthEventsWithHumanLabel(t *testing.T) {
+	t.Parallel()
+
+	runID := uuid.New()
+	model := NewModel(Snapshot{}, 120, 34)
+
+	next, _ := model.Update(wsEventMsg{event: internalapi.WSMessage{
+		Type:       internalapi.EventPipelineHealth,
+		RunID:      runID,
+		StrategyID: uuid.New(),
+		Timestamp:  time.Now().UTC(),
+		Data: map[string]any{
+			"ticker":        "AAPL",
+			"used_fallback": true,
+		},
+	}})
+	updated := next.(Model)
+	if len(updated.snapshot.Activity) == 0 {
+		t.Fatal("expected activity feed to receive websocket event")
+	}
+	if got := updated.snapshot.Activity[0].Title; got != "Pipeline health" {
+		t.Fatalf("activity title = %q, want %q", got, "Pipeline health")
+	}
+}

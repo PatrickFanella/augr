@@ -24,4 +24,5 @@ type Trade struct {
 	OpenClose          string     `json:"open_close,omitempty"` // "open" or "close"
 	ContractMultiplier float64    `json:"contract_multiplier,omitempty"`
 	Premium            float64    `json:"premium,omitempty"` // price per contract
+	ExitReason         string     `json:"exit_reason,omitempty"`
 }

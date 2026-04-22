@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { RealtimePage } from '@/pages/realtime-page'
+import { getApiBaseUrl } from '@/lib/config'
 
 class MockWebSocket {
   static instances: MockWebSocket[] = []
@@ -64,6 +65,9 @@ function stubFetch(...responses: Array<ReturnType<typeof jsonResponse>>) {
   vi.stubGlobal('fetch', fetchMock)
   return fetchMock
 }
+
+const apiBaseUrl = getApiBaseUrl()
+const apiUrl = (path: string) => `${apiBaseUrl}${path}`
 
 const baseEvent = {
   id: 'evt-1',
@@ -197,6 +201,44 @@ describe('RealtimePage', () => {
     expect(screen.getAllByText('trader').length).toBeGreaterThan(0)
   })
 
+  it('re-subscribes to all events after the websocket reconnects', async () => {
+    stubFetch(
+      jsonResponse(listResponse([], 50)),
+      jsonResponse(listResponse([], 50)),
+    )
+
+    render(<RealtimePage />, { wrapper: Wrapper })
+
+    expect(MockWebSocket.instances).toHaveLength(1)
+
+    act(() => {
+      MockWebSocket.instances[0]?.open()
+    })
+
+    await waitFor(() => {
+      expect(MockWebSocket.instances[0]?.send).toHaveBeenCalledWith(JSON.stringify({ action: 'subscribe_all' }))
+    })
+
+    act(() => {
+      MockWebSocket.instances[0]?.close()
+    })
+
+    await waitFor(
+      () => {
+        expect(MockWebSocket.instances).toHaveLength(2)
+      },
+      { timeout: 3_000 },
+    )
+
+    act(() => {
+      MockWebSocket.instances[1]?.open()
+    })
+
+    await waitFor(() => {
+      expect(MockWebSocket.instances[1]?.send).toHaveBeenCalledWith(JSON.stringify({ action: 'subscribe_all' }))
+    })
+  }, 5_000)
+
   it('renders empty state when there are no events yet', async () => {
     stubFetch(
       jsonResponse(listResponse([], 50)),
@@ -228,12 +270,12 @@ describe('RealtimePage', () => {
     expect(await screen.findByText('Existing conversation answer.')).toBeInTheDocument()
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      expect.objectContaining({ href: 'http://localhost:8080/api/v1/conversations?limit=50' }),
+      expect.objectContaining({ href: apiUrl('/api/v1/conversations?limit=50') }),
       expect.any(Object),
     )
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
-      expect.objectContaining({ href: 'http://localhost:8080/api/v1/conversations/conv-1/messages?limit=100' }),
+      expect.objectContaining({ href: apiUrl('/api/v1/conversations/conv-1/messages?limit=100') }),
       expect.any(Object),
     )
   })
@@ -285,7 +327,7 @@ describe('RealtimePage', () => {
     expect(screen.getByTestId('chat-panel')).toHaveTextContent('TSLA')
     expect(fetchMock).toHaveBeenNthCalledWith(
       4,
-      expect.objectContaining({ href: 'http://localhost:8080/api/v1/conversations' }),
+      expect.objectContaining({ href: apiUrl('/api/v1/conversations') }),
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({ pipeline_run_id: 'run-2', agent_role: 'risk_manager' }),
@@ -329,7 +371,7 @@ describe('RealtimePage', () => {
     expect(screen.getByTestId('conversation-selector')).toHaveValue('conv-2')
     expect(fetchMock).toHaveBeenNthCalledWith(
       4,
-      expect.objectContaining({ href: 'http://localhost:8080/api/v1/conversations/conv-2/messages?limit=100' }),
+      expect.objectContaining({ href: apiUrl('/api/v1/conversations/conv-2/messages?limit=100') }),
       expect.any(Object),
     )
   })
@@ -368,7 +410,7 @@ describe('RealtimePage', () => {
     expect(screen.getByTestId('conversation-context-note')).toHaveTextContent('Viewing conversation outside selected event context.')
     expect(fetchMock).toHaveBeenNthCalledWith(
       4,
-      expect.objectContaining({ href: 'http://localhost:8080/api/v1/conversations/conv-2/messages?limit=100' }),
+      expect.objectContaining({ href: apiUrl('/api/v1/conversations/conv-2/messages?limit=100') }),
       expect.any(Object),
     )
   })
@@ -404,12 +446,12 @@ describe('RealtimePage', () => {
     expect(screen.getByText('No messages yet.')).toBeInTheDocument()
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
-      expect.objectContaining({ href: 'http://localhost:8080/api/v1/runs?limit=50' }),
+      expect.objectContaining({ href: apiUrl('/api/v1/runs?limit=50') }),
       expect.any(Object),
     )
     expect(fetchMock).toHaveBeenNthCalledWith(
       4,
-      expect.objectContaining({ href: 'http://localhost:8080/api/v1/conversations' }),
+      expect.objectContaining({ href: apiUrl('/api/v1/conversations') }),
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({ pipeline_run_id: 'run-2', agent_role: 'risk_manager' }),
@@ -467,17 +509,17 @@ describe('RealtimePage', () => {
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
-      expect.objectContaining({ href: 'http://localhost:8080/api/v1/conversations' }),
+      expect.objectContaining({ href: apiUrl('/api/v1/conversations') }),
       expect.objectContaining({ method: 'POST' }),
     )
     expect(fetchMock).toHaveBeenNthCalledWith(
       4,
-      expect.objectContaining({ href: 'http://localhost:8080/api/v1/conversations/conv-1/messages' }),
+      expect.objectContaining({ href: apiUrl('/api/v1/conversations/conv-1/messages') }),
       expect.objectContaining({ method: 'POST' }),
     )
     expect(fetchMock).toHaveBeenNthCalledWith(
       5,
-      expect.objectContaining({ href: 'http://localhost:8080/api/v1/conversations/conv-1/messages?limit=100' }),
+      expect.objectContaining({ href: apiUrl('/api/v1/conversations/conv-1/messages?limit=100') }),
       expect.any(Object),
     )
   })

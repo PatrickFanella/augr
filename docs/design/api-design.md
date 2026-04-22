@@ -149,7 +149,8 @@ These endpoints appeared in older design docs but are not registered by `interna
 ### Endpoint
 
 - `GET /ws`
-- Public upgrade route in current code
+- Authenticated upgrade route in current code
+- Accepts `Authorization: Bearer`, `X-API-Key`, `?token=`, or `?api_key=` credentials
 - Subscription scope is client-side, not path-based
 
 ### Client commands

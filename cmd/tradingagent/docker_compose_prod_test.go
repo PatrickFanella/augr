@@ -17,13 +17,13 @@ func TestProductionDockerComposeContainsRequiredConfiguration(t *testing.T) {
 	compose := string(contents)
 	for _, want := range []string{
 		"services:",
-		"image: postgres:17",
+		"image: pgvector/pgvector:pg17",
 		"postgres_data:/var/lib/postgresql/data",
 		"POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}",
 		"pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-tradingagent}",
 		"image: redis:7-alpine",
 		"redis_data:/data",
-		"[\"CMD\", \"redis-cli\", \"ping\"]",
+		"['CMD', 'redis-cli', 'ping']",
 		"dockerfile: Dockerfile",
 		"target: production",
 		"APP_ENV: production",

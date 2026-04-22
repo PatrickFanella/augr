@@ -163,10 +163,10 @@ See [[api-design]] for the full list of WebSocket event types. Key events:
 | `order_filled`    | `{order_id, fill_price, fill_qty}`    | Move to filled, update P&L |
 | `circuit_breaker` | `{reason, breaker_type}`              | Show alert banner          |
 
-## Connection Lifecycle
+### Connection Lifecycle
 
-1. Client connects to `ws://localhost:8080/ws?token=<jwt>`
-2. Server validates JWT, creates `Client`, registers with Hub
+1. Client connects to `ws://localhost:8080/ws` with `Authorization: Bearer`, `X-API-Key`, or browser-friendly `?token=` / `?api_key=` credentials
+2. Server validates the credential, creates `Client`, registers with Hub
 3. Client sends subscription messages: `{"action": "subscribe", "strategy_ids": [...]}`
 4. Server pushes matching events
 5. Client disconnects → `unregister` from Hub → goroutines exit

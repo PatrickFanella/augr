@@ -28,6 +28,7 @@ function eventLabel(type: WebSocketEventType): string {
     position_update: 'Position update',
     circuit_breaker: 'Circuit breaker',
     error: 'Error',
+    pipeline_health: 'Pipeline health',
   };
   return labels[type] ?? type;
 }

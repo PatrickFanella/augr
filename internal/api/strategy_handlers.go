@@ -12,6 +12,7 @@ import (
 	"github.com/robfig/cron/v3"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/agent"
+	"github.com/PatrickFanella/get-rich-quick/internal/agent/rules"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 )
@@ -280,6 +281,24 @@ func validateStrategyConfigPayload(raw domain.StrategyConfig) error {
 	if err := json.Unmarshal(raw, &cfg); err != nil {
 		return fmt.Errorf("invalid config: %w", err)
 	}
+	if err := agent.ValidateStrategyConfig(cfg); err != nil {
+		return err
+	}
+	if len(cfg.RulesEngine) > 0 {
+		if _, err := rules.Parse(cfg.RulesEngine); err != nil {
+			return fmt.Errorf("rules_engine: %w", err)
+		}
+	}
 
-	return agent.ValidateStrategyConfig(cfg)
+	var rawSections map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &rawSections); err != nil {
+		return fmt.Errorf("invalid config: %w", err)
+	}
+	if optionsRaw := rawSections["options_rules"]; len(optionsRaw) > 0 {
+		if _, err := rules.ParseOptions(optionsRaw); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

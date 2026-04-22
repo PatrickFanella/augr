@@ -218,7 +218,7 @@ See [`.env.example`](.env.example) for the full list of variables including all 
 
 ## API Overview
 
-The REST API is served under `/api/v1`. Public HTTP endpoints are `GET /healthz`, `GET /health`, `GET /metrics`, `POST /api/v1/auth/login`, and `POST /api/v1/auth/refresh`. The WebSocket endpoint is `GET /ws`; it is not behind auth middleware in the current server. Backend root `/` is not the frontend SPA in the current Compose or production stack.
+The REST API is served under `/api/v1`. Public HTTP endpoints are `GET /healthz`, `GET /health`, `GET /metrics`, `POST /api/v1/auth/login`, and `POST /api/v1/auth/refresh`. The WebSocket endpoint is `GET /ws`; it authenticates the upgrade request before switching protocols and accepts `Authorization: Bearer`, `X-API-Key`, `?token=<jwt>`, or `?api_key=<key>` credentials. Backend root `/` is not the frontend SPA in the current Compose or production stack.
 
 All other `/api/v1/*` routes require either `Authorization: Bearer <jwt>` or `X-API-Key: <api_key>`. Implemented route groups include strategies, runs, portfolio, orders, trades, memories, risk, settings, events, conversations, audit log, and automation health/status.
 

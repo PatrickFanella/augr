@@ -19,17 +19,22 @@ type TriageResult struct {
 	Summary   string   `json:"summary"`   // one-line summary
 }
 
-const triageSystemPrompt = `You are a financial news classifier. For each news headline and description, output a JSON object:
+const triageSystemPrompt = `You are a financial news classifier. For the provided batch of news headlines and descriptions, output a JSON object in this exact shape:
 
 {
-  "tickers": ["AAPL", "MSFT"],
-  "category": "company",
-  "sentiment": "bearish",
-  "relevance": 0.8,
-  "summary": "Apple faces antitrust ruling"
+  "results": [
+    {
+      "tickers": ["AAPL", "MSFT"],
+      "category": "company",
+      "sentiment": "bearish",
+      "relevance": 0.8,
+      "summary": "Apple faces antitrust ruling"
+    }
+  ]
 }
 
 Rules:
+- Return one object in results for each headline, in the same order as the input headlines.
 - tickers: extract any stock tickers mentioned or clearly affected. Use standard symbols (AAPL not Apple). Empty array if none.
 - category: one of "earnings", "macro", "sector", "company", "geopolitical", "other"
 - sentiment: "bullish", "bearish", or "neutral" for the market/mentioned stocks
@@ -73,7 +78,7 @@ func triageBatch(ctx context.Context, provider llm.Provider, model string, batch
 
 	// Build a numbered list of headlines for the LLM.
 	var sb strings.Builder
-	sb.WriteString("Classify each headline. Return a JSON array with one object per headline, in order.\n\n")
+	sb.WriteString("Classify each headline. Return a JSON object with a top-level \"results\" array containing one object per headline, in order.\n\n")
 	for i, art := range batch {
 		fmt.Fprintf(&sb, "%d. [%s] %s\n", i+1, art.Source, art.Title)
 		if art.Description != "" {

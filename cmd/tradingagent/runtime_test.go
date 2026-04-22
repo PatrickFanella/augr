@@ -29,7 +29,6 @@ import (
 )
 
 func TestNewAPIServerSchemaBehindFailsFast(t *testing.T) {
-	t.Parallel()
 
 	origNewDB := runtimeNewDB
 	origCurrentSchemaVersion := runtimeCurrentSchemaVersion
@@ -70,7 +69,7 @@ func TestNewAPIServerSchemaBehindFailsFast(t *testing.T) {
 	if mismatchErr.Required != pgrepo.RequiredSchemaVersion {
 		t.Fatalf("mismatchErr.Required = %d, want %d", mismatchErr.Required, pgrepo.RequiredSchemaVersion)
 	}
-	for _, want := range []string{"current version 28", "required version 29", "run migrations, then restart the process", "fresh process restart"} {
+	for _, want := range []string{"current version 29", "required version 30", "run migrations, then restart the process", "fresh process restart"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("error %q missing %q", err.Error(), want)
 		}
@@ -84,7 +83,6 @@ func TestNewAPIServerSchemaBehindFailsFast(t *testing.T) {
 }
 
 func TestNewAPIServerSchemaAheadFailsFast(t *testing.T) {
-	t.Parallel()
 
 	origNewDB := runtimeNewDB
 	origCurrentSchemaVersion := runtimeCurrentSchemaVersion
@@ -125,7 +123,7 @@ func TestNewAPIServerSchemaAheadFailsFast(t *testing.T) {
 	if mismatchErr.Required != pgrepo.RequiredSchemaVersion {
 		t.Fatalf("mismatchErr.Required = %d, want %d", mismatchErr.Required, pgrepo.RequiredSchemaVersion)
 	}
-	for _, want := range []string{"current version 30", "required version 29", "run migrations, then restart the process", "fresh process restart"} {
+	for _, want := range []string{"current version 31", "required version 30", "run migrations, then restart the process", "fresh process restart"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("error %q missing %q", err.Error(), want)
 		}
@@ -139,7 +137,6 @@ func TestNewAPIServerSchemaAheadFailsFast(t *testing.T) {
 }
 
 func TestNewAPIServerSchemaMatchSucceeds(t *testing.T) {
-	t.Parallel()
 
 	origNewDB := runtimeNewDB
 	origCurrentSchemaVersion := runtimeCurrentSchemaVersion
@@ -206,7 +203,6 @@ func TestNewAPIServerSchemaMatchSucceeds(t *testing.T) {
 }
 
 func TestNewAPIServerSchemaDBUnreachableFailsBeforeSchemaGate(t *testing.T) {
-	t.Parallel()
 
 	origNewDB := runtimeNewDB
 	origCurrentSchemaVersion := runtimeCurrentSchemaVersion

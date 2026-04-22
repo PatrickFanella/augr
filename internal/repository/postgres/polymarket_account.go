@@ -131,7 +131,8 @@ func (r *PolymarketAccountRepo) ListTrackedAccounts(ctx context.Context, minWinR
 
 // InsertTrades bulk-inserts trade records, ignoring duplicates.
 func (r *PolymarketAccountRepo) InsertTrades(ctx context.Context, trades []domain.PolymarketAccountTrade) error {
-	if len(trades) == 0 {
+	filtered, _ := filterSupportedPolymarketTrades(trades)
+	if len(filtered) == 0 {
 		return nil
 	}
 	tx, err := r.pool.Begin(ctx)
@@ -140,7 +141,7 @@ func (r *PolymarketAccountRepo) InsertTrades(ctx context.Context, trades []domai
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	for _, t := range trades {
+	for _, t := range filtered {
 		normalizedSide, err := normalizePolymarketTradeSide(t.Side)
 		if err != nil {
 			return fmt.Errorf("postgres: normalize trade side for %s: %w", t.AccountAddress, err)
@@ -161,6 +162,19 @@ func (r *PolymarketAccountRepo) InsertTrades(ctx context.Context, trades []domai
 		return fmt.Errorf("postgres: commit trades: %w", err)
 	}
 	return nil
+}
+
+func filterSupportedPolymarketTrades(trades []domain.PolymarketAccountTrade) ([]domain.PolymarketAccountTrade, []domain.PolymarketAccountTrade) {
+	filtered := make([]domain.PolymarketAccountTrade, 0, len(trades))
+	skipped := make([]domain.PolymarketAccountTrade, 0)
+	for _, trade := range trades {
+		if _, err := normalizePolymarketTradeSide(trade.Side); err != nil {
+			skipped = append(skipped, trade)
+			continue
+		}
+		filtered = append(filtered, trade)
+	}
+	return filtered, skipped
 }
 
 // ListTradesByAccount returns trades for a given address within [from, to].
