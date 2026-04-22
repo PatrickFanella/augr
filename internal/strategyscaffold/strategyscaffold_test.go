@@ -179,7 +179,7 @@ func TestRunOptionsPaperBacktestWithConfigUsesProvidedRules(t *testing.T) {
 		t.Fatalf("rules.ParseOptions(summary.options_rules) error = %v", err)
 	}
 	if strategyCfg.Management.CloseAtProfitPct != 65 {
-		t.Fatalf("CloseAtProfitPct = %v, want %v", strategyCfg.Management.CloseAtProfitPct, 65.0)
+		t.Fatalf("CloseAtProfitPct = %v, want %v", strategyCfg.Management.CloseAtProfitPct, 65)
 	}
 }
 

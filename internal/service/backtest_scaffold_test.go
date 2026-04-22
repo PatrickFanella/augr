@@ -168,7 +168,9 @@ func TestRunBacktestExecutesOptionsRulesAndPersistsRun(t *testing.T) {
 }
 
 func TestRunBacktestOptionsRulesUsesConfiguredUnderlying(t *testing.T) {
-	optionsStrategy, err := strategyscaffold.OptionsPaperBullPutSpread("QQQ")
+	const expectedUnderlying = "QQQ"
+
+	optionsStrategy, err := strategyscaffold.OptionsPaperBullPutSpread(expectedUnderlying)
 	if err != nil {
 		t.Fatalf("OptionsPaperBullPutSpread() error = %v", err)
 	}
@@ -207,8 +209,8 @@ func TestRunBacktestOptionsRulesUsesConfiguredUnderlying(t *testing.T) {
 	if run == nil {
 		t.Fatal("RunBacktest() run = nil")
 	}
-	if marketDataRepo.requestedTicker != "QQQ" {
-		t.Fatalf("historical ticker = %q, want %q", marketDataRepo.requestedTicker, "QQQ")
+	if marketDataRepo.requestedTicker != expectedUnderlying {
+		t.Fatalf("historical ticker = %q, want %q", marketDataRepo.requestedTicker, expectedUnderlying)
 	}
 }
 
