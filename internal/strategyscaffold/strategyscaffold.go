@@ -212,7 +212,9 @@ func RunOptionsPaperBacktest(ctx context.Context, ticker string, bars []domain.O
 		StartDate:   startDate,
 		EndDate:     endDate,
 		InitialCash: initialCash,
-		Variations:  0,
+		// Use an explicit positive value so paper backtests do not trigger
+		// RunOptionsSweep's Variations <= 0 fallback behavior.
+		Variations: 1,
 	}
 	results, err := optionsdiscovery.RunOptionsSweep(ctx, *optCfg, sweepCfg, discoverypkg.DefaultScoringConfig(), logger)
 	if err != nil {
