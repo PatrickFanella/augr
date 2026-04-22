@@ -366,7 +366,7 @@ func buildOptionsTrades(pos *optionsPosition, bar domain.OHLCV, opening bool) []
 	}
 	trades := make([]domain.Trade, 0, len(pos.spread.Legs))
 	for _, leg := range pos.spread.Legs {
-		premium := legMarkPremium(leg, pos.entryBar.Close, bar.Close, pos.entryMid, len(pos.spread.Legs), true)
+		premium := legMarkPremium(leg, pos.entryBar.Close, bar.Close, pos.entryMid, len(pos.spread.Legs), opening)
 		trades = append(trades, domain.Trade{
 			ID:                 uuid.New(),
 			Ticker:             leg.Contract.OCCSymbol,
