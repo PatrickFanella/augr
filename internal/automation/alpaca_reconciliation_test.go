@@ -73,15 +73,19 @@ func (r *recordingStrategyRepo) Count(context.Context, repository.StrategyFilter
 	return len(r.list), nil
 }
 func (r *recordingStrategyRepo) Update(context.Context, *domain.Strategy) error { return nil }
-func (r *recordingStrategyRepo) Delete(context.Context, uuid.UUID) error { return nil }
-func (r *recordingStrategyRepo) ValidateConfig(context.Context, domain.MarketType, []byte) error { return nil }
+func (r *recordingStrategyRepo) Delete(context.Context, uuid.UUID) error        { return nil }
+func (r *recordingStrategyRepo) ValidateConfig(context.Context, domain.MarketType, []byte) error {
+	return nil
+}
 func (r *recordingStrategyRepo) GetByTicker(context.Context, string, repository.StrategyFilter, int, int) ([]domain.Strategy, error) {
 	return nil, nil
 }
 func (r *recordingStrategyRepo) CountByTicker(context.Context, string, repository.StrategyFilter) (int, error) {
 	return 0, nil
 }
-func (r *recordingStrategyRepo) UpdateThesis(context.Context, uuid.UUID, json.RawMessage) error { return nil }
+func (r *recordingStrategyRepo) UpdateThesis(context.Context, uuid.UUID, json.RawMessage) error {
+	return nil
+}
 func (r *recordingStrategyRepo) GetThesisRaw(context.Context, uuid.UUID) (json.RawMessage, error) {
 	return nil, nil
 }
@@ -363,7 +367,9 @@ func (r *auditLogRepoStub) Query(context.Context, repository.AuditLogFilter, int
 	}
 	return out, nil
 }
-func (r *auditLogRepoStub) Count(context.Context, repository.AuditLogFilter) (int, error) { return len(r.entries), nil }
+func (r *auditLogRepoStub) Count(context.Context, repository.AuditLogFilter) (int, error) {
+	return len(r.entries), nil
+}
 
 func TestAlpacaReconcilerReconcile_ImportsOrdersPositionsAndFills(t *testing.T) {
 	t.Parallel()
@@ -382,27 +388,27 @@ func TestAlpacaReconcilerReconcile_ImportsOrdersPositionsAndFills(t *testing.T) 
 	trades := newRecordingTradeRepo(orders)
 	broker := &alpacaReconciliationBrokerStub{
 		positions: []domain.Position{{
-			Ticker:       "SNAL",
-			Side:         domain.PositionSideLong,
-			Quantity:     200,
-			AvgEntry:     0.92,
-			CurrentPrice: float64Ptr(0.7611),
+			Ticker:        "SNAL",
+			Side:          domain.PositionSideLong,
+			Quantity:      200,
+			AvgEntry:      0.92,
+			CurrentPrice:  float64Ptr(0.7611),
 			UnrealizedPnL: float64Ptr(-31.78),
 		}},
 		orders: []BrokerOrderSnapshot{{
-			ExternalID:       "e8405b49-6140-46b5-a78a-7305f1086cd1",
-			Ticker:           "SNAL",
-			Side:             domain.OrderSideBuy,
-			OrderType:        domain.OrderTypeLimit,
-			Quantity:         200,
-			FilledQuantity:   200,
-			FilledAvgPrice:   float64Ptr(0.92),
-			LimitPrice:       float64Ptr(50),
-			Status:           domain.OrderStatusFilled,
-			SubmittedAt:      timePtr(time.Date(2026, 4, 15, 19, 20, 2, 451351000, time.UTC)),
-			FilledAt:         timePtr(time.Date(2026, 4, 15, 19, 20, 4, 943982000, time.UTC)),
-			Broker:           "alpaca",
-			StrategyIDHint:   &strategyID,
+			ExternalID:     "e8405b49-6140-46b5-a78a-7305f1086cd1",
+			Ticker:         "SNAL",
+			Side:           domain.OrderSideBuy,
+			OrderType:      domain.OrderTypeLimit,
+			Quantity:       200,
+			FilledQuantity: 200,
+			FilledAvgPrice: float64Ptr(0.92),
+			LimitPrice:     float64Ptr(50),
+			Status:         domain.OrderStatusFilled,
+			SubmittedAt:    timePtr(time.Date(2026, 4, 15, 19, 20, 2, 451351000, time.UTC)),
+			FilledAt:       timePtr(time.Date(2026, 4, 15, 19, 20, 4, 943982000, time.UTC)),
+			Broker:         "alpaca",
+			StrategyIDHint: &strategyID,
 		}},
 		fills: []BrokerFillSnapshot{{
 			ActivityID:  "20260415152002662::04a8500c-8992-4db5-afca-6cd1b74629be",
@@ -503,16 +509,16 @@ func TestAlpacaReconcilerReconcile_UpdatesExistingRecordsAndSkipsKnownFills(t *t
 	existingOrderID := uuid.New()
 	existingPositionID := uuid.New()
 	existingOrder := &domain.Order{
-		ID:            existingOrderID,
-		StrategyID:    &strategyID,
-		ExternalID:    "existing-order",
-		Ticker:        "SNAL",
-		Side:          domain.OrderSideBuy,
-		OrderType:     domain.OrderTypeLimit,
-		Quantity:      200,
+		ID:             existingOrderID,
+		StrategyID:     &strategyID,
+		ExternalID:     "existing-order",
+		Ticker:         "SNAL",
+		Side:           domain.OrderSideBuy,
+		OrderType:      domain.OrderTypeLimit,
+		Quantity:       200,
 		FilledQuantity: 186,
-		Status:        domain.OrderStatusPartial,
-		Broker:        "alpaca",
+		Status:         domain.OrderStatusPartial,
+		Broker:         "alpaca",
 	}
 	existingPosition := &domain.Position{
 		ID:         existingPositionID,
@@ -553,18 +559,18 @@ func TestAlpacaReconcilerReconcile_UpdatesExistingRecordsAndSkipsKnownFills(t *t
 			UnrealizedPnL: float64Ptr(-31.78),
 		}},
 		orders: []BrokerOrderSnapshot{{
-			ExternalID:       "existing-order",
-			Ticker:           "SNAL",
-			Side:             domain.OrderSideBuy,
-			OrderType:        domain.OrderTypeLimit,
-			Quantity:         200,
-			FilledQuantity:   200,
-			FilledAvgPrice:   float64Ptr(0.92),
-			Status:           domain.OrderStatusFilled,
-			Broker:           "alpaca",
-			StrategyIDHint:   &strategyID,
-			SubmittedAt:      timePtr(time.Date(2026, 4, 15, 19, 20, 2, 451351000, time.UTC)),
-			FilledAt:         timePtr(time.Date(2026, 4, 15, 19, 20, 4, 943982000, time.UTC)),
+			ExternalID:     "existing-order",
+			Ticker:         "SNAL",
+			Side:           domain.OrderSideBuy,
+			OrderType:      domain.OrderTypeLimit,
+			Quantity:       200,
+			FilledQuantity: 200,
+			FilledAvgPrice: float64Ptr(0.92),
+			Status:         domain.OrderStatusFilled,
+			Broker:         "alpaca",
+			StrategyIDHint: &strategyID,
+			SubmittedAt:    timePtr(time.Date(2026, 4, 15, 19, 20, 2, 451351000, time.UTC)),
+			FilledAt:       timePtr(time.Date(2026, 4, 15, 19, 20, 4, 943982000, time.UTC)),
 		}},
 		fills: []BrokerFillSnapshot{{
 			ActivityID:  "known-fill",
@@ -759,6 +765,141 @@ func TestAlpacaReconcilerVerify_IgnoresVolatilePositionMarkToMarketFields(t *tes
 	}
 }
 
+func TestAlpacaReconcilerReconcile_CreatesDistinctTradesForDuplicateExecutionFieldsWhenActivityIDsDiffer(t *testing.T) {
+	t.Parallel()
+
+	strategyID := uuid.New()
+	orderID := uuid.New()
+	orders := newRecordingOrderRepo(&domain.Order{
+		ID:         orderID,
+		StrategyID: &strategyID,
+		ExternalID: "order-1",
+		Ticker:     "SNAL",
+		Side:       domain.OrderSideBuy,
+		OrderType:  domain.OrderTypeLimit,
+		Quantity:   20,
+		Status:     domain.OrderStatusPartial,
+		Broker:     "alpaca",
+	})
+	trades := newRecordingTradeRepo(orders)
+	reconciler := NewAlpacaReconciler(AlpacaReconcilerDeps{
+		Broker: &alpacaReconciliationBrokerStub{
+			orders: []BrokerOrderSnapshot{{
+				ExternalID:     "order-1",
+				Ticker:         "SNAL",
+				Side:           domain.OrderSideBuy,
+				OrderType:      domain.OrderTypeLimit,
+				Quantity:       20,
+				FilledQuantity: 20,
+				Status:         domain.OrderStatusFilled,
+				Broker:         "alpaca",
+			}},
+			fills: []BrokerFillSnapshot{{
+				ActivityID:  "fill-1",
+				ExternalID:  "order-1",
+				Ticker:      "SNAL",
+				Side:        domain.OrderSideBuy,
+				Quantity:    10,
+				Price:       0.92,
+				ExecutedAt:  time.Date(2026, 4, 15, 19, 20, 2, 662680000, time.UTC),
+				OrderStatus: domain.OrderStatusPartial,
+			}, {
+				ActivityID:  "fill-2",
+				ExternalID:  "order-1",
+				Ticker:      "SNAL",
+				Side:        domain.OrderSideBuy,
+				Quantity:    10,
+				Price:       0.92,
+				ExecutedAt:  time.Date(2026, 4, 15, 19, 20, 2, 662680000, time.UTC),
+				OrderStatus: domain.OrderStatusFilled,
+			}},
+		},
+		OrderRepo:    orders,
+		PositionRepo: newRecordingPositionRepo(),
+		TradeRepo:    trades,
+		Logger:       slog.New(slog.NewTextHandler(testWriter{t}, nil)),
+	})
+
+	summary, err := reconciler.Reconcile(context.Background())
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v", err)
+	}
+	if summary.TradesCreated != 2 {
+		t.Fatalf("TradesCreated = %d, want 2", summary.TradesCreated)
+	}
+	if len(trades.created) != 2 {
+		t.Fatalf("len(trades.created) = %d, want 2", len(trades.created))
+	}
+	if trades.created[0].ExternalID == trades.created[1].ExternalID {
+		t.Fatalf("created trade external ids = %q and %q, want distinct activity ids", trades.created[0].ExternalID, trades.created[1].ExternalID)
+	}
+}
+
+func TestAlpacaReconcilerVerify_UsesTradeExternalIDToDetectDuplicateExecutionFills(t *testing.T) {
+	t.Parallel()
+
+	trade := &domain.Trade{
+		ID:         uuid.New(),
+		ExternalID: "fill-1",
+		Ticker:     "SNAL",
+		Side:       domain.OrderSideBuy,
+		Quantity:   10,
+		Price:      0.92,
+		ExecutedAt: time.Date(2026, 4, 15, 19, 20, 2, 662680000, time.UTC),
+	}
+	orders := newRecordingOrderRepo(&domain.Order{
+		ID:         uuid.New(),
+		ExternalID: "order-1",
+		Ticker:     "SNAL",
+		Side:       domain.OrderSideBuy,
+		OrderType:  domain.OrderTypeLimit,
+		Quantity:   20,
+		Status:     domain.OrderStatusFilled,
+		Broker:     "alpaca",
+	})
+	trades := newRecordingTradeRepo(orders)
+	trades.seedOrderExternalID("order-1", trade)
+
+	reconciler := NewAlpacaReconciler(AlpacaReconcilerDeps{
+		Broker: &alpacaReconciliationBrokerStub{
+			fills: []BrokerFillSnapshot{{
+				ActivityID:  "fill-1",
+				ExternalID:  "order-1",
+				Ticker:      "SNAL",
+				Side:        domain.OrderSideBuy,
+				Quantity:    10,
+				Price:       0.92,
+				ExecutedAt:  trade.ExecutedAt,
+				OrderStatus: domain.OrderStatusPartial,
+			}, {
+				ActivityID:  "fill-2",
+				ExternalID:  "order-1",
+				Ticker:      "SNAL",
+				Side:        domain.OrderSideBuy,
+				Quantity:    10,
+				Price:       0.92,
+				ExecutedAt:  trade.ExecutedAt,
+				OrderStatus: domain.OrderStatusFilled,
+			}},
+		},
+		OrderRepo:    orders,
+		PositionRepo: newRecordingPositionRepo(),
+		TradeRepo:    trades,
+		Logger:       slog.New(slog.NewTextHandler(testWriter{t}, nil)),
+	})
+
+	report, err := reconciler.Verify(context.Background())
+	if err != nil {
+		t.Fatalf("Verify() error = %v", err)
+	}
+	if report.Verified {
+		t.Fatalf("Verified = true, want false with missing duplicate fill trade")
+	}
+	if report.MissingTrades != 1 {
+		t.Fatalf("MissingTrades = %d, want 1", report.MissingTrades)
+	}
+}
+
 func TestJobOrchestratorRegisterAll_IncludesAlpacaReconcileJob(t *testing.T) {
 	t.Parallel()
 
@@ -856,6 +997,7 @@ func cloneTrade(trade *domain.Trade) *domain.Trade {
 		return nil
 	}
 	cloned := *trade
+	cloned.ExternalID = trade.ExternalID
 	if trade.OrderID != nil {
 		id := *trade.OrderID
 		cloned.OrderID = &id
@@ -895,7 +1037,5 @@ func paginatePositions(items []domain.Position, limit, offset int) []domain.Posi
 	return items[offset:end]
 }
 
-func float64Ptr(v float64) *float64 { return &v }
+func float64Ptr(v float64) *float64  { return &v }
 func timePtr(v time.Time) *time.Time { return &v }
-
-

@@ -11,6 +11,7 @@ type Trade struct {
 	ID         uuid.UUID  `json:"id"`
 	OrderID    *uuid.UUID `json:"order_id,omitempty"`
 	PositionID *uuid.UUID `json:"position_id,omitempty"`
+	ExternalID string     `json:"external_id,omitempty"`
 	Ticker     string     `json:"ticker"`
 	Side       OrderSide  `json:"side"`
 	Quantity   float64    `json:"quantity"`

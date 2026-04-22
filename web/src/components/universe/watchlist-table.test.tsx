@@ -47,6 +47,27 @@ describe('WatchlistTable', () => {
     expect(screen.getByText('gap_up')).toBeInTheDocument()
   })
 
+  it('falls back to watch_score when score is absent', () => {
+    render(
+      <WatchlistTable
+        tickers={[
+          {
+            ticker: 'MSFT',
+            name: 'Microsoft',
+            exchange: 'XNAS',
+            index_group: 'nasdaq',
+            watch_score: 0.64,
+            active: true,
+          },
+        ]}
+      />,
+      { wrapper: Wrapper },
+    )
+
+    expect(screen.getByText('MSFT')).toBeInTheDocument()
+    expect(screen.getByText('0.64')).toBeInTheDocument()
+  })
+
   it('navigates to discovery with selected ticker when row clicked', () => {
     render(
       <WatchlistTable

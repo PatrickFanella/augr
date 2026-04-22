@@ -81,6 +81,7 @@ func TestTradeRepoIntegration_CreateListGetByOrderAndPosition(t *testing.T) {
 	tradeA := &domain.Trade{
 		OrderID:    &orderID,
 		PositionID: &positionID,
+		ExternalID: "fill-1",
 		Ticker:     "AAPL",
 		Side:       domain.OrderSideBuy,
 		Quantity:   5,
@@ -91,6 +92,7 @@ func TestTradeRepoIntegration_CreateListGetByOrderAndPosition(t *testing.T) {
 	tradeB := &domain.Trade{
 		OrderID:    &orderID,
 		PositionID: &positionID,
+		ExternalID: "fill-2",
 		Ticker:     "AAPL",
 		Side:       domain.OrderSideBuy,
 		Quantity:   5,
@@ -101,6 +103,7 @@ func TestTradeRepoIntegration_CreateListGetByOrderAndPosition(t *testing.T) {
 	tradeC := &domain.Trade{
 		OrderID:    &orderID,
 		PositionID: &otherPositionID,
+		ExternalID: "fill-3",
 		Ticker:     "MSFT",
 		Side:       domain.OrderSideSell,
 		Quantity:   2,
@@ -133,6 +136,9 @@ func TestTradeRepoIntegration_CreateListGetByOrderAndPosition(t *testing.T) {
 	}
 	if byOrder[0].OrderID == nil || *byOrder[0].OrderID != orderID {
 		t.Fatalf("expected returned trades to link to order %s, got %v", orderID, byOrder[0].OrderID)
+	}
+	if byOrder[0].ExternalID == "" {
+		t.Fatal("expected returned trade to include external_id")
 	}
 
 	byPosition, err := tradeRepo.GetByPosition(ctx, positionID, repository.TradeFilter{

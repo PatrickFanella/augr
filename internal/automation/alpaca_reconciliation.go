@@ -217,6 +217,7 @@ func (r *AlpacaReconciler) Reconcile(ctx context.Context) (AlpacaReconcileSummar
 	for _, trade := range existingTrades {
 		existingTradeKeys[tradeDedupeKey(trade)] = struct{}{}
 	}
+	fillLegacyKeyCounts := fillLegacyKeyCounts(fills)
 
 	summary := AlpacaReconcileSummary{}
 
@@ -269,8 +270,15 @@ func (r *AlpacaReconciler) Reconcile(ctx context.Context) (AlpacaReconcileSummar
 		return fills[i].ExecutedAt.Before(fills[j].ExecutedAt)
 	})
 	for _, fill := range fills {
-		key := fillDedupeKey(fill)
-		if _, ok := existingTradeKeys[key]; ok {
+		fillKeys := dedupeKeysForFill(fill, fillLegacyKeyCounts)
+		skip := false
+		for _, key := range fillKeys {
+			if _, ok := existingTradeKeys[key]; ok {
+				skip = true
+				break
+			}
+		}
+		if skip {
 			continue
 		}
 
@@ -281,6 +289,8 @@ func (r *AlpacaReconciler) Reconcile(ctx context.Context) (AlpacaReconcileSummar
 		position := positionByTicker[fill.Ticker]
 		trade := &domain.Trade{
 			OrderID:    &order.ID,
+			PositionID: nil,
+			ExternalID: strings.TrimSpace(fill.ActivityID),
 			Ticker:     fill.Ticker,
 			Side:       fill.Side,
 			Quantity:   fill.Quantity,
@@ -294,7 +304,9 @@ func (r *AlpacaReconciler) Reconcile(ctx context.Context) (AlpacaReconcileSummar
 		if err := r.tradeRepo.Create(ctx, trade); err != nil {
 			return summary, fmt.Errorf("alpaca_reconcile: create trade for %s: %w", fill.ExternalID, err)
 		}
-		existingTradeKeys[key] = struct{}{}
+		for _, key := range fillKeys {
+			existingTradeKeys[key] = struct{}{}
+		}
 		summary.TradesCreated++
 	}
 
@@ -360,6 +372,7 @@ func (r *AlpacaReconciler) Verify(ctx context.Context) (AlpacaVerificationReport
 	for _, trade := range localTrades {
 		tradeByKey[tradeDedupeKey(trade)] = trade
 	}
+	fillLegacyKeyCounts := fillLegacyKeyCounts(fills)
 
 	report := AlpacaVerificationReport{
 		OrdersChecked:    len(orders),
@@ -393,15 +406,22 @@ func (r *AlpacaReconciler) Verify(ctx context.Context) (AlpacaVerificationReport
 	}
 
 	for _, fill := range fills {
-		key := fillDedupeKey(fill)
-		localTrade, ok := tradeByKey[key]
+		fillKeys := dedupeKeysForFill(fill, fillLegacyKeyCounts)
+		localTrade, ok := tradeByKey[fillKeys[0]]
+		if !ok {
+			for _, key := range fillKeys[1:] {
+				if localTrade, ok = tradeByKey[key]; ok {
+					break
+				}
+			}
+		}
 		if !ok {
 			report.MissingTrades++
-			report.Mismatches = append(report.Mismatches, AlpacaVerificationMismatch{Entity: "trade", Key: key, Details: []string{"missing local trade"}})
+			report.Mismatches = append(report.Mismatches, AlpacaVerificationMismatch{Entity: "trade", Key: fillKeys[0], Details: []string{"missing local trade"}})
 			continue
 		}
 		if fields := diffTradeFill(localTrade, fill); len(fields) > 0 {
-			report.Mismatches = append(report.Mismatches, AlpacaVerificationMismatch{Entity: "trade", Key: key, Details: fields})
+			report.Mismatches = append(report.Mismatches, AlpacaVerificationMismatch{Entity: "trade", Key: fillKeys[0], Details: fields})
 		}
 	}
 
@@ -572,10 +592,41 @@ func applyPositionSnapshot(position *domain.Position, snapshot domain.Position, 
 }
 
 func fillDedupeKey(fill BrokerFillSnapshot) string {
+	if activityID := strings.TrimSpace(fill.ActivityID); activityID != "" {
+		return strings.Join([]string{"activity", activityID}, "|")
+	}
 	return tradeExecutionDedupeKey(fill.Ticker, fill.Side, fill.Quantity, fill.Price, fill.ExecutedAt)
 }
 
+func fillLegacyKey(fill BrokerFillSnapshot) string {
+	return tradeExecutionDedupeKey(fill.Ticker, fill.Side, fill.Quantity, fill.Price, fill.ExecutedAt)
+}
+
+func fillLegacyKeyCounts(fills []BrokerFillSnapshot) map[string]int {
+	counts := make(map[string]int, len(fills))
+	for _, fill := range fills {
+		counts[fillLegacyKey(fill)]++
+	}
+	return counts
+}
+
+func dedupeKeysForFill(fill BrokerFillSnapshot, legacyCounts map[string]int) []string {
+	primary := fillDedupeKey(fill)
+	legacy := fillLegacyKey(fill)
+	if legacy == primary || legacyCounts[legacy] > 1 {
+		return []string{primary}
+	}
+	return []string{primary, legacy}
+}
+
 func tradeDedupeKey(trade domain.Trade) string {
+	if externalID := strings.TrimSpace(trade.ExternalID); externalID != "" {
+		return strings.Join([]string{"activity", externalID}, "|")
+	}
+	return legacyTradeDedupeKey(trade)
+}
+
+func legacyTradeDedupeKey(trade domain.Trade) string {
 	return tradeExecutionDedupeKey(trade.Ticker, trade.Side, trade.Quantity, trade.Price, trade.ExecutedAt)
 }
 
@@ -657,6 +708,9 @@ func diffPositionSnapshot(position domain.Position, snapshot domain.Position) []
 
 func diffTradeFill(trade domain.Trade, fill BrokerFillSnapshot) []string {
 	var fields []string
+	if activityID := strings.TrimSpace(fill.ActivityID); activityID != "" && strings.TrimSpace(trade.ExternalID) != activityID {
+		fields = append(fields, "external_id")
+	}
 	if trade.Ticker != fill.Ticker {
 		fields = append(fields, "ticker")
 	}

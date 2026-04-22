@@ -30,10 +30,11 @@ func NewTradeRepo(pool *pgxpool.Pool) *TradeRepo {
 func (r *TradeRepo) Create(ctx context.Context, trade *domain.Trade) error {
 	row := r.pool.QueryRow(ctx,
 		`INSERT INTO trades (
-			order_id, position_id, ticker, side, quantity, price, fee, executed_at
+			external_id, order_id, position_id, ticker, side, quantity, price, fee, executed_at
 		)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		 RETURNING id, created_at`,
+		nullString(trade.ExternalID),
 		trade.OrderID,
 		trade.PositionID,
 		trade.Ticker,
@@ -71,7 +72,7 @@ func (r *TradeRepo) GetByPosition(ctx context.Context, positionID uuid.UUID, fil
 	return r.list(ctx, query, args, "get trades by position")
 }
 
-const tradeSelectSQL = `SELECT id, order_id, position_id, ticker, side,
+const tradeSelectSQL = `SELECT id, external_id, order_id, position_id, ticker, side,
 		quantity::double precision, price::double precision, fee::double precision,
 		executed_at, created_at
 	 FROM trades`
@@ -105,12 +106,14 @@ func (r *TradeRepo) list(ctx context.Context, query string, args []any, op strin
 func scanTrade(sc scanner) (*domain.Trade, error) {
 	var (
 		trade      domain.Trade
+		externalID *string
 		orderID    *uuid.UUID
 		positionID *uuid.UUID
 	)
 
 	err := sc.Scan(
 		&trade.ID,
+		&externalID,
 		&orderID,
 		&positionID,
 		&trade.Ticker,
@@ -127,6 +130,9 @@ func scanTrade(sc scanner) (*domain.Trade, error) {
 
 	trade.OrderID = orderID
 	trade.PositionID = positionID
+	if externalID != nil {
+		trade.ExternalID = *externalID
+	}
 
 	return &trade, nil
 }

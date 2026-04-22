@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	alpacaexec "github.com/PatrickFanella/get-rich-quick/internal/execution/alpaca"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
+	alpacaexec "github.com/PatrickFanella/get-rich-quick/internal/execution/alpaca"
 )
 
 func TestAlpacaClientAdapterListOrders_MapsBrokerOrders(t *testing.T) {
@@ -117,35 +117,55 @@ func TestAlpacaClientAdapterListFills_PaginatesActivities(t *testing.T) {
 			if got := r.URL.Query().Get("page_token"); got != "" {
 				t.Fatalf("first page_token = %q, want empty", got)
 			}
+			for i := 0; i < alpacaActivitiesPageSize; i++ {
+				activityID := "fill-1"
+				qty := "186"
+				transactionTime := "2026-04-15T19:20:02.66268Z"
+				orderStatus := "partially_filled"
+				if i == 0 {
+					activityID = "fill-2"
+					qty = "14"
+					transactionTime = "2026-04-15T19:20:04.943982Z"
+					orderStatus = "filled"
+				}
+				if i > 1 {
+					activityID = activityID + "-extra"
+				}
+				if i == 0 {
+					_, _ = w.Write([]byte("["))
+				} else {
+					_, _ = w.Write([]byte(","))
+				}
+				_, _ = w.Write([]byte(`{
+					"activity_type": "FILL",
+					"id": "` + activityID + `",
+					"order_id": "order-1",
+					"symbol": "SNAL",
+					"side": "buy",
+					"qty": "` + qty + `",
+					"price": "0.92",
+					"transaction_time": "` + transactionTime + `",
+					"order_status": "` + orderStatus + `"
+				}`))
+			}
+			_, _ = w.Write([]byte("]"))
+		case 2:
+			if got := r.URL.Query().Get("page_token"); got != "fill-1-extra" {
+				t.Fatalf("second page_token = %q, want fill-1-extra", got)
+			}
 			_, _ = w.Write([]byte(`[
 				{
 					"activity_type": "FILL",
-					"id": "fill-2",
+					"id": "fill-3",
 					"order_id": "order-1",
 					"symbol": "SNAL",
 					"side": "buy",
-					"qty": "14",
-					"price": "0.92",
-					"transaction_time": "2026-04-15T19:20:04.943982Z",
+					"qty": "1",
+					"price": "0.93",
+					"transaction_time": "2026-04-15T19:21:04.943982Z",
 					"order_status": "filled"
-				},
-				{
-					"activity_type": "FILL",
-					"id": "fill-1",
-					"order_id": "order-1",
-					"symbol": "SNAL",
-					"side": "buy",
-					"qty": "186",
-					"price": "0.92",
-					"transaction_time": "2026-04-15T19:20:02.66268Z",
-					"order_status": "partially_filled"
 				}
 			]`))
-		case 2:
-			if got := r.URL.Query().Get("page_token"); got != "fill-1" {
-				t.Fatalf("second page_token = %q, want fill-1", got)
-			}
-			_, _ = w.Write([]byte(`[]`))
 		default:
 			t.Fatalf("unexpected request count %d", requestCount)
 		}
@@ -160,11 +180,11 @@ func TestAlpacaClientAdapterListFills_PaginatesActivities(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListFills() error = %v", err)
 	}
-	if requestCount != 1 {
-		t.Fatalf("requestCount = %d, want 1", requestCount)
+	if requestCount != 2 {
+		t.Fatalf("requestCount = %d, want 2", requestCount)
 	}
-	if len(fills) != 2 {
-		t.Fatalf("len(ListFills()) = %d, want 2", len(fills))
+	if len(fills) != alpacaActivitiesPageSize+1 {
+		t.Fatalf("len(ListFills()) = %d, want %d", len(fills), alpacaActivitiesPageSize+1)
 	}
 	if fills[0].ActivityID != "fill-2" {
 		t.Fatalf("fills[0].ActivityID = %q, want fill-2", fills[0].ActivityID)
@@ -177,6 +197,9 @@ func TestAlpacaClientAdapterListFills_PaginatesActivities(t *testing.T) {
 	}
 	if fills[1].OrderStatus != domain.OrderStatusPartial {
 		t.Fatalf("fills[1].OrderStatus = %q, want partial", fills[1].OrderStatus)
+	}
+	if fills[len(fills)-1].ActivityID != "fill-3" {
+		t.Fatalf("last fill ActivityID = %q, want fill-3", fills[len(fills)-1].ActivityID)
 	}
 }
 

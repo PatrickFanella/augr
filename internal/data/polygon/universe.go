@@ -122,10 +122,16 @@ func (c *Client) ListActiveTickers(ctx context.Context, market, tickerType strin
 
 		// Rate limit pause: Polygon free tier allows 5 req/min, so paginated
 		// reference-ticker requests need roughly 12s spacing to avoid 429s.
-		select {
-		case <-ctx.Done():
-			return tickers, ctx.Err()
-		case <-time.After(12 * time.Second):
+		delay := c.tickerPageDelay
+		if delay <= 0 {
+			delay = 12 * time.Second
+		}
+		sleeper := c.sleeper
+		if sleeper == nil {
+			sleeper = sleepWithContext
+		}
+		if err := sleeper(ctx, delay); err != nil {
+			return tickers, err
 		}
 	}
 

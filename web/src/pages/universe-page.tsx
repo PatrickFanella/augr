@@ -53,7 +53,7 @@ export function UniversePage() {
   })
 
   const tickers: TrackedTicker[] = universeQuery.data?.data ?? []
-  const watchlist: ScoredTicker[] = watchlistQuery.data ?? []
+  const watchlist = (watchlistQuery.data ?? []) as Array<ScoredTicker | TrackedTicker>
 
   return (
     <div className="space-y-4" data-testid="universe-page">
@@ -276,7 +276,7 @@ export function UniversePage() {
             )}
 
             {!scanMutation.data && watchlist.length > 0 && (
-              <WatchlistTable tickers={watchlist as unknown as ScoredTicker[]} />
+              <WatchlistTable tickers={watchlist} />
             )}
 
             {!scanMutation.data &&

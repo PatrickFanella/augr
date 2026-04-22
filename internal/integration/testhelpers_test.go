@@ -226,6 +226,7 @@ func applyDDL(t *testing.T, pool *pgxpool.Pool) {
 		// Trades
 		`CREATE TABLE trades (
 			id          UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
+			external_id TEXT,
 			order_id    UUID           REFERENCES orders (id),
 			position_id UUID           REFERENCES positions (id),
 			ticker      TEXT           NOT NULL,

@@ -488,7 +488,9 @@ export class ApiClient {
   }
 
   async getWatchlist(top: number = 30) {
-    return this.request<ScoredTicker[]>('/api/v1/universe/watchlist', { query: { top } });
+    return this.request<Array<ScoredTicker | TrackedTicker>>('/api/v1/universe/watchlist', {
+      query: { top },
+    });
   }
 
   async refreshUniverse() {

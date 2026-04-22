@@ -21,11 +21,13 @@ const (
 
 // Client is a small HTTP client for Polygon.io APIs.
 type Client struct {
-	apiKey     string
-	baseURL    string
-	httpClient *http.Client
-	api        *data.APIClient
-	logger     *slog.Logger
+	apiKey          string
+	baseURL         string
+	httpClient      *http.Client
+	api             *data.APIClient
+	logger          *slog.Logger
+	tickerPageDelay time.Duration
+	sleeper         func(context.Context, time.Duration) error
 }
 
 // ErrorResponse captures Polygon's standard error response shape.
@@ -64,11 +66,13 @@ func NewClient(apiKey string, logger *slog.Logger) *Client {
 	api.SetHTTPClient(httpClient)
 
 	return &Client{
-		apiKey:     trimmedKey,
-		baseURL:    defaultBaseURL,
-		httpClient: httpClient,
-		api:        api,
-		logger:     logger,
+		apiKey:          trimmedKey,
+		baseURL:         defaultBaseURL,
+		httpClient:      httpClient,
+		api:             api,
+		logger:          logger,
+		tickerPageDelay: 12 * time.Second,
+		sleeper:         sleepWithContext,
 	}
 }
 
@@ -86,6 +90,37 @@ func (c *Client) SetTimeout(timeout time.Duration) {
 	}
 
 	c.httpClient.Timeout = timeout
+}
+
+// SetTickerPageDelay overrides the inter-page delay used by ListActiveTickers.
+func (c *Client) SetTickerPageDelay(delay time.Duration) {
+	if c == nil || delay <= 0 {
+		return
+	}
+	c.tickerPageDelay = delay
+}
+
+// SetSleeper overrides the delay implementation used by ListActiveTickers.
+func (c *Client) SetSleeper(sleeper func(context.Context, time.Duration) error) {
+	if c == nil || sleeper == nil {
+		return
+	}
+	c.sleeper = sleeper
+}
+
+func sleepWithContext(ctx context.Context, delay time.Duration) error {
+	if delay <= 0 {
+		return nil
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 // Get issues a GET request to the supplied Polygon API path and returns the raw response body.

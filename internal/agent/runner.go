@@ -235,7 +235,6 @@ func (r *Runner) RunStrategy(ctx context.Context, strategy domain.Strategy, glob
 
 // Run executes one prepared run and returns the canonical result.
 func (r *Runner) Run(ctx context.Context, prepared PreparedRun) (result *RunResult, runErr error) {
-	slog.Info("DEBUG: runner.Run entered", slog.String("run_id", prepared.RunID.String()))
 	if r.persister == nil {
 		return nil, fmt.Errorf("agent/runner: persister is required")
 	}
@@ -335,7 +334,6 @@ func (r *Runner) Run(ctx context.Context, prepared PreparedRun) (result *RunResu
 	if r.runRegistry != nil {
 		r.runRegistry.Register(run.ID, cancel)
 		defer r.runRegistry.Deregister(run.ID)
-		slog.Info("DEBUG: runRegistry registered", slog.String("run_id", run.ID.String()))
 	}
 
 	state = &PipelineState{
@@ -345,7 +343,6 @@ func (r *Runner) Run(ctx context.Context, prepared PreparedRun) (result *RunResu
 		mu:            &sync.Mutex{},
 	}
 	applyInitialStateSeed(state, prepared.InitialState)
-	slog.Info("DEBUG: initial state seeded, about to persist PipelineStarted", slog.String("run_id", run.ID.String()))
 
 	r.helper.persistStructuredEvent(ctx, r.helper.newStructuredEvent(
 		run.ID,

@@ -70,7 +70,7 @@ func TestNewAPIServerSchemaBehindFailsFast(t *testing.T) {
 	if mismatchErr.Required != pgrepo.RequiredSchemaVersion {
 		t.Fatalf("mismatchErr.Required = %d, want %d", mismatchErr.Required, pgrepo.RequiredSchemaVersion)
 	}
-	for _, want := range []string{"current version 30", "required version 31", "run migrations, then restart the process", "fresh process restart"} {
+	for _, want := range []string{"current version 31", "required version 32", "run migrations, then restart the process", "fresh process restart"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("error %q missing %q", err.Error(), want)
 		}
@@ -124,7 +124,7 @@ func TestNewAPIServerSchemaAheadFailsFast(t *testing.T) {
 	if mismatchErr.Required != pgrepo.RequiredSchemaVersion {
 		t.Fatalf("mismatchErr.Required = %d, want %d", mismatchErr.Required, pgrepo.RequiredSchemaVersion)
 	}
-	for _, want := range []string{"current version 32", "required version 31", "run migrations, then restart the process", "fresh process restart"} {
+	for _, want := range []string{"current version 33", "required version 32", "run migrations, then restart the process", "fresh process restart"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("error %q missing %q", err.Error(), want)
 		}
@@ -294,7 +294,7 @@ func TestNewAPIServerWiresAlpacaReconcileAutomationJob(t *testing.T) {
 			Alpaca: config.BrokerConfig{APIKey: "alpaca-key", APISecret: "alpaca-secret", PaperMode: true},
 		},
 		Embedding: config.EmbeddingConfig{Model: "nomic-embed-text", Timeout: time.Second},
-		LLM: config.LLMConfig{Providers: config.LLMProviderConfigs{Ollama: config.OllamaConfig{BaseURL: "http://localhost:11434"}}},
+		LLM:       config.LLMConfig{Providers: config.LLMProviderConfigs{Ollama: config.OllamaConfig{BaseURL: "http://localhost:11434"}}},
 	}
 
 	_, _, cleanup, err := newAPIServer(context.Background(), cfg, slogDiscardLogger())
