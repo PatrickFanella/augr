@@ -116,7 +116,7 @@ export function DecisionInspector({ decision, onClose }: DecisionInspectorProps)
               LLM Response
             </h4>
             <pre
-              className="max-h-96 overflow-y-auto whitespace-pre-wrap rounded-md border border-border bg-background p-3 font-mono text-[12px] leading-5 text-foreground"
+              className="overflow-y-auto whitespace-pre-wrap rounded-md border border-border bg-background p-3 font-mono text-[12px] leading-5 text-foreground"
               data-testid="inspector-response"
             >
               {decision.output_text}

@@ -72,9 +72,9 @@ describe('ChatPanel', () => {
 
   it('renders multiple messages in order', () => {
     render(<ChatPanel messages={[userMsg, assistantMsg]} />)
-    const panel = screen.getByTestId('chat-panel')
-    const texts = Array.from(panel.querySelectorAll('p.whitespace-pre-wrap')).map((el) => el.textContent)
-    expect(texts).toEqual(['Why did you buy?', 'The bull case outweighed bear signals.'])
+    const contents = screen.getAllByTestId('chat-message-content')
+    expect(contents[0]).toHaveTextContent('Why did you buy?')
+    expect(contents[1]).toHaveTextContent('The bull case outweighed bear signals.')
   })
 
   it('renders system messages as context notes', () => {

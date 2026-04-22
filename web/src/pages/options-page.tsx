@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Search, TrendingUp } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 
 import { PageHeader } from '@/components/layout/page-header'
 import { ChainTable } from '@/components/options/chain-table'
@@ -12,6 +13,7 @@ import { apiClient } from '@/lib/api/client'
 type OptionTypeFilter = '' | 'call' | 'put'
 
 export function OptionsPage() {
+  const [searchParams] = useSearchParams()
   const [draftTicker, setDraftTicker] = useState('')
   const [draftExpiry, setDraftExpiry] = useState('')
   const [draftType, setDraftType] = useState<OptionTypeFilter>('')
@@ -30,15 +32,32 @@ export function OptionsPage() {
     enabled: false,
   })
 
-  function loadChain() {
-    const normalized = draftTicker.trim().toUpperCase()
+  function commitAndLoad(
+    tickerValue: string,
+    expiryValue = draftExpiry,
+    typeValue: OptionTypeFilter = draftType,
+  ) {
+    const normalized = tickerValue.trim().toUpperCase()
     if (!normalized) return
+    setDraftTicker(normalized)
     setTicker(normalized)
-    setExpiry(draftExpiry)
-    setOptionType(draftType)
-    // refetch after state settles
+    setDraftExpiry(expiryValue)
+    setExpiry(expiryValue)
+    setDraftType(typeValue)
+    setOptionType(typeValue)
     setTimeout(() => void refetch(), 0)
   }
+
+  function loadChain() {
+    commitAndLoad(draftTicker, draftExpiry, draftType)
+  }
+
+  // Seed from URL param: /options?ticker=AAPL
+  useEffect(() => {
+    const tickerParam = searchParams.get('ticker')
+    if (tickerParam) commitAndLoad(tickerParam, '', '')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return (
     <div className="space-y-4" data-testid="options-page">

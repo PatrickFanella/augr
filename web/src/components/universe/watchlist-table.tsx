@@ -9,9 +9,9 @@ interface WatchlistTableProps {
   tickers: WatchlistTicker[]
 }
 
-function scoreBadgeVariant(score: number) {
-  if (score > 0.7) return 'success' as const
-  if (score > 0.4) return 'warning' as const
+function scoreBadgeVariant(score: number | undefined) {
+  if ((score ?? 0) > 0.7) return 'success' as const
+  if ((score ?? 0) > 0.4) return 'warning' as const
   return 'destructive' as const
 }
 
@@ -74,19 +74,16 @@ export function WatchlistTable({ tickers }: WatchlistTableProps) {
             const dayVolume = resolveTickerDayVolume(t)
             const dayClose = resolveTickerDayClose(t)
             const reasons = resolveTickerReasons(t)
+
             return (
               <tr
                 key={t.ticker}
                 className="cursor-pointer border-b border-border/50 hover:bg-accent/30"
-                onClick={() =>
-                  navigate(`/discovery?tickers=${encodeURIComponent(t.ticker)}`)
-                }
+                onClick={() => navigate(`/discovery?tickers=${encodeURIComponent(t.ticker)}`)}
               >
                 <td className="px-2 py-1.5 font-mono font-medium">{t.ticker}</td>
                 <td className="px-2 py-1.5">
-                  <Badge variant={scoreBadgeVariant(score)}>
-                    {score.toFixed(2)}
-                  </Badge>
+                  <Badge variant={scoreBadgeVariant(score)}>{score.toFixed(2)}</Badge>
                 </td>
                 <td
                   className={`px-2 py-1.5 text-right font-mono ${

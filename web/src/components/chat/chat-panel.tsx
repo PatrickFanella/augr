@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react';
+import Markdown from 'react-markdown';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -81,7 +82,9 @@ export function ChatPanel({ messages, onSendMessage, isLoading = false, header }
                     {msg.agent_role}
                   </Badge>
                 ) : null}
-                <p className="whitespace-pre-wrap">{msg.content}</p>
+                <div className="text-sm [&_p]:mb-2 [&_p:last-child]:mb-0 [&_ul]:mb-2 [&_ul]:ml-4 [&_ul]:list-disc [&_ol]:mb-2 [&_ol]:ml-4 [&_ol]:list-decimal [&_li]:mb-0.5 [&_h1]:mb-2 [&_h1]:text-base [&_h1]:font-semibold [&_h2]:mb-1.5 [&_h2]:text-sm [&_h2]:font-semibold [&_h3]:mb-1 [&_h3]:text-sm [&_h3]:font-medium [&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[11px] [&_pre]:overflow-auto [&_pre]:rounded-md [&_pre]:border [&_pre]:border-border [&_pre]:bg-background [&_pre]:p-3 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_blockquote]:border-l-2 [&_blockquote]:border-primary/40 [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground [&_strong]:font-semibold [&_a]:text-primary [&_a:hover]:underline" data-testid="chat-message-content">
+                  <Markdown>{msg.content}</Markdown>
+                </div>
                 <time className="mt-2 block font-mono text-[10px] uppercase tracking-[0.14em] opacity-60">
                   {new Date(msg.created_at).toLocaleTimeString()}
                 </time>

@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Power } from 'lucide-react'
 import { useState } from 'react'
 
 import { PageHeader } from '@/components/layout/page-header'
@@ -202,7 +203,7 @@ export function RiskPage() {
 
                 {showReasonInput && !killSwitch.active ? (
                   <div className="space-y-2">
-                    <Label htmlFor="kill-reason">Reason for activation</Label>
+                    <Label htmlFor="kill-reason">Reason for halt</Label>
                     <Input
                       id="kill-reason"
                       placeholder="Enter reason..."
@@ -211,12 +212,13 @@ export function RiskPage() {
                     />
                     <div className="flex gap-2">
                       <Button
-                        variant="default"
+                        variant="destructive"
                         size="sm"
                         disabled={!reason.trim() || toggleMutation.isPending}
                         onClick={handleToggle}
                       >
-                        {toggleMutation.isPending ? 'Activating...' : 'Confirm Activate'}
+                        <Power className="size-3.5" />
+                        {toggleMutation.isPending ? 'Stopping...' : 'Confirm Stop All'}
                       </Button>
                       <Button
                         variant="outline"
@@ -234,16 +236,17 @@ export function RiskPage() {
 
                 {!showReasonInput ? (
                   <Button
-                    variant={killSwitch.active ? 'outline' : 'default'}
+                    variant={killSwitch.active ? 'outline' : 'destructive'}
                     disabled={toggleMutation.isPending}
                     onClick={handleToggle}
                     data-testid="kill-switch-toggle"
                   >
+                    <Power className="size-4" />
                     {toggleMutation.isPending
                       ? 'Processing...'
                       : killSwitch.active
-                        ? 'Deactivate'
-                        : 'Activate'}
+                        ? 'Resume All'
+                        : 'Stop All'}
                   </Button>
                 ) : null}
               </div>

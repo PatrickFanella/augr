@@ -68,7 +68,7 @@ describe('RiskPage', () => {
     expect(screen.getByTestId('risk-page')).toBeInTheDocument()
     expect(await screen.findByText('Open')).toBeInTheDocument()
     expect(screen.getByText('Inactive')).toBeInTheDocument()
-    expect(screen.getByTestId('kill-switch-toggle')).toHaveTextContent('Activate')
+    expect(screen.getByTestId('kill-switch-toggle')).toHaveTextContent('Stop All')
     expect(await screen.findByTestId('audit-log-table')).toBeInTheDocument()
     expect(screen.getByText('kill_switch_toggled')).toBeInTheDocument()
     expect(screen.getByText('risk')).toBeInTheDocument()
@@ -124,7 +124,7 @@ describe('RiskPage', () => {
 
     expect(await screen.findByText('Active')).toBeInTheDocument()
     expect(screen.getByText('Emergency halt')).toBeInTheDocument()
-    expect(screen.getByTestId('kill-switch-toggle')).toHaveTextContent('Deactivate')
+    expect(screen.getByTestId('kill-switch-toggle')).toHaveTextContent('Resume All')
   })
 
   it('loads more audit entries when requested', async () => {
