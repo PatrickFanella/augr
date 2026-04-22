@@ -3,6 +3,7 @@ package automation
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -141,6 +142,66 @@ func TestJobOrchestratorWrapAndRun_AutoDisabledJobsAreSkipped(t *testing.T) {
 	status = singleJobStatus(t, orch, "job")
 	if status.RunCount != 1 {
 		t.Fatalf("RunCount after disabled scheduled invocation = %d, want 1", status.RunCount)
+	}
+}
+
+type stubAutomationMetrics struct {
+	alpacaRuns map[string]int
+}
+
+func (m *stubAutomationMetrics) RecordAutomationJobError(string) {}
+
+func (m *stubAutomationMetrics) RecordAlpacaReconcileRun(result string) {
+	if m.alpacaRuns == nil {
+		m.alpacaRuns = make(map[string]int)
+	}
+	m.alpacaRuns[result]++
+}
+
+func TestJobOrchestratorStatus_IncludesLastSummary(t *testing.T) {
+	t.Parallel()
+
+	orch := NewJobOrchestrator(OrchestratorDeps{})
+	orch.Register("alpaca_reconcile", "test job", schedulerSpecEveryMinute(), func(context.Context) error { return nil })
+	orch.SetLastSummary("alpaca_reconcile", map[string]int{"orders_created": 2, "trades_created": 3})
+
+	status := singleJobStatus(t, orch, "alpaca_reconcile")
+	if status.LastSummary == nil {
+		t.Fatal("LastSummary = nil, want populated")
+	}
+	if status.LastSummary["orders_created"] != 2 {
+		t.Fatalf("orders_created = %d, want 2", status.LastSummary["orders_created"])
+	}
+	status.LastSummary["orders_created"] = 99
+	statusAgain := singleJobStatus(t, orch, "alpaca_reconcile")
+	if statusAgain.LastSummary["orders_created"] != 2 {
+		t.Fatalf("mutated summary leaked into orchestrator: %d", statusAgain.LastSummary["orders_created"])
+	}
+}
+
+func TestJobOrchestratorAlpacaReconcileRecordsMetricsAndSummary(t *testing.T) {
+	t.Parallel()
+
+	metrics := &stubAutomationMetrics{}
+	orch := NewJobOrchestrator(OrchestratorDeps{Logger: slog.Default()})
+	orch.WithJobMetrics(metrics)
+	orch.Register("alpaca_reconcile", "test job", schedulerSpecEveryMinute(), func(context.Context) error {
+		orch.SetLastSummary("alpaca_reconcile", map[string]int{"orders_created": 1})
+		metrics.RecordAlpacaReconcileRun("success")
+		return nil
+	})
+
+	if err := orch.RunJob(context.Background(), "alpaca_reconcile"); err != nil {
+		t.Fatalf("RunJob() error = %v", err)
+	}
+	waitForJobRuns(t, orch, "alpaca_reconcile", 1)
+
+	status := singleJobStatus(t, orch, "alpaca_reconcile")
+	if status.LastSummary == nil || status.LastSummary["orders_created"] != 1 {
+		t.Fatalf("LastSummary = %#v, want orders_created=1", status.LastSummary)
+	}
+	if metrics.alpacaRuns["success"] != 1 {
+		t.Fatalf("alpaca success runs = %d, want 1", metrics.alpacaRuns["success"])
 	}
 }
 

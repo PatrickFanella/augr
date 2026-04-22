@@ -14,6 +14,7 @@ import (
 
 	"github.com/PatrickFanella/get-rich-quick/internal/agent"
 	"github.com/PatrickFanella/get-rich-quick/internal/api"
+	"github.com/PatrickFanella/get-rich-quick/internal/automation"
 	"github.com/PatrickFanella/get-rich-quick/internal/config"
 	"github.com/PatrickFanella/get-rich-quick/internal/data"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
@@ -69,7 +70,7 @@ func TestNewAPIServerSchemaBehindFailsFast(t *testing.T) {
 	if mismatchErr.Required != pgrepo.RequiredSchemaVersion {
 		t.Fatalf("mismatchErr.Required = %d, want %d", mismatchErr.Required, pgrepo.RequiredSchemaVersion)
 	}
-	for _, want := range []string{"current version 29", "required version 30", "run migrations, then restart the process", "fresh process restart"} {
+	for _, want := range []string{"current version 30", "required version 31", "run migrations, then restart the process", "fresh process restart"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("error %q missing %q", err.Error(), want)
 		}
@@ -123,7 +124,7 @@ func TestNewAPIServerSchemaAheadFailsFast(t *testing.T) {
 	if mismatchErr.Required != pgrepo.RequiredSchemaVersion {
 		t.Fatalf("mismatchErr.Required = %d, want %d", mismatchErr.Required, pgrepo.RequiredSchemaVersion)
 	}
-	for _, want := range []string{"current version 31", "required version 30", "run migrations, then restart the process", "fresh process restart"} {
+	for _, want := range []string{"current version 32", "required version 31", "run migrations, then restart the process", "fresh process restart"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("error %q missing %q", err.Error(), want)
 		}
@@ -244,6 +245,79 @@ func TestNewAPIServerSchemaDBUnreachableFailsBeforeSchemaGate(t *testing.T) {
 	}
 }
 
+func TestNewAPIServerWiresAlpacaReconcileAutomationJob(t *testing.T) {
+	origNewDB := runtimeNewDB
+	origCurrentSchemaVersion := runtimeCurrentSchemaVersion
+	origAfterSchemaGate := runtimeAfterSchemaGate
+	origCloseDB := runtimeCloseDB
+	origNewServer := runtimeNewServer
+	defer func() {
+		runtimeNewDB = origNewDB
+		runtimeCurrentSchemaVersion = origCurrentSchemaVersion
+		runtimeAfterSchemaGate = origAfterSchemaGate
+		runtimeCloseDB = origCloseDB
+		runtimeNewServer = origNewServer
+	}()
+
+	pool, err := pgxpool.New(context.Background(), "postgres://postgres:***@127.0.0.1:1/postgres?sslmode=disable&connect_timeout=1")
+	if err != nil {
+		t.Fatalf("pgxpool.New() error = %v", err)
+	}
+	defer pool.Close()
+
+	var capturedDeps api.Deps
+	var cleanupCalled atomic.Bool
+	runtimeNewDB = func(context.Context, string) (*pgrepo.DB, error) {
+		return &pgrepo.DB{Pool: pool}, nil
+	}
+	runtimeCurrentSchemaVersion = func(context.Context, *pgxpool.Pool) (int, error) {
+		return pgrepo.RequiredSchemaVersion, nil
+	}
+	runtimeAfterSchemaGate = func() {}
+	runtimeCloseDB = func(*pgrepo.DB) { cleanupCalled.Store(true) }
+	runtimeNewServer = func(_ api.ServerConfig, deps api.Deps, _ *slog.Logger) (*api.Server, error) {
+		capturedDeps = deps
+		return &api.Server{}, nil
+	}
+
+	cfg := config.Config{
+		Environment: "development",
+		Database:    config.DatabaseConfig{URL: "postgres://ignored"},
+		Features: config.FeatureFlags{
+			EnableScheduler:       true,
+			EnableTickerDiscovery: true,
+		},
+		DataProviders: config.DataProviderConfigs{
+			Polygon: config.DataProviderConfig{APIKey: "polygon-key"},
+		},
+		Brokers: config.BrokerConfigs{
+			Alpaca: config.BrokerConfig{APIKey: "alpaca-key", APISecret: "alpaca-secret", PaperMode: true},
+		},
+		Embedding: config.EmbeddingConfig{Model: "nomic-embed-text", Timeout: time.Second},
+		LLM: config.LLMConfig{Providers: config.LLMProviderConfigs{Ollama: config.OllamaConfig{BaseURL: "http://localhost:11434"}}},
+	}
+
+	_, _, cleanup, err := newAPIServer(context.Background(), cfg, slogDiscardLogger())
+	if err != nil {
+		t.Fatalf("newAPIServer() error = %v", err)
+	}
+	if capturedDeps.Automation == nil {
+		t.Fatal("newAPIServer() automation = nil, want non-nil")
+	}
+	status := runtimeSingleAutomationJobStatus(t, capturedDeps.Automation, "alpaca_reconcile")
+	if status.Name != "alpaca_reconcile" {
+		t.Fatalf("status.Name = %q, want alpaca_reconcile", status.Name)
+	}
+	if got := status.Schedule; got == "" || got == "Manual only" {
+		t.Fatalf("status.Schedule = %q, want scheduled job description", got)
+	}
+
+	cleanup()
+	if !cleanupCalled.Load() {
+		t.Fatal("cleanup did not close db")
+	}
+}
+
 func TestNewNotificationManager_DiscordAlertDispatch(t *testing.T) {
 	t.Parallel()
 
@@ -356,6 +430,17 @@ func TestNewNotificationManager_SkipsDiscordWhenUnconfigured(t *testing.T) {
 
 type stubDecisionRepo struct {
 	decisions []domain.AgentDecision
+}
+
+func runtimeSingleAutomationJobStatus(t *testing.T, orch *automation.JobOrchestrator, jobName string) automation.JobStatus {
+	t.Helper()
+	for _, status := range orch.Status() {
+		if status.Name == jobName {
+			return status
+		}
+	}
+	t.Fatalf("job status %q not found", jobName)
+	return automation.JobStatus{}
 }
 
 type captureProvider struct{}

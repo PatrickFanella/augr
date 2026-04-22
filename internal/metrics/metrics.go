@@ -22,6 +22,7 @@ type Metrics struct {
 	SignalParseFailuresTotal prometheus.Counter
 	SchedulerTickTotal       *prometheus.CounterVec
 	AutomationJobErrorsTotal *prometheus.CounterVec
+	AlpacaReconcileRunsTotal *prometheus.CounterVec
 	StaleRunsReconciled      prometheus.Counter
 	PortfolioValue           prometheus.Gauge
 	PositionsOpen            prometheus.Gauge
@@ -107,6 +108,11 @@ func New() *Metrics {
 			Help: "Total automation job errors by job name.",
 		}, []string{"job_name"}),
 
+		AlpacaReconcileRunsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "tradingagent_alpaca_reconcile_runs_total",
+			Help: "Total Alpaca reconciliation runs by outcome.",
+		}, []string{"result"}),
+
 		StaleRunsReconciled: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "tradingagent_stale_runs_reconciled_total",
 			Help: "Total number of stale pipeline runs force-failed by the reconciler.",
@@ -172,6 +178,7 @@ func New() *Metrics {
 		m.SignalParseFailuresTotal,
 		m.SchedulerTickTotal,
 		m.AutomationJobErrorsTotal,
+		m.AlpacaReconcileRunsTotal,
 		m.StaleRunsReconciled,
 		m.PortfolioValue,
 		m.PositionsOpen,
@@ -240,6 +247,13 @@ func (m *Metrics) RecordSchedulerTick(tickType string) {
 
 func (m *Metrics) RecordAutomationJobError(jobName string) {
 	m.AutomationJobErrorsTotal.WithLabelValues(jobName).Inc()
+}
+
+func (m *Metrics) RecordAlpacaReconcileRun(result string) {
+	if m == nil {
+		return
+	}
+	m.AlpacaReconcileRunsTotal.WithLabelValues(result).Inc()
 }
 
 func (m *Metrics) RecordStaleRunReconciled() {

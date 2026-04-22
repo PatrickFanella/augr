@@ -49,6 +49,7 @@ type OrchestratorDeps struct {
 	Universe              *universe.Universe
 	Polygon               *polygon.Client
 	DataService           *data.DataService
+	AlpacaReconciler      *AlpacaReconciler
 	OptionsProvider       data.OptionsDataProvider
 	LLMProvider           llm.Provider
 	EmbeddingProvider     embedding.Provider // optional; nil = skip embedding during triage
@@ -78,6 +79,7 @@ type RegisteredJob struct {
 	StartedAt           *time.Time
 	LastRun             *time.Time
 	LastResult          string
+	LastSummary         map[string]int
 	LastError           string
 	LastErrorAt         *time.Time
 	RunCount            int
@@ -94,6 +96,7 @@ type JobStatus struct {
 	Schedule            string         `json:"schedule"`
 	LastRun             *time.Time     `json:"last_run,omitempty"`
 	LastResult          string         `json:"last_result"`
+	LastSummary         map[string]int `json:"last_summary,omitempty"`
 	LastError           string         `json:"last_error,omitempty"`
 	LastErrorAt         *time.Time     `json:"last_error_at,omitempty"`
 	RunCount            int            `json:"run_count"`
@@ -108,6 +111,7 @@ type JobStatus struct {
 // It is defined here as an interface to avoid an import cycle.
 type AutomationJobMetrics interface {
 	RecordAutomationJobError(jobName string)
+	RecordAlpacaReconcileRun(result string)
 }
 
 // ReportWorkerMetrics captures report worker success/error emission.
@@ -163,6 +167,14 @@ func (o *JobOrchestrator) SetConsecutiveFailures(name string, n int) {
 	}
 }
 
+func (o *JobOrchestrator) SetLastSummary(name string, summary map[string]int) {
+	if job, ok := o.jobs[name]; ok {
+		job.mu.Lock()
+		job.LastSummary = cloneSummary(summary)
+		job.mu.Unlock()
+	}
+}
+
 // Register adds a job to the registry.
 func (o *JobOrchestrator) Register(name, description string, spec scheduler.ScheduleSpec, fn func(ctx context.Context) error, dependsOn ...string) {
 	o.jobs[name] = &RegisteredJob{
@@ -177,6 +189,7 @@ func (o *JobOrchestrator) Register(name, description string, spec scheduler.Sche
 
 // RegisterAll registers all automated jobs from every job group.
 func (o *JobOrchestrator) RegisterAll() {
+	o.registerBrokerReconciliationJobs()
 	o.registerMarketJobs()
 	o.registerPreMarketJobs()
 	o.registerPostMarketJobs()
@@ -235,6 +248,7 @@ func (o *JobOrchestrator) Status() []JobStatus {
 			Schedule:            job.Schedule.Describe(),
 			LastRun:             job.LastRun,
 			LastResult:          job.LastResult,
+			LastSummary:         cloneSummary(job.LastSummary),
 			LastError:           job.LastError,
 			LastErrorAt:         job.LastErrorAt,
 			RunCount:            job.RunCount,
@@ -529,4 +543,15 @@ func (o *JobOrchestrator) hydrateFromDB() {
 	}
 
 	o.logger.Info("automation: hydrated job stats from DB", slog.Int("jobs", len(summaries)))
+}
+
+func cloneSummary(summary map[string]int) map[string]int {
+	if len(summary) == 0 {
+		return nil
+	}
+	cloned := make(map[string]int, len(summary))
+	for key, value := range summary {
+		cloned[key] = value
+	}
+	return cloned
 }

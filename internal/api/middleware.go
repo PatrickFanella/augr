@@ -238,6 +238,10 @@ func RequestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 
 			next.ServeHTTP(sw, r)
 
+			if shouldSuppressRequestLog(r.URL.Path) {
+				return
+			}
+
 			logger.Info("http request",
 				slog.String("method", r.Method),
 				slog.String("path", r.URL.Path),
@@ -245,6 +249,15 @@ func RequestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 				slog.Int64("duration_ms", time.Since(start).Milliseconds()),
 			)
 		})
+	}
+}
+
+func shouldSuppressRequestLog(path string) bool {
+	switch path {
+	case "/health", "/healthz", "/metrics", "/api/v1/automation/status", "/api/v1/strategies":
+		return true
+	default:
+		return false
 	}
 }
 

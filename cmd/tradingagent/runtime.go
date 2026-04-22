@@ -34,6 +34,7 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/discovery"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution"
+	alpacaexecution "github.com/PatrickFanella/get-rich-quick/internal/execution/alpaca"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution/paper"
 	"github.com/PatrickFanella/get-rich-quick/internal/llm"
 	"github.com/PatrickFanella/get-rich-quick/internal/llm/anthropic"
@@ -241,6 +242,25 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 
 		dataService := data.NewDataService(cfg, reg, marketDataCacheRepo, logger, socialTriage)
 		deps.DataService = dataService
+		var alpacaReconciler *automation.AlpacaReconciler
+		if strings.TrimSpace(cfg.Brokers.Alpaca.APIKey) != "" && strings.TrimSpace(cfg.Brokers.Alpaca.APISecret) != "" {
+			alpacaClient := alpacaexecution.NewClient(
+				cfg.Brokers.Alpaca.APIKey,
+				cfg.Brokers.Alpaca.APISecret,
+				cfg.Brokers.Alpaca.PaperMode,
+				logger,
+			)
+			alpacaReconciler = automation.NewAlpacaReconciler(automation.AlpacaReconcilerDeps{
+				Broker:       automation.NewAlpacaClientAdapter(alpacaClient),
+				StrategyRepo: strategyRepo,
+				OrderRepo:    orderRepo,
+				PositionRepo: positionRepo,
+				TradeRepo:    tradeRepo,
+				AuditLogRepo: auditLogRepo,
+				Logger:       logger,
+			})
+			deps.AlpacaReconciler = alpacaReconciler
+		}
 		// Options data chain: Tradier (full Greeks from ORATS) → Yahoo (free, BS Greeks)
 		// → Alpaca (paper account) → Polygon (rate-limited).
 		optProviders := []data.OptionsDataProvider{}
@@ -338,6 +358,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 				Universe:              deps.Universe,
 				Polygon:               polygonClientForAuto,
 				DataService:           dataService,
+				AlpacaReconciler:      alpacaReconciler,
 				OptionsProvider:       deps.OptionsProvider,
 				LLMProvider:           deps.LLMProvider,
 				EmbeddingProvider:     embeddingProvider,

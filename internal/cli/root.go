@@ -267,6 +267,7 @@ func NewRootCommand(ctx context.Context, deps Dependencies) *cobra.Command {
 	rootCmd.AddCommand(state.newDashboardCommand())
 	rootCmd.AddCommand(state.newPortfolioCommand())
 	rootCmd.AddCommand(state.newRiskCommand())
+	rootCmd.AddCommand(state.newAutomationCommand())
 	rootCmd.AddCommand(state.newMemoriesCommand())
 
 	return rootCmd
@@ -560,6 +561,46 @@ func (s *rootState) newRiskCommand() *cobra.Command {
 	}
 	killCmd.Flags().StringVar(&reason, "reason", "activated from CLI", "Reason recorded when activating the kill switch")
 	commands.AddCommand(killCmd)
+
+	return commands
+}
+
+func (s *rootState) newAutomationCommand() *cobra.Command {
+	commands := &cobra.Command{
+		Use:   "automation",
+		Short: "Inspect and trigger automation admin flows",
+		Long:  "Work with automation status and Alpaca reconciliation endpoints through the local API.",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return cmd.Help()
+		},
+	}
+
+	commands.AddCommand(&cobra.Command{
+		Use:   "alpaca-reconcile",
+		Short: "Run Alpaca reconciliation immediately",
+		Long:  "Trigger an immediate Alpaca positions/orders/trades reconciliation and return verification details.",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			client, err := s.client()
+			if err != nil {
+				return err
+			}
+
+			var response map[string]any
+			if err := client.post(cmd.Context(), "/api/v1/automation/alpaca/reconcile", nil, nil, &response); err != nil {
+				return err
+			}
+
+			if s.format == formatJSON {
+				return writeJSON(cmd.OutOrStdout(), response)
+			}
+			return writeTable(cmd.OutOrStdout(), []string{"FIELD", "VALUE"}, [][]string{
+				{"Summary", fmt.Sprintf("%v", response["summary"])},
+				{"Verification", fmt.Sprintf("%v", response["verification"])},
+			})
+		},
+	})
 
 	return commands
 }

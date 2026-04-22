@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -563,5 +564,51 @@ func TestRunnerRun_ContextCancellation(t *testing.T) {
 	}
 	if result.Run.Status != domain.PipelineStatusFailed {
 		t.Errorf("run status = %s, want failed", result.Run.Status)
+	}
+}
+
+func TestRunnerRun_PanicInPhaseMarksRunFailed(t *testing.T) {
+	t.Parallel()
+
+	def := defaultRunnerDefinition()
+	def.Trader = stubTradeAgent{name: "trader", role: AgentRoleTrader, fn: func(context.Context, TradingInput) (TradingOutput, error) {
+		panic("boom panic")
+	}}
+
+	persister := newRunnerSpyPersister()
+	events := make(chan PipelineEvent, 64)
+	runner := NewRunner(def, Dependencies{Persister: persister, Events: events})
+
+	prepared, err := runner.Prepare(strategyWithDebateRounds(t, "TEST", 1), GlobalSettings{})
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+
+	result, runErr := runner.Run(context.Background(), prepared)
+	if runErr == nil {
+		t.Fatal("Run() error = nil, want panic recovery error")
+	}
+	if !strings.Contains(runErr.Error(), "panic recovered") {
+		t.Fatalf("Run() error = %q, want panic recovered substring", runErr.Error())
+	}
+	if result == nil {
+		t.Fatal("Run() result = nil, want failed result")
+	}
+	if result.Run.Status != domain.PipelineStatusFailed {
+		t.Fatalf("run status = %s, want failed", result.Run.Status)
+	}
+	if !strings.Contains(result.Run.ErrorMessage, "panic recovered") {
+		t.Fatalf("run error_message = %q, want panic recovered substring", result.Run.ErrorMessage)
+	}
+
+	close(events)
+	pipelineErrors := 0
+	for event := range events {
+		if event.Type == PipelineError {
+			pipelineErrors++
+		}
+	}
+	if pipelineErrors == 0 {
+		t.Fatal("expected at least one PipelineError event after panic recovery")
 	}
 }

@@ -274,9 +274,18 @@ func RunDiscovery(ctx context.Context, cfg DiscoveryConfig, deps DiscoveryDeps) 
 		}
 
 		if !cfg.DryRun {
-			if createErr := deps.Strategies.Create(ctx, &strategy); createErr != nil {
+			createdStrategy, created, createErr := CreateOrReusePaperStrategy(ctx, deps.Strategies, strategy)
+			if createErr != nil {
 				result.Errors = append(result.Errors, fmt.Sprintf("deploy %s: %v", strategy.Ticker, createErr))
 				continue
+			}
+			strategy = createdStrategy
+			if !created {
+				logger.Info("discovery: strategy already exists, reusing",
+					slog.String("id", strategy.ID.String()),
+					slog.String("ticker", strategy.Ticker),
+					slog.String("name", strategy.Name),
+				)
 			}
 		}
 

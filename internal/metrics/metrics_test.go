@@ -240,6 +240,20 @@ tradingagent_automation_job_errors_total{job_name="sync_positions"} 2
 `,
 		},
 		{
+			name:      "alpaca reconcile runs",
+			collector: func(m *metrics.Metrics) prometheus.Collector { return m.AlpacaReconcileRunsTotal },
+			add: func(m *metrics.Metrics) {
+				m.RecordAlpacaReconcileRun("success")
+				m.RecordAlpacaReconcileRun("success")
+				m.RecordAlpacaReconcileRun("error")
+			},
+			want: `# HELP tradingagent_alpaca_reconcile_runs_total Total Alpaca reconciliation runs by outcome.
+# TYPE tradingagent_alpaca_reconcile_runs_total counter
+tradingagent_alpaca_reconcile_runs_total{result="error"} 1
+tradingagent_alpaca_reconcile_runs_total{result="success"} 2
+`,
+		},
+		{
 			name:      "llm retry",
 			collector: func(m *metrics.Metrics) prometheus.Collector { return m.LLMRetryTotal },
 			add: func(m *metrics.Metrics) {

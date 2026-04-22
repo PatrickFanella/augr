@@ -223,6 +223,41 @@ func TestStrategyRepoIntegration_CreateListAndUpdateStatus(t *testing.T) {
 	}
 }
 
+func TestStrategyRepoIntegration_DiscoveryDuplicateRejectedByUniqueIndex(t *testing.T) {
+	ctx := context.Background()
+	pool, cleanup := newStrategyIntegrationPool(t, ctx)
+	defer cleanup()
+
+	repo := NewStrategyRepo(pool)
+
+	first := &domain.Strategy{
+		Name:       "discovery: PBM RSI Momentum Breakout",
+		Ticker:     "PBM",
+		MarketType: domain.MarketTypeStock,
+		Status:     domain.StrategyStatusActive,
+		IsPaper:    true,
+	}
+	if err := repo.Create(ctx, first); err != nil {
+		t.Fatalf("Create(first) error = %v", err)
+	}
+
+	duplicate := &domain.Strategy{
+		Name:       "discovery: PBM RSI Momentum Breakout",
+		Ticker:     "PBM",
+		MarketType: domain.MarketTypeStock,
+		Status:     domain.StrategyStatusActive,
+		IsPaper:    true,
+	}
+	err := repo.Create(ctx, duplicate)
+	if err == nil {
+		t.Fatal("Create(duplicate) error = nil, want unique violation")
+	}
+	errText := strings.ToLower(err.Error())
+	if !strings.Contains(errText, "unique") && !strings.Contains(errText, "duplicate") {
+		t.Fatalf("Create(duplicate) error = %v, want unique/duplicate violation", err)
+	}
+}
+
 // assertContains fails if substr is not found in s.
 func assertContains(t *testing.T, s, substr string) {
 	t.Helper()
@@ -286,7 +321,7 @@ func newStrategyIntegrationPool(t *testing.T, ctx context.Context) (*pgxpool.Poo
 	}
 
 	ddl := []string{
-		`CREATE TYPE market_type AS ENUM ('stock', 'crypto', 'polymarket')`,
+		`CREATE TYPE market_type AS ENUM ('stock', 'crypto', 'polymarket', 'options')`,
 		`CREATE TABLE strategies (
 			id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			name          TEXT NOT NULL,
@@ -301,6 +336,10 @@ func newStrategyIntegrationPool(t *testing.T, ctx context.Context) (*pgxpool.Poo
 			created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 			updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		)`,
+		`CREATE UNIQUE INDEX idx_strategies_discovery_unique
+			ON strategies (ticker, market_type, is_paper, name)
+			WHERE is_paper = true
+			  AND (name LIKE 'discovery:%' OR name LIKE 'options:%')`,
 	}
 
 	for _, stmt := range ddl {

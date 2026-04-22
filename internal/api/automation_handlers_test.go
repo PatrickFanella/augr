@@ -148,3 +148,44 @@ func TestAutomationHealthFailingJobsCount(t *testing.T) {
 		t.Errorf("expected healthy=true (no job has >=3 consecutive failures)")
 	}
 }
+
+func TestAutomationStatusIncludesAlpacaReconcileLastSummary(t *testing.T) {
+	t.Parallel()
+
+	o := newTestOrchestrator()
+	registerJob(o, "alpaca_reconcile")
+	o.SetLastSummary("alpaca_reconcile", map[string]int{
+		"orders_created":   2,
+		"positions_created": 1,
+		"trades_created":   3,
+	})
+
+	s := &Server{automation: o}
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/automation/status", nil)
+	rr := httptest.NewRecorder()
+	s.handleGetAutomationStatus(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+
+	var statuses []automation.JobStatus
+	if err := json.NewDecoder(rr.Body).Decode(&statuses); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(statuses) != 1 {
+		t.Fatalf("len(statuses) = %d, want 1", len(statuses))
+	}
+	if statuses[0].Name != "alpaca_reconcile" {
+		t.Fatalf("status name = %q, want alpaca_reconcile", statuses[0].Name)
+	}
+	if statuses[0].LastSummary == nil {
+		t.Fatal("LastSummary = nil, want non-nil")
+	}
+	if statuses[0].LastSummary["orders_created"] != 2 {
+		t.Fatalf("orders_created = %d, want 2", statuses[0].LastSummary["orders_created"])
+	}
+	if statuses[0].LastSummary["trades_created"] != 3 {
+		t.Fatalf("trades_created = %d, want 3", statuses[0].LastSummary["trades_created"])
+	}
+}

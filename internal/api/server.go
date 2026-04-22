@@ -62,7 +62,8 @@ type Server struct {
 	universeRepo universe.UniverseRepository
 
 	// Automation
-	automation *automation.JobOrchestrator
+	automation       *automation.JobOrchestrator
+	alpacaReconciler AlpacaAutomationReconciler
 
 	// Risk engine
 	risk     risk.RiskEngine
@@ -184,6 +185,7 @@ type Deps struct {
 	Universe         *universe.Universe
 	UniverseRepo     universe.UniverseRepository
 	Automation       *automation.JobOrchestrator
+	AlpacaReconciler AlpacaAutomationReconciler
 	NewsFeedRepo     *pgrepo.NewsFeedRepo
 	Risk             risk.RiskEngine
 	Settings         SettingsService
@@ -292,6 +294,7 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 		universe:         deps.Universe,
 		universeRepo:     deps.UniverseRepo,
 		automation:       deps.Automation,
+		alpacaReconciler: deps.AlpacaReconciler,
 		newsFeedRepo:     deps.NewsFeedRepo,
 		risk:             deps.Risk,
 		settings:         settingsService,
@@ -480,6 +483,8 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 		v1.Route("/automation", func(ar chi.Router) {
 			ar.Get("/status", s.handleGetAutomationStatus)
 			ar.Get("/health", s.handleGetAutomationHealth)
+			ar.Get("/alpaca/verify", s.handleVerifyAlpacaReconcile)
+			ar.Post("/alpaca/reconcile", s.handleRunAlpacaReconcile)
 			ar.Post("/jobs/{name}/run", s.handleRunAutomationJob)
 			ar.Post("/jobs/{name}/enable", s.handleSetAutomationJobEnabled)
 		})

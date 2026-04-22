@@ -3,6 +3,7 @@ package options
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -22,13 +23,13 @@ The JSON schema is:
   "entry": {
     "operator": "AND" | "OR",
     "conditions": [
-      {"field": "<field_name>", "operator": "<op>", "value": <number>}
+      {"field": "<field_name>", "op": "<op>", "value": <number>}
     ]
   },
   "exit": {
     "operator": "AND" | "OR",
     "conditions": [
-      {"field": "<field_name>", "operator": "<op>", "value": <number>}
+      {"field": "<field_name>", "op": "<op>", "value": <number>}
     ]
   },
   "leg_selection": {
@@ -117,6 +118,9 @@ func GenerateOptionsStrategy(ctx context.Context, cfg discovery.GeneratorConfig,
 		)
 
 		parsed, parseErr := rules.ParseOptions(json.RawMessage(resp.Content))
+		if parsed == nil && parseErr == nil {
+			parseErr = errors.New("rules: empty JSON response")
+		}
 		if parseErr == nil && parsed != nil {
 			logger.Info("options/generator: strategy generated",
 				slog.String("ticker", candidate.Ticker),
@@ -132,12 +136,13 @@ func GenerateOptionsStrategy(ctx context.Context, cfg discovery.GeneratorConfig,
 			slog.Int("attempt", attempt+1),
 			slog.Any("error", parseErr),
 		)
+		parseErrText := parseErr.Error()
 
 		messages = append(messages,
 			llm.Message{Role: "assistant", Content: resp.Content},
 			llm.Message{Role: "user", Content: fmt.Sprintf(
 				"The JSON you produced failed validation with this error:\n%s\n\nPlease fix the issue and return corrected JSON only.",
-				parseErr.Error(),
+				parseErrText,
 			)},
 		)
 	}
