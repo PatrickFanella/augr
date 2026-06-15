@@ -21,6 +21,8 @@ import (
 
 const defaultTimeInForce = "TIME_IN_FORCE_GOOD_TILL_CANCEL"
 
+var dataAPIBaseURL = "https://data-api.polymarket.com"
+
 // Broker implements the execution.Broker interface for Polymarket retail APIs.
 type Broker struct {
 	client             *Client
@@ -120,6 +122,15 @@ type userPosition struct {
 		Outcome string `json:"outcome"`
 		Title   string `json:"title"`
 	} `json:"marketMetadata,omitempty"`
+}
+
+type dataAPIPosition struct {
+	Slug     string  `json:"slug"`
+	Outcome  string  `json:"outcome"`
+	Size     float64 `json:"size"`
+	AvgPrice float64 `json:"avgPrice"`
+	CurPrice float64 `json:"curPrice"`
+	Title    string  `json:"title"`
 }
 
 // NewBroker constructs a Polymarket broker adapter.
@@ -341,26 +352,71 @@ func (b *Broker) GetPositions(ctx context.Context) ([]domain.Position, error) {
 		return nil, errors.New("polymarket: broker client is required")
 	}
 
-	responseBody, err := b.client.Get(ctx, "/v1/portfolio/positions", nil)
+	if strings.TrimSpace(b.client.address) == "" {
+		return nil, errors.New("polymarket: address is required for positions")
+	}
+	requestURL, err := url.Parse(strings.TrimRight(dataAPIBaseURL, "/") + "/positions")
+	if err != nil {
+		return nil, fmt.Errorf("polymarket: parse positions url: %w", err)
+	}
+	query := requestURL.Query()
+	query.Set("user", strings.TrimSpace(b.client.address))
+	query.Set("limit", "500")
+	query.Set("sizeThreshold", "0")
+	requestURL.RawQuery = query.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("polymarket: create positions request: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	resp, err := b.client.getHTTPClient().Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("polymarket: get positions: %w", err)
 	}
+	defer resp.Body.Close()
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("polymarket: read positions response: %w", err)
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return nil, fmt.Errorf("polymarket: get positions: %w", parseErrorResponse(resp.StatusCode, responseBody))
+	}
 
-	var response userPositionsResponse
+	var response []dataAPIPosition
 	if err := json.Unmarshal(responseBody, &response); err != nil {
 		return nil, fmt.Errorf("polymarket: decode positions response: %w", err)
 	}
 
-	positions := make([]domain.Position, 0, len(response.Positions))
-	for slug, apiPosition := range response.Positions {
-		position, err := mapPosition(slug, apiPosition)
-		if err != nil {
-			return nil, err
+	positions := make([]domain.Position, 0, len(response))
+	for _, apiPosition := range response {
+		position := mapDataAPIPosition(apiPosition)
+		if strings.TrimSpace(position.Ticker) != "" && position.Quantity > 0 {
+			positions = append(positions, position)
 		}
-		positions = append(positions, position)
 	}
 
 	return positions, nil
+}
+
+func mapDataAPIPosition(position dataAPIPosition) domain.Position {
+	slug := strings.TrimSpace(position.Slug)
+	outcome := strings.ToUpper(strings.TrimSpace(position.Outcome))
+	ticker := slug
+	if outcome == "YES" || outcome == "NO" {
+		ticker = slug + ":" + outcome
+	}
+	currentPrice := position.CurPrice
+	unrealizedPnL := (position.CurPrice - position.AvgPrice) * position.Size
+	return domain.Position{
+		Ticker:        ticker,
+		MarketType:    domain.MarketTypePolymarket,
+		Side:          domain.PositionSideLong,
+		Quantity:      position.Size,
+		AvgEntry:      position.AvgPrice,
+		CurrentPrice:  &currentPrice,
+		UnrealizedPnL: &unrealizedPnL,
+	}
 }
 
 // GetAccountBalance returns the Polymarket account balance mapped to the shared balance shape.

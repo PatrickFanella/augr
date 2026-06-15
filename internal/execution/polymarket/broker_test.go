@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -526,12 +527,14 @@ func TestBrokerGetPositions_MapsResponse(t *testing.T) {
 		requests <- r.RequestURI
 
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"positions":{"btc-100k-2025":{"netPosition":"100","cost":{"value":"0.55","currency":"USD"},"marketMetadata":{"slug":"btc-100k-2025","outcome":"YES"}},"eth-5k-2025":{"netPosition":"-50","cost":{"value":"0.30","currency":"USD"},"marketMetadata":{"slug":"eth-5k-2025","outcome":"NO"}}}}`))
+		_, _ = w.Write([]byte(`[{"slug":"btc-100k-2025","outcome":"YES","size":100,"avgPrice":0.55,"curPrice":0.60},{"slug":"eth-5k-2025","outcome":"NO","size":50,"avgPrice":0.30,"curPrice":0.25}]`))
 	}))
 	defer server.Close()
+	oldDataAPIBaseURL := dataAPIBaseURL
+	dataAPIBaseURL = server.URL
+	t.Cleanup(func() { dataAPIBaseURL = oldDataAPIBaseURL })
 
 	client := newTestClient()
-	client.SetAPIBaseURL(server.URL)
 
 	broker := NewBroker(client)
 	positions, err := broker.GetPositions(context.Background())
@@ -546,17 +549,17 @@ func TestBrokerGetPositions_MapsResponse(t *testing.T) {
 	for _, position := range positions {
 		seen[position.Ticker] = position
 	}
-	if seen["btc-100k-2025"].Side != domain.PositionSideLong {
-		t.Fatalf("btc-100k-2025 side = %q, want %q", seen["btc-100k-2025"].Side, domain.PositionSideLong)
+	if seen["btc-100k-2025:YES"].Side != domain.PositionSideLong {
+		t.Fatalf("btc-100k-2025:YES side = %q, want %q", seen["btc-100k-2025:YES"].Side, domain.PositionSideLong)
 	}
-	if seen["eth-5k-2025"].Side != domain.PositionSideShort {
-		t.Fatalf("eth-5k-2025 side = %q, want %q", seen["eth-5k-2025"].Side, domain.PositionSideShort)
+	if seen["eth-5k-2025:NO"].Side != domain.PositionSideLong {
+		t.Fatalf("eth-5k-2025:NO side = %q, want %q", seen["eth-5k-2025:NO"].Side, domain.PositionSideLong)
 	}
 
 	select {
 	case path := <-requests:
-		if path != "/v1/portfolio/positions" {
-			t.Fatalf("request path = %s, want %s", path, "/v1/portfolio/positions")
+		if !strings.HasPrefix(path, "/positions?") || !strings.Contains(path, "user=0x0000000000000000000000000000000000000001") {
+			t.Fatalf("request path = %s, want data-api positions user query", path)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("request details were not captured")
