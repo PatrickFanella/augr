@@ -144,8 +144,10 @@ type PolygonConnectionConfig struct {
 // workflows may still read from the historical CLOB endpoints during the
 // migration window.
 type PolymarketConfig struct {
+	Address        string
 	KeyID          string
 	SecretKey      string
+	Passphrase     string
 	APIBaseURL     string
 	GatewayBaseURL string
 	CLOBURL        string
@@ -597,8 +599,10 @@ func loadFromEnvironment() (Config, error) {
 				PaperMode: binancePaperMode,
 			},
 			Polymarket: PolymarketConfig{
-				KeyID:          os.Getenv("POLYMARKET_KEY_ID"),
-				SecretKey:      os.Getenv("POLYMARKET_SECRET_KEY"),
+				Address:        firstEnv("POLYMARKET_ADDRESS", "POLYMARKET_WALLET_ADDRESS", "RELAYER_API_KEY_ADDRESS"),
+				KeyID:          firstEnv("POLYMARKET_KEY_ID", "POLYMARKET_API_KEY"),
+				SecretKey:      firstEnv("POLYMARKET_SECRET_KEY", "POLYMARKET_SECRET"),
+				Passphrase:     os.Getenv("POLYMARKET_PASSPHRASE"),
 				APIBaseURL:     getEnvString("POLYMARKET_API_BASE_URL", "https://api.polymarket.us"),
 				GatewayBaseURL: getEnvString("POLYMARKET_GATEWAY_BASE_URL", "https://gateway.polymarket.us"),
 				CLOBURL:        getEnvString("POLYMARKET_CLOB_URL", "https://clob.polymarket.com"),
@@ -694,6 +698,15 @@ func loadFromEnvironment() (Config, error) {
 
 func getEnvString(key, defaultValue string) string {
 	return firstNonEmpty(os.Getenv(key), defaultValue)
+}
+
+func firstEnv(keys ...string) string {
+	for _, key := range keys {
+		if value := strings.TrimSpace(os.Getenv(key)); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func getEnvInt(key string, defaultValue int) (int, error) {

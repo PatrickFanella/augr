@@ -17,7 +17,7 @@ import (
 func TestNewClient_SetsBaseURLs(t *testing.T) {
 	t.Parallel()
 
-	client := NewClient("key", validSecretKeyBase64(), discardLogger())
+	client := newTestClient()
 	if client.apiBaseURL != defaultAPIBaseURL {
 		t.Fatalf("apiBaseURL = %q, want %q", client.apiBaseURL, defaultAPIBaseURL)
 	}
@@ -26,28 +26,32 @@ func TestNewClient_SetsBaseURLs(t *testing.T) {
 	}
 }
 
-func TestClientGet_SendsRetailAuthHeaders(t *testing.T) {
+func TestClientGet_SendsCLOBL2AuthHeaders(t *testing.T) {
 	t.Parallel()
 
 	timestamp := time.UnixMilli(1712000000123)
 	type requestDetails struct {
-		method    string
-		path      string
-		accessKey string
-		timestamp string
-		signature string
-		query     url.Values
+		method     string
+		path       string
+		apiKey     string
+		address    string
+		passphrase string
+		timestamp  string
+		signature  string
+		query      url.Values
 	}
 
 	requests := make(chan requestDetails, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests <- requestDetails{
-			method:    r.Method,
-			path:      r.URL.Path,
-			accessKey: r.Header.Get("X-PM-Access-Key"),
-			timestamp: r.Header.Get("X-PM-Timestamp"),
-			signature: r.Header.Get("X-PM-Signature"),
-			query:     r.URL.Query(),
+			method:     r.Method,
+			path:       r.URL.Path,
+			apiKey:     r.Header.Get("POLY_API_KEY"),
+			address:    r.Header.Get("POLY_ADDRESS"),
+			passphrase: r.Header.Get("POLY_PASSPHRASE"),
+			timestamp:  r.Header.Get("POLY_TIMESTAMP"),
+			signature:  r.Header.Get("POLY_SIGNATURE"),
+			query:      r.URL.Query(),
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -55,7 +59,7 @@ func TestClientGet_SendsRetailAuthHeaders(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient("test-key-id", validSecretKeyBase64(), discardLogger())
+	client := newTestClient()
 	client.SetAPIBaseURL(server.URL)
 	client.setNowFunc(func() time.Time { return timestamp })
 
@@ -75,14 +79,20 @@ func TestClientGet_SendsRetailAuthHeaders(t *testing.T) {
 		if request.path != "/v1/account/balances" {
 			t.Fatalf("request path = %s, want %s", request.path, "/v1/account/balances")
 		}
-		if request.accessKey != "test-key-id" {
-			t.Fatalf("X-PM-Access-Key = %q, want %q", request.accessKey, "test-key-id")
+		if request.apiKey != "test-key-id" {
+			t.Fatalf("POLY_API_KEY = %q, want %q", request.apiKey, "test-key-id")
 		}
-		if request.timestamp != "1712000000123" {
-			t.Fatalf("X-PM-Timestamp = %q, want %q", request.timestamp, "1712000000123")
+		if request.address != "0x0000000000000000000000000000000000000001" {
+			t.Fatalf("POLY_ADDRESS = %q", request.address)
+		}
+		if request.passphrase != "test-passphrase" {
+			t.Fatalf("POLY_PASSPHRASE = %q", request.passphrase)
+		}
+		if request.timestamp != "1712000000" {
+			t.Fatalf("POLY_TIMESTAMP = %q, want %q", request.timestamp, "1712000000")
 		}
 		if request.signature == "" {
-			t.Fatal("X-PM-Signature = empty, want non-empty signature")
+			t.Fatal("POLY_SIGNATURE = empty, want non-empty signature")
 		}
 		if request.query.Get("market") != "btc-100k" {
 			t.Fatalf("market query = %q, want %q", request.query.Get("market"), "btc-100k")
@@ -96,17 +106,17 @@ func TestClientGetPublic_OmitsAuthHeaders(t *testing.T) {
 	t.Parallel()
 
 	type requestDetails struct {
-		method    string
-		path      string
-		accessKey string
+		method string
+		path   string
+		apiKey string
 	}
 
 	requests := make(chan requestDetails, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests <- requestDetails{
-			method:    r.Method,
-			path:      r.URL.Path,
-			accessKey: r.Header.Get("X-PM-Access-Key"),
+			method: r.Method,
+			path:   r.URL.Path,
+			apiKey: r.Header.Get("POLY_API_KEY"),
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -114,7 +124,7 @@ func TestClientGetPublic_OmitsAuthHeaders(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient("test-key-id", validSecretKeyBase64(), discardLogger())
+	client := newTestClient()
 	client.SetGatewayBaseURL(server.URL)
 
 	body, err := client.GetPublic(context.Background(), "/v1/market/slug/btc-100k", nil)
@@ -133,8 +143,8 @@ func TestClientGetPublic_OmitsAuthHeaders(t *testing.T) {
 		if request.path != "/v1/market/slug/btc-100k" {
 			t.Fatalf("request path = %s, want %s", request.path, "/v1/market/slug/btc-100k")
 		}
-		if request.accessKey != "" {
-			t.Fatalf("X-PM-Access-Key = %q, want empty", request.accessKey)
+		if request.apiKey != "" {
+			t.Fatalf("POLY_API_KEY = %q, want empty", request.apiKey)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("request details were not captured")
@@ -171,7 +181,7 @@ func TestClientPost_SendsJSONBody(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient("test-key-id", validSecretKeyBase64(), discardLogger())
+	client := newTestClient()
 	client.SetAPIBaseURL(server.URL)
 
 	body, err := client.Post(context.Background(), "/v1/orders", map[string]any{
@@ -214,7 +224,7 @@ func TestClientGet_ParsesErrorResponse(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient("test-key-id", validSecretKeyBase64(), discardLogger())
+	client := newTestClient()
 	client.SetAPIBaseURL(server.URL)
 
 	_, err := client.Get(context.Background(), "/v1/account/balances", nil)
@@ -243,8 +253,18 @@ func TestClientGet_RejectsMissingCredentials(t *testing.T) {
 	if err == nil {
 		t.Fatal("Get() error = nil, want non-nil")
 	}
-	if err.Error() != "polymarket: key id is required" {
-		t.Fatalf("Get() error = %v, want key id validation", err)
+	if err.Error() != "polymarket: address is required" {
+		t.Fatalf("Get() error = %v, want address validation", err)
+	}
+}
+
+func TestPolyL2Signature_OfficialVector(t *testing.T) {
+	sig, err := polyL2Signature("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", "1000000", "test-sign", "/orders", []byte(`{"hash": "0x123"}`))
+	if err != nil {
+		t.Fatalf("polyL2Signature() error = %v", err)
+	}
+	if sig != "ZwAdJKvoYRlEKDkNMwd5BuwNNtg93kNaR_oU2HrfVvc=" {
+		t.Fatalf("signature = %q", sig)
 	}
 }
 
@@ -257,8 +277,10 @@ func TestClientGet_UsesDefaultHTTPClientWhenUnset(t *testing.T) {
 	defer server.Close()
 
 	client := &Client{
+		address:    "0x0000000000000000000000000000000000000001",
 		keyID:      "test-key-id",
 		secretKey:  validSecretKeyBase64(),
+		passphrase: "test-passphrase",
 		apiBaseURL: server.URL,
 	}
 
@@ -281,4 +303,10 @@ func validSecretKeyBase64() string {
 
 func discardLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
+func newTestClient() *Client {
+	client := NewClient("test-key-id", validSecretKeyBase64(), discardLogger())
+	client.SetL2Auth("0x0000000000000000000000000000000000000001", "test-key-id", validSecretKeyBase64(), "test-passphrase")
+	return client
 }

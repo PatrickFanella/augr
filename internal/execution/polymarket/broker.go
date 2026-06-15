@@ -228,6 +228,7 @@ func (b *Broker) PrepareTemplate(order *domain.Order) (*OrderTemplate, error) {
 	if err != nil {
 		return nil, err
 	}
+	tmpl.SetL2Auth(b.client.address, b.client.keyID, b.client.passphrase)
 	if order.StrategyID != nil && *order.StrategyID != [16]byte{} {
 		tmpl.StrategyID = order.StrategyID.String()
 	}
@@ -255,9 +256,9 @@ func (b *Broker) SendTemplate(ctx context.Context, tmpl *OrderTemplate) (*create
 	if b.DryRun && !hasDryRunQuery(tmpl.URL()) {
 		return nil, errors.New("polymarket: dry-run mode active but template URL missing dry=1")
 	}
-	now := time.Now().UnixMilli()
+	now := time.Now().Unix()
 	sig := tmpl.SignAt(now)
-	req, err := tmpl.newRequest(strconv.FormatInt(now, 10), sig, b.client.keyID)
+	req, err := tmpl.newRequest(strconv.FormatInt(now, 10), sig)
 	if err != nil {
 		return nil, err
 	}

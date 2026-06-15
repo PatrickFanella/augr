@@ -3,7 +3,8 @@ package polymarket
 import (
 	"bytes"
 	"context"
-	"crypto/ed25519"
+	"crypto/hmac"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -28,8 +29,10 @@ type Client struct {
 	gatewayBaseURL string
 	httpClient     *http.Client
 	logger         *slog.Logger
+	address        string
 	keyID          string
 	secretKey      string
+	passphrase     string
 	now            func() time.Time
 }
 
@@ -38,6 +41,19 @@ type ErrorResponse struct {
 	Message string `json:"error"`
 
 	statusCode int
+}
+
+// SetL2Auth configures Polymarket CLOB L2 API credentials. The values are
+// generated from L1 wallet authentication and are used only to authenticate API
+// requests; order creation still requires a separately signed order payload.
+func (c *Client) SetL2Auth(address, apiKey, secret, passphrase string) {
+	if c == nil {
+		return
+	}
+	c.address = strings.TrimSpace(address)
+	c.keyID = strings.TrimSpace(apiKey)
+	c.secretKey = strings.TrimSpace(secret)
+	c.passphrase = strings.TrimSpace(passphrase)
 }
 
 // NewClient constructs a Polymarket US retail HTTP client.
@@ -164,11 +180,17 @@ func (c *Client) do(ctx context.Context, method, requestPath string, params url.
 		return nil, errors.New("polymarket: client is nil")
 	}
 	if authenticated {
+		if c.address == "" {
+			return nil, errors.New("polymarket: address is required")
+		}
 		if c.keyID == "" {
 			return nil, errors.New("polymarket: key id is required")
 		}
 		if c.secretKey == "" {
 			return nil, errors.New("polymarket: secret key is required")
+		}
+		if c.passphrase == "" {
+			return nil, errors.New("polymarket: passphrase is required")
 		}
 	}
 
@@ -180,10 +202,11 @@ func (c *Client) do(ctx context.Context, method, requestPath string, params url.
 		return nil, err
 	}
 
-	bodyReader, err := marshalRequestBody(requestBody)
+	bodyBytes, err := marshalRequestBodyBytes(requestBody)
 	if err != nil {
 		return nil, fmt.Errorf("polymarket: marshal request body: %w", err)
 	}
+	bodyReader := bytes.NewReader(bodyBytes)
 
 	req, err := http.NewRequestWithContext(ctx, method, requestURL, bodyReader)
 	if err != nil {
@@ -195,7 +218,7 @@ func (c *Client) do(ctx context.Context, method, requestPath string, params url.
 		req.Header.Set("Content-Type", "application/json")
 	}
 	if authenticated {
-		headers, err := c.authHeaders(method, signingPath)
+		headers, err := c.authHeaders(method, signingPath, bodyBytes)
 		if err != nil {
 			return nil, err
 		}
@@ -247,6 +270,14 @@ func (c *Client) do(ctx context.Context, method, requestPath string, params url.
 }
 
 func marshalRequestBody(body any) (io.Reader, error) {
+	bodyBytes, err := marshalRequestBodyBytes(body)
+	if err != nil {
+		return nil, err
+	}
+	return bytes.NewReader(bodyBytes), nil
+}
+
+func marshalRequestBodyBytes(body any) ([]byte, error) {
 	if body == nil {
 		return nil, nil
 	}
@@ -256,7 +287,7 @@ func marshalRequestBody(body any) (io.Reader, error) {
 		return nil, err
 	}
 
-	return bytes.NewReader(payload), nil
+	return payload, nil
 }
 
 func parseErrorResponse(statusCode int, body []byte) *ErrorResponse {
@@ -284,36 +315,55 @@ func parseErrorResponse(statusCode int, body []byte) *ErrorResponse {
 	return errResp
 }
 
-func (c *Client) authHeaders(method, signingPath string) (map[string]string, error) {
+func (c *Client) authHeaders(method, signingPath string, body []byte) (map[string]string, error) {
 	now := time.Now
 	if c.now != nil {
 		now = c.now
 	}
-	timestamp := fmt.Sprintf("%d", now().UnixMilli())
-	message := canonicalSigningMessage(timestamp, method, signingPath)
-
-	secretKeyBytes, err := base64.StdEncoding.DecodeString(c.secretKey)
+	timestamp := fmt.Sprintf("%d", now().Unix())
+	signature, err := polyL2Signature(c.secretKey, timestamp, method, signingPath, body)
 	if err != nil {
-		return nil, fmt.Errorf("polymarket: decode secret key: %w", err)
+		return nil, err
 	}
-	if len(secretKeyBytes) == 64 {
-		secretKeyBytes = secretKeyBytes[:32]
-	}
-	if len(secretKeyBytes) != ed25519.SeedSize {
-		return nil, fmt.Errorf("polymarket: secret key must decode to %d or 64 bytes, got %d", ed25519.SeedSize, len(secretKeyBytes))
-	}
-	privateKey := ed25519.NewKeyFromSeed(secretKeyBytes)
-	signature := ed25519.Sign(privateKey, []byte(message))
 
 	return map[string]string{
-		"X-PM-Access-Key": c.keyID,
-		"X-PM-Timestamp":  timestamp,
-		"X-PM-Signature":  base64.StdEncoding.EncodeToString(signature),
+		"POLY_ADDRESS":    c.address,
+		"POLY_API_KEY":    c.keyID,
+		"POLY_PASSPHRASE": c.passphrase,
+		"POLY_SIGNATURE":  signature,
+		"POLY_TIMESTAMP":  timestamp,
 	}, nil
 }
 
-func canonicalSigningMessage(timestamp, method, signingPath string) string {
-	return timestamp + strings.ToUpper(method) + signingPath
+func polyL2Signature(secret, timestamp, method, signingPath string, body []byte) (string, error) {
+	secretKeyBytes, err := decodeBase64Flexible(secret)
+	if err != nil {
+		return "", fmt.Errorf("polymarket: decode api secret: %w", err)
+	}
+	message := timestamp + method + signingPath
+	if len(body) > 0 {
+		message += string(body)
+	}
+	mac := hmac.New(sha256.New, secretKeyBytes)
+	_, _ = mac.Write([]byte(message))
+	return base64.URLEncoding.EncodeToString(mac.Sum(nil)), nil
+}
+
+func decodeBase64Flexible(value string) ([]byte, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil, errors.New("empty secret")
+	}
+	if decoded, err := base64.URLEncoding.DecodeString(trimmed); err == nil {
+		return decoded, nil
+	}
+	if decoded, err := base64.RawURLEncoding.DecodeString(trimmed); err == nil {
+		return decoded, nil
+	}
+	if decoded, err := base64.StdEncoding.DecodeString(trimmed); err == nil {
+		return decoded, nil
+	}
+	return base64.RawStdEncoding.DecodeString(trimmed)
 }
 
 func (c *Client) buildURL(requestPath string, params url.Values, authenticated bool) (string, string, error) {

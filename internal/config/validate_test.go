@@ -328,8 +328,10 @@ func TestValidateLiveTradingAllowedWithAlpaca(t *testing.T) {
 func TestValidateLiveTradingAllowedWithPolymarket(t *testing.T) {
 	cfg := validConfig()
 	cfg.Features.EnableLiveTrading = true
+	cfg.Brokers.Polymarket.Address = "0x0000000000000000000000000000000000000001"
 	cfg.Brokers.Polymarket.KeyID = "key-id"
 	cfg.Brokers.Polymarket.SecretKey = "secret-key"
+	cfg.Brokers.Polymarket.Passphrase = "passphrase"
 
 	if err := Validate(cfg); err != nil {
 		t.Fatalf("Validate() error = %v, want nil", err)

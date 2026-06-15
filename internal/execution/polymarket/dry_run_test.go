@@ -66,7 +66,7 @@ func TestBroker_DryRunReturnsRejectedError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient("test-key-id", validSecretKeyBase64(), discardLogger())
+	client := newTestClient()
 	client.SetAPIBaseURL(server.URL)
 	b := NewBroker(client)
 	b.DryRun = true
@@ -88,7 +88,7 @@ func TestBroker_DryRunHonorsBreaker(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { hits++; t.Fatal("server should not be hit") }))
 	defer server.Close()
 
-	client := NewClient("test-key-id", validSecretKeyBase64(), discardLogger())
+	client := newTestClient()
 	client.SetAPIBaseURL(server.URL)
 	b := NewBroker(client)
 	b.DryRun = true
@@ -109,7 +109,7 @@ func TestBroker_DryRunRespectsContextTimeout(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { time.Sleep(10 * time.Millisecond) }))
 	defer server.Close()
 
-	client := NewClient("test-key-id", validSecretKeyBase64(), discardLogger())
+	client := newTestClient()
 	client.SetAPIBaseURL(server.URL)
 	b := NewBroker(client)
 	b.DryRun = true

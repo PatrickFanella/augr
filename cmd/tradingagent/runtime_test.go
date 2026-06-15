@@ -429,7 +429,7 @@ func TestNewAPIServerWiresPolymarketReconcileAutomationJob(t *testing.T) {
 			Polygon: config.DataProviderConfig{APIKey: "polygon-key"},
 		},
 		Brokers: config.BrokerConfigs{
-			Polymarket: config.PolymarketConfig{KeyID: "pm-key", SecretKey: "pm-secret"},
+			Polymarket: config.PolymarketConfig{Address: "0x0000000000000000000000000000000000000001", KeyID: "pm-key", SecretKey: "pm-secret", Passphrase: "pm-passphrase"},
 		},
 		Embedding: config.EmbeddingConfig{Model: "nomic-embed-text", Timeout: time.Second},
 		LLM:       config.LLMConfig{Providers: config.LLMProviderConfigs{Ollama: config.OllamaConfig{BaseURL: "http://localhost:11434", APIKey: "test-key"}}},

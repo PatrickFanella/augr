@@ -21,7 +21,17 @@ LIVE_TRADING_ALLOWED_STRATEGIES=<strategy-uuid>
 LIVE_TRADING_ALLOWED_BROKERS=polymarket
 POLYMARKET_KEY_ID=<key-id>
 POLYMARKET_SECRET_KEY=<secret-key>
+POLYMARKET_PASSPHRASE=<api-passphrase>
+POLYMARKET_ADDRESS=<polygon-signer-address>
 ```
+
+`POLYMARKET_KEY_ID`, `POLYMARKET_SECRET_KEY`, and `POLYMARKET_PASSPHRASE`
+are Polymarket CLOB L2 API credentials created or derived from L1 wallet
+authentication. A wallet address alone is not sufficient: the L1 flow signs an
+EIP-712 message with the wallet private key and returns `{apiKey, secret,
+passphrase}`. The app also supports existing local env names
+`POLYMARKET_API_KEY` and `POLYMARKET_SECRET` as aliases for the L2 apiKey and
+secret, but only when they already contain derived L2 credentials.
 
 Optional Polymarket endpoint overrides:
 
@@ -54,7 +64,7 @@ TRADING_AGENT_KILL=true
 - The strategy record must be explicitly set to `is_paper=false`; strategies with `is_paper=true` stay on paper even when the env gates pass.
 - The strategy must be in `LIVE_TRADING_ALLOWED_STRATEGIES`.
 - The broker must be `polymarket` and listed in `LIVE_TRADING_ALLOWED_BROKERS`.
-- `POLYMARKET_KEY_ID` and `POLYMARKET_SECRET_KEY` must both be present.
+- Polymarket L2 auth requires address, apiKey/key ID, secret, and passphrase.
 - Complete at least 60 days of paper burn-in before activation. This is a manual/operator readiness gate unless `CheckLiveReadiness` is wired into runtime later.
 - Confirm no outstanding validation failures remain for the strategy or market setup. This is a manual/operator readiness gate unless `CheckLiveReadiness` is wired into runtime later.
 

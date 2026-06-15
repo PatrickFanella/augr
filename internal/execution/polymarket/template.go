@@ -2,7 +2,6 @@ package polymarket
 
 import (
 	"bytes"
-	"crypto/ed25519"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -18,6 +17,9 @@ type OrderTemplate struct {
 	url        string
 	secretKey  []byte
 	path       string
+	address    string
+	apiKey     string
+	passphrase string
 	StrategyID string
 }
 
@@ -67,26 +69,33 @@ func (t *OrderTemplate) Clone() *OrderTemplate {
 		url:        t.url,
 		secretKey:  append([]byte(nil), t.secretKey...),
 		path:       t.path,
+		address:    t.address,
+		apiKey:     t.apiKey,
+		passphrase: t.passphrase,
 		StrategyID: t.StrategyID,
 	}
 	return clone
+}
+
+func (t *OrderTemplate) SetL2Auth(address, apiKey, passphrase string) {
+	if t == nil {
+		return
+	}
+	t.address = strings.TrimSpace(address)
+	t.apiKey = strings.TrimSpace(apiKey)
+	t.passphrase = strings.TrimSpace(passphrase)
 }
 
 func (t *OrderTemplate) SignAt(ts int64) string {
 	if t == nil {
 		return ""
 	}
-	secret := append([]byte(nil), t.secretKey...)
-	if len(secret) == 64 {
-		secret = secret[:32]
-	}
-	if len(secret) != ed25519.SeedSize {
+	secret := base64.URLEncoding.EncodeToString(t.secretKey)
+	sig, err := polyL2Signature(secret, fmt.Sprintf("%d", ts), t.method, t.path, t.body)
+	if err != nil {
 		return ""
 	}
-	privateKey := ed25519.NewKeyFromSeed(secret)
-	message := canonicalSigningMessage(fmt.Sprintf("%d", ts), t.method, t.path)
-	sig := ed25519.Sign(privateKey, []byte(message))
-	return base64.StdEncoding.EncodeToString(sig)
+	return sig
 }
 
 func (t *OrderTemplate) BodyLen() int {
@@ -110,15 +119,17 @@ func (t *OrderTemplate) SigningPath() string {
 	return t.path
 }
 
-func (t *OrderTemplate) newRequest(timestamp string, signature string, keyID string) (*http.Request, error) {
+func (t *OrderTemplate) newRequest(timestamp string, signature string) (*http.Request, error) {
 	req, err := http.NewRequest(http.MethodPost, t.url, bytes.NewReader(t.body))
 	if err != nil {
 		return nil, fmt.Errorf("polymarket: create templated request: %w", err)
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-PM-Access-Key", keyID)
-	req.Header.Set("X-PM-Timestamp", timestamp)
-	req.Header.Set("X-PM-Signature", signature)
+	req.Header.Set("POLY_ADDRESS", t.address)
+	req.Header.Set("POLY_API_KEY", t.apiKey)
+	req.Header.Set("POLY_PASSPHRASE", t.passphrase)
+	req.Header.Set("POLY_TIMESTAMP", timestamp)
+	req.Header.Set("POLY_SIGNATURE", signature)
 	return req, nil
 }

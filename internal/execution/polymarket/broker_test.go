@@ -42,7 +42,7 @@ func (f *fakeOfficialCLOBClient) GetOrderBook(ctx context.Context, tokenID strin
 func TestBrokerSendTemplate_RejectsMissingDryRunQuery(t *testing.T) {
 	t.Parallel()
 
-	client := NewClient("test-key-id", validSecretKeyBase64(), discardLogger())
+	client := newTestClient()
 	broker := NewBroker(client)
 	broker.DryRun = true
 
@@ -60,7 +60,7 @@ func TestBrokerSendTemplate_RejectsMissingDryRunQuery(t *testing.T) {
 func TestBrokerSendTemplate_RejectsDryRunSubstringWithoutQuery(t *testing.T) {
 	t.Parallel()
 
-	client := NewClient("test-key-id", validSecretKeyBase64(), discardLogger())
+	client := newTestClient()
 	broker := NewBroker(client)
 	broker.DryRun = true
 
@@ -87,7 +87,7 @@ func TestBrokerSubmitOrder_DryRunDoesNotUseOfficialCLOBClient(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient("test-key-id", validSecretKeyBase64(), discardLogger())
+	client := newTestClient()
 	client.SetAPIBaseURL(server.URL)
 	broker := NewBroker(client)
 	broker.DryRun = true
@@ -139,7 +139,7 @@ func TestBrokerSendTemplate_UsesBreakerScopes(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient("test-key-id", validSecretKeyBase64(), discardLogger())
+	client := newTestClient()
 	client.SetAPIBaseURL(server.URL)
 	broker := NewBroker(client)
 	breaker := &fakeBreaker{}
@@ -231,7 +231,7 @@ func TestBrokerSubmitOrder_MapsLimitOrder(t *testing.T) {
 			}))
 			defer server.Close()
 
-			client := NewClient("test-key-id", validSecretKeyBase64(), discardLogger())
+			client := newTestClient()
 			client.SetAPIBaseURL(server.URL)
 
 			broker := NewBroker(client)
@@ -279,7 +279,7 @@ func TestBrokerSubmitOrder_MapsMarketOrder(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient("test-key-id", validSecretKeyBase64(), discardLogger())
+	client := newTestClient()
 	client.SetAPIBaseURL(server.URL)
 
 	broker := NewBroker(client)
@@ -376,7 +376,7 @@ func TestBrokerSubmitOrder_RejectsMissingFields(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			client := NewClient("test-key-id", validSecretKeyBase64(), discardLogger())
+			client := newTestClient()
 			broker := NewBroker(client)
 
 			_, err := broker.SubmitOrder(context.Background(), tt.order)
@@ -400,7 +400,7 @@ func TestBrokerSubmitOrder_HandlesErrorResponse(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient("test-key-id", validSecretKeyBase64(), discardLogger())
+	client := newTestClient()
 	client.SetAPIBaseURL(server.URL)
 
 	broker := NewBroker(client)
@@ -439,7 +439,7 @@ func TestBrokerCancelOrder_PostsCancelEndpoint(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient("test-key-id", validSecretKeyBase64(), discardLogger())
+	client := newTestClient()
 	client.SetAPIBaseURL(server.URL)
 
 	broker := NewBroker(client)
@@ -490,7 +490,7 @@ func TestBrokerGetOrderStatus_MapsStatuses(t *testing.T) {
 			}))
 			defer server.Close()
 
-			client := NewClient("test-key-id", validSecretKeyBase64(), discardLogger())
+			client := newTestClient()
 			client.SetAPIBaseURL(server.URL)
 
 			broker := NewBroker(client)
@@ -530,7 +530,7 @@ func TestBrokerGetPositions_MapsResponse(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient("test-key-id", validSecretKeyBase64(), discardLogger())
+	client := newTestClient()
 	client.SetAPIBaseURL(server.URL)
 
 	broker := NewBroker(client)
@@ -578,7 +578,7 @@ func TestBrokerGetAccountBalance_MapsResponse(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient("test-key-id", validSecretKeyBase64(), discardLogger())
+	client := newTestClient()
 	client.SetAPIBaseURL(server.URL)
 
 	broker := NewBroker(client)
@@ -642,7 +642,7 @@ func TestBrokerNilClient_ReturnsError(t *testing.T) {
 
 func TestBrokerSubmitOrder_RespectsBreaker(t *testing.T) {
 	br := &fakeBreaker{allowErr: fmt.Errorf("%w: %s", risk.ErrBreakerTripped, "global (halted)")}
-	client := NewClient("test-key-id", validSecretKeyBase64(), discardLogger())
+	client := newTestClient()
 	client.SetAPIBaseURL("http://127.0.0.1:1")
 	broker := &Broker{client: client, Breaker: br}
 	_, err := broker.SubmitOrder(context.Background(), &domain.Order{Ticker: "btc-100k-2025", Side: domain.OrderSideBuy, PredictionSide: "YES", OrderType: domain.OrderTypeLimit, Quantity: 1, LimitPrice: floatPtr(0.5)})
@@ -662,7 +662,7 @@ func TestBrokerSubmitOrder_NilBreakerNoEffect(t *testing.T) {
 		_, _ = w.Write([]byte(`{"id":"poly-order-3"}`))
 	}))
 	defer server.Close()
-	client := NewClient("test-key-id", validSecretKeyBase64(), discardLogger())
+	client := newTestClient()
 	client.SetAPIBaseURL(server.URL)
 	broker := &Broker{client: client}
 	_, err := broker.SubmitOrder(context.Background(), &domain.Order{Ticker: "btc-100k-2025", Side: domain.OrderSideBuy, PredictionSide: "YES", OrderType: domain.OrderTypeLimit, Quantity: 1, LimitPrice: floatPtr(0.5)})
@@ -679,7 +679,7 @@ func TestBrokerSubmitOrder_NilBreakerNoEffect(t *testing.T) {
 func TestBrokerSubmitOrder_StrategyScopeBreaker(t *testing.T) {
 	strategyID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
 	br := &fakeBreaker{}
-	client := NewClient("test-key-id", validSecretKeyBase64(), discardLogger())
+	client := newTestClient()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"id":"poly-order-1"}`))

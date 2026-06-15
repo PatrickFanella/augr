@@ -7,8 +7,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"crypto/ed25519"
 )
 
 func TestOrderTemplate_SignMatchesAdHoc(t *testing.T) {
@@ -20,16 +18,22 @@ func TestOrderTemplate_SignMatchesAdHoc(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewOrderTemplate() error = %v", err)
 	}
-	ts := int64(1712000000123)
+	ts := int64(1712000000)
 
 	got := tmpl.SignAt(ts)
 
-	privateKey := ed25519.NewKeyFromSeed(secret)
-	want := base64.StdEncoding.EncodeToString(ed25519.Sign(privateKey, []byte("1712000000123"+strings.ToUpper(http.MethodPost)+"/v1/orders")))
+	want, err := polyL2Signature(base64URLSecret(secret), "1712000000", strings.ToUpper(http.MethodPost), "/v1/orders", body)
+	if err != nil {
+		t.Fatalf("polyL2Signature() error = %v", err)
+	}
 
 	if got != want {
 		t.Fatalf("SignAt() = %q, want %q", got, want)
 	}
+}
+
+func base64URLSecret(secret []byte) string {
+	return base64.URLEncoding.EncodeToString(secret)
 }
 
 func BenchmarkOrderTemplate_SignAndBuild(b *testing.B) {

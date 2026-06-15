@@ -158,6 +158,7 @@ func newRealStrategyRunner(
 	pm := cfg.Brokers.Polymarket
 	if strings.TrimSpace(pm.KeyID) != "" {
 		client := polymarketexecution.NewClient(pm.KeyID, pm.SecretKey, logger)
+		client.SetL2Auth(pm.Address, pm.KeyID, pm.SecretKey, pm.Passphrase)
 		client.SetAPIBaseURL(pm.APIBaseURL)
 		client.SetGatewayBaseURL(pm.GatewayBaseURL)
 		runner.polymarketClient = client

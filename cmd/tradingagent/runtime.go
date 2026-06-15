@@ -413,8 +413,9 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 		deps.DataService = dataService
 		var alpacaReconciler *automation.AlpacaReconciler
 		var polymarketExecutionReconciler *polymarketexecution.Reconciler
-		if strings.TrimSpace(cfg.Brokers.Polymarket.KeyID) != "" && strings.TrimSpace(cfg.Brokers.Polymarket.SecretKey) != "" {
+		if polymarketL2Configured(cfg.Brokers.Polymarket) {
 			polymarketClient := polymarketexecution.NewClient(cfg.Brokers.Polymarket.KeyID, cfg.Brokers.Polymarket.SecretKey, logger)
+			polymarketClient.SetL2Auth(cfg.Brokers.Polymarket.Address, cfg.Brokers.Polymarket.KeyID, cfg.Brokers.Polymarket.SecretKey, cfg.Brokers.Polymarket.Passphrase)
 			polymarketClient.SetAPIBaseURL(cfg.Brokers.Polymarket.APIBaseURL)
 			polymarketClient.SetGatewayBaseURL(cfg.Brokers.Polymarket.GatewayBaseURL)
 			polymarketExecutionReconciler = polymarketexecution.NewReconciler(polymarketexecution.ReconcilerDeps{
@@ -734,6 +735,13 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 		closeRedis()
 		runtimeCloseDB(db)
 	}, nil
+}
+
+func polymarketL2Configured(pm config.PolymarketConfig) bool {
+	return strings.TrimSpace(pm.Address) != "" &&
+		strings.TrimSpace(pm.KeyID) != "" &&
+		strings.TrimSpace(pm.SecretKey) != "" &&
+		strings.TrimSpace(pm.Passphrase) != ""
 }
 
 func splitCSV(s string) []string {
