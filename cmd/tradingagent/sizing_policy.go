@@ -33,7 +33,16 @@ func sizingConfigForStrategy(
 		}
 	}
 
-	return position.ResolveForMarket(strategy.MarketType, resolved.RiskConfig.PositionSizePct, resolved.RiskConfig.StopLossMultiplier, useKelly, stats).ExecutionSizingConfig()
+	cfg := position.ResolveForMarket(strategy.MarketType, resolved.RiskConfig.PositionSizePct, resolved.RiskConfig.StopLossMultiplier, useKelly, stats).ExecutionSizingConfig()
+	if strategy.MarketType.Normalize() == domain.MarketTypeKalshi && cfg.Method == "" {
+		fractionPct := position.DefaultPolymarketFractionPct
+		if resolved.RiskConfig.PositionSizePct > 0 {
+			fractionPct = resolved.RiskConfig.PositionSizePct / 100.0
+		}
+		cfg.Method = execution.PositionSizingMethodFixedFractional
+		cfg.FractionPct = fractionPct
+	}
+	return cfg
 }
 
 func applyPolymarketSizingCap(market domain.MarketType, cfg execution.SizingConfig, maxPositionUSDC float64) execution.SizingConfig {

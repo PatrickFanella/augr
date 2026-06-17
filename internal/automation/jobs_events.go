@@ -2,8 +2,11 @@ package automation
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
+	"strings"
 	"time"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
@@ -20,11 +23,13 @@ var (
 	}
 	filingMonitorSpec = scheduler.ScheduleSpec{
 		Type:         scheduler.ScheduleTypeCron,
-		Cron:         "0 */2 * * 1-5",
+		Cron:         "0 */4 * * 1-5",
 		SkipWeekends: true,
 		SkipHolidays: true,
 	}
 )
+
+const filingMonitorMaxTickersPerRun = 20
 
 func (o *JobOrchestrator) registerEventJobs() {
 	o.Register("earnings_scanner", "Scan upcoming earnings for watched tickers", earningsScannerSpec, o.earningsScanner)
@@ -106,11 +111,21 @@ func (o *JobOrchestrator) filingMonitor(ctx context.Context) error {
 	tickerStrategy := make(map[string]string, len(strategies))
 	var tickers []string
 	for _, s := range strategies {
+		if s.MarketType != domain.MarketTypeStock {
+			continue
+		}
 		if _, ok := tickerStrategy[s.Ticker]; ok {
 			continue
 		}
 		tickerStrategy[s.Ticker] = s.Name
 		tickers = append(tickers, s.Ticker)
+	}
+	if len(tickers) > filingMonitorMaxTickersPerRun {
+		o.logger.Info("filing_monitor: limiting ticker batch",
+			slog.Int("available", len(tickers)),
+			slog.Int("checked", filingMonitorMaxTickersPerRun),
+		)
+		tickers = tickers[:filingMonitorMaxTickersPerRun]
 	}
 
 	now := time.Now().UTC()
@@ -126,6 +141,14 @@ func (o *JobOrchestrator) filingMonitor(ctx context.Context) error {
 		for _, formType := range []string{"8-K", "10-Q"} {
 			filings, err := o.deps.EventsProvider.GetFilings(ctx, ticker, formType, from, to)
 			if err != nil {
+				if isFilingProviderRateLimited(err) {
+					o.logger.Warn("filing_monitor: provider rate limited; ending run early",
+						slog.String("ticker", ticker),
+						slog.String("form", formType),
+						slog.Any("error", err),
+					)
+					return nil
+				}
 				o.logger.Warn("filing_monitor: failed to fetch filings",
 					slog.String("ticker", ticker),
 					slog.String("form", formType),
@@ -170,4 +193,15 @@ func (o *JobOrchestrator) filingMonitor(ctx context.Context) error {
 		slog.Int("filings_found", totalFilings),
 	)
 	return nil
+}
+
+type filingStatusCoder interface{ StatusCode() int }
+
+func isFilingProviderRateLimited(err error) bool {
+	var sc filingStatusCoder
+	if errors.As(err, &sc) && sc.StatusCode() == http.StatusTooManyRequests {
+		return true
+	}
+	text := strings.ToLower(err.Error())
+	return strings.Contains(text, "api limit") || strings.Contains(text, "rate limit") || strings.Contains(text, "status=429")
 }

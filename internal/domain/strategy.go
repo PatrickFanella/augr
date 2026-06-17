@@ -16,6 +16,7 @@ const (
 	MarketTypeStock      MarketType = "stock"
 	MarketTypeCrypto     MarketType = "crypto"
 	MarketTypePolymarket MarketType = "polymarket"
+	MarketTypeKalshi     MarketType = "kalshi"
 	MarketTypeOptions    MarketType = "options"
 
 	StrategyStatusActive   = "active"
@@ -36,7 +37,7 @@ func (m MarketType) Normalize() MarketType {
 // IsValid returns true if the market type is a defined MarketType constant.
 func (m MarketType) IsValid() bool {
 	switch m {
-	case MarketTypeStock, MarketTypeCrypto, MarketTypePolymarket, MarketTypeOptions:
+	case MarketTypeStock, MarketTypeCrypto, MarketTypePolymarket, MarketTypeKalshi, MarketTypeOptions:
 		return true
 	}
 	return false

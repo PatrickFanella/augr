@@ -73,7 +73,7 @@ func ParseScheduleSpec(raw string, marketType domain.MarketType) ScheduleSpec {
 
 	mt := marketType.Normalize()
 	switch mt {
-	case domain.MarketTypeCrypto, domain.MarketTypePolymarket:
+	case domain.MarketTypeCrypto, domain.MarketTypePolymarket, domain.MarketTypeKalshi:
 		return ScheduleSpec{
 			Type:       ScheduleTypeCron,
 			Cron:       raw,
@@ -108,7 +108,7 @@ func (s ScheduleSpec) ShouldFire(now time.Time) bool {
 	}
 
 	mt := domain.MarketType(s.MarketType).Normalize()
-	isAlwaysOpen := mt == domain.MarketTypeCrypto || mt == domain.MarketTypePolymarket
+	isAlwaysOpen := mt == domain.MarketTypeCrypto || mt == domain.MarketTypePolymarket || mt == domain.MarketTypeKalshi
 
 	switch s.Type {
 	case ScheduleTypeCron:

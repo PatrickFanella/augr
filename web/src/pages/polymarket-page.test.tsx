@@ -90,6 +90,7 @@ it('preset fills scanner fields', async () => {
   expect(screen.getByTestId('polymarket-watched-section')).toBeInTheDocument()
   expect(screen.getByTestId('polymarket-operations-section')).toBeInTheDocument()
   expect(screen.getByTestId('polymarket-discovery-section')).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: /open kalshi hub/i })).toHaveAttribute('href', '/kalshi')
 
   fireEvent.click(screen.getByTestId('polymarket-scanner-preset-event-momentum'))
 

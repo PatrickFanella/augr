@@ -14,12 +14,20 @@ func TestMarketTypeString(t *testing.T) {
 		{domain.MarketTypeStock, "stock"},
 		{domain.MarketTypeCrypto, "crypto"},
 		{domain.MarketTypePolymarket, "polymarket"},
+		{domain.MarketTypeKalshi, "kalshi"},
 	}
 
 	for _, tc := range tests {
 		if got := tc.mt.String(); got != tc.want {
 			t.Errorf("MarketType(%q).String() = %q, want %q", tc.mt, got, tc.want)
 		}
+	}
+}
+
+func TestMarketTypeNormalizeKalshi(t *testing.T) {
+	got := domain.MarketType(" Kalshi ").Normalize()
+	if got != domain.MarketTypeKalshi {
+		t.Fatalf("Normalize() = %q, want %q", got, domain.MarketTypeKalshi)
 	}
 }
 

@@ -49,6 +49,7 @@ func TestIsMarketOpenAlwaysOpenMarkets(t *testing.T) {
 	}{
 		{name: "crypto", marketType: domain.MarketTypeCrypto},
 		{name: "polymarket", marketType: domain.MarketTypePolymarket},
+		{name: "kalshi", marketType: domain.MarketTypeKalshi},
 	}
 
 	for _, tc := range tests {

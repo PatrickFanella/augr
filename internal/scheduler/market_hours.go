@@ -14,7 +14,7 @@ var newYorkLocation = mustLoadLocation("America/New_York")
 // IsMarketOpen reports whether the given market is open at the provided time.
 func IsMarketOpen(t time.Time, marketType domain.MarketType) bool {
 	switch normalizeMarketType(marketType) {
-	case domain.MarketTypeCrypto, domain.MarketTypePolymarket:
+	case domain.MarketTypeCrypto, domain.MarketTypePolymarket, domain.MarketTypeKalshi:
 		return true
 	default:
 		// Treat stock and unknown/empty market types as US equities.

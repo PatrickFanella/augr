@@ -59,6 +59,7 @@ func TestSelectionPolicyBuildProviderChainsAndCacheRouting(t *testing.T) {
 		Yahoo:        func(ProviderConfig) DataProvider { return &serviceStubProvider{name: "yahoo"} },
 		Binance:      func(ProviderConfig) DataProvider { return &serviceStubProvider{name: "binance"} },
 		Polymarket:   func(ProviderConfig) DataProvider { return &serviceStubProvider{name: "polymarket"} },
+		Kalshi:       func(ProviderConfig) DataProvider { return &serviceStubProvider{name: "kalshi"} },
 		StockTwits:   func(ProviderConfig) DataProvider { return &serviceStubProvider{name: "stocktwits"} },
 	}
 
@@ -82,6 +83,9 @@ func TestSelectionPolicyBuildProviderChainsAndCacheRouting(t *testing.T) {
 	if got, want := providerNames(t, chains.Polymarket), []string{"polymarket"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("polymarket providers = %v, want %v", got, want)
 	}
+	if got, want := providerNames(t, chains.Kalshi), []string{"kalshi"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("kalshi providers = %v, want %v", got, want)
+	}
 	if got, want := providerNames(t, chains.Social), []string{"finnhub", "stocktwits"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("social providers = %v, want %v", got, want)
 	}
@@ -95,6 +99,7 @@ func TestSelectionPolicyBuildProviderChainsAndCacheRouting(t *testing.T) {
 		{name: "stock ohlcv", marketType: domain.MarketTypeStock, dataType: cacheDataTypeOHLCV, wantProv: cacheProviderStockChain},
 		{name: "crypto ohlcv", marketType: domain.MarketTypeCrypto, dataType: cacheDataTypeOHLCV, wantProv: cacheProviderCryptoChain},
 		{name: "polymarket ohlcv", marketType: domain.MarketTypePolymarket, dataType: cacheDataTypeOHLCV, wantProv: cacheProviderPolymarketChain},
+		{name: "kalshi ohlcv", marketType: domain.MarketTypeKalshi, dataType: cacheDataTypeOHLCV, wantProv: cacheProviderKalshiChain},
 		{name: "fundamentals", marketType: domain.MarketTypeStock, dataType: cacheDataTypeFundamentals, wantProv: cacheProviderStockChain},
 		{name: "news", marketType: domain.MarketTypeStock, dataType: cacheDataTypeNews, wantProv: cacheProviderStockChain},
 		{name: "social", marketType: domain.MarketTypeCrypto, dataType: cacheDataTypeSocial, wantProv: cacheProviderSocialAgg},
@@ -124,6 +129,7 @@ func TestSelectionPolicyBuildProviderChainsAndCacheRouting(t *testing.T) {
 	stock := &serviceStubProvider{name: "stock"}
 	crypto := &serviceStubProvider{name: "crypto"}
 	polymarket := &serviceStubProvider{name: "polymarket"}
+	kalshi := &serviceStubProvider{name: "kalshi"}
 
 	for _, tc := range []struct {
 		name       string
@@ -134,9 +140,10 @@ func TestSelectionPolicyBuildProviderChainsAndCacheRouting(t *testing.T) {
 		{name: "stock", marketType: domain.MarketTypeStock, wantName: cacheProviderStockChain, wantChain: stock},
 		{name: "crypto", marketType: domain.MarketTypeCrypto, wantName: cacheProviderCryptoChain, wantChain: crypto},
 		{name: "polymarket", marketType: domain.MarketTypePolymarket, wantName: cacheProviderPolymarketChain, wantChain: polymarket},
+		{name: "kalshi", marketType: domain.MarketTypeKalshi, wantName: cacheProviderKalshiChain, wantChain: kalshi},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			gotName, gotChain, err := policy.ResolveMarketChain(tc.marketType, stock, crypto, polymarket)
+			gotName, gotChain, err := policy.ResolveMarketChain(tc.marketType, stock, crypto, polymarket, kalshi)
 			if err != nil {
 				t.Fatalf("ResolveMarketChain() error = %v", err)
 			}
@@ -149,7 +156,7 @@ func TestSelectionPolicyBuildProviderChainsAndCacheRouting(t *testing.T) {
 		})
 	}
 
-	if _, _, err := policy.ResolveMarketChain("forex", stock, crypto, polymarket); !errors.Is(err, ErrUnsupportedMarketType) {
+	if _, _, err := policy.ResolveMarketChain("forex", stock, crypto, polymarket, kalshi); !errors.Is(err, ErrUnsupportedMarketType) {
 		t.Fatalf("ResolveMarketChain() error = %v, want ErrUnsupportedMarketType", err)
 	}
 }

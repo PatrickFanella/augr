@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/data"
@@ -27,6 +28,9 @@ type Client struct {
 	api          *data.APIClient
 	logger       *slog.Logger
 	rateLimiters []*data.RateLimiter
+
+	mu            sync.Mutex
+	cooldownUntil time.Time
 }
 
 // ErrorResponse captures Finnhub's standard error response shape.
@@ -86,6 +90,9 @@ func (c *Client) Get(ctx context.Context, path string, params url.Values) ([]byt
 	if c.apiKey == "" {
 		return nil, errors.New("finnhub: api key is required")
 	}
+	if wait := c.cooldownRemaining(); wait > 0 {
+		return nil, fmt.Errorf("finnhub: rate limit cooldown active for %s", wait.Round(time.Second))
+	}
 
 	// Sync baseURL in case tests changed it directly.
 	if c.baseURL != c.api.BaseURL() {
@@ -111,6 +118,9 @@ func (c *Client) Get(ctx context.Context, path string, params url.Values) ([]byt
 			committedReservations = true
 
 			finnhubErr := parseErrorResponse(apiErr.StatusCode, apiErr.Body)
+			if finnhubErr.StatusCode() == http.StatusTooManyRequests {
+				c.startCooldown(15 * time.Minute)
+			}
 			c.logger.Warn("finnhub: non-success response",
 				slog.Int("status", finnhubErr.StatusCode()),
 				slog.Any("error", finnhubErr),
@@ -124,6 +134,29 @@ func (c *Client) Get(ctx context.Context, path string, params url.Values) ([]byt
 	committedReservations = true
 
 	return body, nil
+}
+
+func (c *Client) cooldownRemaining() time.Duration {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.cooldownUntil.IsZero() {
+		return 0
+	}
+	remaining := time.Until(c.cooldownUntil)
+	if remaining <= 0 {
+		c.cooldownUntil = time.Time{}
+		return 0
+	}
+	return remaining
+}
+
+func (c *Client) startCooldown(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	until := time.Now().Add(d)
+	if until.After(c.cooldownUntil) {
+		c.cooldownUntil = until
+	}
 }
 
 func (c *Client) reserveRateLimiters(ctx context.Context) ([]*data.Reservation, error) {

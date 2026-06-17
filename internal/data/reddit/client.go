@@ -48,8 +48,10 @@ type RedditPost struct {
 
 // Client fetches Reddit RSS feeds and returns parsed posts.
 type Client struct {
-	client *http.Client
-	logger *slog.Logger
+	client    *http.Client
+	logger    *slog.Logger
+	cooldowns map[string]time.Time
+	mu        sync.Mutex
 }
 
 // NewClient creates a Reddit RSS client.
@@ -58,8 +60,9 @@ func NewClient(logger *slog.Logger) *Client {
 		logger = slog.Default()
 	}
 	return &Client{
-		client: &http.Client{Timeout: clientTimeout},
-		logger: logger,
+		client:    &http.Client{Timeout: clientTimeout},
+		logger:    logger,
+		cooldowns: make(map[string]time.Time),
 	}
 }
 
@@ -88,8 +91,23 @@ func (c *Client) FetchSubreddits(ctx context.Context, subreddits []string) []Red
 		wg.Add(1)
 		go func(sub string) {
 			defer wg.Done()
+			if wait := c.cooldownRemaining(sub); wait > 0 {
+				c.logger.Debug("reddit: fetch skipped during cooldown",
+					slog.String("subreddit", sub),
+					slog.Duration("remaining", wait),
+				)
+				return
+			}
 			got, err := c.fetchSubreddit(ctx, sub)
 			if err != nil {
+				if retryAfter, ok := redditRetryAfter(err); ok {
+					c.startCooldown(sub, retryAfter)
+					c.logger.Info("reddit: rate limited; cooling down subreddit",
+						slog.String("subreddit", sub),
+						slog.Duration("cooldown", retryAfter),
+					)
+					return
+				}
 				c.logger.Warn("reddit: fetch failed",
 					slog.String("subreddit", sub),
 					slog.Any("error", err),
@@ -137,7 +155,7 @@ func (c *Client) fetchSubredditFromHost(ctx context.Context, host, sub string) (
 	defer resp.Body.Close() //nolint:errcheck // best-effort close
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, statusError{status: resp.StatusCode}
+		return nil, statusError{status: resp.StatusCode, retryAfter: parseRetryAfter(resp.Header.Get("Retry-After"))}
 	}
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBodySize))
@@ -149,7 +167,8 @@ func (c *Client) fetchSubredditFromHost(ctx context.Context, host, sub string) (
 }
 
 type statusError struct {
-	status int
+	status     int
+	retryAfter time.Duration
 }
 
 func (e statusError) Error() string {
@@ -162,6 +181,58 @@ func isRetryableStatusError(err error) bool {
 		return false
 	}
 	return statusErr.status == http.StatusTooManyRequests || statusErr.status >= http.StatusInternalServerError
+}
+
+func redditRetryAfter(err error) (time.Duration, bool) {
+	var statusErr statusError
+	if !errors.As(err, &statusErr) || statusErr.status != http.StatusTooManyRequests {
+		return 0, false
+	}
+	if statusErr.retryAfter > 0 {
+		return statusErr.retryAfter, true
+	}
+	return 15 * time.Minute, true
+}
+
+func parseRetryAfter(raw string) time.Duration {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0
+	}
+	if secs, err := time.ParseDuration(raw + "s"); err == nil {
+		return secs
+	}
+	if when, err := http.ParseTime(raw); err == nil {
+		return time.Until(when)
+	}
+	return 0
+}
+
+func (c *Client) cooldownRemaining(sub string) time.Duration {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	until := c.cooldowns[sub]
+	if until.IsZero() {
+		return 0
+	}
+	remaining := time.Until(until)
+	if remaining <= 0 {
+		delete(c.cooldowns, sub)
+		return 0
+	}
+	return remaining
+}
+
+func (c *Client) startCooldown(sub string, d time.Duration) {
+	if d <= 0 {
+		d = 15 * time.Minute
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	until := time.Now().Add(d)
+	if until.After(c.cooldowns[sub]) {
+		c.cooldowns[sub] = until
+	}
 }
 
 // ── Atom XML types (Reddit serves Atom 1.0) ────────────────────────────

@@ -34,6 +34,10 @@ func TestLoadParsesEnvironmentValues(t *testing.T) {
 	t.Setenv("ALPHA_VANTAGE_RATE_LIMIT_PER_MINUTE", "7")
 	t.Setenv("FINNHUB_RATE_LIMIT_PER_MINUTE", "20")
 	t.Setenv("ALPACA_PAPER_MODE", "false")
+	t.Setenv("KALSHI_API_BASE_URL", "https://external-api.demo.kalshi.co/trade-api/v2")
+	t.Setenv("KALSHI_API_KEY_ID", "kalshi-key-id")
+	t.Setenv("KALSHI_PRIVATE_KEY_PEM_B64", "a2Fsc2hpLXByaXZhdGUta2V5")
+	t.Setenv("KALSHI_DEMO", "true")
 	t.Setenv("NOTIFY_TELEGRAM_BOT_TOKEN", "telegram-token")
 	t.Setenv("NOTIFY_TELEGRAM_CHAT_ID", "12345")
 	t.Setenv("NOTIFY_SMTP_HOST", "smtp.example.com")
@@ -132,6 +136,19 @@ func TestLoadParsesEnvironmentValues(t *testing.T) {
 
 	if cfg.Brokers.Alpaca.PaperMode {
 		t.Fatal("cfg.Brokers.Alpaca.PaperMode = true, want false")
+	}
+
+	if cfg.Brokers.Kalshi.APIBaseURL != "https://external-api.demo.kalshi.co/trade-api/v2" {
+		t.Fatalf("cfg.Brokers.Kalshi.APIBaseURL = %q, want %q", cfg.Brokers.Kalshi.APIBaseURL, "https://external-api.demo.kalshi.co/trade-api/v2")
+	}
+	if cfg.Brokers.Kalshi.APIKeyID != "kalshi-key-id" {
+		t.Fatalf("cfg.Brokers.Kalshi.APIKeyID = %q, want %q", cfg.Brokers.Kalshi.APIKeyID, "kalshi-key-id")
+	}
+	if cfg.Brokers.Kalshi.PrivateKeyPEMB64 != "a2Fsc2hpLXByaXZhdGUta2V5" {
+		t.Fatalf("cfg.Brokers.Kalshi.PrivateKeyPEMB64 = %q, want %q", cfg.Brokers.Kalshi.PrivateKeyPEMB64, "a2Fsc2hpLXByaXZhdGUta2V5")
+	}
+	if !cfg.Brokers.Kalshi.Demo {
+		t.Fatal("cfg.Brokers.Kalshi.Demo = false, want true")
 	}
 
 	if cfg.Notifications.Telegram.BotToken != "telegram-token" {
@@ -332,6 +349,26 @@ func TestValidateLiveTradingAllowedWithPolymarket(t *testing.T) {
 	cfg.Brokers.Polymarket.KeyID = "key-id"
 	cfg.Brokers.Polymarket.SecretKey = "secret-key"
 	cfg.Brokers.Polymarket.Passphrase = "passphrase"
+
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("Validate() error = %v, want nil", err)
+	}
+}
+
+func TestValidateLiveTradingAllowedWithKalshi(t *testing.T) {
+	cfg := validConfig()
+	cfg.Features.EnableLiveTrading = true
+	cfg.Brokers.Kalshi.APIKeyID = "kalshi-key-id"
+	cfg.Brokers.Kalshi.PrivateKeyPEMB64 = "base64-private-key"
+
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("Validate() error = %v, want nil", err)
+	}
+}
+
+func TestValidatePaperModeDoesNotRequireKalshiCredentials(t *testing.T) {
+	cfg := validConfig()
+	cfg.Brokers.Kalshi.APIBaseURL = "https://external-api.demo.kalshi.co/trade-api/v2"
 
 	if err := Validate(cfg); err != nil {
 		t.Fatalf("Validate() error = %v, want nil", err)
@@ -773,6 +810,10 @@ func clearConfigEnv(t *testing.T) {
 		"BINANCE_API_KEY",
 		"BINANCE_API_SECRET",
 		"BINANCE_PAPER_MODE",
+		"KALSHI_API_BASE_URL",
+		"KALSHI_API_KEY_ID",
+		"KALSHI_PRIVATE_KEY_PEM_B64",
+		"KALSHI_DEMO",
 		"RISK_MAX_POSITION_SIZE_PCT",
 		"RISK_MAX_DAILY_LOSS_PCT",
 		"RISK_MAX_DRAWDOWN_PCT",

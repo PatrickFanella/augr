@@ -35,6 +35,7 @@ type ProviderRegistry struct {
 	Yahoo        ProviderFactory
 	Binance      ProviderFactory
 	Polymarket   ProviderFactory
+	Kalshi       ProviderFactory
 	Reddit       ProviderFactory
 	StockTwits   ProviderFactory
 }
@@ -51,6 +52,7 @@ type DataService struct {
 	stockChain      DataProvider
 	cryptoChain     DataProvider
 	polymarketChain DataProvider
+	kalshiChain     DataProvider
 	socialProviders []DataProvider // dedicated social sentiment providers (aggregated, not first-wins)
 	cacheRepo       repository.MarketDataCacheRepository
 	historyRepo     repository.HistoricalOHLCVRepository
@@ -82,6 +84,7 @@ func NewDataService(cfg config.Config, reg *ProviderRegistry, cacheRepo reposito
 		stockChain:      NewProviderChain(logger, chains.Stock...),
 		cryptoChain:     NewProviderChain(logger, chains.Crypto...),
 		polymarketChain: NewProviderChain(logger, chains.Polymarket...),
+		kalshiChain:     NewProviderChain(logger, chains.Kalshi...),
 		socialProviders: chains.Social,
 		cacheRepo:       cacheRepo,
 		historyRepo:     historicalOHLCVRepo(cacheRepo),
@@ -484,7 +487,7 @@ func (s *DataService) ListHistoricalOHLCV(
 }
 
 func (s *DataService) resolveChain(marketType domain.MarketType) (string, DataProvider, error) {
-	return s.selection.ResolveMarketChain(marketType, s.stockChain, s.cryptoChain, s.polymarketChain)
+	return s.selection.ResolveMarketChain(marketType, s.stockChain, s.cryptoChain, s.polymarketChain, s.kalshiChain)
 }
 
 func (s *DataService) loadCachedOHLCV(ctx context.Context, key repository.MarketDataCacheKey) ([]domain.OHLCV, bool) {

@@ -80,15 +80,24 @@ func TestSnapshotValidateActivationRequiresBothSideBooks(t *testing.T) {
 
 func TestEntryPriceForSideRequiresExecutableAsk(t *testing.T) {
 	s := Snapshot{BestBidYes: 0.42, BestAskYes: 0.45, NoPrice: 0.58}
-	if got := s.EntryPriceForSide("YES"); got != 0.45 {
-		t.Fatalf("YES entry price = %v, want ask", got)
+	if got, ok := s.EntryPriceForSide("YES"); !ok || got != 0.45 {
+		t.Fatalf("YES entry price = %v, %v; want ask, true", got, ok)
 	}
-	if got := s.EntryPriceForSide("NO"); got != 0 {
-		t.Fatalf("NO entry price = %v, want 0 without NO ask", got)
+	if got, ok := s.EntryPriceForSide("NO"); ok || got != 0 {
+		t.Fatalf("NO entry price = %v, %v; want 0, false without NO ask", got, ok)
 	}
 	s.BestAskNo = 0.59
-	if got := s.EntryPriceForSide("NO"); got != 0.59 {
-		t.Fatalf("NO entry price = %v, want NO ask", got)
+	if got, ok := s.EntryPriceForSide("NO"); !ok || got != 0.59 {
+		t.Fatalf("NO entry price = %v, %v; want NO ask, true", got, ok)
+	}
+}
+
+func TestSpreadForSidePreservesYesFallbackWithMissingBid(t *testing.T) {
+	s := Snapshot{BestAskYes: 0.45}
+
+	got, ok := s.SpreadForSide("YES")
+	if !ok || got != 0.45 {
+		t.Fatalf("YES spread fallback = %v, %v; want ask-minus-zero, true", got, ok)
 	}
 }
 

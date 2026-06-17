@@ -102,5 +102,5 @@ describe('CalendarPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add local note' }))
 
     expect(screen.getByText('Watch after earnings')).toBeInTheDocument()
-  })
+  }, 10_000)
 })

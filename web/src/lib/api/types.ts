@@ -5,7 +5,7 @@ export { WEBSOCKET_EVENT_TYPES };
 export type UUID = string;
 export type ISODateString = string;
 
-export type MarketType = 'stock' | 'crypto' | 'polymarket' | 'options';
+export type MarketType = 'stock' | 'crypto' | 'polymarket' | 'kalshi' | 'options';
 export type StrategyLLMProvider =
   | 'openai'
   | 'anthropic'

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -35,6 +36,11 @@ func (s *Server) handleGetEconomicCalendar(w http.ResponseWriter, r *http.Reques
 
 	events, err := s.eventsProvider.GetEconomicCalendar(r.Context())
 	if err != nil {
+		if isProviderAccessDenied(err) {
+			s.logger.Warn("economic calendar provider unavailable for current plan", "error", err)
+			respondJSON(w, http.StatusOK, []any{})
+			return
+		}
 		s.logger.Error("economic calendar request failed", "error", err)
 		respondError(w, http.StatusInternalServerError, "failed to fetch economic calendar", ErrCodeInternal)
 		return
@@ -51,6 +57,10 @@ func (s *Server) handleGetFilings(w http.ResponseWriter, r *http.Request) {
 
 	ticker := strings.TrimSpace(r.URL.Query().Get("ticker"))
 	form := strings.TrimSpace(r.URL.Query().Get("form"))
+	if ticker == "" {
+		respondJSON(w, http.StatusOK, []any{})
+		return
+	}
 
 	now := time.Now().UTC()
 	from := now.AddDate(0, 0, -30)
@@ -129,4 +139,13 @@ func parseDateRange(w http.ResponseWriter, r *http.Request) (from, to time.Time,
 	}
 
 	return from, to, true
+}
+
+type providerStatusError interface {
+	StatusCode() int
+}
+
+func isProviderAccessDenied(err error) bool {
+	var statusErr providerStatusError
+	return errors.As(err, &statusErr) && statusErr.StatusCode() == http.StatusForbidden
 }

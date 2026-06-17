@@ -1058,6 +1058,64 @@ func TestRunStrategy_PolymarketSkipsLegacyOHLCVExecutionWithoutStrategyExecutor(
 	}
 }
 
+func TestRunStrategy_KalshiRoutesToStrategyExecutorWhenConfigured(t *testing.T) {
+	strategyID := uuid.New()
+	repo := &mockStrategyRepo{
+		strategies: []domain.Strategy{
+			{
+				ID:           strategyID,
+				Ticker:       "KXTEST-YESNO",
+				MarketType:   domain.MarketTypeKalshi,
+				ScheduleCron: testScheduleSpec,
+				Status:       domain.StrategyStatusActive,
+			},
+		},
+	}
+	pipeline := &mockPipeline{}
+	executor := &mockStrategyExecutor{}
+	s := NewScheduler(
+		repo,
+		pipeline,
+		&mockRiskEngine{},
+		testLogger(),
+		WithStrategyExecution(executor.execute),
+	)
+	s.ctx = context.Background()
+
+	s.runStrategy(repo.strategies[0])
+
+	if got := executor.callCount(); got != 1 {
+		t.Fatalf("strategy executor calls = %d, want 1 for kalshi native execution", got)
+	}
+	if got := pipeline.callCount(); got != 0 {
+		t.Fatalf("pipeline calls = %d, want 0 for kalshi native execution", got)
+	}
+}
+
+func TestRunStrategy_KalshiSkipsLegacyOHLCVExecutionWithoutStrategyExecutor(t *testing.T) {
+	strategyID := uuid.New()
+	repo := &mockStrategyRepo{
+		strategies: []domain.Strategy{
+			{
+				ID:           strategyID,
+				Ticker:       "KXTEST-YESNO",
+				MarketType:   domain.MarketTypeKalshi,
+				ScheduleCron: testScheduleSpec,
+				Status:       domain.StrategyStatusActive,
+			},
+		},
+	}
+	pipeline := &mockPipeline{}
+	s := NewScheduler(repo, pipeline, &mockRiskEngine{}, testLogger())
+	s.ctx = context.Background()
+
+	s.runStrategy(repo.strategies[0])
+
+	if got := pipeline.callCount(); got != 0 {
+		t.Fatalf("pipeline calls = %d, want 0 for kalshi legacy skip", got)
+	}
+}
+
 func TestRunStrategy_UsesStrategyExecutorWhenConfigured(t *testing.T) {
 	strategyID := uuid.New()
 	repo := &mockStrategyRepo{

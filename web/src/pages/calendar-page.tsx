@@ -1,6 +1,6 @@
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { CalendarDays, ExternalLink, Loader2, Sparkles } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import { Link } from 'react-router-dom'
 
@@ -291,6 +291,8 @@ function SentimentBadge({ sentiment }: { sentiment: string }) {
 }
 
 function FilingAnalysisResult({ analysis }: { analysis: FilingAnalysis }) {
+  const keyItems = analysis.key_items ?? []
+
   return (
     <div className="space-y-2 rounded-md border border-border/50 bg-accent/20 p-3 text-sm">
       <div className="flex flex-wrap items-center gap-2">
@@ -302,11 +304,11 @@ function FilingAnalysisResult({ analysis }: { analysis: FilingAnalysis }) {
         </span>
       </div>
       <p className="text-muted-foreground">{analysis.summary}</p>
-      {analysis.key_items.length > 0 && (
+      {keyItems.length > 0 && (
         <div>
           <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Key items:</span>
           <ul className="ml-4 mt-1 list-disc text-xs text-muted-foreground">
-            {analysis.key_items.map((item, i) => (
+            {keyItems.map((item, i) => (
               <li key={i}>{item}</li>
             ))}
           </ul>
@@ -408,7 +410,7 @@ function FilingsTab({
                 const analysis = analyses[key]
                 const isAnalyzing = analyzeMutation.isPending && analyzeMutation.variables && filingKey(analyzeMutation.variables) === key
                 return (
-                  <>
+                  <Fragment key={`${f.access_number}-${i}`}>
                     <tr key={`${f.access_number}-${i}`} className="border-b border-border/50 hover:bg-accent/30">
                       <td className="px-2 py-1.5 font-mono font-medium">{f.symbol}</td>
                       <td className="px-2 py-1.5">
@@ -463,7 +465,7 @@ function FilingsTab({
                         </td>
                       </tr>
                     )}
-                  </>
+                  </Fragment>
                 )
               })}
             </tbody>

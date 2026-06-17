@@ -170,6 +170,15 @@ func TestShouldFire(t *testing.T) {
 			want: true,
 		},
 		{
+			name: "kalshi market_hours any time",
+			spec: ScheduleSpec{
+				Type:       ScheduleTypeMarketHours,
+				MarketType: string(domain.MarketTypeKalshi),
+			},
+			now:  time.Date(2024, time.January, 6, 3, 0, 0, 0, et),
+			want: true,
+		},
+		{
 			name: "cron type always fires",
 			spec: ScheduleSpec{
 				Type: ScheduleTypeCron,
@@ -222,6 +231,15 @@ func TestParseScheduleSpec(t *testing.T) {
 			name:       "raw cron for crypto",
 			raw:        "*/5 * * * *",
 			marketType: domain.MarketTypeCrypto,
+			wantType:   ScheduleTypeCron,
+			wantCron:   "*/5 * * * *",
+			wantSkipWE: false,
+			wantSkipH:  false,
+		},
+		{
+			name:       "raw cron for kalshi",
+			raw:        "*/5 * * * *",
+			marketType: domain.MarketTypeKalshi,
 			wantType:   ScheduleTypeCron,
 			wantCron:   "*/5 * * * *",
 			wantSkipWE: false,

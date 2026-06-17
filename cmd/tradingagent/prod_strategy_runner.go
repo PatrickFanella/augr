@@ -21,10 +21,12 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/api"
 	"github.com/PatrickFanella/get-rich-quick/internal/config"
 	"github.com/PatrickFanella/get-rich-quick/internal/data"
+	kalshidata "github.com/PatrickFanella/get-rich-quick/internal/data/kalshi"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution"
 	alpacaexecution "github.com/PatrickFanella/get-rich-quick/internal/execution/alpaca"
 	binanceexecution "github.com/PatrickFanella/get-rich-quick/internal/execution/binance"
+	kalshiexecution "github.com/PatrickFanella/get-rich-quick/internal/execution/kalshi"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution/paper"
 	polymarketexecution "github.com/PatrickFanella/get-rich-quick/internal/execution/polymarket"
 	"github.com/PatrickFanella/get-rich-quick/internal/llm"
@@ -64,6 +66,10 @@ type polymarketMarketDataSource interface {
 	GetMarketData(ctx context.Context, slug string) (*agent.PredictionMarketData, error)
 }
 
+type kalshiMarketDataSource interface {
+	LoadSnapshot(ctx context.Context, ticker string) (kalshiexecution.Snapshot, error)
+}
+
 type polymarketTickFeed interface {
 	Ticks(slug string) <-chan polymarketdata.Tick
 }
@@ -92,6 +98,7 @@ type realStrategyRunner struct {
 	localPaperBroker      *paper.PaperBroker
 	polymarketClient      *polymarketexecution.Client // nil if not configured
 	polymarketMarketData  polymarketMarketDataSource
+	kalshiMarketData      kalshiMarketDataSource
 	polymarketFeed        polymarketTickFeed
 	polymarketStopGuard   *polymarketexecution.StopGuard
 	polymarketWorkers     sync.Map
@@ -176,11 +183,15 @@ func newRealStrategyRunner(
 		client.SetGatewayBaseURL(pm.GatewayBaseURL)
 		runner.polymarketMarketData = client
 	}
+	runner.kalshiMarketData = kalshidata.NewProvider(cfg.Brokers.Kalshi.APIBaseURL, logger)
 
 	return runner
 }
 
 func (r *realStrategyRunner) RunStrategy(ctx context.Context, strategy domain.Strategy) (*api.StrategyRunResult, error) {
+	if strategy.MarketType.Normalize() == domain.MarketTypeKalshi {
+		return r.runKalshiNative(ctx, strategy)
+	}
 	if strategy.MarketType.Normalize() == domain.MarketTypePolymarket {
 		return r.runPolymarketNative(ctx, strategy)
 	}
@@ -415,6 +426,116 @@ func (r *realStrategyRunner) runPolymarketNative(ctx context.Context, strategy d
 			r.logger.WarnContext(ctx, "polymarket stop guard registration failed", "error", err, "strategy_id", strategy.ID)
 		}
 	}
+	return &api.StrategyRunResult{Run: run, Signal: signal, Orders: orders, Positions: positions}, nil
+}
+
+func (r *realStrategyRunner) runKalshiNative(ctx context.Context, strategy domain.Strategy) (*api.StrategyRunResult, error) {
+	if !strategy.IsPaper {
+		return nil, errors.New("kalshi live execution is disabled; set strategy is_paper=true")
+	}
+
+	now := time.Now().UTC()
+	run := domain.PipelineRun{
+		ID:             uuid.New(),
+		StrategyID:     strategy.ID,
+		Ticker:         strategy.Ticker,
+		TradeDate:      now,
+		Status:         domain.PipelineStatusRunning,
+		StartedAt:      now,
+		ConfigSnapshot: strategy.Config,
+	}
+	if r.runRepo != nil {
+		if err := r.runRepo.Create(ctx, &run); err != nil {
+			return nil, fmt.Errorf("kalshi native: create run: %w", err)
+		}
+	}
+
+	completeRun := func(status domain.PipelineStatus, signal domain.PipelineSignal, errMsg string) error {
+		completedAt := time.Now().UTC()
+		run.Status = status
+		run.Signal = signal
+		run.CompletedAt = &completedAt
+		run.ErrorMessage = errMsg
+		if r.runRepo == nil {
+			return nil
+		}
+		update := repository.PipelineRunStatusUpdate{Status: status, Signal: &signal, CompletedAt: &completedAt, ErrorMessage: errMsg}
+		return r.runRepo.UpdateStatus(ctx, run.ID, run.TradeDate, update)
+	}
+	failRun := func(err error) (*api.StrategyRunResult, error) {
+		if updateErr := completeRun(domain.PipelineStatusFailed, domain.PipelineSignalHold, err.Error()); updateErr != nil {
+			r.logger.WarnContext(ctx, "kalshi native: failed to update failed run", "error", updateErr, "run_id", run.ID)
+		}
+		return nil, err
+	}
+
+	if r.kalshiMarketData == nil {
+		return failRun(errors.New("kalshi native: market data client is required"))
+	}
+	snapshot, err := r.kalshiMarketData.LoadSnapshot(ctx, strategy.Ticker)
+	if err != nil {
+		return failRun(fmt.Errorf("kalshi native: fetch snapshot for %s: %w", strategy.Ticker, err))
+	}
+
+	decision, err := kalshiexecution.DeterministicNativeExecutor{}.Execute(ctx, strategy, snapshot)
+	if err != nil {
+		return failRun(fmt.Errorf("kalshi native: execute strategy %s: %w", strategy.Name, err))
+	}
+	signal := decision.Signal
+	if signal == "" {
+		signal = domain.PipelineSignalHold
+	}
+
+	if signal == domain.PipelineSignalHold {
+		if err := completeRun(domain.PipelineStatusCompleted, signal, ""); err != nil {
+			return nil, err
+		}
+		return &api.StrategyRunResult{Run: run, Signal: signal}, nil
+	}
+
+	strategyConfig, err := parseStrategyConfig(strategy.Config)
+	if err != nil {
+		return failRun(fmt.Errorf("kalshi native: parse strategy config: %w", err))
+	}
+	resolved := agent.ResolveConfig(strategyConfig, r.globals)
+	orderManager, err := r.newOrderManager(ctx, strategy, resolved, strategyConfig)
+	if err != nil {
+		return failRun(err)
+	}
+	if err := orderManager.ProcessSignal(ctx, execution.FinalSignal{Signal: signal, Confidence: decision.Confidence}, execution.TradingPlan{
+		Action:      signal,
+		MarketType:  domain.MarketTypeKalshi,
+		Ticker:      strategy.Ticker,
+		EntryType:   decision.EntryType,
+		EntryPrice:  decision.EntryPrice,
+		Confidence:  decision.Confidence,
+		Rationale:   decision.Rationale,
+		RiskReward:  decision.RiskReward,
+		Side:        decision.Side,
+		TimeHorizon: decision.TimeHorizon,
+	}, strategy.ID, run.ID); err != nil {
+		return failRun(err)
+	}
+
+	if err := completeRun(domain.PipelineStatusCompleted, signal, ""); err != nil {
+		return nil, err
+	}
+
+	var orders []domain.Order
+	if r.orderRepo != nil {
+		orders, err = r.orderRepo.GetByRun(ctx, run.ID, repository.OrderFilter{}, 10, 0)
+		if err != nil {
+			return nil, err
+		}
+	}
+	var positions []domain.Position
+	if r.positionRepo != nil {
+		positions, err = r.positionRepo.GetByStrategy(ctx, strategy.ID, repository.PositionFilter{}, 10, 0)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return &api.StrategyRunResult{Run: run, Signal: signal, Orders: orders, Positions: positions}, nil
 }
 

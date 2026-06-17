@@ -14,6 +14,7 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/agent"
 	"github.com/PatrickFanella/get-rich-quick/internal/config"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
+	kalshiexecution "github.com/PatrickFanella/get-rich-quick/internal/execution/kalshi"
 	polymarketexecution "github.com/PatrickFanella/get-rich-quick/internal/execution/polymarket"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 )
@@ -74,6 +75,68 @@ func TestRunStrategy_PolymarketUsesNativePathBeforeLegacyOHLCV(t *testing.T) {
 	}
 }
 
+func TestRunStrategy_KalshiUsesNativePathBeforeLegacyOHLCV(t *testing.T) {
+	t.Parallel()
+
+	runner := &realStrategyRunner{kalshiMarketData: failingKalshiMarketData{err: fmt.Errorf("kalshi native data used")}}
+	_, err := runner.RunStrategy(context.Background(), domain.Strategy{
+		Name:       "kalshi native disabled",
+		Ticker:     "KXTEST-YESNO",
+		MarketType: domain.MarketTypeKalshi,
+		Status:     domain.StrategyStatusActive,
+		IsPaper:    true,
+	})
+	if err == nil || !strings.Contains(err.Error(), "kalshi native data used") {
+		t.Fatalf("RunStrategy() error = %v, want native market-data error", err)
+	}
+}
+
+func TestRunStrategy_KalshiLiveReturnsDisabledError(t *testing.T) {
+	t.Parallel()
+
+	runner := &realStrategyRunner{kalshiMarketData: staticKalshiMarketData{snapshot: kalshiexecution.Snapshot{Ticker: "KXTEST-YESNO", Title: "Will test happen?", Status: "active", BestBidYes: 0.45, BestAskYes: 0.47, BestBidNo: 0.53, BestAskNo: 0.55, Volume: 1500, CloseTime: time.Now().UTC().Add(24 * time.Hour), FetchedAt: time.Now().UTC()}}}
+	_, err := runner.RunStrategy(context.Background(), domain.Strategy{
+		Name:       "kalshi live disabled",
+		Ticker:     "KXTEST-YESNO",
+		MarketType: domain.MarketTypeKalshi,
+		Status:     domain.StrategyStatusActive,
+		IsPaper:    false,
+	})
+	if err == nil || !strings.Contains(err.Error(), "kalshi live execution is disabled") {
+		t.Fatalf("RunStrategy() error = %v, want disabled live error", err)
+	}
+}
+
+func TestRunStrategy_KalshiSafeHoldPath(t *testing.T) {
+	t.Parallel()
+
+	strategy := domain.Strategy{
+		Name:       "kalshi hold",
+		Ticker:     "KXTEST-YESNO",
+		MarketType: domain.MarketTypeKalshi,
+		Status:     domain.StrategyStatusActive,
+		IsPaper:    true,
+		Config:     mustKalshiConfig(t, map[string]any{"template": "microstructure", "direction": "NO", "confidence": 0.72, "entry_price_max": 0.60}),
+	}
+	runner := &realStrategyRunner{kalshiMarketData: staticKalshiMarketData{snapshot: kalshiexecution.Snapshot{
+		Ticker:     "KXTEST-YESNO",
+		Title:      "Will test happen?",
+		Status:     "active",
+		BestBidYes: 0.45,
+		BestAskYes: 0.47,
+		Volume:     1500,
+		CloseTime:  time.Now().UTC().Add(24 * time.Hour),
+		FetchedAt:  time.Now().UTC(),
+	}}}
+	result, err := runner.RunStrategy(context.Background(), strategy)
+	if err != nil {
+		t.Fatalf("RunStrategy() error = %v", err)
+	}
+	if result == nil || result.Signal != domain.PipelineSignalHold {
+		t.Fatalf("RunStrategy() result = %+v, want hold", result)
+	}
+}
+
 type failingPolymarketMarketData struct{ err error }
 
 func (f failingPolymarketMarketData) GetMarketData(context.Context, string) (*agent.PredictionMarketData, error) {
@@ -84,6 +147,27 @@ type staticPolymarketMarketData struct{ data *agent.PredictionMarketData }
 
 func (s staticPolymarketMarketData) GetMarketData(context.Context, string) (*agent.PredictionMarketData, error) {
 	return s.data, nil
+}
+
+type failingKalshiMarketData struct{ err error }
+
+func (f failingKalshiMarketData) LoadSnapshot(context.Context, string) (kalshiexecution.Snapshot, error) {
+	return kalshiexecution.Snapshot{}, f.err
+}
+
+type staticKalshiMarketData struct{ snapshot kalshiexecution.Snapshot }
+
+func (s staticKalshiMarketData) LoadSnapshot(context.Context, string) (kalshiexecution.Snapshot, error) {
+	return s.snapshot, nil
+}
+
+func mustKalshiConfig(t *testing.T, meta map[string]any) json.RawMessage {
+	t.Helper()
+	raw, err := json.Marshal(map[string]any{"discovery_meta": meta})
+	if err != nil {
+		t.Fatalf("marshal config: %v", err)
+	}
+	return raw
 }
 
 func nativeMarketDataFixture() *agent.PredictionMarketData {

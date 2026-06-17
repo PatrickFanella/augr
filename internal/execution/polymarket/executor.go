@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
+	"github.com/PatrickFanella/get-rich-quick/internal/execution/prediction"
 )
 
 // ErrNativeExecutionDisabled is returned while Polymarket strategies are
@@ -12,24 +13,9 @@ import (
 // fully wired.
 var ErrNativeExecutionDisabled = errors.New("polymarket native execution is disabled")
 
-// NativeDecision is the market-native execution decision emitted from a
-// Polymarket snapshot. It is intentionally small so callers can route it through
-// the existing order manager for broker execution and persistence.
-type NativeDecision struct {
-	Signal        domain.PipelineSignal `json:"signal"`
-	Action        string                `json:"action,omitempty"`
-	Side          string                `json:"side,omitempty"`
-	EntryType     string                `json:"entry_type,omitempty"`
-	EntryPrice    float64               `json:"entry_price,omitempty"`
-	StopLoss      float64               `json:"stop_loss,omitempty"`
-	TakeProfit    float64               `json:"take_profit,omitempty"`
-	Confidence    float64               `json:"confidence,omitempty"`
-	TimeHorizon   string                `json:"time_horizon,omitempty"`
-	Reason        string                `json:"reason,omitempty"`
-	Rationale     string                `json:"rationale,omitempty"`
-	RiskReward    float64               `json:"risk_reward,omitempty"`
-	MaxEntryPrice float64               `json:"max_entry_price,omitempty"`
-}
+// NativeDecision is the shared market-native execution decision emitted from a
+// prediction-market snapshot.
+type NativeDecision = prediction.NativeDecision
 
 // NativeExecutor executes a strategy against a Polymarket snapshot.
 type NativeExecutor interface {
@@ -83,8 +69,8 @@ func (e DeterministicNativeExecutor) Execute(ctx context.Context, strategy domai
 		}, nil
 	}
 
-	entryPrice := snapshot.EntryPriceForSide(decision.Side)
-	if entryPrice <= 0 || entryPrice > 1 {
+	entryPrice, ok := snapshot.EntryPriceForSide(decision.Side)
+	if !ok || entryPrice <= 0 || entryPrice > 1 {
 		return NativeDecision{
 			Signal:        domain.PipelineSignalHold,
 			Action:        "hold",

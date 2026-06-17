@@ -562,8 +562,9 @@ export function PolymarketPage() {
   return (
     <div className="space-y-5" data-testid="polymarket-page">
       <PageHeader
+        eyebrow="Event Markets"
         title="Polymarket"
-        description="Prediction market hub: intelligence, accounts, watched markets, operations, and discovery"
+        description="Prediction market hub: intelligence, accounts, watched markets, operations, and discovery — grouped with the Kalshi data-first hub."
         meta={<StatusLed state={ws.status === 'open' ? 'live' : ws.status === 'connecting' ? 'sync' : 'warn'} label={scannerStatus} />}
       />
 
@@ -589,6 +590,7 @@ export function PolymarketPage() {
             <CardContent className="space-y-4">
               <div className="grid gap-2 sm:grid-cols-2">
                 <QuickLinkButton to="/surfers/ops" label="Open Surfers Ops" />
+                <QuickLinkButton to="/kalshi" label="Open Kalshi hub" />
                 <QuickLinkButton to="/journal" label="Decision Journal" />
                 <QuickLinkButton to="/strategies" label="Strategy Library" />
                 <QuickLinkButton to="/discovery" label="Discovery Hub" />

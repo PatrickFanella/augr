@@ -1,5 +1,6 @@
 import {
   Activity,
+  BadgeDollarSign,
   BookOpen,
   Brain,
   BriefcaseBusiness,
@@ -67,9 +68,10 @@ const navigationItems: NavItem[] = [
     items: [{ to: '/automation', label: 'Automation', icon: Zap, authRequired: true }],
   },
   {
-    label: 'Polymarket Ops',
+    label: 'Event Markets',
     items: [
       { to: '/polymarket', label: 'Polymarket', icon: TrendingUp, authRequired: true },
+      { to: '/kalshi', label: 'Kalshi', icon: BadgeDollarSign, authRequired: true },
       { to: '/surfers/ops', label: 'Surfers Ops', icon: ShieldCheck, authRequired: true },
     ],
   },

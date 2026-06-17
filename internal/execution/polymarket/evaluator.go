@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
+	"github.com/PatrickFanella/get-rich-quick/internal/execution/prediction"
 )
 
 const (
@@ -53,7 +54,7 @@ func (DeterministicNativeEvaluator) Evaluate(ctx context.Context, strategy domai
 	}
 
 	meta := parseDiscoveryMeta(strategy.Config)
-	side := normalizePredictionSide(meta.Direction)
+	side := prediction.NormalizeOutcomeSide(meta.Direction)
 	if side == "" {
 		return holdEvaluation(meta, "polymarket native evaluator: missing YES/NO direction"), nil
 	}
@@ -63,8 +64,8 @@ func (DeterministicNativeEvaluator) Evaluate(ctx context.Context, strategy domai
 		return holdEvaluation(meta, "polymarket native evaluator: unknown or unsupported template"), nil
 	}
 
-	entryPrice := snapshot.EntryPriceForSide(side)
-	if entryPrice <= 0 || entryPrice > 1 {
+	entryPrice, ok := snapshot.EntryPriceForSide(side)
+	if !ok || entryPrice <= 0 || entryPrice > 1 {
 		return holdEvaluation(meta, fmt.Sprintf("polymarket native evaluator: no executable %s quote", side)), nil
 	}
 
@@ -95,7 +96,7 @@ func (DeterministicNativeEvaluator) Evaluate(ctx context.Context, strategy domai
 		if snapshot.Liquidity < microstructureMinLiquidity {
 			return holdEvaluation(meta, fmt.Sprintf("polymarket native evaluator: liquidity below %.0f minimum", microstructureMinLiquidity)), nil
 		}
-		if spread := snapshot.SpreadForSide(side); spread <= 0 || spread > microstructureMaxAbsoluteSpread {
+		if spread, ok := snapshot.SpreadForSide(side); !ok || spread <= 0 || spread > microstructureMaxAbsoluteSpread {
 			return holdEvaluation(meta, fmt.Sprintf("polymarket native evaluator: %s spread too wide", side)), nil
 		}
 	case "resolution_edge":
@@ -179,17 +180,6 @@ func normalizedTimeHorizon(raw string) string {
 
 func normalizeTemplate(raw string) string {
 	return strings.ToLower(strings.TrimSpace(raw))
-}
-
-func normalizePredictionSide(side string) string {
-	switch strings.ToUpper(strings.TrimSpace(side)) {
-	case "YES":
-		return "YES"
-	case "NO":
-		return "NO"
-	default:
-		return ""
-	}
 }
 
 func isSupportedNativeTemplate(template string) bool {

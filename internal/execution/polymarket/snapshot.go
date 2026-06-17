@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/agent"
+	"github.com/PatrickFanella/get-rich-quick/internal/execution/prediction"
 )
 
 // Snapshot captures the native Polymarket execution state needed to decide
@@ -61,7 +62,7 @@ func (s Snapshot) ValidateExecutableSide(side string, minLiquidity float64, now 
 	if err := s.validateExecutableBase(minLiquidity, now); err != nil {
 		return err
 	}
-	normalizedSide := strings.ToUpper(strings.TrimSpace(side))
+	normalizedSide := prediction.NormalizeOutcomeSide(side)
 	switch normalizedSide {
 	case "YES", "NO":
 	default:
@@ -117,19 +118,20 @@ func SnapshotFromPredictionMarketData(m *agent.PredictionMarketData, fetchedAt t
 }
 
 // EntryPriceForSide returns the executable ask price for a YES or NO buy.
-func (s Snapshot) EntryPriceForSide(side string) float64 {
-	switch strings.ToUpper(strings.TrimSpace(side)) {
+func (s Snapshot) EntryPriceForSide(side string) (float64, bool) {
+	switch prediction.NormalizeOutcomeSide(side) {
 	case "YES":
-		return s.BestAskYes
+		return s.BestAskYes, s.BestAskYes > 0
 	case "NO":
-		return s.BestAskNo
+		return s.BestAskNo, s.BestAskNo > 0
+	default:
+		return 0, false
 	}
-	return 0
 }
 
 // BidAskForSide returns the best bid and ask for the selected side.
 func (s Snapshot) BidAskForSide(side string) (bid, ask float64) {
-	switch strings.ToUpper(strings.TrimSpace(side)) {
+	switch prediction.NormalizeOutcomeSide(side) {
 	case "YES":
 		return s.BestBidYes, s.BestAskYes
 	case "NO":
@@ -140,20 +142,22 @@ func (s Snapshot) BidAskForSide(side string) (bid, ask float64) {
 }
 
 // SpreadForSide returns the bid/ask spread for the selected side when known.
-func (s Snapshot) SpreadForSide(side string) float64 {
-	switch strings.ToUpper(strings.TrimSpace(side)) {
+func (s Snapshot) SpreadForSide(side string) (float64, bool) {
+	switch prediction.NormalizeOutcomeSide(side) {
 	case "YES":
 		if s.SpreadYes > 0 {
-			return s.SpreadYes
+			return s.SpreadYes, true
 		}
-		return max0(s.BestAskYes - s.BestBidYes)
+		if s.BestAskYes > 0 {
+			return max0(s.BestAskYes - s.BestBidYes), true
+		}
 	case "NO":
 		if s.BestBidNo > 0 && s.BestAskNo > 0 {
-			return max0(s.BestAskNo - s.BestBidNo)
+			return max0(s.BestAskNo - s.BestBidNo), true
 		}
 		if s.BestBidYes > 0 && s.BestAskYes > 0 {
-			return max0(s.BestAskYes - s.BestBidYes)
+			return max0(s.BestAskYes - s.BestBidYes), true
 		}
 	}
-	return 0
+	return 0, false
 }

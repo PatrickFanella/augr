@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -34,6 +35,31 @@ func TestRedditSourceFetchSubredditFallsBackOnRetryableStatus(t *testing.T) {
 	}
 	if got := strings.Join(hosts, ","); got != "www.reddit.com,old.reddit.com" {
 		t.Fatalf("hosts = %q, want www then old", got)
+	}
+}
+
+func TestRedditSourceFetchAllStartsCooldownOn429(t *testing.T) {
+	source := NewRedditSource([]string{"polymarket"}, 0, nil)
+	var calls int
+	source.client = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		calls++
+		return &http.Response{StatusCode: http.StatusTooManyRequests, Body: io.NopCloser(strings.NewReader("rate limited")), Header: http.Header{"Retry-After": []string{"120"}}}, nil
+	})}
+
+	events := source.fetchAll(context.Background())
+	if len(events) != 0 {
+		t.Fatalf("len(events) = %d, want 0", len(events))
+	}
+	if calls != 2 {
+		t.Fatalf("calls after first fetch = %d, want 2 hosts", calls)
+	}
+	if remaining := source.cooldownRemaining("polymarket"); remaining < 110*time.Second {
+		t.Fatalf("cooldown = %s, want roughly Retry-After", remaining)
+	}
+
+	source.fetchAll(context.Background())
+	if calls != 2 {
+		t.Fatalf("calls after cooldown fetch = %d, want unchanged", calls)
 	}
 }
 

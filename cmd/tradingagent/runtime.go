@@ -27,6 +27,7 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/data/binance"
 	"github.com/PatrickFanella/get-rich-quick/internal/data/finnhub"
 	"github.com/PatrickFanella/get-rich-quick/internal/data/fmp"
+	"github.com/PatrickFanella/get-rich-quick/internal/data/kalshi"
 	"github.com/PatrickFanella/get-rich-quick/internal/data/newsapi"
 	"github.com/PatrickFanella/get-rich-quick/internal/data/polygon"
 	polymarketData "github.com/PatrickFanella/get-rich-quick/internal/data/polymarket"
@@ -397,6 +398,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 		newsapi.Register(reg)
 		yahoo.Register(reg)
 		binance.Register(reg)
+		kalshi.Register(reg)
 		polymarketData.Register(reg)
 		stocktwitsData.Register(reg)
 		redditData.Register(reg)

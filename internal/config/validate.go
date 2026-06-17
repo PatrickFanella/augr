@@ -94,8 +94,10 @@ func Validate(cfg Config) error {
 			strings.TrimSpace(polymarket.SecretKey) != "" &&
 			strings.TrimSpace(polymarket.Passphrase) != "" &&
 			strings.TrimSpace(polymarket.Address) != ""
-		if !hasAlpaca && !hasBinance && !hasPolymarket {
-			errs = append(errs, "ENABLE_LIVE_TRADING requires at least one broker (Alpaca, Binance, or Polymarket) to be fully configured")
+		hasKalshi := strings.TrimSpace(cfg.Brokers.Kalshi.APIKeyID) != "" &&
+			strings.TrimSpace(cfg.Brokers.Kalshi.PrivateKeyPEMB64) != ""
+		if !hasAlpaca && !hasBinance && !hasPolymarket && !hasKalshi {
+			errs = append(errs, "ENABLE_LIVE_TRADING requires at least one broker (Alpaca, Binance, Polymarket, or Kalshi) to be fully configured")
 		}
 	}
 

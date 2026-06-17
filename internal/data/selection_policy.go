@@ -14,6 +14,7 @@ const (
 	cacheProviderStockChain      = "stock-chain"
 	cacheProviderCryptoChain     = "crypto-chain"
 	cacheProviderPolymarketChain = "polymarket-chain"
+	cacheProviderKalshiChain     = "kalshi-chain"
 	cacheProviderSocialAgg       = "social-agg"
 
 	cacheDataTypeOHLCV        = "ohlcv"
@@ -35,6 +36,7 @@ type ProviderChains struct {
 	Stock      []DataProvider
 	Crypto     []DataProvider
 	Polymarket []DataProvider
+	Kalshi     []DataProvider
 	Social     []DataProvider
 }
 
@@ -70,6 +72,7 @@ func (SelectionPolicy) BuildProviderChains(cfg config.Config, reg *ProviderRegis
 		Stock:      make([]DataProvider, 0, 6),
 		Crypto:     make([]DataProvider, 0, 1),
 		Polymarket: make([]DataProvider, 0, 1),
+		Kalshi:     make([]DataProvider, 0, 1),
 		Social:     make([]DataProvider, 0, 3),
 	}
 
@@ -99,6 +102,9 @@ func (SelectionPolicy) BuildProviderChains(cfg config.Config, reg *ProviderRegis
 	if reg.Polymarket != nil && strings.TrimSpace(cfg.Brokers.Polymarket.CLOBURL) != "" {
 		chains.Polymarket = append(chains.Polymarket, reg.Polymarket(ProviderConfig{BaseURL: cfg.Brokers.Polymarket.CLOBURL, Logger: logger}))
 	}
+	if reg.Kalshi != nil {
+		chains.Kalshi = append(chains.Kalshi, reg.Kalshi(ProviderConfig{BaseURL: cfg.Brokers.Kalshi.APIBaseURL, Logger: logger}))
+	}
 
 	if apiKey := strings.TrimSpace(cfg.DataProviders.Finnhub.APIKey); apiKey != "" && reg.Finnhub != nil {
 		chains.Social = append(chains.Social, reg.Finnhub(ProviderConfig{APIKey: apiKey, RateLimitPerMinute: cfg.DataProviders.Finnhub.RateLimitPerMinute, Logger: logger}))
@@ -114,7 +120,7 @@ func (SelectionPolicy) BuildProviderChains(cfg config.Config, reg *ProviderRegis
 }
 
 // ResolveMarketChain selects the correct first-wins provider chain for a market.
-func (SelectionPolicy) ResolveMarketChain(marketType domain.MarketType, stock, crypto, polymarket DataProvider) (string, DataProvider, error) {
+func (SelectionPolicy) ResolveMarketChain(marketType domain.MarketType, stock, crypto, polymarket, kalshi DataProvider) (string, DataProvider, error) {
 	switch normalizeMarketType(marketType) {
 	case domain.MarketTypeStock:
 		return cacheProviderStockChain, stock, nil
@@ -122,6 +128,8 @@ func (SelectionPolicy) ResolveMarketChain(marketType domain.MarketType, stock, c
 		return cacheProviderCryptoChain, crypto, nil
 	case domain.MarketTypePolymarket:
 		return cacheProviderPolymarketChain, polymarket, nil
+	case domain.MarketTypeKalshi:
+		return cacheProviderKalshiChain, kalshi, nil
 	default:
 		return "", nil, fmt.Errorf("%w: %s", ErrUnsupportedMarketType, marketType)
 	}
@@ -141,6 +149,8 @@ func (SelectionPolicy) CacheSelection(marketType domain.MarketType, dataType str
 			return CacheSelection{Provider: cacheProviderCryptoChain, Enabled: true}, nil
 		case domain.MarketTypePolymarket:
 			return CacheSelection{Provider: cacheProviderPolymarketChain, Enabled: true}, nil
+		case domain.MarketTypeKalshi:
+			return CacheSelection{Provider: cacheProviderKalshiChain, Enabled: true}, nil
 		default:
 			return CacheSelection{}, fmt.Errorf("%w: %s", ErrUnsupportedMarketType, marketType)
 		}

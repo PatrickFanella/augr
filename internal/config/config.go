@@ -132,6 +132,7 @@ type BrokerConfigs struct {
 	Alpaca     BrokerConfig
 	Binance    BrokerConfig
 	Polymarket PolymarketConfig
+	Kalshi     KalshiConfig
 }
 
 type PolygonConnectionConfig struct {
@@ -151,6 +152,14 @@ type PolymarketConfig struct {
 	APIBaseURL     string
 	GatewayBaseURL string
 	CLOBURL        string
+}
+
+// KalshiConfig contains credentials and endpoint settings for Kalshi.
+type KalshiConfig struct {
+	APIBaseURL       string
+	APIKeyID         string
+	PrivateKeyPEMB64 string
+	Demo             bool
 }
 
 // BrokerConfig contains broker credentials and execution mode.
@@ -362,6 +371,11 @@ func loadFromEnvironment() (Config, error) {
 	}
 
 	tradierSandbox, err := getEnvBool("TRADIER_SANDBOX", true)
+	if err != nil {
+		return Config{}, err
+	}
+
+	kalshiDemo, err := getEnvBool("KALSHI_DEMO", true)
 	if err != nil {
 		return Config{}, err
 	}
@@ -606,6 +620,12 @@ func loadFromEnvironment() (Config, error) {
 				APIBaseURL:     getEnvString("POLYMARKET_API_BASE_URL", "https://api.polymarket.us"),
 				GatewayBaseURL: getEnvString("POLYMARKET_GATEWAY_BASE_URL", "https://gateway.polymarket.us"),
 				CLOBURL:        getEnvString("POLYMARKET_CLOB_URL", "https://clob.polymarket.com"),
+			},
+			Kalshi: KalshiConfig{
+				APIBaseURL:       getEnvString("KALSHI_API_BASE_URL", "https://external-api.demo.kalshi.co/trade-api/v2"),
+				APIKeyID:         os.Getenv("KALSHI_API_KEY_ID"),
+				PrivateKeyPEMB64: os.Getenv("KALSHI_PRIVATE_KEY_PEM_B64"),
+				Demo:             kalshiDemo,
 			},
 		},
 		Risk: RiskConfig{

@@ -366,7 +366,7 @@ func TestNewPosition(t *testing.T) {
 }
 
 func TestMarketTypeIsValid(t *testing.T) {
-	for _, m := range []MarketType{MarketTypeStock, MarketTypeCrypto, MarketTypePolymarket} {
+	for _, m := range []MarketType{MarketTypeStock, MarketTypeCrypto, MarketTypePolymarket, MarketTypeKalshi} {
 		if !m.IsValid() {
 			t.Errorf("MarketType(%q).IsValid() = false, want true", m)
 		}

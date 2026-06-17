@@ -499,8 +499,9 @@ func (s *Scheduler) runStrategy(strategy domain.Strategy) {
 		return
 	}
 
-	if current.MarketType.Normalize() == domain.MarketTypePolymarket && s.strategyExecution == nil {
-		s.logger.Info("scheduler: skipping polymarket strategy until native executor is enabled",
+	mt := current.MarketType.Normalize()
+	if (mt == domain.MarketTypePolymarket || mt == domain.MarketTypeKalshi) && s.strategyExecution == nil {
+		s.logger.Info("scheduler: skipping event-market strategy until native executor is enabled",
 			slog.String("strategy_id", current.ID.String()),
 			slog.String("ticker", current.Ticker),
 			slog.String("market_type", current.MarketType.String()),
