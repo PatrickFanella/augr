@@ -10,22 +10,24 @@ import type {
   RiskStatus,
 } from '@/lib/api/types'
 
-export const RISK_COCKPIT_MARKET_ORDER: RiskCockpitExposure['market_type'][] = ['stock', 'crypto', 'options', 'polymarket']
+export const RISK_COCKPIT_MARKET_ORDER: RiskCockpitExposure['market_type'][] = ['stock', 'crypto', 'options', 'polymarket', 'kalshi']
 
 export const RISK_COCKPIT_MARKET_LABELS: Record<RiskCockpitExposure['market_type'], string> = {
   stock: 'Stock',
   crypto: 'Crypto',
   options: 'Options',
   polymarket: 'Polymarket',
+  kalshi: 'Kalshi',
 }
 
-export const RISK_MARKET_KILL_SWITCH_ORDER: MarketType[] = ['stock', 'crypto', 'polymarket']
+export const RISK_MARKET_KILL_SWITCH_ORDER: MarketType[] = ['stock', 'crypto', 'polymarket', 'kalshi']
 
 export const RISK_MARKET_KILL_SWITCH_LABELS: Record<MarketType, string> = {
   stock: 'Stocks',
   crypto: 'Crypto',
   polymarket: 'Polymarket',
   options: 'Options',
+  kalshi: 'Kalshi',
 }
 
 const RISK_STATUS_DISPLAY: Record<RiskStatus, { label: string; variant: 'success' | 'warning' | 'destructive' }> = {

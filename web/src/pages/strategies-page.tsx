@@ -20,6 +20,7 @@ function MarketTypeBadge({ type }: { type: Strategy['market_type'] }) {
     crypto: 'secondary',
     polymarket: 'outline',
     options: 'outline',
+    kalshi: 'outline',
   }
   return <Badge variant={variants[type]}>{type}</Badge>
 }
