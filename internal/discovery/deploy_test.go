@@ -128,6 +128,43 @@ func TestCreateOrReusePaperStrategyReusesPolymarketSlugDespiteDifferentName(t *t
 	}
 }
 
+func TestCreateOrReusePaperStrategyReusesKalshiTickerDespiteDifferentName(t *testing.T) {
+	t.Parallel()
+
+	repo := newInMemoryStrategyRepo()
+	ctx := context.Background()
+
+	first := domain.Strategy{
+		Name:       "auto: old kalshi name",
+		Ticker:     "KX-EXAMPLE",
+		MarketType: domain.MarketTypeKalshi,
+		IsPaper:    true,
+		Status:     domain.StrategyStatusActive,
+		Config:     json.RawMessage(`{"discovery_meta":{"market_ticker":"KX-EXAMPLE"}}`),
+	}
+	created, didCreate, err := CreateOrReusePaperStrategy(ctx, repo, first)
+	if err != nil || !didCreate {
+		t.Fatalf("first CreateOrReusePaperStrategy() = created %v, err %v", didCreate, err)
+	}
+
+	second := first
+	second.ID = uuid.New()
+	second.Name = "auto: different kalshi name"
+	reused, didCreate, err := CreateOrReusePaperStrategy(ctx, repo, second)
+	if err != nil {
+		t.Fatalf("second CreateOrReusePaperStrategy() error = %v", err)
+	}
+	if didCreate {
+		t.Fatal("expected same Kalshi ticker to be reused despite different name")
+	}
+	if reused.ID != created.ID {
+		t.Fatalf("reused ID = %s, want %s", reused.ID, created.ID)
+	}
+	if got := repo.CountMust(ctx, repository.StrategyFilter{Ticker: first.Ticker, MarketType: domain.MarketTypeKalshi}); got != 1 {
+		t.Fatalf("kalshi strategy count = %d, want 1", got)
+	}
+}
+
 type inMemoryStrategyRepo struct {
 	strategies         []domain.Strategy
 	injectConflictOnce bool

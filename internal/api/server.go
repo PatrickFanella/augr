@@ -102,6 +102,9 @@ type Server struct {
 	polymarketAccountRepo repository.PolymarketAccountRepository
 	polymarketWatchedRepo repository.PolymarketWatchedMarketsRepository
 	polymarketClient      PolymarketMarketDataFetcher
+	kalshiWatchedRepo     repository.KalshiWatchedMarketsRepository
+	kalshiSnapshotsRepo   repository.KalshiMarketSnapshotsRepository
+	kalshiDiscoveryRuns   repository.KalshiDiscoveryRunRepository
 
 	// Report artifacts (optional; nil = feature not enabled).
 	reportArtifacts ReportArtifactStore
@@ -225,6 +228,9 @@ type Deps struct {
 	PolymarketWatchedRepo  repository.PolymarketWatchedMarketsRepository
 	PolymarketResolvedRepo repository.PolymarketResolvedMarketsRepository
 	PolymarketClient       PolymarketMarketDataFetcher
+	KalshiWatchedRepo      repository.KalshiWatchedMarketsRepository
+	KalshiSnapshotsRepo    repository.KalshiMarketSnapshotsRepository
+	KalshiDiscoveryRuns    repository.KalshiDiscoveryRunRepository
 
 	// Report artifacts (optional; nil = feature not enabled).
 	ReportArtifacts ReportArtifactStore
@@ -350,6 +356,9 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 		polymarketAccountRepo: deps.PolymarketAccountRepo,
 		polymarketWatchedRepo: deps.PolymarketWatchedRepo,
 		polymarketClient:      deps.PolymarketClient,
+		kalshiWatchedRepo:     deps.KalshiWatchedRepo,
+		kalshiSnapshotsRepo:   deps.KalshiSnapshotsRepo,
+		kalshiDiscoveryRuns:   deps.KalshiDiscoveryRuns,
 		reportArtifacts:       deps.ReportArtifacts,
 		reportMetrics:         deps.ReportMetrics,
 	}
@@ -438,6 +447,10 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 			pr.Get("/jobs/status", s.handleGetPolymarketJobsStatus)
 			pr.Get("/discovery/last", s.handleGetPolymarketDiscoveryLast)
 			pr.Post("/discovery/run", s.handleRunPolymarketDiscovery)
+		})
+
+		v1.Route("/kalshi", func(kr chi.Router) {
+			kr.Get("/summary", s.handleGetKalshiSummary)
 		})
 
 		v1.Get("/marketdata/polymarket/status", s.handlePolymarketStatus)

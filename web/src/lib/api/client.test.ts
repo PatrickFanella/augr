@@ -113,6 +113,29 @@ describe('ApiClient', () => {
     )
   })
 
+  it('fetches the Kalshi summary endpoint', async () => {
+    const payload = {
+      watched_markets: [],
+      latest_snapshots: [],
+      discovery: { last_run: null, status: 'not_started' },
+      strategies: { active_paper: 0 },
+    }
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => payload,
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const client = new ApiClient({ baseUrl: 'http://localhost:8080', token: 'jwt-token' })
+
+    await expect(client.getKalshiSummary()).resolves.toEqual(payload)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [requestUrl, requestInit] = fetchMock.mock.calls[0] as [URL, RequestInit]
+    expect(requestUrl.toString()).toBe('http://localhost:8080/api/v1/kalshi/summary')
+    expect(new Headers(requestInit.headers).get('Authorization')).toBe('Bearer jwt-token')
+  })
+
   it('fetches the risk cockpit summary from the authenticated endpoint', async () => {
     const payload = {
       generated_at: '2026-06-09T12:00:00Z',

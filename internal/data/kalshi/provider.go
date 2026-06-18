@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -72,19 +73,19 @@ func (p *Provider) LoadSnapshot(ctx context.Context, ticker string) (executionka
 		fetchedAt = p.client.now().UTC()
 	}
 
-	yesBid, err := toProbability(raw.YesBid)
+	yesBid, err := raw.quoteProbability(raw.YesBidDollars, raw.YesBid)
 	if err != nil {
 		return executionkalshi.Snapshot{}, fmt.Errorf("kalshi: yes_bid: %w", err)
 	}
-	yesAsk, err := toProbability(raw.YesAsk)
+	yesAsk, err := raw.quoteProbability(raw.YesAskDollars, raw.YesAsk)
 	if err != nil {
 		return executionkalshi.Snapshot{}, fmt.Errorf("kalshi: yes_ask: %w", err)
 	}
-	noBid, err := toProbability(raw.NoBid)
+	noBid, err := raw.quoteProbability(raw.NoBidDollars, raw.NoBid)
 	if err != nil {
 		return executionkalshi.Snapshot{}, fmt.Errorf("kalshi: no_bid: %w", err)
 	}
-	noAsk, err := toProbability(raw.NoAsk)
+	noAsk, err := raw.quoteProbability(raw.NoAskDollars, raw.NoAsk)
 	if err != nil {
 		return executionkalshi.Snapshot{}, fmt.Errorf("kalshi: no_ask: %w", err)
 	}
@@ -97,8 +98,8 @@ func (p *Provider) LoadSnapshot(ctx context.Context, ticker string) (executionka
 		BestAskYes:   yesAsk,
 		BestBidNo:    noBid,
 		BestAskNo:    noAsk,
-		Volume:       raw.Volume,
-		OpenInterest: raw.OpenInterest,
+		Volume:       raw.volume(),
+		OpenInterest: raw.openInterest(),
 		CloseTime:    closeTime.UTC(),
 		FetchedAt:    fetchedAt,
 	}, nil
@@ -145,34 +146,73 @@ type marketEnvelope struct {
 }
 
 type marketSnapshot struct {
-	Ticker       string  `json:"ticker"`
-	Title        string  `json:"title"`
-	Status       string  `json:"status"`
-	YesBid       float64 `json:"yes_bid"`
-	YesAsk       float64 `json:"yes_ask"`
-	NoBid        float64 `json:"no_bid"`
-	NoAsk        float64 `json:"no_ask"`
-	Volume       float64 `json:"volume"`
-	OpenInterest float64 `json:"open_interest"`
-	CloseTime    string  `json:"close_time"`
+	Ticker         string  `json:"ticker"`
+	Title          string  `json:"title"`
+	Status         string  `json:"status"`
+	YesBid         float64 `json:"yes_bid"`
+	YesBidDollars  string  `json:"yes_bid_dollars"`
+	YesAsk         float64 `json:"yes_ask"`
+	YesAskDollars  string  `json:"yes_ask_dollars"`
+	NoBid          float64 `json:"no_bid"`
+	NoBidDollars   string  `json:"no_bid_dollars"`
+	NoAsk          float64 `json:"no_ask"`
+	NoAskDollars   string  `json:"no_ask_dollars"`
+	Volume         float64 `json:"volume"`
+	VolumeFP       string  `json:"volume_fp"`
+	OpenInterest   float64 `json:"open_interest"`
+	OpenInterestFP string  `json:"open_interest_fp"`
+	CloseTime      string  `json:"close_time"`
+	yesBidSet      bool
+	yesAskSet      bool
+	noBidSet       bool
+	noAskSet       bool
+}
+
+func (m *marketSnapshot) UnmarshalJSON(data []byte) error {
+	type alias marketSnapshot
+	var decoded alias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	decoded.yesBidSet = jsonFieldPresent(fields, "yes_bid")
+	decoded.yesAskSet = jsonFieldPresent(fields, "yes_ask")
+	decoded.noBidSet = jsonFieldPresent(fields, "no_bid")
+	decoded.noAskSet = jsonFieldPresent(fields, "no_ask")
+	*m = marketSnapshot(decoded)
+	return nil
 }
 
 func (m marketSnapshot) hasFullBook() bool {
-	return m.YesBid > 0 && m.YesAsk > 0 && m.NoBid > 0 && m.NoAsk > 0
+	return (m.yesBidSet || strings.TrimSpace(m.YesBidDollars) != "") &&
+		(m.yesAskSet || strings.TrimSpace(m.YesAskDollars) != "") &&
+		(m.noBidSet || strings.TrimSpace(m.NoBidDollars) != "") &&
+		(m.noAskSet || strings.TrimSpace(m.NoAskDollars) != "")
 }
 
 func (m *marketSnapshot) mergeBook(book marketSnapshot) {
-	if m.YesBid <= 0 {
+	if !m.yesBidSet && strings.TrimSpace(m.YesBidDollars) == "" {
 		m.YesBid = book.YesBid
+		m.YesBidDollars = book.YesBidDollars
+		m.yesBidSet = book.yesBidSet
 	}
-	if m.YesAsk <= 0 {
+	if !m.yesAskSet && strings.TrimSpace(m.YesAskDollars) == "" {
 		m.YesAsk = book.YesAsk
+		m.YesAskDollars = book.YesAskDollars
+		m.yesAskSet = book.yesAskSet
 	}
-	if m.NoBid <= 0 {
+	if !m.noBidSet && strings.TrimSpace(m.NoBidDollars) == "" {
 		m.NoBid = book.NoBid
+		m.NoBidDollars = book.NoBidDollars
+		m.noBidSet = book.noBidSet
 	}
-	if m.NoAsk <= 0 {
+	if !m.noAskSet && strings.TrimSpace(m.NoAskDollars) == "" {
 		m.NoAsk = book.NoAsk
+		m.NoAskDollars = book.NoAskDollars
+		m.noAskSet = book.noAskSet
 	}
 	if m.Volume <= 0 {
 		m.Volume = book.Volume
@@ -200,12 +240,42 @@ func decodeMarketSnapshot(body []byte) (marketSnapshot, error) {
 }
 
 func (m marketSnapshot) isZero() bool {
-	return strings.TrimSpace(m.Ticker) == "" && strings.TrimSpace(m.Title) == "" && strings.TrimSpace(m.Status) == "" && m.YesBid == 0 && m.YesAsk == 0 && m.NoBid == 0 && m.NoAsk == 0 && m.Volume == 0 && m.OpenInterest == 0 && strings.TrimSpace(m.CloseTime) == ""
+	return strings.TrimSpace(m.Ticker) == "" && strings.TrimSpace(m.Title) == "" && strings.TrimSpace(m.Status) == "" && m.YesBid == 0 && strings.TrimSpace(m.YesBidDollars) == "" && m.YesAsk == 0 && strings.TrimSpace(m.YesAskDollars) == "" && m.NoBid == 0 && strings.TrimSpace(m.NoBidDollars) == "" && m.NoAsk == 0 && strings.TrimSpace(m.NoAskDollars) == "" && m.Volume == 0 && strings.TrimSpace(m.VolumeFP) == "" && m.OpenInterest == 0 && strings.TrimSpace(m.OpenInterestFP) == "" && strings.TrimSpace(m.CloseTime) == ""
 }
 
-func toProbability(v float64) (float64, error) {
-	if v < 0 || v > 100 {
-		return 0, fmt.Errorf("quote cents %.4f out of range [0,100]", v)
+func jsonFieldPresent(fields map[string]json.RawMessage, key string) bool {
+	raw, ok := fields[key]
+	return ok && len(strings.TrimSpace(string(raw))) > 0 && strings.TrimSpace(string(raw)) != "null"
+}
+
+func (m marketSnapshot) quoteProbability(dollars string, cents float64) (float64, error) {
+	if strings.TrimSpace(dollars) != "" {
+		value, err := strconv.ParseFloat(strings.TrimSpace(dollars), 64)
+		if err != nil {
+			return 0, err
+		}
+		if value < 0 || value > 1 {
+			return 0, fmt.Errorf("quote dollars %.4f out of range [0,1]", value)
+		}
+		return value, nil
 	}
-	return v / 100, nil
+	return QuoteCentsToProbability(cents)
+}
+
+func (m marketSnapshot) volume() float64 {
+	if strings.TrimSpace(m.VolumeFP) != "" {
+		if value, err := strconv.ParseFloat(strings.TrimSpace(m.VolumeFP), 64); err == nil {
+			return value
+		}
+	}
+	return m.Volume
+}
+
+func (m marketSnapshot) openInterest() float64 {
+	if strings.TrimSpace(m.OpenInterestFP) != "" {
+		if value, err := strconv.ParseFloat(strings.TrimSpace(m.OpenInterestFP), 64); err == nil {
+			return value
+		}
+	}
+	return m.OpenInterest
 }

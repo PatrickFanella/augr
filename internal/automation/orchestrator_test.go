@@ -2,14 +2,17 @@ package automation
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution"
 	polymarketexecution "github.com/PatrickFanella/get-rich-quick/internal/execution/polymarket"
+	kalshidiscovery "github.com/PatrickFanella/get-rich-quick/internal/kalshidiscovery"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 	"github.com/google/uuid"
 
@@ -240,6 +243,56 @@ func TestJobOrchestratorRegisterAllAddsPolymarketReconcile(t *testing.T) {
 	}
 }
 
+func TestJobOrchestratorRegisterAllAddsKalshiDiscovery(t *testing.T) {
+	t.Parallel()
+
+	origRun := kalshiDiscoveryRun
+	defer func() { kalshiDiscoveryRun = origRun }()
+
+	var gotCfg kalshidiscovery.Config
+	var gotDeps kalshidiscovery.Deps
+	kalshiDiscoveryRun = func(_ context.Context, cfg kalshidiscovery.Config, deps kalshidiscovery.Deps) (*kalshidiscovery.Result, error) {
+		gotCfg = cfg
+		gotDeps = deps
+		return &kalshidiscovery.Result{}, nil
+	}
+
+	orch := NewJobOrchestrator(OrchestratorDeps{
+		StrategyRepo:              &kalshiStrategyRepoStub{},
+		KalshiCatalog:             kalshiCatalogStub{},
+		KalshiWatchedRepo:         &kalshiWatchedRepoStub{},
+		KalshiMarketSnapshotsRepo: &kalshiSnapshotsRepoStub{},
+		KalshiDiscoveryRuns:       &kalshiDiscoveryRunsRepoStub{},
+	})
+	orch.RegisterAll()
+
+	status := singleJobStatus(t, orch, "kalshi_discovery")
+	if status.Schedule == "" || !strings.Contains(status.Schedule, "15 * * * *") {
+		t.Fatalf("kalshi_discovery schedule = %q, want cron 15 * * * *", status.Schedule)
+	}
+
+	if err := orch.RunJob(context.Background(), "kalshi_discovery"); err != nil {
+		t.Fatalf("RunJob() error = %v", err)
+	}
+	waitForJobRuns(t, orch, "kalshi_discovery", 1)
+
+	if gotCfg.DryRun {
+		t.Fatal("Kalshi discovery cfg.DryRun = true, want false")
+	}
+	if gotCfg.FetchLimit != 50 || gotCfg.MaxDeployments != 1 || gotCfg.MinConviction != 0.70 {
+		t.Fatalf("Kalshi discovery cfg = %#v, want conservative paper settings", gotCfg)
+	}
+	if gotCfg.Screener.MaxCandidates != 15 || gotCfg.Screener.MinVolume != 1000 || gotCfg.Screener.MinOpenInterest != 500 || gotCfg.Screener.MaxSpreadPct != 12 || gotCfg.Screener.MinDaysToClose != 3 {
+		t.Fatalf("Kalshi discovery screener = %#v, want default conservative config", gotCfg.Screener)
+	}
+	if gotDeps.Catalog == nil || gotDeps.Strategies == nil || gotDeps.Watched == nil || gotDeps.Snapshots == nil || gotDeps.DiscoveryRuns == nil {
+		t.Fatalf("Kalshi discovery deps = %#v, want all persistence dependencies wired", gotDeps)
+	}
+	if gotDeps.Logger == nil {
+		t.Fatal("Kalshi discovery logger = nil")
+	}
+}
+
 func TestJobOrchestratorAlpacaReconcileRecordsMetricsAndSummary(t *testing.T) {
 	t.Parallel()
 
@@ -292,6 +345,70 @@ func singleJobStatus(t *testing.T, orch *JobOrchestrator, jobName string) JobSta
 
 func schedulerSpecEveryMinute() scheduler.ScheduleSpec {
 	return scheduler.ScheduleSpec{Cron: "* * * * *", Type: scheduler.ScheduleTypeCron}
+}
+
+type kalshiCatalogStub struct{}
+
+func (kalshiCatalogStub) ListMarkets(context.Context, kalshidiscovery.ListOptions) ([]kalshidiscovery.MarketCandidate, string, error) {
+	return nil, "", nil
+}
+
+type kalshiStrategyRepoStub struct{}
+
+func (s *kalshiStrategyRepoStub) Create(context.Context, *domain.Strategy) error { return nil }
+func (s *kalshiStrategyRepoStub) Get(context.Context, uuid.UUID) (*domain.Strategy, error) {
+	return nil, repository.ErrNotFound
+}
+func (s *kalshiStrategyRepoStub) List(context.Context, repository.StrategyFilter, int, int) ([]domain.Strategy, error) {
+	return nil, nil
+}
+func (s *kalshiStrategyRepoStub) Count(context.Context, repository.StrategyFilter) (int, error) {
+	return 0, nil
+}
+func (s *kalshiStrategyRepoStub) Update(context.Context, *domain.Strategy) error { return nil }
+func (s *kalshiStrategyRepoStub) Delete(context.Context, uuid.UUID) error        { return nil }
+func (s *kalshiStrategyRepoStub) UpdateThesis(context.Context, uuid.UUID, json.RawMessage) error {
+	return nil
+}
+func (s *kalshiStrategyRepoStub) GetThesisRaw(context.Context, uuid.UUID) (json.RawMessage, error) {
+	return nil, nil
+}
+
+type kalshiWatchedRepoStub struct{}
+
+func (s *kalshiWatchedRepoStub) Upsert(context.Context, *domain.KalshiWatchedMarket) error {
+	return nil
+}
+func (s *kalshiWatchedRepoStub) SetEnabled(context.Context, string, bool) error { return nil }
+func (s *kalshiWatchedRepoStub) ListEnabled(context.Context) ([]domain.KalshiWatchedMarket, error) {
+	return nil, nil
+}
+
+type kalshiSnapshotsRepoStub struct{}
+
+func (s *kalshiSnapshotsRepoStub) Create(context.Context, *domain.KalshiMarketSnapshot) error {
+	return nil
+}
+func (s *kalshiSnapshotsRepoStub) ListLatestByTicker(context.Context, string, int) ([]domain.KalshiMarketSnapshot, error) {
+	return nil, nil
+}
+func (s *kalshiSnapshotsRepoStub) ListRecent(context.Context, int) ([]domain.KalshiMarketSnapshot, error) {
+	return nil, nil
+}
+
+type kalshiDiscoveryRunsRepoStub struct{}
+
+func (s *kalshiDiscoveryRunsRepoStub) Create(context.Context, *domain.KalshiDiscoveryRun) error {
+	return nil
+}
+func (s *kalshiDiscoveryRunsRepoStub) GetActive(context.Context) (*domain.KalshiDiscoveryRun, error) {
+	return nil, repository.ErrNotFound
+}
+func (s *kalshiDiscoveryRunsRepoStub) Finish(context.Context, *domain.KalshiDiscoveryRun) error {
+	return nil
+}
+func (s *kalshiDiscoveryRunsRepoStub) ListLatest(context.Context, int) ([]domain.KalshiDiscoveryRun, error) {
+	return nil, nil
 }
 
 type polymarketBrokerStub struct {

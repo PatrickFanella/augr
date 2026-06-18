@@ -67,6 +67,7 @@ import type {
   DiscoveryRunRequest,
   DiscoveryResult,
   JobStatus,
+  KalshiSummaryResponse,
   PolymarketAccount,
   PolymarketAccountListParams,
   PolymarketAccountTrade,
@@ -752,6 +753,10 @@ export class ApiClient {
       '/api/v1/polymarket/discovery/run',
       { method: 'POST' },
     );
+  }
+
+  async getKalshiSummary() {
+    return this.request<KalshiSummaryResponse>('/api/v1/kalshi/summary');
   }
 
   async getPolymarketMarketDataStatus() {

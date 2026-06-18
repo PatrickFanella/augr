@@ -457,6 +457,28 @@ type PolymarketWatchedMarketsRepository interface {
 	SetEnabled(ctx context.Context, slug string, enabled bool) error
 }
 
+// KalshiWatchedMarketsRepository stores watched Kalshi tickers.
+type KalshiWatchedMarketsRepository interface {
+	Upsert(ctx context.Context, market *domain.KalshiWatchedMarket) error
+	SetEnabled(ctx context.Context, ticker string, enabled bool) error
+	ListEnabled(ctx context.Context) ([]domain.KalshiWatchedMarket, error)
+}
+
+// KalshiMarketSnapshotsRepository stores Kalshi market snapshots.
+type KalshiMarketSnapshotsRepository interface {
+	Create(ctx context.Context, snapshot *domain.KalshiMarketSnapshot) error
+	ListLatestByTicker(ctx context.Context, ticker string, limit int) ([]domain.KalshiMarketSnapshot, error)
+	ListRecent(ctx context.Context, limit int) ([]domain.KalshiMarketSnapshot, error)
+}
+
+// KalshiDiscoveryRunRepository persists Kalshi discovery progress.
+type KalshiDiscoveryRunRepository interface {
+	Create(ctx context.Context, run *domain.KalshiDiscoveryRun) error
+	GetActive(ctx context.Context) (*domain.KalshiDiscoveryRun, error)
+	Finish(ctx context.Context, run *domain.KalshiDiscoveryRun) error
+	ListLatest(ctx context.Context, limit int) ([]domain.KalshiDiscoveryRun, error)
+}
+
 // PolymarketResolvedMarketsRepository tracks resolved market processing.
 type PolymarketResolvedMarketsRepository interface {
 	IsProcessed(ctx context.Context, slug string) (bool, error)

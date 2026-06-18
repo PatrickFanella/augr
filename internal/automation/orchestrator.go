@@ -15,6 +15,7 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/data/rss"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	polymarketexecution "github.com/PatrickFanella/get-rich-quick/internal/execution/polymarket"
+	kalshidiscovery "github.com/PatrickFanella/get-rich-quick/internal/kalshidiscovery"
 	"github.com/PatrickFanella/get-rich-quick/internal/llm"
 	"github.com/PatrickFanella/get-rich-quick/internal/llm/embedding"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
@@ -68,11 +69,17 @@ type OrchestratorDeps struct {
 	PolymarketWatchedRepo   repository.PolymarketWatchedMarketsRepository // optional; nil = skip discovery auto-watch
 	PolymarketDiscoveryRuns repository.PolymarketDiscoveryRunRepository   // optional; nil = skip chunked discovery job registration/execution
 	PolymarketCLOBURL       string                                        // optional; defaults to Polymarket CLOB base URL
-	ReportArtifactRepo      *pgrepo.ReportArtifactRepo                    // optional; nil = skip report jobs
-	BacktestConfigRepo      repository.BacktestConfigRepository           // optional; needed by report jobs
-	BacktestRunRepo         repository.BacktestRunRepository              // optional; needed by report jobs
-	OvernightBacktestRuns   repository.OvernightBacktestRunRepository
-	Logger                  *slog.Logger
+	KalshiCatalog           interface {
+		ListMarkets(context.Context, kalshidiscovery.ListOptions) ([]kalshidiscovery.MarketCandidate, string, error)
+	}
+	KalshiWatchedRepo         repository.KalshiWatchedMarketsRepository
+	KalshiMarketSnapshotsRepo repository.KalshiMarketSnapshotsRepository
+	KalshiDiscoveryRuns       repository.KalshiDiscoveryRunRepository // optional; nil = skip progress recording
+	ReportArtifactRepo        *pgrepo.ReportArtifactRepo              // optional; nil = skip report jobs
+	BacktestConfigRepo        repository.BacktestConfigRepository     // optional; needed by report jobs
+	BacktestRunRepo           repository.BacktestRunRepository        // optional; needed by report jobs
+	OvernightBacktestRuns     repository.OvernightBacktestRunRepository
+	Logger                    *slog.Logger
 }
 
 // RegisteredJob tracks a single automated job and its runtime state.
@@ -209,6 +216,7 @@ func (o *JobOrchestrator) RegisterAll() {
 	o.registerPolymarketReconciliationJobs()
 	o.registerPolymarketResolutionsJob()
 	o.registerPolymarketDiscoveryJob()
+	o.registerKalshiDiscoveryJob()
 	o.registerReportJobs()
 }
 

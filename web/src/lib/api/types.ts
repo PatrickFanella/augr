@@ -993,6 +993,64 @@ export interface PolymarketDiscoveryResult {
   dry_run: boolean;
 }
 
+// ---------- Kalshi ----------
+
+export interface KalshiWatchedMarket {
+  ticker: string;
+  event_ticker?: string;
+  title?: string;
+  category?: string;
+  status?: string;
+  close_time?: ISODateString;
+  enabled: boolean;
+  added_at?: ISODateString;
+  updated_at?: ISODateString;
+}
+
+export interface KalshiMarketSnapshot {
+  id: UUID;
+  ticker: string;
+  title?: string;
+  status?: string;
+  yes_bid: number;
+  yes_ask: number;
+  no_bid: number;
+  no_ask: number;
+  volume: number;
+  open_interest: number;
+  close_time?: ISODateString;
+  raw?: unknown;
+  captured_at: ISODateString;
+}
+
+export interface KalshiDiscoveryRun {
+  id: UUID;
+  status: string;
+  result: {
+    fetched: number;
+    screened: number;
+    proposed: number;
+    deployed: number;
+    errors?: string[];
+    summary?: unknown;
+  };
+  started_at: ISODateString;
+  finished_at?: ISODateString;
+  updated_at?: ISODateString;
+}
+
+export interface KalshiSummaryResponse {
+  watched_markets: KalshiWatchedMarket[] | null;
+  latest_snapshots: KalshiMarketSnapshot[] | null;
+  discovery: {
+    last_run: KalshiDiscoveryRun | null;
+    status: string;
+  };
+  strategies: {
+    active_paper: number;
+  };
+}
+
 // ---------- Automation ----------
 
 export interface JobStatus {

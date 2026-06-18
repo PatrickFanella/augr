@@ -27,7 +27,7 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/data/binance"
 	"github.com/PatrickFanella/get-rich-quick/internal/data/finnhub"
 	"github.com/PatrickFanella/get-rich-quick/internal/data/fmp"
-	"github.com/PatrickFanella/get-rich-quick/internal/data/kalshi"
+	kalshidata "github.com/PatrickFanella/get-rich-quick/internal/data/kalshi"
 	"github.com/PatrickFanella/get-rich-quick/internal/data/newsapi"
 	"github.com/PatrickFanella/get-rich-quick/internal/data/polygon"
 	polymarketData "github.com/PatrickFanella/get-rich-quick/internal/data/polymarket"
@@ -41,6 +41,7 @@ import (
 	alpacaexecution "github.com/PatrickFanella/get-rich-quick/internal/execution/alpaca"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution/paper"
 	polymarketexecution "github.com/PatrickFanella/get-rich-quick/internal/execution/polymarket"
+	kalshidiscovery "github.com/PatrickFanella/get-rich-quick/internal/kalshidiscovery"
 	"github.com/PatrickFanella/get-rich-quick/internal/llm"
 	"github.com/PatrickFanella/get-rich-quick/internal/llm/anthropic"
 	"github.com/PatrickFanella/get-rich-quick/internal/llm/embedding"
@@ -319,6 +320,9 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 		PolymarketAccountRepo: polymarketAccountRepo,
 		PolymarketWatchedRepo: polymarketWatchedRepo,
 		PolymarketClient:      nil,
+		KalshiWatchedRepo:     pgrepo.NewKalshiWatchedMarketsRepo(db.Pool),
+		KalshiSnapshotsRepo:   pgrepo.NewKalshiMarketSnapshotsRepo(db.Pool),
+		KalshiDiscoveryRuns:   pgrepo.NewKalshiDiscoveryRunRepo(db.Pool),
 	}
 	var polymarketFeed *polymarketws.Feed
 	var polymarketRecorder *recorder.Recorder
@@ -398,7 +402,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 		newsapi.Register(reg)
 		yahoo.Register(reg)
 		binance.Register(reg)
-		kalshi.Register(reg)
+		kalshidata.Register(reg)
 		polymarketData.Register(reg)
 		stocktwitsData.Register(reg)
 		redditData.Register(reg)
@@ -498,6 +502,16 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 			logger.Warn("polymarket stop guard bootstrap failed", slog.Any("error", err))
 		}
 
+		kalshiDiscoveryClient, err := kalshidata.NewClient(cfg.Brokers.Kalshi.APIBaseURL, cfg.Brokers.Kalshi.APIKeyID, cfg.Brokers.Kalshi.PrivateKeyPEMB64, logger)
+		var kalshiCatalog interface {
+			ListMarkets(context.Context, kalshidiscovery.ListOptions) ([]kalshidiscovery.MarketCandidate, string, error)
+		}
+		if err != nil {
+			logger.Warn("automation: failed to create kalshi discovery client", slog.Any("error", err))
+		} else {
+			kalshiCatalog = kalshidiscovery.NewClient(kalshiDiscoveryClient)
+		}
+
 		if cfg.Features.EnableScheduler {
 			schedOpts := []scheduler.Option{
 				scheduler.WithStrategyExecution(func(ctx context.Context, strategy domain.Strategy) error {
@@ -533,8 +547,10 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 			)
 		}
 
-		// Create the automation orchestrator if universe and discovery are available.
-		if deps.Universe != nil && deps.DiscoveryDeps != nil {
+		// Create the automation orchestrator when scheduler support is enabled. Jobs
+		// self-register only when their own dependencies are present, so Kalshi
+		// discovery does not depend on stock ticker discovery being enabled.
+		{
 			var polygonClientForAuto *polygon.Client
 			if strings.TrimSpace(cfg.DataProviders.Polygon.APIKey) != "" {
 				polygonClientForAuto = polygon.NewClient(cfg.DataProviders.Polygon.APIKey, logger)
@@ -555,31 +571,35 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 				overnightBacktestRunRepo := pgrepo.NewOvernightBacktestRunRepo(db.Pool)
 				polymarketDiscoveryRunRepo := pgrepo.NewPolymarketDiscoveryRunRepo(db.Pool)
 				orch := automation.NewJobOrchestrator(automation.OrchestratorDeps{
-					Universe:                deps.Universe,
-					Polygon:                 polygonClientForAuto,
-					DataService:             dataService,
-					AlpacaReconciler:        alpacaReconciler,
-					OptionsProvider:         deps.OptionsProvider,
-					LLMProvider:             deps.LLMProvider,
-					EmbeddingProvider:       embeddingProvider,
-					EventsProvider:          deps.EventsProvider,
-					StrategyRepo:            strategyRepo,
-					RunRepo:                 runRepo,
-					JobRunRepo:              jobRunRepo,
-					OptionsScanRepo:         optionsScanRepo,
-					NewsFeedRepo:            newsFeedRepo,
-					PolymarketAccountRepo:   polymarketAccountRepo,
-					PolymarketReconciler:    polymarketExecutionReconciler,
-					PolymarketResolvedRepo:  polymarketResolvedRepo,
-					PolymarketWatchedRepo:   polymarketWatchedRepo,
-					PolymarketDiscoveryRuns: polymarketDiscoveryRunRepo,
-					PolymarketCLOBURL:       cfg.Brokers.Polymarket.CLOBURL,
-					ReportArtifactRepo:      reportArtifactRepo,
-					BacktestConfigRepo:      backtestConfigRepo,
-					BacktestRunRepo:         backtestRunRepo,
-					OvernightBacktestRuns:   overnightBacktestRunRepo,
-					StrategyTrigger:         sched,
-					Logger:                  logger,
+					Universe:                  deps.Universe,
+					Polygon:                   polygonClientForAuto,
+					DataService:               dataService,
+					AlpacaReconciler:          alpacaReconciler,
+					OptionsProvider:           deps.OptionsProvider,
+					LLMProvider:               deps.LLMProvider,
+					EmbeddingProvider:         embeddingProvider,
+					EventsProvider:            deps.EventsProvider,
+					StrategyRepo:              strategyRepo,
+					RunRepo:                   runRepo,
+					JobRunRepo:                jobRunRepo,
+					OptionsScanRepo:           optionsScanRepo,
+					NewsFeedRepo:              newsFeedRepo,
+					PolymarketAccountRepo:     polymarketAccountRepo,
+					PolymarketReconciler:      polymarketExecutionReconciler,
+					PolymarketResolvedRepo:    polymarketResolvedRepo,
+					PolymarketWatchedRepo:     polymarketWatchedRepo,
+					PolymarketDiscoveryRuns:   polymarketDiscoveryRunRepo,
+					PolymarketCLOBURL:         cfg.Brokers.Polymarket.CLOBURL,
+					KalshiCatalog:             kalshiCatalog,
+					KalshiWatchedRepo:         pgrepo.NewKalshiWatchedMarketsRepo(db.Pool),
+					KalshiMarketSnapshotsRepo: pgrepo.NewKalshiMarketSnapshotsRepo(db.Pool),
+					KalshiDiscoveryRuns:       pgrepo.NewKalshiDiscoveryRunRepo(db.Pool),
+					ReportArtifactRepo:        reportArtifactRepo,
+					BacktestConfigRepo:        backtestConfigRepo,
+					BacktestRunRepo:           backtestRunRepo,
+					OvernightBacktestRuns:     overnightBacktestRunRepo,
+					StrategyTrigger:           sched,
+					Logger:                    logger,
 				})
 				orch.WithJobMetrics(appMetrics)
 				orch.WithReportMetrics(appMetrics)

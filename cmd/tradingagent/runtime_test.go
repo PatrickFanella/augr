@@ -453,6 +453,69 @@ func TestNewAPIServerWiresPolymarketReconcileAutomationJob(t *testing.T) {
 	cleanup()
 }
 
+func TestNewAPIServerWiresKalshiDiscoveryAutomationJob(t *testing.T) {
+	origNewDB := runtimeNewDB
+	origCurrentSchemaVersion := runtimeCurrentSchemaVersion
+	origAfterSchemaGate := runtimeAfterSchemaGate
+	origCloseDB := runtimeCloseDB
+	origNewServer := runtimeNewServer
+	defer func() {
+		runtimeNewDB = origNewDB
+		runtimeCurrentSchemaVersion = origCurrentSchemaVersion
+		runtimeAfterSchemaGate = origAfterSchemaGate
+		runtimeCloseDB = origCloseDB
+		runtimeNewServer = origNewServer
+	}()
+
+	pool, err := pgxpool.New(context.Background(), "postgres://postgres:***@127.0.0.1:1/postgres?sslmode=disable&connect_timeout=1")
+	if err != nil {
+		t.Fatalf("pgxpool.New() error = %v", err)
+	}
+	defer pool.Close()
+
+	var capturedDeps api.Deps
+	runtimeNewDB = func(context.Context, string) (*pgrepo.DB, error) {
+		return &pgrepo.DB{Pool: pool}, nil
+	}
+	runtimeCurrentSchemaVersion = func(context.Context, *pgxpool.Pool) (int, error) {
+		return pgrepo.RequiredSchemaVersion, nil
+	}
+	runtimeAfterSchemaGate = func() {}
+	runtimeCloseDB = func(*pgrepo.DB) {}
+	runtimeNewServer = func(_ api.ServerConfig, deps api.Deps, _ *slog.Logger) (*api.Server, error) {
+		capturedDeps = deps
+		return &api.Server{}, nil
+	}
+
+	cfg := config.Config{
+		Environment: "development",
+		Database:    config.DatabaseConfig{URL: "postgres://ignored"},
+		Features: config.FeatureFlags{
+			EnableScheduler:       true,
+			EnableTickerDiscovery: false,
+		},
+		Embedding: config.EmbeddingConfig{Model: "nomic-embed-text", Timeout: time.Second},
+		LLM:       config.LLMConfig{Providers: config.LLMProviderConfigs{Ollama: config.OllamaConfig{BaseURL: "http://localhost:11434", APIKey: "test-key"}}},
+	}
+
+	_, _, cleanup, err := newAPIServer(context.Background(), cfg, slogDiscardLogger())
+	if err != nil {
+		t.Fatalf("newAPIServer() error = %v", err)
+	}
+	if capturedDeps.Automation == nil {
+		t.Fatal("newAPIServer() automation = nil, want non-nil")
+	}
+	status := runtimeSingleAutomationJobStatus(t, capturedDeps.Automation, "kalshi_discovery")
+	if status.Name != "kalshi_discovery" {
+		t.Fatalf("status.Name = %q, want kalshi_discovery", status.Name)
+	}
+	if !strings.Contains(status.Schedule, "15 * * * *") {
+		t.Fatalf("status.Schedule = %q, want kalshi cron", status.Schedule)
+	}
+
+	cleanup()
+}
+
 func TestBootstrapPolymarketStopGuardsFiltersAndPaginates(t *testing.T) {
 	t.Parallel()
 

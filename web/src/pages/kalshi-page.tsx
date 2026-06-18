@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 
 import { PageHeader } from '@/components/layout/page-header'
@@ -5,6 +6,8 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ConsolePanel, HudBadge, HudRow, HudSection, StatusLed } from '@/components/ui/hud'
+import { apiClient } from '@/lib/api/client'
+import type { KalshiMarketSnapshot, KalshiWatchedMarket } from '@/lib/api/types'
 
 const kalshiSections = [
   { id: 'overview', label: 'Overview' },
@@ -51,7 +54,69 @@ function QuickLinkButton({ to, label }: { to: string; label: string }) {
   )
 }
 
+function formatDate(value?: string | null) {
+  if (!value) return '—'
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString()
+}
+
+function formatNumber(value: unknown, digits = 0) {
+  const parsed = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(parsed) ? new Intl.NumberFormat('en-US', { maximumFractionDigits: digits }).format(parsed) : '—'
+}
+
+function formatPrice(value: unknown) {
+  const parsed = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(parsed) ? parsed.toFixed(2) : '—'
+}
+
+function MarketRow({ market }: { market: KalshiWatchedMarket }) {
+  return (
+    <div className="border border-border bg-panel p-3" data-testid={`kalshi-watched-${market.ticker}`}>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <div className="font-medium text-ink">{market.ticker}</div>
+          <div className="mt-1 text-xs text-ink-dim">{market.title || market.event_ticker || 'Untitled Kalshi market'}</div>
+        </div>
+        <Badge variant="outline">{market.status || 'unknown'}</Badge>
+      </div>
+    </div>
+  )
+}
+
+function SnapshotRow({ snapshot }: { snapshot: KalshiMarketSnapshot }) {
+  return (
+    <div className="border border-border bg-panel p-3" data-testid={`kalshi-snapshot-${snapshot.ticker}`}>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <div className="font-medium text-ink">{snapshot.ticker}</div>
+          <div className="mt-1 text-xs text-ink-dim">{snapshot.title || 'Latest captured market quote'}</div>
+        </div>
+        <Badge variant="outline">{formatDate(snapshot.captured_at)}</Badge>
+      </div>
+      <div className="mt-3 grid gap-2 text-xs text-ink-dim sm:grid-cols-4">
+        <span>YES {formatPrice(snapshot.yes_bid)} / {formatPrice(snapshot.yes_ask)}</span>
+        <span>NO {formatPrice(snapshot.no_bid)} / {formatPrice(snapshot.no_ask)}</span>
+        <span>Vol {formatNumber(snapshot.volume)}</span>
+        <span>OI {formatNumber(snapshot.open_interest)}</span>
+      </div>
+    </div>
+  )
+}
+
 export function KalshiPage() {
+  const summaryQuery = useQuery({
+    queryKey: ['kalshi-summary'],
+    queryFn: () => apiClient.getKalshiSummary(),
+    staleTime: 30_000,
+  })
+  const summary = summaryQuery.data
+  const watchedMarkets = summary?.watched_markets ?? []
+  const snapshots = summary?.latest_snapshots ?? []
+  const lastRun = summary?.discovery.last_run ?? null
+  const discoveryStatus = summary?.discovery.status ?? (summaryQuery.isLoading ? 'loading' : 'not_started')
+  const activePaper = summary?.strategies.active_paper ?? 0
+
   return (
     <div className="space-y-5" data-testid="kalshi-page">
       <PageHeader
@@ -83,8 +148,8 @@ export function KalshiPage() {
             <HudSection label="Current phase" note="Data-ready, execution off" />
             <div className="grid gap-3 md:grid-cols-3">
               <HudRow label="Live trading" value="Disabled" />
-              <HudRow label="Back-end status" value="Paper/data support" />
-              <HudRow label="UI status" value="Hub ready" />
+              <HudRow label="Discovery status" value={discoveryStatus} />
+              <HudRow label="Active paper" value={formatNumber(activePaper)} />
             </div>
             <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
               <HudBadge tone="caution">No live submit</HudBadge>
@@ -108,30 +173,23 @@ export function KalshiPage() {
       </section>
 
       <section id="markets" className="scroll-mt-24 space-y-4" data-testid="kalshi-markets-section">
-        <SectionHeading title="Markets" note="What the UI can represent without claiming live execution" />
-        <div className="grid gap-4 xl:grid-cols-3">
+        <SectionHeading title="Markets" note="Watched markets and latest captured candidate snapshots" />
+        {summaryQuery.isError ? <p className="text-sm text-destructive">Kalshi summary is unavailable.</p> : null}
+        <div className="grid gap-4 xl:grid-cols-2">
           <Card>
             <CardHeader>
-              <CardTitle>Market data</CardTitle>
+              <CardTitle>Watched markets ({watchedMarkets.length})</CardTitle>
             </CardHeader>
-            <CardContent className="text-sm text-ink-dim">
-              Surface event metadata, contract structure, and pricing context as backend reads become available.
+            <CardContent className="space-y-3 text-sm text-ink-dim">
+              {watchedMarkets.length > 0 ? watchedMarkets.map((market) => <MarketRow key={market.ticker} market={market} />) : <p>No watched Kalshi markets yet.</p>}
             </CardContent>
           </Card>
           <Card>
             <CardHeader>
-              <CardTitle>Order book</CardTitle>
+              <CardTitle>Latest snapshots ({snapshots.length})</CardTitle>
             </CardHeader>
-            <CardContent className="text-sm text-ink-dim">
-              Reserve space for quote depth and spread views, but keep the page honest when live endpoints are missing.
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle>Positions</CardTitle>
-            </CardHeader>
-            <CardContent className="text-sm text-ink-dim">
-              Show balances and positions when supported; otherwise fall back to a clear data-unavailable state.
+            <CardContent className="space-y-3 text-sm text-ink-dim">
+              {snapshots.length > 0 ? snapshots.map((snapshot) => <SnapshotRow key={snapshot.id} snapshot={snapshot} />) : <p>No Kalshi snapshots captured yet.</p>}
             </CardContent>
           </Card>
         </div>
@@ -144,7 +202,7 @@ export function KalshiPage() {
             <CardTitle>Paper strategy lane</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm text-ink-dim">
-            <p>Use this area for the Kalshi paper workflow: research, sizing, and decision review without implying execution.</p>
+            <p>{activePaper} active Kalshi paper {activePaper === 1 ? 'strategy is' : 'strategies are'} available for research, sizing, and decision review without implying live execution.</p>
             <div className="flex flex-wrap gap-2">
               <Badge variant="outline">paper only</Badge>
               <Badge variant="outline">data-first</Badge>
@@ -175,6 +233,7 @@ export function KalshiPage() {
               <CardTitle>Phase notes</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 text-sm text-ink-dim">
+              <p>Latest discovery run: {lastRun ? `${lastRun.status} at ${formatDate(lastRun.started_at)} (${lastRun.result.deployed} deployed)` : 'not started'}.</p>
               <p>Kalshi demo and production stay separate. This UI should not imply live order submission until backend work lands.</p>
               <p>Use the runbook for setup details, credential handling, and the current paper/data rollout plan.</p>
             </CardContent>

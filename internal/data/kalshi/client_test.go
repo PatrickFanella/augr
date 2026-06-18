@@ -12,6 +12,7 @@ import (
 	"encoding/pem"
 	"io"
 	"log/slog"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -290,6 +291,48 @@ func TestClientPost_SendsJSONBody(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("request details were not captured")
+	}
+}
+
+func TestQuoteCentsToProbability(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		input   float64
+		want    float64
+		wantErr bool
+	}{
+		{name: "one cent", input: 1, want: 0.01},
+		{name: "ninety-nine cents", input: 99, want: 0.99},
+		{name: "one hundred cents", input: 100, want: 1},
+		{name: "zero", input: 0, want: 0},
+		{name: "negative", input: -1, wantErr: true},
+		{name: "over max", input: 100.0001, wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := QuoteCentsToProbability(tt.input)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("QuoteCentsToProbability(%v) error = nil, want non-nil", tt.input)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("QuoteCentsToProbability(%v) error = %v", tt.input, err)
+			}
+			if got != tt.want {
+				t.Fatalf("QuoteCentsToProbability(%v) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+
+	if _, err := QuoteCentsToProbability(math.Inf(1)); err == nil {
+		t.Fatal("QuoteCentsToProbability(+Inf) error = nil, want non-nil")
+	}
+	if _, err := QuoteCentsToProbability(math.NaN()); err == nil {
+		t.Fatal("QuoteCentsToProbability(NaN) error = nil, want non-nil")
 	}
 }
 

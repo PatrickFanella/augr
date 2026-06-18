@@ -81,7 +81,7 @@
 - Create: `internal/repository/postgres/kalshi_market.go`
 - Modify: `internal/repository/postgres/schema_version.go`
 
-- [ ] **Step 1: Add migration 51**
+- [x] **Step 1: Add migration 51**
 
 Create Kalshi-specific persistence without changing Polymarket tables:
 
@@ -132,7 +132,7 @@ CREATE TABLE IF NOT EXISTS kalshi_discovery_runs (
 );
 ```
 
-- [ ] **Step 2: Add repository tests**
+- [x] **Step 2: Add repository tests**
 
 Run:
 
@@ -152,7 +152,7 @@ Expected: Kalshi tables can insert/list watched markets, latest snapshots, and d
 - Create: `internal/kalshidiscovery/client_test.go`
 - Modify: `internal/repository/postgres/kalshi_market.go`
 
-- [ ] **Step 1: Add market listing client**
+- [x] **Step 1: Add market listing client**
 
 Implement a read-only fetcher for Kalshi markets:
 
@@ -176,11 +176,11 @@ type MarketCandidate struct {
 
 Use public `GET /markets` with conservative query defaults: active/open markets only where available, bounded limit, no auth requirement for paper/data.
 
-- [ ] **Step 2: Persist latest catalog snapshot**
+- [x] **Step 2: Persist latest catalog snapshot**
 
 Store fetched candidates into `kalshi_market_snapshots`; upsert selected candidates into `kalshi_watched_markets` only when selected by the screener.
 
-- [ ] **Step 3: Verify mapping**
+- [x] **Step 3: Verify mapping**
 
 Run:
 
@@ -198,7 +198,7 @@ rtk go test ./internal/kalshidiscovery ./internal/data/kalshi -run 'Market|Catal
 - Create: `internal/kalshidiscovery/screener_test.go`
 - Create: `internal/kalshidiscovery/generator_test.go`
 
-- [ ] **Step 1: Add deterministic screener**
+- [x] **Step 1: Add deterministic screener**
 
 Screen for paper candidates using provider-neutral, explainable filters:
 
@@ -215,7 +215,7 @@ type ScreenerConfig struct {
 
 Reject closed/settled markets, missing YES/NO book, excessive spread, low volume/open interest, and markets too close to expiration.
 
-- [ ] **Step 2: Add proposal validation**
+- [x] **Step 2: Add proposal validation**
 
 Mirror the Polymarket discovery metadata contract where it fits:
 
@@ -233,7 +233,7 @@ Mirror the Polymarket discovery metadata contract where it fits:
 }
 ```
 
-- [ ] **Step 3: Verify validation fails closed**
+- [x] **Step 3: Verify validation fails closed**
 
 Run:
 
@@ -250,7 +250,7 @@ rtk go test ./internal/kalshidiscovery -run 'Screener|Proposal|Validation' -coun
 - Create: `internal/kalshidiscovery/orchestrator_test.go`
 - Modify: `internal/discovery/deploy.go` only if shared strategy reuse needs market-type-safe behavior.
 
-- [ ] **Step 1: Build orchestrator**
+- [x] **Step 1: Build orchestrator**
 
 Implement:
 
@@ -273,11 +273,11 @@ domain.Strategy{
 
 The `Config` JSON must include `discovery_meta.source = "kalshi_discovery"`, `market_ticker`, template, direction, conviction, max entry price, and risk metadata.
 
-- [ ] **Step 2: Protect against duplicates**
+- [x] **Step 2: Protect against duplicates**
 
 Reuse existing paper strategies for the same `market_type=kalshi` + `ticker` instead of creating duplicates.
 
-- [ ] **Step 3: Verify deployed strategies route to native Kalshi execution**
+- [x] **Step 3: Verify deployed strategies route to native Kalshi execution**
 
 Run:
 
@@ -294,7 +294,7 @@ rtk go test ./internal/kalshidiscovery ./cmd/tradingagent -run 'Kalshi|Deploy|Na
 - Modify: `cmd/tradingagent/runtime.go`
 - Modify: `internal/automation/orchestrator_test.go`
 
-- [ ] **Step 1: Add scheduled job**
+- [x] **Step 1: Add scheduled job**
 
 Add `kalshi_discovery` as an automation job with conservative cadence, e.g. hourly:
 
@@ -305,7 +305,7 @@ Cron: "15 * * * *"
 
 The job must be paper/data-only and must not submit live orders.
 
-- [ ] **Step 2: Wire dependencies**
+- [x] **Step 2: Wire dependencies**
 
 Use existing config defaults:
 
@@ -316,7 +316,7 @@ KALSHI_API_BASE_URL=https://external-api.demo.kalshi.co/trade-api/v2
 
 Credentials remain optional for this sprint.
 
-- [ ] **Step 3: Verify job registration and dry run**
+- [x] **Step 3: Verify job registration and dry run**
 
 Run:
 
@@ -336,7 +336,7 @@ rtk go test ./internal/automation ./cmd/tradingagent -run 'Kalshi|Automation|Dis
 - Modify: `web/src/pages/kalshi-page.tsx`
 - Modify: `web/src/pages/kalshi-page.test.tsx`
 
-- [ ] **Step 1: Add API endpoint**
+- [x] **Step 1: Add API endpoint**
 
 Expose a compact page payload:
 
@@ -355,7 +355,7 @@ Response shape:
 }
 ```
 
-- [ ] **Step 2: Render real dashboard sections**
+- [x] **Step 2: Render real dashboard sections**
 
 Update `/kalshi` to show:
 
@@ -365,7 +365,7 @@ Update `/kalshi` to show:
 - active paper strategies
 - setup/runbook links
 
-- [ ] **Step 3: Verify frontend**
+- [x] **Step 3: Verify frontend**
 
 Run:
 
@@ -382,20 +382,20 @@ cd web && npm run build
 - Modify: `docs/runbooks/kalshi-paper-data.md`
 - Modify: this plan file
 
-- [ ] **Step 1: Run backend validation**
+- [x] **Step 1: Run backend validation**
 
 ```bash
 rtk go test ./internal/domain ./internal/config ./internal/data ./internal/data/kalshi ./internal/kalshidiscovery ./internal/execution/prediction ./internal/execution/kalshi ./cmd/tradingagent ./internal/scheduler ./internal/repository/postgres ./internal/api ./internal/automation -count=1
 ```
 
-- [ ] **Step 2: Run frontend validation**
+- [x] **Step 2: Run frontend validation**
 
 ```bash
 cd web && npm test -- --run src/pages/kalshi-page.test.tsx src/pages/polymarket-page.test.tsx src/components/layout/app-shell.test.tsx
 cd web && npm run build
 ```
 
-- [ ] **Step 3: Review**
+- [x] **Step 3: Review**
 
 Request final review focused on:
 

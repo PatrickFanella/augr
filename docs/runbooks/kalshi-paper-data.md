@@ -32,3 +32,33 @@ KALSHI_PRIVATE_KEY_PEM_B64=<base64 encoded RSA private key PEM>
 - Keep `KALSHI_DEMO=true` for demo and paper/data workflows.
 - The API key ID and private key are only needed for authenticated demo reads or future live work.
 - Do not enable live Kalshi order submission in this phase.
+
+## Discovery automation
+
+- The scheduled automation job is `kalshi_discovery`.
+- Default cadence is hourly at minute 15: `15 * * * *`.
+- The job fetches open Kalshi markets, stores recent snapshots, upserts screened watched markets, and creates/reuses active **paper** strategies only.
+- Strategy reuse is keyed by `market_type=kalshi` and Kalshi market `ticker`, so repeated runs should not create duplicate paper strategies for the same market.
+- The conservative job defaults currently fetch at most 50 markets, deploy at most 1 paper strategy per run, and require minimum conviction `0.70`.
+
+## Dashboard and API checks
+
+- Dashboard route: `/kalshi`.
+- Summary API: `GET /api/v1/kalshi/summary`.
+- The summary payload includes enabled watched markets, latest snapshots, latest discovery status, and active paper strategy count.
+- A healthy page may still show empty arrays before the first discovery run; that is expected.
+
+## Operator validation
+
+```bash
+rtk go test ./internal/kalshidiscovery ./internal/automation ./internal/api ./cmd/tradingagent -run 'Kalshi|Automation|Discovery|Server|Strategy' -count=1
+cd web && npm test -- --run src/pages/kalshi-page.test.tsx src/components/layout/app-shell.test.tsx
+cd web && npm run build
+```
+
+Deploy-time checks after migrations and app restart:
+
+```bash
+curl -sf http://10.0.0.56:3030/healthz
+curl -sf http://10.0.0.56:3029/kalshi
+```

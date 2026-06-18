@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net/http"
 	"net/url"
 	"strings"
@@ -269,3 +270,12 @@ func parsePrivateKey(privateKeyPEMB64 string) (*rsa.PrivateKey, error) {
 }
 
 func bytesReader(b []byte) *bytes.Reader { return bytes.NewReader(b) }
+
+// QuoteCentsToProbability converts a Kalshi quote in cents to a probability.
+// It accepts values in [0,100] and rejects NaN/Inf and out-of-range inputs.
+func QuoteCentsToProbability(cents float64) (float64, error) {
+	if math.IsNaN(cents) || math.IsInf(cents, 0) || cents < 0 || cents > 100 {
+		return 0, fmt.Errorf("kalshi: quote cents %.4f out of range [0,100]", cents)
+	}
+	return cents / 100, nil
+}

@@ -102,6 +102,63 @@ func TestProviderLoadSnapshotMapsCentQuoteEdges(t *testing.T) {
 	}
 }
 
+func TestProviderLoadSnapshotTreatsLegacyZeroQuotesAsPresent(t *testing.T) {
+	t.Parallel()
+
+	const ticker = "KXZERO-YESNO"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/trade-api/v2/markets/" + ticker:
+			fmt.Fprint(w, `{"market":{"ticker":"KXZERO-YESNO","title":"Zero quotes?","status":"active","yes_bid":0,"yes_ask":1,"no_bid":99,"no_ask":100,"volume":1000,"open_interest":500,"close_time":"2026-12-31T23:59:59Z"}}`)
+		case "/trade-api/v2/markets/" + ticker + "/orderbook":
+			t.Fatal("orderbook endpoint should not be needed when legacy zero quote fields are present")
+		default:
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	provider := NewProvider(server.URL+"/trade-api/v2", slog.New(slog.NewTextHandler(io.Discard, nil)))
+	provider.client.SetHTTPClient(server.Client())
+
+	snapshot, err := provider.LoadSnapshot(context.Background(), ticker)
+	if err != nil {
+		t.Fatalf("LoadSnapshot() error = %v", err)
+	}
+	if snapshot.BestBidYes != 0 || snapshot.BestAskYes != 0.01 || snapshot.BestBidNo != 0.99 || snapshot.BestAskNo != 1 {
+		t.Fatalf("unexpected zero quote mapping: %+v", snapshot)
+	}
+}
+
+func TestProviderLoadSnapshotMapsCurrentDollarFields(t *testing.T) {
+	t.Parallel()
+
+	const ticker = "KXDOLLAR-YESNO"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/trade-api/v2/markets/" + ticker:
+			fmt.Fprint(w, `{"market":{"ticker":"KXDOLLAR-YESNO","title":"Dollar fields?","status":"active","yes_bid_dollars":"0.12","yes_ask_dollars":"0.14","no_bid_dollars":"0.86","no_ask_dollars":"0.88","volume_fp":"123.45","open_interest_fp":"678.9","close_time":"2026-12-31T23:59:59Z"}}`)
+		default:
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	provider := NewProvider(server.URL+"/trade-api/v2", slog.New(slog.NewTextHandler(io.Discard, nil)))
+	provider.client.SetHTTPClient(server.Client())
+
+	snapshot, err := provider.LoadSnapshot(context.Background(), ticker)
+	if err != nil {
+		t.Fatalf("LoadSnapshot() error = %v", err)
+	}
+	if snapshot.BestBidYes != 0.12 || snapshot.BestAskYes != 0.14 || snapshot.BestBidNo != 0.86 || snapshot.BestAskNo != 0.88 {
+		t.Fatalf("unexpected dollar quote mapping: %+v", snapshot)
+	}
+	if snapshot.Volume != 123.45 || snapshot.OpenInterest != 678.9 {
+		t.Fatalf("unexpected fp liquidity mapping: %+v", snapshot)
+	}
+}
+
 func TestProviderLoadSnapshotRejectsOutOfRangeQuoteCents(t *testing.T) {
 	t.Parallel()
 
