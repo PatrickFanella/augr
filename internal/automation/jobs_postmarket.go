@@ -124,6 +124,15 @@ func (o *JobOrchestrator) strategyResweep(ctx context.Context) error {
 			return ctx.Err()
 		}
 
+		if !supportsStrategyResweepOHLCV(strat.MarketType) {
+			o.logger.Info("strategy_resweep: skipped unsupported market type",
+				slog.String("ticker", strat.Ticker),
+				slog.String("strategy", strat.Name),
+				slog.String("market_type", strat.MarketType.String()),
+			)
+			continue
+		}
+
 		// Extract rules_engine config from strategy config JSON.
 		rulesConfig, err := extractRulesConfig(strat.Config)
 		if err != nil {
@@ -211,6 +220,15 @@ func (o *JobOrchestrator) strategyResweep(ctx context.Context) error {
 
 	o.logger.Info("strategy_resweep: completed", slog.Int("strategies", len(strategies)))
 	return nil
+}
+
+func supportsStrategyResweepOHLCV(marketType domain.MarketType) bool {
+	switch marketType.Normalize() {
+	case domain.MarketTypeStock, domain.MarketTypeCrypto:
+		return true
+	default:
+		return false
+	}
 }
 
 // optionsScan fetches options chains for the top watchlist tickers and logs

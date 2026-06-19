@@ -293,6 +293,42 @@ func TestJobOrchestratorRegisterAllAddsKalshiDiscovery(t *testing.T) {
 	}
 }
 
+func TestStrategyResweepSkipsKalshiBeforeOHLCVDownload(t *testing.T) {
+	t.Parallel()
+
+	orch := NewJobOrchestrator(OrchestratorDeps{
+		StrategyRepo: &kalshiStrategyRepoStub{strategies: []domain.Strategy{
+			{
+				ID:         uuid.New(),
+				Name:       "auto: kalshi KXMENWORLDCUP-26-US",
+				Ticker:     "KXMENWORLDCUP-26-US",
+				MarketType: domain.MarketTypeKalshi,
+				Status:     domain.StrategyStatusActive,
+				IsPaper:    true,
+			},
+		}},
+	})
+
+	if err := orch.strategyResweep(context.Background()); err != nil {
+		t.Fatalf("strategyResweep() error = %v", err)
+	}
+}
+
+func TestSupportsStrategyResweepOHLCV(t *testing.T) {
+	t.Parallel()
+
+	for _, marketType := range []domain.MarketType{domain.MarketTypeStock, domain.MarketTypeCrypto} {
+		if !supportsStrategyResweepOHLCV(marketType) {
+			t.Fatalf("supportsStrategyResweepOHLCV(%q) = false, want true", marketType)
+		}
+	}
+	for _, marketType := range []domain.MarketType{domain.MarketTypeKalshi, domain.MarketTypePolymarket, domain.MarketTypeOptions} {
+		if supportsStrategyResweepOHLCV(marketType) {
+			t.Fatalf("supportsStrategyResweepOHLCV(%q) = true, want false", marketType)
+		}
+	}
+}
+
 func TestJobOrchestratorAlpacaReconcileRecordsMetricsAndSummary(t *testing.T) {
 	t.Parallel()
 
@@ -353,14 +389,16 @@ func (kalshiCatalogStub) ListMarkets(context.Context, kalshidiscovery.ListOption
 	return nil, "", nil
 }
 
-type kalshiStrategyRepoStub struct{}
+type kalshiStrategyRepoStub struct {
+	strategies []domain.Strategy
+}
 
 func (s *kalshiStrategyRepoStub) Create(context.Context, *domain.Strategy) error { return nil }
 func (s *kalshiStrategyRepoStub) Get(context.Context, uuid.UUID) (*domain.Strategy, error) {
 	return nil, repository.ErrNotFound
 }
 func (s *kalshiStrategyRepoStub) List(context.Context, repository.StrategyFilter, int, int) ([]domain.Strategy, error) {
-	return nil, nil
+	return append([]domain.Strategy(nil), s.strategies...), nil
 }
 func (s *kalshiStrategyRepoStub) Count(context.Context, repository.StrategyFilter) (int, error) {
 	return 0, nil
