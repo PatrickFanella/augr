@@ -11,9 +11,10 @@ type: runbook
 
 Use this runbook only when preparing a future Kalshi strategy for live trading.
 Current default remains paper/data only. Discovery creates paper strategies,
-and Sprint C still does **not** enable live submission because
-`newBrokerForStrategy` blocks at `kalshi live client is not initialised` until a
-real client is wired.
+and Sprint C still keeps live submission gated. When Kalshi credentials are
+present, the runtime now wires a live adapter, but `newBrokerForStrategy` still
+blocks live routing unless `ENABLE_LIVE_TRADING`, the strategy allowlist, the
+broker allowlist, and client wiring all pass.
 
 ## Required gates before any live order
 

@@ -120,7 +120,19 @@ func TestRunStrategy_KalshiLiveRoutingRespectsGatesAndClientInitialization(t *te
 	t.Run("paper uses fallback broker", func(t *testing.T) {
 		t.Parallel()
 
-		runner := &realStrategyRunner{logger: slogDiscardLogger()}
+		runner := &realStrategyRunner{
+			cfg: config.Config{
+				Features:                     config.FeatureFlags{EnableLiveTrading: true},
+				LiveTradingAllowedStrategies: []string{strategy.ID.String()},
+				LiveTradingAllowedBrokers:    []string{"kalshi"},
+				Brokers: config.BrokerConfigs{Kalshi: config.KalshiConfig{
+					APIKeyID:         "kalshi-key-id",
+					PrivateKeyPEMB64: "base64-private-key",
+				}},
+			},
+			kalshiLiveClient: &fakeKalshiLiveClient{},
+			logger:           slogDiscardLogger(),
+		}
 		broker, name, err := runner.newBrokerForStrategy(domain.Strategy{Ticker: "KXTEST-YESNO", MarketType: domain.MarketTypeKalshi, IsPaper: true})
 		if err != nil {
 			t.Fatalf("newBrokerForStrategy() error = %v", err)
@@ -130,6 +142,34 @@ func TestRunStrategy_KalshiLiveRoutingRespectsGatesAndClientInitialization(t *te
 		}
 		if _, ok := broker.(*paper.PaperBroker); !ok {
 			t.Fatalf("broker type = %T, want *paper.PaperBroker", broker)
+		}
+	})
+
+	t.Run("live routes to kalshi broker when client is wired", func(t *testing.T) {
+		t.Parallel()
+
+		runner := &realStrategyRunner{
+			cfg: config.Config{
+				Features:                     config.FeatureFlags{EnableLiveTrading: true},
+				LiveTradingAllowedStrategies: []string{strategy.ID.String()},
+				LiveTradingAllowedBrokers:    []string{"kalshi"},
+				Brokers: config.BrokerConfigs{Kalshi: config.KalshiConfig{
+					APIKeyID:         "kalshi-key-id",
+					PrivateKeyPEMB64: "base64-private-key",
+				}},
+			},
+			kalshiLiveClient: &fakeKalshiLiveClient{},
+			logger:           slogDiscardLogger(),
+		}
+		broker, name, err := runner.newBrokerForStrategy(strategy)
+		if err != nil {
+			t.Fatalf("newBrokerForStrategy() error = %v", err)
+		}
+		if name != "kalshi" {
+			t.Fatalf("broker name = %q, want kalshi", name)
+		}
+		if _, ok := broker.(*kalshiexecution.Broker); !ok {
+			t.Fatalf("broker type = %T, want *kalshi.Broker", broker)
 		}
 	})
 
@@ -224,6 +264,26 @@ func TestRunStrategy_KalshiLiveRoutingRespectsGatesAndClientInitialization(t *te
 			t.Fatalf("RunStrategy() error = %v, want uninitialised live client error", err)
 		}
 	})
+}
+
+type fakeKalshiLiveClient struct{}
+
+func (f *fakeKalshiLiveClient) CreateOrder(context.Context, kalshiexecution.CreateOrderRequest) (kalshiexecution.CreateOrderResponse, error) {
+	return kalshiexecution.CreateOrderResponse{}, nil
+}
+
+func (f *fakeKalshiLiveClient) CancelOrder(context.Context, string) error { return nil }
+
+func (f *fakeKalshiLiveClient) GetOrder(context.Context, string) (kalshiexecution.OrderResponse, error) {
+	return kalshiexecution.OrderResponse{}, nil
+}
+
+func (f *fakeKalshiLiveClient) ListPositions(context.Context) ([]kalshiexecution.PositionResponse, error) {
+	return nil, nil
+}
+
+func (f *fakeKalshiLiveClient) GetBalance(context.Context) (kalshiexecution.BalanceResponse, error) {
+	return kalshiexecution.BalanceResponse{}, nil
 }
 
 func TestRunStrategy_KalshiSafeHoldPath(t *testing.T) {

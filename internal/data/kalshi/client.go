@@ -95,6 +95,11 @@ func (c *Client) Post(ctx context.Context, path string, body any) ([]byte, error
 	return c.do(ctx, http.MethodPost, path, nil, body, true)
 }
 
+// Delete issues an authenticated DELETE request.
+func (c *Client) Delete(ctx context.Context, path string, query url.Values) ([]byte, error) {
+	return c.do(ctx, http.MethodDelete, path, query, nil, true)
+}
+
 func (c *Client) do(ctx context.Context, method, requestPath string, query url.Values, body any, authenticated bool) ([]byte, error) {
 	if c == nil {
 		return nil, errors.New("kalshi: client is nil")

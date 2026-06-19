@@ -10,6 +10,8 @@ type: runbook
 ## Context
 
 Use this runbook to configure Kalshi for paper/data-first operation. This plan only enables configuration, validation, and read-side readiness. Live Kalshi order submission is not enabled by this plan.
+The runtime may wire a live adapter when credentials exist, but paper remains the
+default unless the explicit live gates and a non-paper strategy are configured.
 
 Related live activation checklist: [`kalshi-live-readiness.md`](./kalshi-live-readiness.md).
 
@@ -36,7 +38,7 @@ KALSHI_PRIVATE_KEY_PEM_B64=<base64 encoded RSA private key PEM>
 
 - Keep `KALSHI_DEMO=true` for demo and paper/data workflows.
 - The API key ID and private key are only needed for authenticated demo reads or future live work.
-- Do not enable live Kalshi order submission in this phase.
+- Do not enable live Kalshi order submission in this phase; credentials alone do not switch strategies out of paper.
 - Do not set `is_paper=false` from this runbook.
 - For live-readiness steps, use the linked live runbook instead of changing the paper/data defaults here.
 

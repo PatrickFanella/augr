@@ -502,8 +502,8 @@ docker compose --project-name augr -f docker-compose.nuc.yml logs --since=5m app
 
 ## Acceptance Criteria
 
-- Kalshi broker implements `execution.Broker` with live client-backed submit/cancel/status/positions/balance methods.
-- Non-paper Kalshi is impossible unless global live trading, strategy allowlist, broker allowlist, credentials, and client wiring all pass.
+- Kalshi broker implements `execution.Broker` with live client-backed submit/cancel/status/positions/balance methods, and the runtime wires the live adapter when Kalshi credentials exist.
+- Non-paper Kalshi is impossible unless global live trading, strategy allowlist, broker allowlist, credentials, and live client wiring all pass.
 - Paper Kalshi behavior remains unchanged.
 - Kalshi discovery still creates/reuses active paper strategies only.
 - Readiness/reconciliation checks are read-only and safe.

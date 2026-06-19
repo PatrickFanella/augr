@@ -294,6 +294,91 @@ func TestClientPost_SendsJSONBody(t *testing.T) {
 	}
 }
 
+func TestClientDelete_SendsAuthHeadersAndOmitsContentType(t *testing.T) {
+	t.Parallel()
+
+	privateKeyPEMB64, privateKey := testPrivateKeyPEMB64(t)
+	timestamp := time.UnixMilli(1712000000456)
+
+	type requestDetails struct {
+		method      string
+		path        string
+		query       url.Values
+		contentType string
+		accessID    string
+		timestamp   string
+		signature   string
+	}
+
+	requests := make(chan requestDetails, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests <- requestDetails{
+			method:      r.Method,
+			path:        r.URL.Path,
+			query:       r.URL.Query(),
+			contentType: r.Header.Get("Content-Type"),
+			accessID:    r.Header.Get("KALSHI-ACCESS-KEY"),
+			timestamp:   r.Header.Get("KALSHI-ACCESS-TIMESTAMP"),
+			signature:   r.Header.Get("KALSHI-ACCESS-SIGNATURE"),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(server.URL+"/trade-api/v2", "test-key-id", privateKeyPEMB64, discardLogger())
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+	client.SetHTTPClient(server.Client())
+	client.setNowFunc(func() time.Time { return timestamp })
+
+	body, err := client.Delete(context.Background(), "/orders/abc", url.Values{"reason": []string{"user_cancel"}})
+	if err != nil {
+		t.Fatalf("Delete() error = %v", err)
+	}
+	if got := string(body); got != `{"ok":true}` {
+		t.Fatalf("Delete() body = %q, want %q", got, `{"ok":true}`)
+	}
+
+	select {
+	case request := <-requests:
+		if request.method != http.MethodDelete {
+			t.Fatalf("method = %s, want %s", request.method, http.MethodDelete)
+		}
+		if request.path != "/trade-api/v2/orders/abc" {
+			t.Fatalf("path = %s, want %s", request.path, "/trade-api/v2/orders/abc")
+		}
+		if request.query.Get("reason") != "user_cancel" {
+			t.Fatalf("reason query = %q, want %q", request.query.Get("reason"), "user_cancel")
+		}
+		if request.contentType != "" {
+			t.Fatalf("Content-Type = %q, want empty", request.contentType)
+		}
+		if request.accessID != "test-key-id" {
+			t.Fatalf("KALSHI-ACCESS-KEY = %q, want %q", request.accessID, "test-key-id")
+		}
+		if request.timestamp != "1712000000456" {
+			t.Fatalf("KALSHI-ACCESS-TIMESTAMP = %q, want %q", request.timestamp, "1712000000456")
+		}
+		if request.signature == "" {
+			t.Fatal("KALSHI-ACCESS-SIGNATURE = empty, want non-empty")
+		}
+
+		sig, err := base64.StdEncoding.DecodeString(request.signature)
+		if err != nil {
+			t.Fatalf("DecodeString() error = %v", err)
+		}
+		message := signingMessage(request.timestamp, request.method, "/trade-api/v2/orders/abc")
+		hash := sha256.Sum256([]byte(message))
+		if err := rsa.VerifyPSS(&privateKey.PublicKey, crypto.SHA256, hash[:], sig, &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash, Hash: crypto.SHA256}); err != nil {
+			t.Fatalf("VerifyPSS() error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("request details were not captured")
+	}
+}
+
 func TestQuoteCentsToProbability(t *testing.T) {
 	t.Parallel()
 

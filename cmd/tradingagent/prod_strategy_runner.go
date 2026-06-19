@@ -97,6 +97,7 @@ type realStrategyRunner struct {
 	logger                *slog.Logger
 	localPaperMu          sync.Mutex
 	localPaperBroker      *paper.PaperBroker
+	kalshiLiveClient      kalshiexecution.LiveClient
 	polymarketClient      *polymarketexecution.Client // nil if not configured
 	polymarketMarketData  polymarketMarketDataSource
 	kalshiMarketData      kalshiMarketDataSource
@@ -161,6 +162,16 @@ func newRealStrategyRunner(
 		localPaperBroker:      paper.NewPaperBroker(localPaperBuyingPower, 0, 0),
 	}
 	runner.setRiskPortfolioSnapshotSource(runner.localPaperBroker)
+
+	if strings.TrimSpace(cfg.Brokers.Kalshi.APIKeyID) != "" && strings.TrimSpace(cfg.Brokers.Kalshi.PrivateKeyPEMB64) != "" {
+		if signedClient, err := kalshidata.NewClient(cfg.Brokers.Kalshi.APIBaseURL, cfg.Brokers.Kalshi.APIKeyID, cfg.Brokers.Kalshi.PrivateKeyPEMB64, logger); err != nil {
+			logger.Warn("kalshi live client construction failed; live execution disabled", slog.String("error", err.Error()))
+		} else if liveClient, err := kalshiexecution.NewLiveHTTPClient(signedClient); err != nil {
+			logger.Warn("kalshi live client adapter construction failed; live execution disabled", slog.String("error", err.Error()))
+		} else {
+			runner.kalshiLiveClient = liveClient
+		}
+	}
 
 	// Wire Polymarket client if credentials are configured.
 	pm := cfg.Brokers.Polymarket
@@ -1376,7 +1387,10 @@ func (r *realStrategyRunner) newBrokerForStrategy(strategy domain.Strategy) (exe
 		if strings.TrimSpace(kc.APIKeyID) == "" || strings.TrimSpace(kc.PrivateKeyPEMB64) == "" {
 			return nil, "", errors.New("kalshi credentials (KALSHI_API_KEY_ID and KALSHI_PRIVATE_KEY_PEM_B64) are required for live kalshi trading")
 		}
-		return nil, "", errors.New("kalshi live client is not initialised")
+		if r.kalshiLiveClient == nil {
+			return nil, "", errors.New("kalshi live client is not initialised")
+		}
+		return kalshiexecution.NewBroker(r.kalshiLiveClient), "kalshi", nil
 	default:
 		return nil, "", fmt.Errorf("live trading is not supported for market type %q", strategy.MarketType)
 	}
