@@ -121,6 +121,25 @@ type TradeDecisionFilter struct {
 	CreatedBefore *time.Time
 }
 
+// OpportunityFilter defines supported filters when listing opportunities.
+type OpportunityFilter struct {
+	Status        domain.OpportunityStatus
+	MarketType    domain.MarketType
+	StrategyID    *uuid.UUID
+	Ticker        string
+	ExpiresBefore *time.Time
+	CreatedAfter  *time.Time
+}
+
+// AllocationDecisionFilter defines supported filters when listing allocator decisions.
+type AllocationDecisionFilter struct {
+	Mode          domain.AllocationDecisionMode
+	Action        domain.AllocationDecisionAction
+	StrategyID    *uuid.UUID
+	OpportunityID *uuid.UUID
+	CreatedAfter  *time.Time
+}
+
 // PolymarketAccountFilter defines filters when listing Polymarket accounts.
 type PolymarketAccountFilter struct {
 	Tracked     *bool
@@ -360,6 +379,25 @@ type TradeDecisionJournalRepository interface {
 	Count(ctx context.Context, filter TradeDecisionFilter) (int, error)
 	AttachPaperOrder(ctx context.Context, decisionID, orderID uuid.UUID) error
 	AttachLiveOrder(ctx context.Context, decisionID, orderID uuid.UUID) error
+}
+
+// OpportunityRepository provides CRUD operations for portfolio opportunities.
+type OpportunityRepository interface {
+	Create(ctx context.Context, opportunity *domain.Opportunity) error
+	UpsertQueuedByDedupeKey(ctx context.Context, opportunity *domain.Opportunity) error
+	Get(ctx context.Context, id uuid.UUID) (*domain.Opportunity, error)
+	List(ctx context.Context, filter OpportunityFilter, limit, offset int) ([]domain.Opportunity, error)
+	// Count returns the total number of opportunities matching the filter.
+	Count(ctx context.Context, filter OpportunityFilter) (int, error)
+	UpdateStatus(ctx context.Context, id uuid.UUID, status domain.OpportunityStatus, rejectReason string) error
+}
+
+// AllocationDecisionRepository provides access to allocator decision records.
+type AllocationDecisionRepository interface {
+	Create(ctx context.Context, decision *domain.AllocationDecision) error
+	List(ctx context.Context, filter AllocationDecisionFilter, limit, offset int) ([]domain.AllocationDecision, error)
+	// Count returns the total number of decisions matching the filter.
+	Count(ctx context.Context, filter AllocationDecisionFilter) (int, error)
 }
 
 // ReplayEventRepository provides access to persisted replay events.

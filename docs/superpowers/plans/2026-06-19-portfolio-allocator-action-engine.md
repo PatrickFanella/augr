@@ -84,12 +84,12 @@
 - Test: `internal/repository/postgres/opportunity_test.go`
 - Test: `internal/repository/postgres/allocation_decision_test.go`
 
-- [ ] Add opportunity statuses: `queued`, `selected`, `rejected`, `expired`, `executed`.
-- [ ] Add decision modes: `shadow`, `paper`.
-- [ ] Use dedupe key `(strategy_id, market_type, ticker, side, signal, date bucket)`.
-- [ ] Store scoring inputs, rationale, expires_at, selected/rejected metadata.
-- [ ] Run repository tests.
-- [ ] Commit `feat(portfolio): add opportunity queue persistence`.
+- [x] Add opportunity statuses: `queued`, `selected`, `rejected`, `expired`, `executed`.
+- [x] Add decision modes: `shadow`, `paper`.
+- [x] Use dedupe key `(strategy_id, market_type, ticker, side, signal, date bucket)`.
+- [x] Store scoring inputs, rationale, expires_at, selected/rejected metadata.
+- [x] Run repository tests.
+- [x] Commit `feat(portfolio): add opportunity queue persistence`.
 
 ### Task 5: Opportunity builder
 
