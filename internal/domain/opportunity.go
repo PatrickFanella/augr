@@ -37,6 +37,7 @@ type Opportunity struct {
 	ExpectedReturnPct float64           `json:"expected_return_pct"`
 	MaxLossPct        float64           `json:"max_loss_pct"`
 	LiquidityUSD      float64           `json:"liquidity_usd"`
+	MarketCapUSD      float64           `json:"market_cap_usd"`
 	SpreadPct         float64           `json:"spread_pct"`
 	ProposedNotional  float64           `json:"proposed_notional"`
 	SelectedNotional  float64           `json:"selected_notional"`

@@ -95,10 +95,10 @@ func (r *OpportunityRepo) save(ctx context.Context, opportunity *domain.Opportun
 
 	query := `INSERT INTO portfolio_opportunities (
 		strategy_id, pipeline_run_id, market_type, ticker, side, signal, status, score, confidence,
-		edge_pct, expected_return_pct, max_loss_pct, liquidity_usd, spread_pct, proposed_notional,
+		edge_pct, expected_return_pct, max_loss_pct, liquidity_usd, market_cap_usd, spread_pct, proposed_notional,
 		selected_notional, reason, reject_reason, evidence, expires_at, dedupe_key
 	)
-	VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`
+	VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`
 	if upsert {
 		query += ` ON CONFLICT (dedupe_key) DO UPDATE SET
 			strategy_id = EXCLUDED.strategy_id,
@@ -114,6 +114,7 @@ func (r *OpportunityRepo) save(ctx context.Context, opportunity *domain.Opportun
 			expected_return_pct = EXCLUDED.expected_return_pct,
 			max_loss_pct = EXCLUDED.max_loss_pct,
 			liquidity_usd = EXCLUDED.liquidity_usd,
+			market_cap_usd = EXCLUDED.market_cap_usd,
 			spread_pct = EXCLUDED.spread_pct,
 			proposed_notional = EXCLUDED.proposed_notional,
 			selected_notional = EXCLUDED.selected_notional,
@@ -139,6 +140,7 @@ func (r *OpportunityRepo) save(ctx context.Context, opportunity *domain.Opportun
 		opportunity.ExpectedReturnPct,
 		opportunity.MaxLossPct,
 		opportunity.LiquidityUSD,
+		opportunity.MarketCapUSD,
 		opportunity.SpreadPct,
 		opportunity.ProposedNotional,
 		opportunity.SelectedNotional,
@@ -158,7 +160,7 @@ func (r *OpportunityRepo) save(ctx context.Context, opportunity *domain.Opportun
 const opportunitySelectSQL = `SELECT id, strategy_id, pipeline_run_id, market_type, ticker, side, signal,
 	status, score::double precision, confidence::double precision, edge_pct::double precision,
 	expected_return_pct::double precision, max_loss_pct::double precision, liquidity_usd::double precision,
-	spread_pct::double precision, proposed_notional::double precision, selected_notional::double precision,
+	market_cap_usd::double precision, spread_pct::double precision, proposed_notional::double precision, selected_notional::double precision,
 	reason, reject_reason, evidence, expires_at, created_at, updated_at, dedupe_key
 	FROM portfolio_opportunities`
 
@@ -206,6 +208,7 @@ func scanOpportunity(sc scanner) (*domain.Opportunity, error) {
 		&opportunity.ExpectedReturnPct,
 		&opportunity.MaxLossPct,
 		&opportunity.LiquidityUSD,
+		&opportunity.MarketCapUSD,
 		&opportunity.SpreadPct,
 		&opportunity.ProposedNotional,
 		&opportunity.SelectedNotional,

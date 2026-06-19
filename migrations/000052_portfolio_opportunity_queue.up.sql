@@ -27,6 +27,7 @@ CREATE TABLE portfolio_opportunities (
     expected_return_pct NUMERIC        NOT NULL DEFAULT 0,
     max_loss_pct       NUMERIC         NOT NULL DEFAULT 0,
     liquidity_usd      NUMERIC         NOT NULL DEFAULT 0,
+    market_cap_usd     NUMERIC         NOT NULL DEFAULT 0,
     spread_pct         NUMERIC         NOT NULL DEFAULT 0,
     proposed_notional  NUMERIC         NOT NULL DEFAULT 0,
     selected_notional  NUMERIC         NOT NULL DEFAULT 0,

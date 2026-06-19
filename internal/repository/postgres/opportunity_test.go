@@ -67,6 +67,7 @@ func TestOpportunityRepoIntegration_CRUDAndUpsert(t *testing.T) {
 		ExpectedReturnPct: 4.5,
 		MaxLossPct:        1.0,
 		LiquidityUSD:      1250000,
+		MarketCapUSD:      3000000000000,
 		SpreadPct:         0.15,
 		ProposedNotional:  2500,
 		SelectedNotional:  0,
@@ -93,6 +94,9 @@ func TestOpportunityRepoIntegration_CRUDAndUpsert(t *testing.T) {
 	if got.Score == nil || *got.Score != initialScore {
 		t.Fatalf("unexpected score roundtrip: %+v", got.Score)
 	}
+	if got.MarketCapUSD != 3000000000000 {
+		t.Fatalf("unexpected market cap roundtrip: %v", got.MarketCapUSD)
+	}
 	if !jsonBytesEqual(got.Evidence, evidence) {
 		t.Fatalf("unexpected evidence roundtrip: %s", got.Evidence)
 	}
@@ -101,6 +105,7 @@ func TestOpportunityRepoIntegration_CRUDAndUpsert(t *testing.T) {
 	opportunity.Score = &newScore
 	opportunity.Confidence = 0.91
 	opportunity.ProposedNotional = 4000
+	opportunity.MarketCapUSD = 3100000000000
 	opportunity.Reason = "refreshed setup"
 	if err := repo.UpsertQueuedByDedupeKey(ctx, opportunity); err != nil {
 		t.Fatalf("UpsertQueuedByDedupeKey() error = %v", err)
@@ -115,6 +120,9 @@ func TestOpportunityRepoIntegration_CRUDAndUpsert(t *testing.T) {
 	}
 	if updated.Confidence != 0.91 || updated.ProposedNotional != 4000 || updated.Reason != "refreshed setup" {
 		t.Fatalf("unexpected updated opportunity: %+v", updated)
+	}
+	if updated.MarketCapUSD != 3100000000000 {
+		t.Fatalf("expected updated market cap, got %v", updated.MarketCapUSD)
 	}
 	if updated.Score == nil || *updated.Score != newScore {
 		t.Fatalf("expected updated score %.2f, got %+v", newScore, updated.Score)

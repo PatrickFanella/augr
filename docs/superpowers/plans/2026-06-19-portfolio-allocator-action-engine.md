@@ -113,12 +113,12 @@
 - Create: `internal/portfolio/allocator.go`
 - Test: `internal/portfolio/allocator_test.go`
 
-- [ ] Implement default paper config: target gross exposure 35% initially, hard gross 50%, cash reserve 20%, max 2 new orders/run, max 5/day.
-- [ ] Score candidates using edge, confidence, liquidity, spread, diversification, and freshness.
-- [ ] Reject below market score/edge/liquidity or above spread cap.
-- [ ] Size selected opportunities by account value, score multiplier, market cap, cash reserve, and per-position cap.
-- [ ] Emit shadow decisions only.
-- [ ] Run `rtk go test ./internal/portfolio -run Allocator -count=1`.
+- [x] Implement default paper config: target gross exposure 35% initially, hard gross 50%, cash reserve 20%, max 2 new orders/run, max 5/day.
+- [x] Score candidates using edge, confidence, liquidity, spread, diversification, and freshness.
+- [x] Reject below market score/edge/liquidity or above spread cap.
+- [x] Size selected opportunities by account value, score multiplier, market cap, cash reserve, and per-position cap.
+- [x] Emit shadow decisions only.
+- [x] Run `rtk go test ./internal/portfolio -run Allocator -count=1`.
 
 ### Task 7: Shadow allocator automation/API
 
