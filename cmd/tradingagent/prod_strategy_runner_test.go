@@ -15,6 +15,7 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/config"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	kalshiexecution "github.com/PatrickFanella/get-rich-quick/internal/execution/kalshi"
+	"github.com/PatrickFanella/get-rich-quick/internal/execution/paper"
 	polymarketexecution "github.com/PatrickFanella/get-rich-quick/internal/execution/polymarket"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 )
@@ -91,20 +92,138 @@ func TestRunStrategy_KalshiUsesNativePathBeforeLegacyOHLCV(t *testing.T) {
 	}
 }
 
-func TestRunStrategy_KalshiLiveReturnsDisabledError(t *testing.T) {
+func TestRunStrategy_KalshiLiveRoutingRespectsGatesAndClientInitialization(t *testing.T) {
 	t.Parallel()
 
-	runner := &realStrategyRunner{kalshiMarketData: staticKalshiMarketData{snapshot: kalshiexecution.Snapshot{Ticker: "KXTEST-YESNO", Title: "Will test happen?", Status: "active", BestBidYes: 0.45, BestAskYes: 0.47, BestBidNo: 0.53, BestAskNo: 0.55, Volume: 1500, CloseTime: time.Now().UTC().Add(24 * time.Hour), FetchedAt: time.Now().UTC()}}}
-	_, err := runner.RunStrategy(context.Background(), domain.Strategy{
-		Name:       "kalshi live disabled",
+	strategy := domain.Strategy{
+		ID:         uuid.New(),
+		Name:       "kalshi live",
 		Ticker:     "KXTEST-YESNO",
 		MarketType: domain.MarketTypeKalshi,
 		Status:     domain.StrategyStatusActive,
 		IsPaper:    false,
-	})
-	if err == nil || !strings.Contains(err.Error(), "kalshi live execution is disabled") {
-		t.Fatalf("RunStrategy() error = %v, want disabled live error", err)
+		Config:     mustKalshiConfig(t, map[string]any{"template": "microstructure", "direction": "YES", "confidence": 0.72, "entry_price_max": 0.60}),
 	}
+	snapshot := staticKalshiMarketData{snapshot: kalshiexecution.Snapshot{
+		Ticker:     "KXTEST-YESNO",
+		Title:      "Will test happen?",
+		Status:     "active",
+		BestBidYes: 0.45,
+		BestAskYes: 0.47,
+		BestBidNo:  0.53,
+		BestAskNo:  0.55,
+		Volume:     1500,
+		CloseTime:  time.Now().UTC().Add(24 * time.Hour),
+		FetchedAt:  time.Now().UTC(),
+	}}
+
+	t.Run("paper uses fallback broker", func(t *testing.T) {
+		t.Parallel()
+
+		runner := &realStrategyRunner{logger: slogDiscardLogger()}
+		broker, name, err := runner.newBrokerForStrategy(domain.Strategy{Ticker: "KXTEST-YESNO", MarketType: domain.MarketTypeKalshi, IsPaper: true})
+		if err != nil {
+			t.Fatalf("newBrokerForStrategy() error = %v", err)
+		}
+		if name != "paper" {
+			t.Fatalf("broker name = %q, want paper", name)
+		}
+		if _, ok := broker.(*paper.PaperBroker); !ok {
+			t.Fatalf("broker type = %T, want *paper.PaperBroker", broker)
+		}
+	})
+
+	t.Run("live disabled is denied by gate before broker route", func(t *testing.T) {
+		t.Parallel()
+
+		runner := &realStrategyRunner{kalshiMarketData: snapshot, logger: slogDiscardLogger()}
+		_, err := runner.RunStrategy(context.Background(), strategy)
+		if err == nil || !strings.Contains(err.Error(), "live trading disabled") {
+			t.Fatalf("RunStrategy() error = %v, want live gate denial", err)
+		}
+	})
+
+	t.Run("missing broker allowlist is denied by gate", func(t *testing.T) {
+		t.Parallel()
+
+		runner := &realStrategyRunner{
+			cfg: config.Config{
+				Features:                     config.FeatureFlags{EnableLiveTrading: true},
+				LiveTradingAllowedStrategies: []string{strategy.ID.String()},
+			},
+			kalshiMarketData: snapshot,
+			logger:           slogDiscardLogger(),
+		}
+		_, err := runner.RunStrategy(context.Background(), strategy)
+		if err == nil || !strings.Contains(err.Error(), "broker not live-allowlisted") {
+			t.Fatalf("RunStrategy() error = %v, want broker allowlist denial", err)
+		}
+	})
+
+	t.Run("missing credentials fails clearly", func(t *testing.T) {
+		t.Parallel()
+
+		runner := &realStrategyRunner{
+			cfg: config.Config{
+				Features:                     config.FeatureFlags{EnableLiveTrading: true},
+				LiveTradingAllowedStrategies: []string{strategy.ID.String()},
+				LiveTradingAllowedBrokers:    []string{"kalshi"},
+			},
+			kalshiMarketData: snapshot,
+			logger:           slogDiscardLogger(),
+		}
+		_, err := runner.RunStrategy(context.Background(), strategy)
+		if err == nil || !strings.Contains(err.Error(), "KALSHI_API_KEY_ID and KALSHI_PRIVATE_KEY_PEM_B64") {
+			t.Fatalf("RunStrategy() error = %v, want credential error", err)
+		}
+	})
+
+	t.Run("all gates and credentials reach blocked live client", func(t *testing.T) {
+		t.Parallel()
+
+		runner := &realStrategyRunner{
+			cfg: config.Config{
+				Features:                     config.FeatureFlags{EnableLiveTrading: true},
+				LiveTradingAllowedStrategies: []string{strategy.ID.String()},
+				LiveTradingAllowedBrokers:    []string{"kalshi"},
+				Brokers: config.BrokerConfigs{Kalshi: config.KalshiConfig{
+					APIKeyID:         "kalshi-key-id",
+					PrivateKeyPEMB64: "base64-private-key",
+				}},
+			},
+			kalshiMarketData: snapshot,
+			logger:           slogDiscardLogger(),
+		}
+		_, err := runner.RunStrategy(context.Background(), strategy)
+		if err == nil || !strings.Contains(err.Error(), "kalshi live client is not initialised") {
+			t.Fatalf("RunStrategy() error = %v, want uninitialised live client error", err)
+		}
+	})
+
+	t.Run("live hold path is blocked before completion", func(t *testing.T) {
+		t.Parallel()
+
+		holdStrategy := strategy
+		holdStrategy.ID = uuid.New()
+		holdStrategy.Config = mustKalshiConfig(t, map[string]any{"template": "microstructure", "direction": "NO", "confidence": 0.72, "entry_price_max": 0.60})
+		runner := &realStrategyRunner{
+			cfg: config.Config{
+				Features:                     config.FeatureFlags{EnableLiveTrading: true},
+				LiveTradingAllowedStrategies: []string{holdStrategy.ID.String()},
+				LiveTradingAllowedBrokers:    []string{"kalshi"},
+				Brokers: config.BrokerConfigs{Kalshi: config.KalshiConfig{
+					APIKeyID:         "kalshi-key-id",
+					PrivateKeyPEMB64: "base64-private-key",
+				}},
+			},
+			kalshiMarketData: snapshot,
+			logger:           slogDiscardLogger(),
+		}
+		_, err := runner.RunStrategy(context.Background(), holdStrategy)
+		if err == nil || !strings.Contains(err.Error(), "kalshi live client is not initialised") {
+			t.Fatalf("RunStrategy() error = %v, want uninitialised live client error", err)
+		}
+	})
 }
 
 func TestRunStrategy_KalshiSafeHoldPath(t *testing.T) {

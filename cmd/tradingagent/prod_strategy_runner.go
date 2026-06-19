@@ -23,13 +23,13 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/data"
 	kalshidata "github.com/PatrickFanella/get-rich-quick/internal/data/kalshi"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
+	"github.com/PatrickFanella/get-rich-quick/internal/eventmarkets"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution"
 	alpacaexecution "github.com/PatrickFanella/get-rich-quick/internal/execution/alpaca"
 	binanceexecution "github.com/PatrickFanella/get-rich-quick/internal/execution/binance"
 	kalshiexecution "github.com/PatrickFanella/get-rich-quick/internal/execution/kalshi"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution/paper"
 	polymarketexecution "github.com/PatrickFanella/get-rich-quick/internal/execution/polymarket"
-	"github.com/PatrickFanella/get-rich-quick/internal/eventmarkets"
 	"github.com/PatrickFanella/get-rich-quick/internal/llm"
 	polymarketdata "github.com/PatrickFanella/get-rich-quick/internal/marketdata/polymarket"
 	"github.com/PatrickFanella/get-rich-quick/internal/metrics"
@@ -431,10 +431,6 @@ func (r *realStrategyRunner) runPolymarketNative(ctx context.Context, strategy d
 }
 
 func (r *realStrategyRunner) runKalshiNative(ctx context.Context, strategy domain.Strategy) (*api.StrategyRunResult, error) {
-	if !strategy.IsPaper {
-		return nil, errors.New("kalshi live execution is disabled; set strategy is_paper=true")
-	}
-
 	now := time.Now().UTC()
 	run := domain.PipelineRun{
 		ID:             uuid.New(),
@@ -472,6 +468,18 @@ func (r *realStrategyRunner) runKalshiNative(ctx context.Context, strategy domai
 
 	if r.kalshiMarketData == nil {
 		return failRun(errors.New("kalshi native: market data client is required"))
+	}
+	if !strategy.IsPaper {
+		gate, err := r.liveGateForStrategy(strategy)
+		if err != nil {
+			return failRun(err)
+		}
+		if allowed, denial := gate.Allows(&strategy.ID, brokerNameForStrategy(strategy)); !allowed {
+			return failRun(fmt.Errorf("order_manager: live execution denied for kalshi: %s", denial.Message))
+		}
+		if _, _, err := r.newBrokerForStrategy(strategy); err != nil {
+			return failRun(err)
+		}
 	}
 	snapshot, err := r.kalshiMarketData.LoadSnapshot(ctx, strategy.Ticker)
 	if err != nil {
@@ -833,8 +841,7 @@ func (r *realStrategyRunner) loadInitialState(ctx context.Context, strategy doma
 
 	to := time.Now().UTC()
 
-	seed := agent.InitialStateSeed{
-	}
+	seed := agent.InitialStateSeed{}
 	if usesStockOHLCVAnalysis(strategy) {
 		from := to.Add(-strategyMarketLookback)
 		bars, err := r.dataService.GetOHLCV(ctx, strategy.MarketType, strategy.Ticker, data.Timeframe1d, from, to)
@@ -1205,11 +1212,18 @@ func globalSettingsFromConfig(cfg config.Config) agent.GlobalSettings {
 }
 
 func (r *realStrategyRunner) newOrderManager(ctx context.Context, strategy domain.Strategy, resolved agent.ResolvedConfig, strategyConfig *agent.StrategyConfig) (*execution.OrderManager, error) {
-	broker, brokerName, err := r.newBrokerForStrategy(strategy)
+	gate, err := r.liveGateForStrategy(strategy)
 	if err != nil {
 		return nil, err
 	}
-	gate, err := r.liveGateForStrategy(strategy)
+	if !strategy.IsPaper {
+		brokerName := brokerNameForStrategy(strategy)
+		if allowed, denial := gate.Allows(&strategy.ID, brokerName); !allowed {
+			return nil, fmt.Errorf("order_manager: live execution denied for %s: %s", brokerName, denial.Message)
+		}
+	}
+
+	broker, brokerName, err := r.newBrokerForStrategy(strategy)
 	if err != nil {
 		return nil, err
 	}
@@ -1315,12 +1329,11 @@ func (r *realStrategyRunner) newBrokerForStrategy(strategy domain.Strategy) (exe
 		return r.fallbackPaperBroker(), "paper", nil
 	}
 
-	if !r.cfg.Features.EnableLiveTrading {
-		return nil, "", fmt.Errorf("live trading is disabled for strategy %s", strategy.Name)
-	}
-
 	switch marketType {
 	case domain.MarketTypeStock:
+		if !r.cfg.Features.EnableLiveTrading {
+			return nil, "", fmt.Errorf("live trading is disabled for strategy %s", strategy.Name)
+		}
 		if !hasBrokerCredentials(r.cfg.Brokers.Alpaca) {
 			return nil, "", errors.New("alpaca broker credentials are required for live stock trading")
 		}
@@ -1331,6 +1344,9 @@ func (r *realStrategyRunner) newBrokerForStrategy(strategy domain.Strategy) (exe
 			r.logger,
 		)), "alpaca", nil
 	case domain.MarketTypeCrypto:
+		if !r.cfg.Features.EnableLiveTrading {
+			return nil, "", fmt.Errorf("live trading is disabled for strategy %s", strategy.Name)
+		}
 		if !hasBrokerCredentials(r.cfg.Brokers.Binance) {
 			return nil, "", errors.New("binance broker credentials are required for live crypto trading")
 		}
@@ -1341,6 +1357,9 @@ func (r *realStrategyRunner) newBrokerForStrategy(strategy domain.Strategy) (exe
 			r.logger,
 		)), "binance", nil
 	case domain.MarketTypePolymarket:
+		if !r.cfg.Features.EnableLiveTrading {
+			return nil, "", fmt.Errorf("live trading is disabled for strategy %s", strategy.Name)
+		}
 		pm := r.cfg.Brokers.Polymarket
 		if strings.TrimSpace(pm.KeyID) == "" || strings.TrimSpace(pm.SecretKey) == "" {
 			return nil, "", errors.New("polymarket credentials (POLYMARKET_KEY_ID and POLYMARKET_SECRET_KEY) are required for live polymarket trading")
@@ -1349,8 +1368,32 @@ func (r *realStrategyRunner) newBrokerForStrategy(strategy domain.Strategy) (exe
 			return nil, "", errors.New("polymarket client not initialised")
 		}
 		return polymarketexecution.NewBroker(r.polymarketClient), "polymarket", nil
+	case domain.MarketTypeKalshi:
+		if !r.cfg.Features.EnableLiveTrading {
+			return nil, "", fmt.Errorf("live trading is disabled for strategy %s", strategy.Name)
+		}
+		kc := r.cfg.Brokers.Kalshi
+		if strings.TrimSpace(kc.APIKeyID) == "" || strings.TrimSpace(kc.PrivateKeyPEMB64) == "" {
+			return nil, "", errors.New("kalshi credentials (KALSHI_API_KEY_ID and KALSHI_PRIVATE_KEY_PEM_B64) are required for live kalshi trading")
+		}
+		return nil, "", errors.New("kalshi live client is not initialised")
 	default:
 		return nil, "", fmt.Errorf("live trading is not supported for market type %q", strategy.MarketType)
+	}
+}
+
+func brokerNameForStrategy(strategy domain.Strategy) string {
+	switch strategy.MarketType.Normalize() {
+	case domain.MarketTypeStock:
+		return "alpaca"
+	case domain.MarketTypeCrypto:
+		return "binance"
+	case domain.MarketTypePolymarket:
+		return "polymarket"
+	case domain.MarketTypeKalshi:
+		return "kalshi"
+	default:
+		return ""
 	}
 }
 

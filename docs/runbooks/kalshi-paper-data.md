@@ -11,6 +11,8 @@ type: runbook
 
 Use this runbook to configure Kalshi for paper/data-first operation. This plan only enables configuration, validation, and read-side readiness. Live Kalshi order submission is not enabled by this plan.
 
+Related live activation checklist: [`kalshi-live-readiness.md`](./kalshi-live-readiness.md).
+
 ## Paper/data defaults
 
 ```text
@@ -19,6 +21,9 @@ KALSHI_API_BASE_URL=https://external-api.demo.kalshi.co/trade-api/v2
 ```
 
 These defaults are enough for paper/data wiring that uses public or stubbed data paths.
+
+Keep these defaults in place for the normal setup. Discovery should continue to
+create or reuse **paper** strategies only.
 
 ## Optional authenticated demo/future live environment
 
@@ -32,6 +37,8 @@ KALSHI_PRIVATE_KEY_PEM_B64=<base64 encoded RSA private key PEM>
 - Keep `KALSHI_DEMO=true` for demo and paper/data workflows.
 - The API key ID and private key are only needed for authenticated demo reads or future live work.
 - Do not enable live Kalshi order submission in this phase.
+- Do not set `is_paper=false` from this runbook.
+- For live-readiness steps, use the linked live runbook instead of changing the paper/data defaults here.
 
 ## Discovery automation
 
@@ -39,6 +46,7 @@ KALSHI_PRIVATE_KEY_PEM_B64=<base64 encoded RSA private key PEM>
 - Default cadence is hourly at minute 15: `15 * * * *`.
 - The job fetches open Kalshi markets, stores recent snapshots, upserts screened watched markets, and creates/reuses active **paper** strategies only.
 - Strategy reuse is keyed by `market_type=kalshi` and Kalshi market `ticker`, so repeated runs should not create duplicate paper strategies for the same market.
+- Discovery does not create live strategies.
 - The conservative job defaults currently fetch at most 50 markets, deploy at most 1 paper strategy per run, and require minimum conviction `0.70`.
 
 ## Dashboard and API checks
