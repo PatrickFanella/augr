@@ -97,11 +97,11 @@
 - Create: `internal/portfolio/opportunity_builder.go`
 - Test: `internal/portfolio/opportunity_builder_test.go`
 
-- [ ] Convert actionable BUY/SELL strategy outputs/trade decisions into queued opportunities.
-- [ ] Reject or tag HOLD/no-action outputs with taxonomy reasons.
-- [ ] Expire stocks after one trading day and event markets after six hours.
-- [ ] Do not create opportunities for inactive strategies.
-- [ ] Run `rtk go test ./internal/portfolio -run Opportunity -count=1`.
+- [x] Convert actionable BUY/SELL strategy outputs/trade decisions into queued opportunities.
+- [x] Reject or tag HOLD/no-action outputs with taxonomy reasons.
+- [x] Expire stocks after one trading day and event markets after six hours.
+- [x] Do not create opportunities for inactive strategies.
+- [x] Run `rtk go test ./internal/portfolio -run Opportunity -count=1`.
 
 ---
 
