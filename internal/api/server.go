@@ -34,21 +34,23 @@ type Server struct {
 	redisHealth HealthCheck
 
 	// Repositories
-	strategies     repository.StrategyRepository
-	runs           repository.PipelineRunRepository
-	decisions      repository.AgentDecisionRepository
-	orders         repository.OrderRepository
-	positions      repository.PositionRepository
-	trades         repository.TradeRepository
-	tradeDecisions repository.TradeDecisionJournalRepository
-	replayEvents   repository.ReplayEventRepository
-	memories       repository.MemoryRepository
-	users          repository.UserRepository
-	auditLog       repository.AuditLogRepository
-	conversations  repository.ConversationRepository
-	snapshots      repository.PipelineRunSnapshotRepository
-	llmProvider    llm.Provider
-	events         repository.AgentEventRepository
+	strategies         repository.StrategyRepository
+	runs               repository.PipelineRunRepository
+	decisions          repository.AgentDecisionRepository
+	opportunities      repository.OpportunityRepository
+	allocatorDecisions repository.AllocationDecisionRepository
+	orders             repository.OrderRepository
+	positions          repository.PositionRepository
+	trades             repository.TradeRepository
+	tradeDecisions     repository.TradeDecisionJournalRepository
+	replayEvents       repository.ReplayEventRepository
+	memories           repository.MemoryRepository
+	users              repository.UserRepository
+	auditLog           repository.AuditLogRepository
+	conversations      repository.ConversationRepository
+	snapshots          repository.PipelineRunSnapshotRepository
+	llmProvider        llm.Provider
+	events             repository.AgentEventRepository
 
 	// Backtest
 	backtestConfigs repository.BacktestConfigRepository
@@ -178,48 +180,50 @@ func DefaultServerConfig() ServerConfig {
 
 // Deps groups the repository and service dependencies required by the Server.
 type Deps struct {
-	Strategies        repository.StrategyRepository
-	Runs              repository.PipelineRunRepository
-	Decisions         repository.AgentDecisionRepository
-	Orders            repository.OrderRepository
-	Positions         repository.PositionRepository
-	Trades            repository.TradeRepository
-	TradeDecisions    repository.TradeDecisionJournalRepository
-	ReplayEvents      repository.ReplayEventRepository
-	Memories          repository.MemoryRepository
-	APIKeys           repository.APIKeyRepository
-	Users             repository.UserRepository
-	Conversations     repository.ConversationRepository
-	AuditLog          repository.AuditLogRepository
-	Events            repository.AgentEventRepository
-	Snapshots         repository.PipelineRunSnapshotRepository
-	LLMProvider       llm.Provider
-	BacktestConfigs   repository.BacktestConfigRepository
-	BacktestRuns      repository.BacktestRunRepository
-	DivergenceSrc     DivergenceSource
-	MarketDataStatus  MarketDataStatusSource
-	DataService       *data.DataService
-	OptionsProvider   data.OptionsDataProvider
-	EventsProvider    data.EventsProvider
-	DiscoveryDeps     *discovery.DiscoveryDeps
-	DiscoveryRunRepo  discovery.RunRepository
-	Universe          *universe.Universe
-	UniverseRepo      universe.UniverseRepository
-	Automation        *automation.JobOrchestrator
-	AlpacaReconciler  AlpacaAutomationReconciler
-	JobRunRepo        *pgrepo.JobRunRepo
-	NewsFeedRepo      *pgrepo.NewsFeedRepo
-	MarketDataHistory repository.HistoricalOHLCVRepository
-	Risk              risk.RiskEngine
-	RiskBreaker       risk.Breaker
-	RiskBreakerLister RiskBreakerLister
-	Settings          SettingsService
-	Prompts           *PromptSettingsService
-	Runner            StrategyRunner
-	ResearchScanner   service.ResearchScannerService
-	DBHealth          HealthCheck
-	RedisHealth       HealthCheck
-	MetricsHandler    http.Handler
+	Strategies             repository.StrategyRepository
+	Runs                   repository.PipelineRunRepository
+	Decisions              repository.AgentDecisionRepository
+	OpportunityRepo        repository.OpportunityRepository
+	AllocationDecisionRepo repository.AllocationDecisionRepository
+	Orders                 repository.OrderRepository
+	Positions              repository.PositionRepository
+	Trades                 repository.TradeRepository
+	TradeDecisions         repository.TradeDecisionJournalRepository
+	ReplayEvents           repository.ReplayEventRepository
+	Memories               repository.MemoryRepository
+	APIKeys                repository.APIKeyRepository
+	Users                  repository.UserRepository
+	Conversations          repository.ConversationRepository
+	AuditLog               repository.AuditLogRepository
+	Events                 repository.AgentEventRepository
+	Snapshots              repository.PipelineRunSnapshotRepository
+	LLMProvider            llm.Provider
+	BacktestConfigs        repository.BacktestConfigRepository
+	BacktestRuns           repository.BacktestRunRepository
+	DivergenceSrc          DivergenceSource
+	MarketDataStatus       MarketDataStatusSource
+	DataService            *data.DataService
+	OptionsProvider        data.OptionsDataProvider
+	EventsProvider         data.EventsProvider
+	DiscoveryDeps          *discovery.DiscoveryDeps
+	DiscoveryRunRepo       discovery.RunRepository
+	Universe               *universe.Universe
+	UniverseRepo           universe.UniverseRepository
+	Automation             *automation.JobOrchestrator
+	AlpacaReconciler       AlpacaAutomationReconciler
+	JobRunRepo             *pgrepo.JobRunRepo
+	NewsFeedRepo           *pgrepo.NewsFeedRepo
+	MarketDataHistory      repository.HistoricalOHLCVRepository
+	Risk                   risk.RiskEngine
+	RiskBreaker            risk.Breaker
+	RiskBreakerLister      RiskBreakerLister
+	Settings               SettingsService
+	Prompts                *PromptSettingsService
+	Runner                 StrategyRunner
+	ResearchScanner        service.ResearchScannerService
+	DBHealth               HealthCheck
+	RedisHealth            HealthCheck
+	MetricsHandler         http.Handler
 
 	// Signal intelligence (optional; nil = feature not enabled).
 	SignalStore            *signal.EventStore
@@ -312,6 +316,8 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 		strategies:            deps.Strategies,
 		runs:                  deps.Runs,
 		decisions:             deps.Decisions,
+		opportunities:         deps.OpportunityRepo,
+		allocatorDecisions:    deps.AllocationDecisionRepo,
 		orders:                deps.Orders,
 		positions:             deps.Positions,
 		trades:                deps.Trades,
@@ -472,6 +478,11 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 			pr.Get("/positions/open", s.handleGetOpenPositions)
 			pr.Get("/summary", s.handlePortfolioSummary)
 			pr.Get("/allocator/diagnostics", s.handleGetPortfolioAllocatorDiagnostics)
+			pr.Route("/allocator", func(ar chi.Router) {
+				ar.Get("/opportunities", s.handleListPortfolioAllocatorOpportunities)
+				ar.Get("/decisions", s.handleListPortfolioAllocatorDecisions)
+				ar.Get("/summary", s.handleGetPortfolioAllocatorSummary)
+			})
 		})
 
 		// Orders

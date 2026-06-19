@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -24,7 +26,16 @@ const (
 	portfolioDiagnosticsWarningPositions    = "positions_unavailable"
 	portfolioDiagnosticsWarningUnknownOpen  = "open_positions_market_unknown"
 	portfolioDiagnosticsWarningAccountBal   = "account_balance_unavailable"
+	portfolioAllocatorRecentLimit           = 10
+	portfolioAllocatorWarningOpportunities  = "opportunities_unavailable"
+	portfolioAllocatorWarningDecisions      = "allocation_decisions_unavailable"
 )
+
+type portfolioAllocatorSummaryResponse struct {
+	OpportunityCountsByStatus map[string]int              `json:"opportunity_counts_by_status"`
+	RecentDecisions           []domain.AllocationDecision `json:"recent_decisions"`
+	Warnings                  []string                    `json:"warnings,omitempty"`
+}
 
 func (s *Server) handleGetPortfolioAllocatorDiagnostics(w http.ResponseWriter, r *http.Request) {
 	input, warnings, err := s.buildPortfolioDiagnosticsInput(r.Context())
@@ -36,6 +47,124 @@ func (s *Server) handleGetPortfolioAllocatorDiagnostics(w http.ResponseWriter, r
 	summary := portfolio.BuildDiagnosticsSummary(input)
 	summary.Warnings = append(summary.Warnings, warnings...)
 	respondJSON(w, http.StatusOK, summary)
+}
+
+func (s *Server) handleListPortfolioAllocatorOpportunities(w http.ResponseWriter, r *http.Request) {
+	limit, offset := parsePagination(r)
+	q := r.URL.Query()
+	filter := repository.OpportunityFilter{}
+	if status := strings.TrimSpace(q.Get("status")); status != "" {
+		filter.Status = domain.OpportunityStatus(status)
+	}
+	if marketType := strings.TrimSpace(q.Get("market_type")); marketType != "" {
+		filter.MarketType = domain.MarketType(marketType)
+	}
+	if ticker := strings.TrimSpace(q.Get("ticker")); ticker != "" {
+		filter.Ticker = ticker
+	}
+	if !ParseUUIDParam(w, q, "strategy_id", &filter.StrategyID) {
+		return
+	}
+	if !ParseTimeParam(w, q, "expires_before", time.RFC3339, &filter.ExpiresBefore) {
+		return
+	}
+	if !ParseTimeParam(w, q, "created_after", time.RFC3339, &filter.CreatedAfter) {
+		return
+	}
+
+	if s.opportunities == nil {
+		respondListWithTotal(w, []domain.Opportunity{}, 0, limit, offset)
+		return
+	}
+
+	opps, err := s.opportunities.List(r.Context(), filter, limit, offset)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to list opportunities", ErrCodeInternal)
+		return
+	}
+	total, err := s.opportunities.Count(r.Context(), filter)
+	if err != nil {
+		s.logger.Warn("portfolio allocator opportunities count", "error", err)
+	}
+	respondListWithTotal(w, opps, total, limit, offset)
+}
+
+func (s *Server) handleListPortfolioAllocatorDecisions(w http.ResponseWriter, r *http.Request) {
+	limit, offset := parsePagination(r)
+	q := r.URL.Query()
+	filter := repository.AllocationDecisionFilter{}
+	if mode := strings.TrimSpace(q.Get("mode")); mode != "" {
+		filter.Mode = domain.AllocationDecisionMode(mode)
+	}
+	if action := strings.TrimSpace(q.Get("action")); action != "" {
+		filter.Action = domain.AllocationDecisionAction(action)
+	}
+	if !ParseUUIDParam(w, q, "strategy_id", &filter.StrategyID) {
+		return
+	}
+	if !ParseUUIDParam(w, q, "opportunity_id", &filter.OpportunityID) {
+		return
+	}
+	if !ParseTimeParam(w, q, "created_after", time.RFC3339, &filter.CreatedAfter) {
+		return
+	}
+
+	if s.allocatorDecisions == nil {
+		respondListWithTotal(w, []domain.AllocationDecision{}, 0, limit, offset)
+		return
+	}
+
+	decisions, err := s.allocatorDecisions.List(r.Context(), filter, limit, offset)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to list allocation decisions", ErrCodeInternal)
+		return
+	}
+	total, err := s.allocatorDecisions.Count(r.Context(), filter)
+	if err != nil {
+		s.logger.Warn("portfolio allocator decisions count", "error", err)
+	}
+	respondListWithTotal(w, decisions, total, limit, offset)
+}
+
+func (s *Server) handleGetPortfolioAllocatorSummary(w http.ResponseWriter, r *http.Request) {
+	resp := portfolioAllocatorSummaryResponse{
+		OpportunityCountsByStatus: map[string]int{},
+		RecentDecisions:           []domain.AllocationDecision{},
+	}
+	warnings := make([]string, 0, 2)
+
+	if s.opportunities == nil {
+		warnings = append(warnings, portfolioAllocatorWarningOpportunities)
+	} else {
+		for _, status := range []domain.OpportunityStatus{
+			domain.OpportunityStatusQueued,
+			domain.OpportunityStatusSelected,
+			domain.OpportunityStatusRejected,
+			domain.OpportunityStatusExpired,
+			domain.OpportunityStatusExecuted,
+		} {
+			count, err := s.opportunities.Count(r.Context(), repository.OpportunityFilter{Status: status})
+			if err != nil {
+				respondError(w, http.StatusInternalServerError, "failed to build portfolio allocator summary", ErrCodeInternal)
+				return
+			}
+			resp.OpportunityCountsByStatus[status.String()] = count
+		}
+	}
+
+	if s.allocatorDecisions == nil {
+		warnings = append(warnings, portfolioAllocatorWarningDecisions)
+	} else {
+		decisions, err := s.allocatorDecisions.List(r.Context(), repository.AllocationDecisionFilter{Mode: domain.AllocationDecisionModeShadow}, portfolioAllocatorRecentLimit, 0)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "failed to build portfolio allocator summary", ErrCodeInternal)
+			return
+		}
+		resp.RecentDecisions = decisions
+	}
+
+	resp.Warnings = warnings
+	respondJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) buildPortfolioDiagnosticsInput(ctx context.Context) (portfolio.DiagnosticsInput, []string, error) {

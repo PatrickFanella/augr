@@ -128,10 +128,10 @@
 - Modify: `cmd/tradingagent/runtime.go`
 - Modify: `internal/api/portfolio_allocator_handlers.go`
 
-- [ ] Add `portfolio_allocator` job in shadow mode by default.
-- [ ] Persist allocation decisions with `mode=shadow` and `action=shadow_selected`/`shadow_rejected`.
-- [ ] Expose last shadow summary via API.
-- [ ] Do not submit orders.
+- [x] Add `portfolio_allocator` job in shadow mode by default.
+- [x] Persist allocation decisions with `mode=shadow` and `action=shadow_selected`/`shadow_rejected`.
+- [x] Expose last shadow summary via API.
+- [x] Do not submit orders.
 - [ ] Commit `feat(portfolio): add shadow allocator`.
 
 ---

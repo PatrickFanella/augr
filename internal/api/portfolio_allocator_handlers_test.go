@@ -253,6 +253,150 @@ func TestPortfolioAllocatorDiagnosticsWarningsWhenReposMissing(t *testing.T) {
 	}
 }
 
+type portfolioAllocatorOpportunityRepo struct {
+	items      []domain.Opportunity
+	lastFilter repository.OpportunityFilter
+	lastLimit  int
+	lastOffset int
+}
+
+func (s *portfolioAllocatorOpportunityRepo) Create(context.Context, *domain.Opportunity) error {
+	return nil
+}
+func (s *portfolioAllocatorOpportunityRepo) UpsertQueuedByDedupeKey(context.Context, *domain.Opportunity) error {
+	return nil
+}
+func (s *portfolioAllocatorOpportunityRepo) Get(context.Context, uuid.UUID) (*domain.Opportunity, error) {
+	return nil, repository.ErrNotFound
+}
+func (s *portfolioAllocatorOpportunityRepo) List(_ context.Context, filter repository.OpportunityFilter, limit, offset int) ([]domain.Opportunity, error) {
+	s.lastFilter = filter
+	s.lastLimit = limit
+	s.lastOffset = offset
+	return filterOpportunities(s.items, filter), nil
+}
+func (s *portfolioAllocatorOpportunityRepo) Count(_ context.Context, filter repository.OpportunityFilter) (int, error) {
+	return len(filterOpportunities(s.items, filter)), nil
+}
+func (s *portfolioAllocatorOpportunityRepo) UpdateStatus(context.Context, uuid.UUID, domain.OpportunityStatus, string) error {
+	return nil
+}
+
+type portfolioAllocatorDecisionRepo struct {
+	items      []domain.AllocationDecision
+	lastFilter repository.AllocationDecisionFilter
+	lastLimit  int
+	lastOffset int
+}
+
+func (s *portfolioAllocatorDecisionRepo) Create(context.Context, *domain.AllocationDecision) error {
+	return nil
+}
+func (s *portfolioAllocatorDecisionRepo) List(_ context.Context, filter repository.AllocationDecisionFilter, limit, offset int) ([]domain.AllocationDecision, error) {
+	s.lastFilter = filter
+	s.lastLimit = limit
+	s.lastOffset = offset
+	return filterAllocationDecisions(s.items, filter), nil
+}
+func (s *portfolioAllocatorDecisionRepo) Count(_ context.Context, filter repository.AllocationDecisionFilter) (int, error) {
+	return len(filterAllocationDecisions(s.items, filter)), nil
+}
+
+type portfolioAllocatorOpportunityListResponse struct {
+	Data   []domain.Opportunity `json:"data"`
+	Total  int                  `json:"total"`
+	Limit  int                  `json:"limit"`
+	Offset int                  `json:"offset"`
+}
+
+type portfolioAllocatorDecisionListResponse struct {
+	Data   []domain.AllocationDecision `json:"data"`
+	Total  int                         `json:"total"`
+	Limit  int                         `json:"limit"`
+	Offset int                         `json:"offset"`
+}
+
+func TestPortfolioAllocatorListAndSummaryRoutes(t *testing.T) {
+	t.Parallel()
+
+	queuedStrategyID := uuid.MustParse("44444444-4444-4444-4444-444444444444")
+	selectedStrategyID := uuid.MustParse("55555555-5555-5555-5555-555555555555")
+	oppRepo := &portfolioAllocatorOpportunityRepo{items: []domain.Opportunity{
+		{ID: uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"), StrategyID: queuedStrategyID, Status: domain.OpportunityStatusQueued, MarketType: domain.MarketTypeStock, Ticker: "AAPL"},
+		{ID: uuid.MustParse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"), StrategyID: selectedStrategyID, Status: domain.OpportunityStatusSelected, MarketType: domain.MarketTypeStock, Ticker: "MSFT"},
+	}}
+	decRepo := &portfolioAllocatorDecisionRepo{items: []domain.AllocationDecision{
+		{ID: uuid.MustParse("cccccccc-cccc-cccc-cccc-cccccccccccc"), Mode: domain.AllocationDecisionModeShadow, Action: domain.AllocationDecisionActionShadowSelected, Score: 91.2},
+		{ID: uuid.MustParse("dddddddd-dddd-dddd-dddd-dddddddddddd"), Mode: domain.AllocationDecisionModeShadow, Action: domain.AllocationDecisionActionShadowRejected, Score: 12.3},
+	}}
+	deps := testDeps()
+	deps.OpportunityRepo = oppRepo
+	deps.AllocationDecisionRepo = decRepo
+	srv := newTestServerWithDeps(t, deps)
+
+	rr := doRequest(t, srv, http.MethodGet, "/api/v1/portfolio/allocator/opportunities?status=queued", nil)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", rr.Code, http.StatusOK, rr.Body.String())
+	}
+	opps := decodeJSON[portfolioAllocatorOpportunityListResponse](t, rr)
+	if len(opps.Data) != 1 || opps.Data[0].Status != domain.OpportunityStatusQueued {
+		t.Fatalf("opportunities = %+v, want one queued item", opps.Data)
+	}
+	if opps.Total != 1 || oppRepo.lastFilter.Status != domain.OpportunityStatusQueued {
+		t.Fatalf("unexpected opportunity list metadata: total=%d filter=%+v", opps.Total, oppRepo.lastFilter)
+	}
+
+	rr = doRequest(t, srv, http.MethodGet, "/api/v1/portfolio/allocator/decisions?mode=shadow", nil)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", rr.Code, http.StatusOK, rr.Body.String())
+	}
+	decisions := decodeJSON[portfolioAllocatorDecisionListResponse](t, rr)
+	if len(decisions.Data) != 2 || decisions.Total != 2 || decRepo.lastFilter.Mode != domain.AllocationDecisionModeShadow {
+		t.Fatalf("decisions = %+v, filter=%+v", decisions.Data, decRepo.lastFilter)
+	}
+
+	rr = doRequest(t, srv, http.MethodGet, "/api/v1/portfolio/allocator/summary", nil)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", rr.Code, http.StatusOK, rr.Body.String())
+	}
+	summary := decodeJSON[portfolioAllocatorSummaryResponse](t, rr)
+	if summary.OpportunityCountsByStatus[domain.OpportunityStatusQueued.String()] != 1 || summary.OpportunityCountsByStatus[domain.OpportunityStatusSelected.String()] != 1 {
+		t.Fatalf("summary counts = %+v", summary.OpportunityCountsByStatus)
+	}
+	if len(summary.RecentDecisions) != 2 {
+		t.Fatalf("recent decisions = %+v, want 2", summary.RecentDecisions)
+	}
+	if len(summary.Warnings) != 0 {
+		t.Fatalf("warnings = %+v, want none", summary.Warnings)
+	}
+}
+
+func filterOpportunities(items []domain.Opportunity, filter repository.OpportunityFilter) []domain.Opportunity {
+	if filter.Status == "" {
+		return append([]domain.Opportunity(nil), items...)
+	}
+	out := make([]domain.Opportunity, 0, len(items))
+	for _, item := range items {
+		if item.Status == filter.Status {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+func filterAllocationDecisions(items []domain.AllocationDecision, filter repository.AllocationDecisionFilter) []domain.AllocationDecision {
+	if filter.Mode == "" {
+		return append([]domain.AllocationDecision(nil), items...)
+	}
+	out := make([]domain.AllocationDecision, 0, len(items))
+	for _, item := range items {
+		if item.Mode == filter.Mode {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
 func containsWarning(warnings []string, want string) bool {
 	for _, warning := range warnings {
 		if warning == want {

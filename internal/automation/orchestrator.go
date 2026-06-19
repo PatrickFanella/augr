@@ -58,6 +58,8 @@ type OrchestratorDeps struct {
 	EventsProvider          data.EventsProvider
 	StrategyRepo            repository.StrategyRepository
 	PositionRepo            repository.PositionRepository
+	OpportunityRepo         repository.OpportunityRepository
+	AllocationDecisionRepo  repository.AllocationDecisionRepository
 	RunRepo                 repository.PipelineRunRepository
 	JobRunRepo              *pgrepo.JobRunRepo
 	OptionsScanRepo         *pgrepo.OptionsScanRepo
@@ -218,6 +220,7 @@ func (o *JobOrchestrator) RegisterAll() {
 	o.registerPolymarketDiscoveryJob()
 	o.registerKalshiDiscoveryJob()
 	o.registerReportJobs()
+	o.registerPortfolioAllocatorJobs()
 }
 
 // Start starts the cron engine with all registered jobs.
