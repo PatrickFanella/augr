@@ -12,6 +12,7 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/data"
 	"github.com/PatrickFanella/get-rich-quick/internal/discovery"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
+	"github.com/PatrickFanella/get-rich-quick/internal/eventmarkets"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 	pgrepo "github.com/PatrickFanella/get-rich-quick/internal/repository/postgres"
 	"github.com/PatrickFanella/get-rich-quick/internal/scheduler"
@@ -124,7 +125,7 @@ func (o *JobOrchestrator) strategyResweep(ctx context.Context) error {
 			return ctx.Err()
 		}
 
-		if !supportsStrategyResweepOHLCV(strat.MarketType) {
+		if !eventmarkets.SupportsOHLCVResweep(strat.MarketType) {
 			o.logger.Info("strategy_resweep: skipped unsupported market type",
 				slog.String("ticker", strat.Ticker),
 				slog.String("strategy", strat.Name),
@@ -220,15 +221,6 @@ func (o *JobOrchestrator) strategyResweep(ctx context.Context) error {
 
 	o.logger.Info("strategy_resweep: completed", slog.Int("strategies", len(strategies)))
 	return nil
-}
-
-func supportsStrategyResweepOHLCV(marketType domain.MarketType) bool {
-	switch marketType.Normalize() {
-	case domain.MarketTypeStock, domain.MarketTypeCrypto:
-		return true
-	default:
-		return false
-	}
 }
 
 // optionsScan fetches options chains for the top watchlist tickers and logs

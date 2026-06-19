@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
+	"github.com/PatrickFanella/get-rich-quick/internal/eventmarkets"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 )
 
@@ -67,7 +68,7 @@ func findExistingPaperStrategy(ctx context.Context, repo repository.StrategyRepo
 	}
 
 	for i := range existing {
-		if strategy.MarketType == domain.MarketTypePolymarket || strategy.MarketType == domain.MarketTypeKalshi {
+		if eventmarkets.ReuseByTickerOnly(strategy.MarketType) {
 			copy := existing[i]
 			return &copy, nil
 		}

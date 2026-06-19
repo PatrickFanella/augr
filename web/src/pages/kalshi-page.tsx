@@ -5,6 +5,7 @@ import { PageHeader } from '@/components/layout/page-header'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { EventMarketSummaryCard } from '@/components/event-markets/event-market-summary-card'
 import { ConsolePanel, HudBadge, HudRow, HudSection, StatusLed } from '@/components/ui/hud'
 import { apiClient } from '@/lib/api/client'
 import type { KalshiMarketSnapshot, KalshiWatchedMarket } from '@/lib/api/types'
@@ -157,18 +158,28 @@ export function KalshiPage() {
             </div>
           </ConsolePanel>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Quick Links</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-2 sm:grid-cols-2">
-                <QuickLinkButton to="/polymarket" label="Open Polymarket hub" />
-                <QuickLinkButton to="/surfers/ops" label="Open Surfers Ops" />
-              </div>
-              <p className="text-sm text-ink-dim">Kalshi sits beside Polymarket in the same Event Markets area, but this page stays explicit about paper/data-only status.</p>
-            </CardContent>
-          </Card>
+          <div className="space-y-4">
+            <EventMarketSummaryCard
+              provider="Kalshi"
+              watchedMarkets={watchedMarkets.length}
+              activePaper={activePaper}
+              lastRunStatus={discoveryStatus}
+              liveTradingReady={false}
+            />
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Quick Links</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <QuickLinkButton to="/polymarket" label="Open Polymarket hub" />
+                  <QuickLinkButton to="/surfers/ops" label="Open Surfers Ops" />
+                </div>
+                <p className="text-sm text-ink-dim">Kalshi sits beside Polymarket in the same Event Markets area, but this page stays explicit about paper/data-only status.</p>
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </section>
 

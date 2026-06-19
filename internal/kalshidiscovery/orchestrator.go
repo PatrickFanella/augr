@@ -13,6 +13,7 @@ import (
 
 	"github.com/PatrickFanella/get-rich-quick/internal/discovery"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
+	"github.com/PatrickFanella/get-rich-quick/internal/eventmarkets"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 )
 
@@ -240,38 +241,36 @@ func DeployStrategy(
 		cfg.ScheduleCron = defaultKalshiScheduleCron
 	}
 
-	strategy := domain.Strategy{
-		ID:           uuid.New(),
+	strategy := eventmarkets.BuildPaperStrategy(eventmarkets.BuildPaperStrategyInput{
+		Provider:     domain.MarketTypeKalshi,
 		Name:         kalshiStrategyName(candidate),
-		Description:  proposal.Summary,
 		Ticker:       candidate.Ticker,
-		MarketType:   domain.MarketTypeKalshi,
 		ScheduleCron: cfg.ScheduleCron,
-		IsPaper:      true,
-		Status:       domain.StrategyStatusActive,
-	}
-	strategy.Config = mustJSON(map[string]any{
-		"discovery_meta": map[string]any{
-			"source":                    "kalshi_discovery",
-			"market_ticker":             candidate.Ticker,
-			"event_ticker":              candidate.EventTicker,
-			"template":                  proposal.Template,
-			"direction":                 proposal.Direction,
-			"conviction":                proposal.Conviction,
-			"confidence":                proposal.Conviction,
-			"time_horizon":              proposal.TimeHorizon,
-			"entry_price_max":           proposal.EntryPriceMax,
-			"price_ceiling":             proposal.EntryPriceMax,
-			"source_references":         proposal.SourceReferences,
-			"max_spread_pct":            proposal.MaxSpreadPct,
-			"min_liquidity":             proposal.MinLiquidity,
-			"stop_policy":               proposal.StopPolicy,
-			"target_policy":             proposal.TargetPolicy,
-			"watch_terms":               proposal.WatchTerms,
-			"invalidate_if":             proposal.InvalidateIf,
-			"native_execution_required": true,
-		},
+		ConfigJSON: mustJSON(map[string]any{
+			"discovery_meta": map[string]any{
+				"source":                    "kalshi_discovery",
+				"market_ticker":             candidate.Ticker,
+				"event_ticker":              candidate.EventTicker,
+				"template":                  proposal.Template,
+				"direction":                 proposal.Direction,
+				"conviction":                proposal.Conviction,
+				"confidence":                proposal.Conviction,
+				"time_horizon":              proposal.TimeHorizon,
+				"entry_price_max":           proposal.EntryPriceMax,
+				"price_ceiling":             proposal.EntryPriceMax,
+				"source_references":         proposal.SourceReferences,
+				"max_spread_pct":            proposal.MaxSpreadPct,
+				"min_liquidity":             proposal.MinLiquidity,
+				"stop_policy":               proposal.StopPolicy,
+				"target_policy":             proposal.TargetPolicy,
+				"watch_terms":               proposal.WatchTerms,
+				"invalidate_if":             proposal.InvalidateIf,
+				"native_execution_required": true,
+			},
+		}),
 	})
+	strategy.ID = uuid.New()
+	strategy.Description = proposal.Summary
 
 	out := DeployedStrategy{
 		StrategyID: strategy.ID,

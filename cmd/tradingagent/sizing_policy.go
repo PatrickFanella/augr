@@ -8,6 +8,7 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/agent"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution"
+	"github.com/PatrickFanella/get-rich-quick/internal/eventmarkets"
 	"github.com/PatrickFanella/get-rich-quick/internal/position"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 	"github.com/google/uuid"
@@ -46,6 +47,9 @@ func sizingConfigForStrategy(
 }
 
 func applyPolymarketSizingCap(market domain.MarketType, cfg execution.SizingConfig, maxPositionUSDC float64) execution.SizingConfig {
+	if !eventmarkets.IsEventMarket(market) {
+		return cfg
+	}
 	if market.Normalize() == domain.MarketTypePolymarket {
 		cfg.MaxPositionUSDC = maxPositionUSDC
 	}

@@ -449,6 +449,8 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 			pr.Post("/discovery/run", s.handleRunPolymarketDiscovery)
 		})
 
+		v1.Get("/event-markets/summary", s.handleGetEventMarketsSummary)
+
 		v1.Route("/kalshi", func(kr chi.Router) {
 			kr.Get("/summary", s.handleGetKalshiSummary)
 		})

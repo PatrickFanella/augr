@@ -29,6 +29,7 @@ import (
 	kalshiexecution "github.com/PatrickFanella/get-rich-quick/internal/execution/kalshi"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution/paper"
 	polymarketexecution "github.com/PatrickFanella/get-rich-quick/internal/execution/polymarket"
+	"github.com/PatrickFanella/get-rich-quick/internal/eventmarkets"
 	"github.com/PatrickFanella/get-rich-quick/internal/llm"
 	polymarketdata "github.com/PatrickFanella/get-rich-quick/internal/marketdata/polymarket"
 	"github.com/PatrickFanella/get-rich-quick/internal/metrics"
@@ -831,21 +832,23 @@ func (r *realStrategyRunner) loadInitialState(ctx context.Context, strategy doma
 	}
 
 	to := time.Now().UTC()
-	from := to.Add(-strategyMarketLookback)
-	bars, err := r.dataService.GetOHLCV(ctx, strategy.MarketType, strategy.Ticker, data.Timeframe1d, from, to)
-	if err != nil {
-		return agent.InitialStateSeed{}, fmt.Errorf("load ohlcv for %s: %w", strategy.Ticker, err)
-	}
-	if len(bars) == 0 {
-		return agent.InitialStateSeed{}, fmt.Errorf("load ohlcv for %s: no bars returned", strategy.Ticker)
-	}
-	r.logger.Debug("loadInitialState after OHLCV", slog.Int("bars", len(bars)))
 
 	seed := agent.InitialStateSeed{
-		Market: &agent.MarketData{
+	}
+	if usesStockOHLCVAnalysis(strategy) {
+		from := to.Add(-strategyMarketLookback)
+		bars, err := r.dataService.GetOHLCV(ctx, strategy.MarketType, strategy.Ticker, data.Timeframe1d, from, to)
+		if err != nil {
+			return agent.InitialStateSeed{}, fmt.Errorf("load ohlcv for %s: %w", strategy.Ticker, err)
+		}
+		if len(bars) == 0 {
+			return agent.InitialStateSeed{}, fmt.Errorf("load ohlcv for %s: no bars returned", strategy.Ticker)
+		}
+		r.logger.Debug("loadInitialState after OHLCV", slog.Int("bars", len(bars)))
+		seed.Market = &agent.MarketData{
 			Bars:       bars,
 			Indicators: data.IndicatorSnapshotFromBars(bars),
-		},
+		}
 	}
 
 	if fundamentals, err := r.dataService.GetFundamentals(ctx, strategy.MarketType, strategy.Ticker); err == nil {
@@ -906,6 +909,10 @@ func (r *realStrategyRunner) loadInitialState(ctx context.Context, strategy doma
 
 	r.logger.Debug("loadInitialState returning seed")
 	return seed, nil
+}
+
+func usesStockOHLCVAnalysis(strategy domain.Strategy) bool {
+	return !eventmarkets.IsEventMarket(strategy.MarketType) && strategy.MarketType.Normalize() != domain.MarketTypeOptions
 }
 
 func buildRunnerDefinition(provider llm.Provider, providerName string, resolved agent.ResolvedConfig, llmTimeout time.Duration, appMetrics *metrics.Metrics, logger *slog.Logger) (agent.Definition, error) {

@@ -24,7 +24,7 @@ it('renders a paper/data-first Kalshi hub with real summary data and cross-links
   )
 
   expect(screen.getByTestId('kalshi-page')).toBeInTheDocument()
-  expect(screen.getByRole('heading', { name: 'Kalshi' })).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: 'Kalshi', level: 1 })).toBeInTheDocument()
   expect(screen.getByText(/paper\/data-first Kalshi hub/i)).toBeInTheDocument()
 
   const sectionNav = screen.getByRole('navigation', { name: /kalshi sections/i })
@@ -36,6 +36,11 @@ it('renders a paper/data-first Kalshi hub with real summary data and cross-links
   expect(screen.getByTestId('kalshi-paper-strategies-section')).toBeInTheDocument()
   expect(screen.getByTestId('kalshi-operations-section')).toBeInTheDocument()
   expect(screen.getByTestId('kalshi-setup-section')).toBeInTheDocument()
+  const summaryCard = screen.getByTestId('event-market-summary-card')
+  expect(summaryCard).toBeInTheDocument()
+  expect(within(summaryCard).getByRole('status', { name: /paper\/data only warn/i })).toBeInTheDocument()
+  expect(await within(summaryCard).findByRole('group', { name: 'Watched markets: 1' })).toBeInTheDocument()
+  expect(await within(summaryCard).findByRole('group', { name: 'Active paper: 2' })).toBeInTheDocument()
   expect(await screen.findAllByText('KX-ONE')).toHaveLength(2)
   expect(screen.getByText(/2 active Kalshi paper strategies/i)).toBeInTheDocument()
   expect(screen.getByText(/Latest discovery run: completed/i)).toBeInTheDocument()

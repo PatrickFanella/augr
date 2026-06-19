@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
+	"github.com/PatrickFanella/get-rich-quick/internal/eventmarkets"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution"
 	polymarketexecution "github.com/PatrickFanella/get-rich-quick/internal/execution/polymarket"
 	kalshidiscovery "github.com/PatrickFanella/get-rich-quick/internal/kalshidiscovery"
@@ -314,17 +315,17 @@ func TestStrategyResweepSkipsKalshiBeforeOHLCVDownload(t *testing.T) {
 	}
 }
 
-func TestSupportsStrategyResweepOHLCV(t *testing.T) {
+func TestSupportsOHLCVResweep(t *testing.T) {
 	t.Parallel()
 
 	for _, marketType := range []domain.MarketType{domain.MarketTypeStock, domain.MarketTypeCrypto} {
-		if !supportsStrategyResweepOHLCV(marketType) {
-			t.Fatalf("supportsStrategyResweepOHLCV(%q) = false, want true", marketType)
+		if !eventmarkets.SupportsOHLCVResweep(marketType) {
+			t.Fatalf("SupportsOHLCVResweep(%q) = false, want true", marketType)
 		}
 	}
 	for _, marketType := range []domain.MarketType{domain.MarketTypeKalshi, domain.MarketTypePolymarket, domain.MarketTypeOptions} {
-		if supportsStrategyResweepOHLCV(marketType) {
-			t.Fatalf("supportsStrategyResweepOHLCV(%q) = true, want false", marketType)
+		if eventmarkets.SupportsOHLCVResweep(marketType) {
+			t.Fatalf("SupportsOHLCVResweep(%q) = true, want false", marketType)
 		}
 	}
 }

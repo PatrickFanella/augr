@@ -137,6 +137,16 @@ func TestRunStrategy_KalshiSafeHoldPath(t *testing.T) {
 	}
 }
 
+func TestUsesStockOHLCVAnalysisSkipsEventMarkets(t *testing.T) {
+	t.Parallel()
+
+	for _, mt := range []domain.MarketType{domain.MarketTypePolymarket, domain.MarketTypeKalshi} {
+		if usesStockOHLCVAnalysis(domain.Strategy{MarketType: mt}) {
+			t.Fatalf("usesStockOHLCVAnalysis(%q) = true, want false", mt)
+		}
+	}
+}
+
 type failingPolymarketMarketData struct{ err error }
 
 func (f failingPolymarketMarketData) GetMarketData(context.Context, string) (*agent.PredictionMarketData, error) {

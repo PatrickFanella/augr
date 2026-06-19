@@ -21,6 +21,7 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/config"
 	"github.com/PatrickFanella/get-rich-quick/internal/data"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
+	"github.com/PatrickFanella/get-rich-quick/internal/eventmarkets"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution/paper"
 	polymarketexecution "github.com/PatrickFanella/get-rich-quick/internal/execution/polymarket"
@@ -1210,6 +1211,24 @@ func TestSizingConfigForStrategy_UsesHalfKellyWhenExplicitlyOptedInAndEligible(t
 	}
 	if got.WinRate != 0.6 || got.WinLossRatio != 2 {
 		t.Fatalf("Kelly stats = %+v, want win rate 0.6 and win/loss ratio 2", got)
+	}
+}
+
+func TestApplyPolymarketSizingCapOnlyAppliesToPolymarket(t *testing.T) {
+	t.Parallel()
+
+	base := execution.SizingConfig{Method: execution.PositionSizingMethodATR, RiskPct: 0.08, ATRMultiplier: 1.75}
+
+	if got := applyPolymarketSizingCap(domain.MarketTypeKalshi, base, 500); got != base {
+		t.Fatalf("applyPolymarketSizingCap(kalshi) = %+v, want %+v", got, base)
+	}
+
+	got := applyPolymarketSizingCap(domain.MarketTypePolymarket, base, 500)
+	if !eventmarkets.IsEventMarket(domain.MarketTypePolymarket) {
+		t.Fatal("expected polymarket to be recognized as an event market")
+	}
+	if got.Method != base.Method || got.RiskPct != base.RiskPct || got.ATRMultiplier != base.ATRMultiplier || got.MaxPositionUSDC != 500 {
+		t.Fatalf("applyPolymarketSizingCap(polymarket) = %+v, want max position cap applied without changing other fields", got)
 	}
 }
 
