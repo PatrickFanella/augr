@@ -471,6 +471,7 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 			pr.Get("/positions", s.handleListPositions)
 			pr.Get("/positions/open", s.handleGetOpenPositions)
 			pr.Get("/summary", s.handlePortfolioSummary)
+			pr.Get("/allocator/diagnostics", s.handleGetPortfolioAllocatorDiagnostics)
 		})
 
 		// Orders
