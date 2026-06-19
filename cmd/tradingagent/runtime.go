@@ -52,6 +52,7 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/metrics"
 	"github.com/PatrickFanella/get-rich-quick/internal/notification"
 	"github.com/PatrickFanella/get-rich-quick/internal/observability"
+	"github.com/PatrickFanella/get-rich-quick/internal/portfolio"
 	"github.com/PatrickFanella/get-rich-quick/internal/recorder"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 	pgrepo "github.com/PatrickFanella/get-rich-quick/internal/repository/postgres"
@@ -501,6 +502,9 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 			polymarketFeed,
 			logger,
 		)
+		portfolioAllocatorMode := portfolioAllocatorModeFromEnv()
+		strategyRunner.opportunityRepo = opportunityRepo
+		strategyRunner.portfolioAllocatorMode = portfolioAllocatorMode
 		deps.Runner = strategyRunner
 		if err := bootstrapPolymarketStopGuards(ctx, strategyRunner, positionRepo, logger); err != nil {
 			logger.Warn("polymarket stop guard bootstrap failed", slog.Any("error", err))
@@ -574,6 +578,17 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 			} else {
 				overnightBacktestRunRepo := pgrepo.NewOvernightBacktestRunRepo(db.Pool)
 				polymarketDiscoveryRunRepo := pgrepo.NewPolymarketDiscoveryRunRepo(db.Pool)
+				portfolioPaperProcessor := portfolio.NewPaperOrderManagerProcessor(portfolio.PaperOrderManagerProcessorDeps{
+					RiskEngine:       riskEngine,
+					PositionRepo:     positionRepo,
+					OrderRepo:        orderRepo,
+					TradeRepo:        tradeRepo,
+					AuditLogRepo:     auditLogRepo,
+					AgentEventRepo:   eventRepo,
+					DecisionRecorder: tradeDecisionRecorder,
+					Metrics:          appMetrics,
+					Logger:           logger,
+				})
 				orch := automation.NewJobOrchestrator(automation.OrchestratorDeps{
 					Universe:                  deps.Universe,
 					Polygon:                   polygonClientForAuto,
@@ -584,9 +599,12 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 					EmbeddingProvider:         embeddingProvider,
 					EventsProvider:            deps.EventsProvider,
 					StrategyRepo:              strategyRepo,
+					PositionRepo:              positionRepo,
 					RunRepo:                   runRepo,
 					OpportunityRepo:           opportunityRepo,
 					AllocationDecisionRepo:    allocationDecisionRepo,
+					PortfolioAllocatorMode:    portfolioAllocatorMode,
+					PortfolioPaperProcessor:   portfolioPaperProcessor,
 					JobRunRepo:                jobRunRepo,
 					OptionsScanRepo:           optionsScanRepo,
 					NewsFeedRepo:              newsFeedRepo,
@@ -770,6 +788,17 @@ func polymarketL2Configured(pm config.PolymarketConfig) bool {
 		strings.TrimSpace(pm.KeyID) != "" &&
 		strings.TrimSpace(pm.SecretKey) != "" &&
 		strings.TrimSpace(pm.Passphrase) != ""
+}
+
+func portfolioAllocatorModeFromEnv() portfolio.AllocatorMode {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("PORTFOLIO_ALLOCATOR_MODE"))) {
+	case "paper":
+		return portfolio.AllocatorModePaper
+	case "shadow", "":
+		return portfolio.AllocatorModeShadow
+	default:
+		return portfolio.AllocatorModeShadow
+	}
 }
 
 func splitCSV(s string) []string {

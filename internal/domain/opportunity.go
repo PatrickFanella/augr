@@ -29,6 +29,7 @@ type Opportunity struct {
 	MarketType        MarketType        `json:"market_type"`
 	Ticker            string            `json:"ticker"`
 	Side              OrderSide         `json:"side"`
+	PredictionSide    string            `json:"prediction_side,omitempty"`
 	Signal            PipelineSignal    `json:"signal"`
 	Status            OpportunityStatus `json:"status"`
 	Score             *float64          `json:"score,omitempty"`
@@ -36,6 +37,7 @@ type Opportunity struct {
 	EdgePct           float64           `json:"edge_pct"`
 	ExpectedReturnPct float64           `json:"expected_return_pct"`
 	MaxLossPct        float64           `json:"max_loss_pct"`
+	EntryPrice        float64           `json:"entry_price"`
 	LiquidityUSD      float64           `json:"liquidity_usd"`
 	MarketCapUSD      float64           `json:"market_cap_usd"`
 	SpreadPct         float64           `json:"spread_pct"`

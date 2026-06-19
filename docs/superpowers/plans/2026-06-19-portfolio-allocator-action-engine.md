@@ -145,17 +145,17 @@
 - Test: `internal/portfolio/paper_executor_test.go`
 - Modify: `internal/automation/jobs_portfolio_allocator.go`
 
-- [ ] Add explicit mode `paper` that converts selected decisions into paper order intents.
-- [ ] Refuse execution unless strategy `is_paper=true`.
-- [ ] Refuse live broker paths regardless of live adapter availability.
-- [ ] Keep Polymarket inactive unless manually reactivated later.
-- [ ] Respect max orders/run and max orders/day.
-- [ ] Record decision status `executed` or `execution_rejected` with reason.
+- [x] Add explicit mode `paper` that converts selected decisions into paper order intents.
+- [x] Refuse execution unless strategy `is_paper=true`.
+- [x] Refuse live broker paths regardless of live adapter availability.
+- [x] Keep Polymarket inactive unless manually reactivated later.
+- [x] Respect max orders/run and max orders/day.
+- [x] Record decision status `executed` or `execution_rejected` with reason.
 
 ### Task 9: Validation, review, and commit
 
-- [ ] Run backend validation for portfolio, repositories, automation, API, execution, runner.
-- [ ] Ask @oracle for safety review.
+- [x] Run backend validation for portfolio, repositories, automation, API, execution, runner.
+- [x] Ask @oracle for safety review.
 - [ ] Commit `feat(portfolio): enable paper allocator execution`.
 
 ---
@@ -163,6 +163,7 @@
 ## Rollout Defaults
 
 - Mode starts as `diagnostics`/`shadow`; `paper` mode requires config/env in code before any execution.
+- Paper allocator bridge stays shadow by default; paper mode only runs through injected paper-only processor deps and hard-refuses non-paper strategies.
 - Live trading is never triggered by allocator.
 - Initial paper caps: max 2 new orders per run, max 5/day, max 2% account value per stock, max 1% per Kalshi/event market, target gross 35%, hard gross 50%, cash reserve 20%.
 - No forced buying below score threshold.

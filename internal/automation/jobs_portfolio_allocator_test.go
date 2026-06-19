@@ -2,12 +2,17 @@ package automation
 
 import (
 	"context"
+	"encoding/json"
+	"math"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
+	"github.com/PatrickFanella/get-rich-quick/internal/execution"
+	"github.com/PatrickFanella/get-rich-quick/internal/portfolio"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 )
 
@@ -17,6 +22,8 @@ type portfolioAllocatorOpportunityRepo struct {
 	lastLimit         int
 	lastOffset        int
 	updateStatusCalls int
+	lastStatus        domain.OpportunityStatus
+	lastRejectReason  string
 }
 
 func (r *portfolioAllocatorOpportunityRepo) Create(context.Context, *domain.Opportunity) error {
@@ -47,8 +54,10 @@ func (r *portfolioAllocatorOpportunityRepo) Count(_ context.Context, filter repo
 	items, _ := r.List(context.Background(), filter, 0, 0)
 	return len(items), nil
 }
-func (r *portfolioAllocatorOpportunityRepo) UpdateStatus(context.Context, uuid.UUID, domain.OpportunityStatus, string) error {
+func (r *portfolioAllocatorOpportunityRepo) UpdateStatus(_ context.Context, _ uuid.UUID, status domain.OpportunityStatus, rejectReason string) error {
 	r.updateStatusCalls++
+	r.lastStatus = status
+	r.lastRejectReason = rejectReason
 	return nil
 }
 
@@ -76,6 +85,54 @@ func (r *portfolioAllocatorDecisionRepo) List(_ context.Context, filter reposito
 func (r *portfolioAllocatorDecisionRepo) Count(_ context.Context, filter repository.AllocationDecisionFilter) (int, error) {
 	decisions, _ := r.List(context.Background(), filter, 0, 0)
 	return len(decisions), nil
+}
+
+type portfolioAllocatorStrategyRepo struct {
+	strategy *domain.Strategy
+	getCalls int
+}
+
+func (r *portfolioAllocatorStrategyRepo) Create(context.Context, *domain.Strategy) error { return nil }
+func (r *portfolioAllocatorStrategyRepo) Get(_ context.Context, id uuid.UUID) (*domain.Strategy, error) {
+	r.getCalls++
+	if r.strategy == nil || r.strategy.ID != id {
+		return nil, repository.ErrNotFound
+	}
+	copy := *r.strategy
+	return &copy, nil
+}
+func (r *portfolioAllocatorStrategyRepo) List(context.Context, repository.StrategyFilter, int, int) ([]domain.Strategy, error) {
+	if r.strategy == nil {
+		return nil, nil
+	}
+	return []domain.Strategy{*r.strategy}, nil
+}
+func (r *portfolioAllocatorStrategyRepo) Count(context.Context, repository.StrategyFilter) (int, error) {
+	return 0, nil
+}
+func (r *portfolioAllocatorStrategyRepo) Update(context.Context, *domain.Strategy) error { return nil }
+func (r *portfolioAllocatorStrategyRepo) Delete(context.Context, uuid.UUID) error        { return nil }
+func (r *portfolioAllocatorStrategyRepo) UpdateThesis(context.Context, uuid.UUID, json.RawMessage) error {
+	return nil
+}
+func (r *portfolioAllocatorStrategyRepo) GetThesisRaw(context.Context, uuid.UUID) (json.RawMessage, error) {
+	return nil, nil
+}
+
+type portfolioPaperProcessorStub struct {
+	called     int
+	signal     execution.FinalSignal
+	plan       execution.TradingPlan
+	strategyID uuid.UUID
+}
+
+func (p *portfolioPaperProcessorStub) ProcessPaperOrder(_ context.Context, req portfolio.PaperOrderRequest) (portfolio.PaperOrderResult, error) {
+	p.called++
+	p.signal = req.Signal
+	p.plan = req.Plan
+	p.strategyID = req.StrategyID
+	id := uuid.New()
+	return portfolio.PaperOrderResult{OrderID: &id, Status: domain.OrderStatusFilled}, nil
 }
 
 func TestPortfolioAllocatorJobRegistrationWithNilDeps(t *testing.T) {
@@ -130,7 +187,7 @@ func TestPortfolioAllocatorJobPersistsShadowDecisions(t *testing.T) {
 		t.Fatalf("job run error = %v", err)
 	}
 	if opportunityRepo.updateStatusCalls != 0 {
-		t.Fatalf("UpdateStatus called %d times, want 0", opportunityRepo.updateStatusCalls)
+		t.Fatalf("UpdateStatus called %d times in shadow mode, want 0", opportunityRepo.updateStatusCalls)
 	}
 	if len(decisionRepo.created) == 0 {
 		t.Fatal("expected shadow decisions to be persisted")
@@ -144,5 +201,138 @@ func TestPortfolioAllocatorJobPersistsShadowDecisions(t *testing.T) {
 	status := orch.Status()
 	if len(status) == 0 || status[0].LastSummary == nil {
 		t.Fatal("expected orchestrator to record last summary")
+	}
+}
+
+func TestPortfolioAllocatorJobPaperModeExecutesPaperIntent(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	opportunityRepo := &portfolioAllocatorOpportunityRepo{items: []domain.Opportunity{
+		{
+			ID:                uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+			StrategyID:        uuid.MustParse("22222222-2222-2222-2222-222222222222"),
+			Status:            domain.OpportunityStatusQueued,
+			MarketType:        domain.MarketTypeStock,
+			Ticker:            "AAPL",
+			Side:              domain.OrderSideBuy,
+			Signal:            domain.PipelineSignalBuy,
+			Confidence:        1,
+			EdgePct:           0.05,
+			ExpectedReturnPct: 0.1,
+			MaxLossPct:        0.05,
+			EntryPrice:        100,
+			LiquidityUSD:      5_000_000,
+			MarketCapUSD:      10_000_000_000,
+			SpreadPct:         0.001,
+			ProposedNotional:  2_000,
+			Reason:            "strong paper opportunity",
+			ExpiresAt:         now.Add(24 * time.Hour),
+			CreatedAt:         now.Add(-time.Hour),
+			DedupeKey:         "aapl-paper-1",
+		},
+	}}
+	decisionRepo := &portfolioAllocatorDecisionRepo{}
+	strategyRepo := &portfolioAllocatorStrategyRepo{strategy: &domain.Strategy{
+		ID:         opportunityRepo.items[0].StrategyID,
+		Name:       "paper-aapl",
+		Ticker:     "AAPL",
+		MarketType: domain.MarketTypeStock,
+		Status:     domain.StrategyStatusActive,
+		IsPaper:    true,
+	}}
+	processor := &portfolioPaperProcessorStub{}
+	orch := NewJobOrchestrator(OrchestratorDeps{
+		OpportunityRepo:         opportunityRepo,
+		AllocationDecisionRepo:  decisionRepo,
+		StrategyRepo:            strategyRepo,
+		PortfolioAllocatorMode:  portfolio.AllocatorModePaper,
+		PortfolioPaperProcessor: processor,
+	})
+	orch.registerPortfolioAllocatorJobs()
+	job := orch.jobs["portfolio_allocator"]
+	if job == nil {
+		t.Fatal("portfolio_allocator job not registered")
+	}
+
+	if err := job.Fn(context.Background()); err != nil {
+		t.Fatalf("job run error = %v", err)
+	}
+	if processor.called != 1 {
+		t.Fatalf("processor called %d times, want 1", processor.called)
+	}
+	if len(decisionRepo.created) == 0 {
+		t.Fatal("expected paper decision to be persisted")
+	}
+	decision := decisionRepo.created[0]
+	if decision.Mode != domain.AllocationDecisionModePaper {
+		t.Fatalf("decision mode = %s, want paper", decision.Mode)
+	}
+	if decision.Action != domain.AllocationDecisionActionExecuted {
+		t.Fatalf("decision action = %s, want executed", decision.Action)
+	}
+	if decision.CreatedOrderID == nil {
+		t.Fatal("CreatedOrderID = nil, want created paper order id")
+	}
+	if decisionRepo.created[0].OpportunityID == nil || *decisionRepo.created[0].OpportunityID != opportunityRepo.items[0].ID {
+		t.Fatalf("unexpected opportunity id on decision: %+v", decisionRepo.created[0])
+	}
+	if opportunityRepo.updateStatusCalls != 1 || opportunityRepo.lastStatus != domain.OpportunityStatusExecuted {
+		t.Fatalf("UpdateStatus calls/status = %d/%s, want executed once", opportunityRepo.updateStatusCalls, opportunityRepo.lastStatus)
+	}
+	if processor.plan.EntryType != "market" || processor.plan.EntryPrice != 100 || math.Abs(processor.plan.StopLoss-95) > 1e-9 {
+		t.Fatalf("unexpected paper plan: %+v", processor.plan)
+	}
+}
+
+func TestPortfolioAllocatorJobPaperModeRejectsWithoutStrategyRepo(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	opportunityRepo := &portfolioAllocatorOpportunityRepo{items: []domain.Opportunity{{
+		ID:                uuid.MustParse("33333333-3333-3333-3333-333333333333"),
+		StrategyID:        uuid.MustParse("44444444-4444-4444-4444-444444444444"),
+		Status:            domain.OpportunityStatusQueued,
+		MarketType:        domain.MarketTypeStock,
+		Ticker:            "MSFT",
+		Side:              domain.OrderSideBuy,
+		Signal:            domain.PipelineSignalBuy,
+		Confidence:        1,
+		EdgePct:           0.05,
+		ExpectedReturnPct: 0.1,
+		MaxLossPct:        0.05,
+		EntryPrice:        100,
+		LiquidityUSD:      5_000_000,
+		MarketCapUSD:      10_000_000_000,
+		SpreadPct:         0.001,
+		ProposedNotional:  2_000,
+		Reason:            "paper opportunity without strategy repo",
+		ExpiresAt:         now.Add(24 * time.Hour),
+		CreatedAt:         now.Add(-time.Hour),
+		DedupeKey:         "msft-paper-1",
+	}}}
+	decisionRepo := &portfolioAllocatorDecisionRepo{}
+	orch := NewJobOrchestrator(OrchestratorDeps{
+		OpportunityRepo:        opportunityRepo,
+		AllocationDecisionRepo: decisionRepo,
+		PortfolioAllocatorMode: portfolio.AllocatorModePaper,
+	})
+	orch.registerPortfolioAllocatorJobs()
+	job := orch.jobs["portfolio_allocator"]
+	if job == nil {
+		t.Fatal("portfolio_allocator job not registered")
+	}
+
+	if err := job.Fn(context.Background()); err != nil {
+		t.Fatalf("job run error = %v", err)
+	}
+	if len(decisionRepo.created) == 0 {
+		t.Fatal("expected rejection decision to be persisted")
+	}
+	if decisionRepo.created[0].Action != domain.AllocationDecisionActionExecutionRejected {
+		t.Fatalf("decision action = %s, want execution_rejected", decisionRepo.created[0].Action)
+	}
+	if got := strings.Join(decisionRepo.created[0].Reasons, ";"); !strings.Contains(got, "missing_strategy_repo") {
+		t.Fatalf("expected missing_strategy_repo reason, got %q", got)
 	}
 }

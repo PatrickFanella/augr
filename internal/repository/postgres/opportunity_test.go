@@ -59,6 +59,7 @@ func TestOpportunityRepoIntegration_CRUDAndUpsert(t *testing.T) {
 		MarketType:        domain.MarketTypeStock,
 		Ticker:            "AAPL",
 		Side:              domain.OrderSideBuy,
+		PredictionSide:    "YES",
 		Signal:            domain.PipelineSignalBuy,
 		Status:            domain.OpportunityStatusQueued,
 		Score:             &initialScore,
@@ -66,6 +67,7 @@ func TestOpportunityRepoIntegration_CRUDAndUpsert(t *testing.T) {
 		EdgePct:           2.5,
 		ExpectedReturnPct: 4.5,
 		MaxLossPct:        1.0,
+		EntryPrice:        150.25,
 		LiquidityUSD:      1250000,
 		MarketCapUSD:      3000000000000,
 		SpreadPct:         0.15,
@@ -96,6 +98,12 @@ func TestOpportunityRepoIntegration_CRUDAndUpsert(t *testing.T) {
 	}
 	if got.MarketCapUSD != 3000000000000 {
 		t.Fatalf("unexpected market cap roundtrip: %v", got.MarketCapUSD)
+	}
+	if got.EntryPrice != 150.25 {
+		t.Fatalf("unexpected entry price roundtrip: %v", got.EntryPrice)
+	}
+	if got.PredictionSide != "YES" {
+		t.Fatalf("unexpected prediction side roundtrip: %q", got.PredictionSide)
 	}
 	if !jsonBytesEqual(got.Evidence, evidence) {
 		t.Fatalf("unexpected evidence roundtrip: %s", got.Evidence)
@@ -153,6 +161,20 @@ func TestOpportunityRepoIntegration_CRUDAndUpsert(t *testing.T) {
 	}
 	if statusUpdated.Status != domain.OpportunityStatusRejected || statusUpdated.RejectReason != "spread too wide" {
 		t.Fatalf("unexpected status update result: %+v", statusUpdated)
+	}
+
+	opportunity.Status = domain.OpportunityStatusQueued
+	opportunity.Confidence = 0.99
+	opportunity.Reason = "new same-day signal"
+	if err := repo.UpsertQueuedByDedupeKey(ctx, opportunity); err != nil {
+		t.Fatalf("UpsertQueuedByDedupeKey() after terminal status error = %v", err)
+	}
+	terminal, err := repo.Get(ctx, opportunity.ID)
+	if err != nil {
+		t.Fatalf("Get() after terminal upsert error = %v", err)
+	}
+	if terminal.Status != domain.OpportunityStatusRejected || terminal.Reason == "new same-day signal" || terminal.Confidence == 0.99 {
+		t.Fatalf("terminal opportunity was resurrected or refreshed: %+v", terminal)
 	}
 }
 
@@ -216,6 +238,7 @@ func newOpportunityIntegrationPool(t *testing.T, ctx context.Context) (*pgxpool.
 			market_type market_type NOT NULL,
 			ticker TEXT NOT NULL,
 			side order_side NOT NULL,
+			prediction_side TEXT NOT NULL DEFAULT '',
 			signal pipeline_signal NOT NULL,
 			status TEXT NOT NULL CHECK (status IN ('queued', 'selected', 'rejected', 'expired', 'executed')),
 			score NUMERIC,
@@ -223,6 +246,7 @@ func newOpportunityIntegrationPool(t *testing.T, ctx context.Context) (*pgxpool.
 			edge_pct NUMERIC NOT NULL DEFAULT 0,
 			expected_return_pct NUMERIC NOT NULL DEFAULT 0,
 			max_loss_pct NUMERIC NOT NULL DEFAULT 0,
+			entry_price NUMERIC NOT NULL DEFAULT 0,
 			liquidity_usd NUMERIC NOT NULL DEFAULT 0,
 			spread_pct NUMERIC NOT NULL DEFAULT 0,
 			proposed_notional NUMERIC NOT NULL DEFAULT 0,

@@ -26,10 +26,12 @@ type OpportunityBuildInput struct {
 	Run               *domain.PipelineRun
 	Decision          *domain.TradeDecision
 	Signal            domain.PipelineSignal
+	PredictionSide    string
 	Confidence        float64
 	EdgePct           float64
 	ExpectedReturnPct float64
 	MaxLossPct        float64
+	EntryPrice        float64
 	LiquidityUSD      float64
 	SpreadPct         float64
 	ProposedNotional  float64
@@ -79,12 +81,14 @@ func BuildOpportunity(input OpportunityBuildInput, cfg OpportunityBuilderConfig)
 		MarketType:        marketType,
 		Ticker:            ticker,
 		Side:              side,
+		PredictionSide:    strings.ToUpper(strings.TrimSpace(input.PredictionSide)),
 		Signal:            input.Signal,
 		Status:            domain.OpportunityStatusQueued,
 		Confidence:        clampFloat(input.Confidence, 0, 1),
 		EdgePct:           clampMin(input.EdgePct, 0),
 		ExpectedReturnPct: clampMin(input.ExpectedReturnPct, 0),
 		MaxLossPct:        clampMin(input.MaxLossPct, 0),
+		EntryPrice:        clampMin(input.EntryPrice, 0),
 		LiquidityUSD:      clampMin(input.LiquidityUSD, 0),
 		SpreadPct:         clampMin(input.SpreadPct, 0),
 		ProposedNotional:  clampMin(input.ProposedNotional, 0),

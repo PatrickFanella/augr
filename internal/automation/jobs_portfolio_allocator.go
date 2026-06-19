@@ -10,6 +10,7 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/portfolio"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 	"github.com/PatrickFanella/get-rich-quick/internal/scheduler"
+	"github.com/google/uuid"
 )
 
 var portfolioAllocatorSpec = scheduler.ScheduleSpec{
@@ -32,6 +33,7 @@ func (o *JobOrchestrator) runPortfolioAllocator(ctx context.Context) error {
 	if o.deps.OpportunityRepo == nil || o.deps.AllocationDecisionRepo == nil {
 		return fmt.Errorf("portfolio_allocator: repositories not configured")
 	}
+	mode := o.portfolioAllocatorMode()
 
 	opportunities, err := o.deps.OpportunityRepo.List(ctx, repository.OpportunityFilter{Status: domain.OpportunityStatusQueued}, 100, 0)
 	if err != nil {
@@ -43,11 +45,29 @@ func (o *JobOrchestrator) runPortfolioAllocator(ctx context.Context) error {
 		return err
 	}
 
-	result := portfolio.AllocateShadow(opportunities, state, portfolio.DefaultAllocatorConfig())
+	allocCfg := portfolio.DefaultAllocatorConfig()
+	allocCfg.Mode = mode
+	result := portfolio.AllocateShadow(opportunities, state, allocCfg)
+	opportunityByID := make(map[uuid.UUID]domain.Opportunity, len(opportunities))
+	for _, opportunity := range opportunities {
+		opportunityByID[opportunity.ID] = opportunity
+	}
+
 	for i := range result.Decisions {
 		decision := result.Decisions[i]
+		decision.Mode = domain.AllocationDecisionMode(mode)
+
+		if mode == portfolio.AllocatorModePaper && decision.Action == domain.AllocationDecisionActionShadowSelected {
+			decision = o.executePaperAllocatorDecision(ctx, decision, opportunityByID)
+		}
+
 		if err := o.deps.AllocationDecisionRepo.Create(ctx, &decision); err != nil {
 			return fmt.Errorf("portfolio_allocator: persist decision: %w", err)
+		}
+		if mode == portfolio.AllocatorModePaper {
+			if err := o.updatePaperOpportunityStatus(ctx, decision); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -73,6 +93,76 @@ func (o *JobOrchestrator) runPortfolioAllocator(ctx context.Context) error {
 	}
 	o.logger.Info("portfolio_allocator: completed", fields...)
 	return nil
+}
+
+func (o *JobOrchestrator) updatePaperOpportunityStatus(ctx context.Context, decision domain.AllocationDecision) error {
+	if o.deps.OpportunityRepo == nil || decision.OpportunityID == nil {
+		return nil
+	}
+	switch decision.Action {
+	case domain.AllocationDecisionActionExecuted:
+		if err := o.deps.OpportunityRepo.UpdateStatus(ctx, *decision.OpportunityID, domain.OpportunityStatusExecuted, ""); err != nil {
+			return fmt.Errorf("portfolio_allocator: mark opportunity executed: %w", err)
+		}
+	case domain.AllocationDecisionActionExecutionRejected:
+		if err := o.deps.OpportunityRepo.UpdateStatus(ctx, *decision.OpportunityID, domain.OpportunityStatusRejected, strings.Join(decision.Reasons, "; ")); err != nil {
+			return fmt.Errorf("portfolio_allocator: mark opportunity rejected: %w", err)
+		}
+	}
+	return nil
+}
+
+func (o *JobOrchestrator) portfolioAllocatorMode() portfolio.AllocatorMode {
+	mode := o.deps.PortfolioAllocatorMode
+	if mode == "" {
+		return portfolio.AllocatorModeShadow
+	}
+	return mode
+}
+
+func (o *JobOrchestrator) executePaperAllocatorDecision(ctx context.Context, decision domain.AllocationDecision, opportunities map[uuid.UUID]domain.Opportunity) domain.AllocationDecision {
+	decision.Mode = domain.AllocationDecisionModePaper
+	decision.Action = domain.AllocationDecisionActionPaperOrderIntent
+
+	if decision.OpportunityID == nil {
+		return paperAllocatorRejected(decision, "missing_opportunity_id")
+	}
+	opportunity, ok := opportunities[*decision.OpportunityID]
+	if !ok {
+		return paperAllocatorRejected(decision, "missing_opportunity")
+	}
+	if o.deps.StrategyRepo == nil {
+		return paperAllocatorRejected(decision, "missing_strategy_repo")
+	}
+	strategy, err := o.deps.StrategyRepo.Get(ctx, opportunity.StrategyID)
+	if err != nil || strategy == nil {
+		return paperAllocatorRejected(decision, "missing_strategy")
+	}
+
+	executor := portfolio.NewPaperExecutor(portfolio.PaperExecutorDeps{Processor: o.deps.PortfolioPaperProcessor})
+	result, err := executor.ExecutePaperDecision(ctx, opportunity, decision, *strategy)
+	if err != nil {
+		return paperAllocatorRejected(decision, "paper_execution_error")
+	}
+	if result.Action == domain.AllocationDecisionActionExecutionRejected {
+		return paperAllocatorRejected(decision, result.Reason)
+	}
+	decision.Action = result.Action
+	decision.CreatedOrderID = result.OrderID
+	decision.Reasons = append([]string(nil), decision.Reasons...)
+	if result.Reason != "" {
+		decision.Reasons = append(decision.Reasons, result.Reason)
+	}
+	return decision
+}
+
+func paperAllocatorRejected(decision domain.AllocationDecision, reason string) domain.AllocationDecision {
+	decision.Action = domain.AllocationDecisionActionExecutionRejected
+	decision.Reasons = append([]string(nil), decision.Reasons...)
+	if reason != "" {
+		decision.Reasons = append(decision.Reasons, reason)
+	}
+	return decision
 }
 
 func (o *JobOrchestrator) buildPortfolioAllocatorState(ctx context.Context) (portfolio.PortfolioState, []string, error) {
@@ -105,16 +195,18 @@ func (o *JobOrchestrator) buildPortfolioAllocatorState(ctx context.Context) (por
 		}
 	}
 
-	if grossExposure <= 0 {
-		state.Equity = 100000
-		state.BuyingPower = 100000
-		warnings = append(warnings, "equity_non_positive")
-	} else {
-		state.Equity = grossExposure
-		state.BuyingPower = grossExposure
-	}
+	state.Equity = 100000
+	state.BuyingPower = maxFloat(100000-grossExposure, 0)
+	warnings = append(warnings, "paper_account_balance_fallback")
 	state.GrossExposure = grossExposure
 	return state, warnings, nil
+}
+
+func maxFloat(a, b float64) float64 {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 func portfolioPositionExposure(position domain.Position) float64 {

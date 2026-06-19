@@ -25,10 +25,12 @@ func TestBuildOpportunityBuyStock(t *testing.T) {
 		},
 		Run:               &domain.PipelineRun{ID: runID},
 		Signal:            domain.PipelineSignalBuy,
+		PredictionSide:    "yes",
 		Confidence:        0.8,
 		EdgePct:           1.2,
 		ExpectedReturnPct: 2.4,
 		MaxLossPct:        0.6,
+		EntryPrice:        100,
 		LiquidityUSD:      1000,
 		SpreadPct:         0.2,
 		ProposedNotional:  250,
@@ -49,6 +51,12 @@ func TestBuildOpportunityBuyStock(t *testing.T) {
 	}
 	if opportunity.Side != domain.OrderSideBuy {
 		t.Fatalf("side = %q, want buy", opportunity.Side)
+	}
+	if opportunity.EntryPrice != 100 {
+		t.Fatalf("entry price = %v, want 100", opportunity.EntryPrice)
+	}
+	if opportunity.PredictionSide != "YES" {
+		t.Fatalf("prediction side = %q, want YES", opportunity.PredictionSide)
 	}
 	if opportunity.MarketType != domain.MarketTypeStock {
 		t.Fatalf("market type = %q, want stock", opportunity.MarketType)
@@ -189,6 +197,7 @@ func TestBuildOpportunityClampsNegativeMetrics(t *testing.T) {
 		EdgePct:           -1,
 		ExpectedReturnPct: -2,
 		MaxLossPct:        -3,
+		EntryPrice:        -4,
 		LiquidityUSD:      -4,
 		SpreadPct:         -5,
 		ProposedNotional:  -6,
@@ -204,7 +213,7 @@ func TestBuildOpportunityClampsNegativeMetrics(t *testing.T) {
 	if opportunity == nil {
 		t.Fatal("BuildOpportunity() opportunity = nil")
 	}
-	if opportunity.Confidence != 0 || opportunity.EdgePct != 0 || opportunity.ExpectedReturnPct != 0 || opportunity.MaxLossPct != 0 || opportunity.LiquidityUSD != 0 || opportunity.SpreadPct != 0 || opportunity.ProposedNotional != 0 {
+	if opportunity.Confidence != 0 || opportunity.EdgePct != 0 || opportunity.ExpectedReturnPct != 0 || opportunity.MaxLossPct != 0 || opportunity.EntryPrice != 0 || opportunity.LiquidityUSD != 0 || opportunity.SpreadPct != 0 || opportunity.ProposedNotional != 0 {
 		t.Fatalf("metrics not clamped: %#v", opportunity)
 	}
 	if string(opportunity.Evidence) != "{}" {

@@ -94,35 +94,37 @@ func (r *OpportunityRepo) save(ctx context.Context, opportunity *domain.Opportun
 	}
 
 	query := `INSERT INTO portfolio_opportunities (
-		strategy_id, pipeline_run_id, market_type, ticker, side, signal, status, score, confidence,
-		edge_pct, expected_return_pct, max_loss_pct, liquidity_usd, market_cap_usd, spread_pct, proposed_notional,
+		strategy_id, pipeline_run_id, market_type, ticker, side, prediction_side, signal, status, score, confidence,
+		edge_pct, expected_return_pct, max_loss_pct, entry_price, liquidity_usd, market_cap_usd, spread_pct, proposed_notional,
 		selected_notional, reason, reject_reason, evidence, expires_at, dedupe_key
 	)
-	VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`
+	VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`
 	if upsert {
 		query += ` ON CONFLICT (dedupe_key) DO UPDATE SET
-			strategy_id = EXCLUDED.strategy_id,
-			pipeline_run_id = EXCLUDED.pipeline_run_id,
-			market_type = EXCLUDED.market_type,
-			ticker = EXCLUDED.ticker,
-			side = EXCLUDED.side,
-			signal = EXCLUDED.signal,
-			status = EXCLUDED.status,
-			score = EXCLUDED.score,
-			confidence = EXCLUDED.confidence,
-			edge_pct = EXCLUDED.edge_pct,
-			expected_return_pct = EXCLUDED.expected_return_pct,
-			max_loss_pct = EXCLUDED.max_loss_pct,
-			liquidity_usd = EXCLUDED.liquidity_usd,
-			market_cap_usd = EXCLUDED.market_cap_usd,
-			spread_pct = EXCLUDED.spread_pct,
-			proposed_notional = EXCLUDED.proposed_notional,
-			selected_notional = EXCLUDED.selected_notional,
-			reason = EXCLUDED.reason,
-			reject_reason = EXCLUDED.reject_reason,
-			evidence = EXCLUDED.evidence,
-			expires_at = EXCLUDED.expires_at,
-			updated_at = NOW()`
+			strategy_id = CASE WHEN portfolio_opportunities.status IN ('queued', 'selected') THEN EXCLUDED.strategy_id ELSE portfolio_opportunities.strategy_id END,
+			pipeline_run_id = CASE WHEN portfolio_opportunities.status IN ('queued', 'selected') THEN EXCLUDED.pipeline_run_id ELSE portfolio_opportunities.pipeline_run_id END,
+			market_type = CASE WHEN portfolio_opportunities.status IN ('queued', 'selected') THEN EXCLUDED.market_type ELSE portfolio_opportunities.market_type END,
+			ticker = CASE WHEN portfolio_opportunities.status IN ('queued', 'selected') THEN EXCLUDED.ticker ELSE portfolio_opportunities.ticker END,
+			side = CASE WHEN portfolio_opportunities.status IN ('queued', 'selected') THEN EXCLUDED.side ELSE portfolio_opportunities.side END,
+			prediction_side = CASE WHEN portfolio_opportunities.status IN ('queued', 'selected') THEN EXCLUDED.prediction_side ELSE portfolio_opportunities.prediction_side END,
+			signal = CASE WHEN portfolio_opportunities.status IN ('queued', 'selected') THEN EXCLUDED.signal ELSE portfolio_opportunities.signal END,
+			status = CASE WHEN portfolio_opportunities.status IN ('queued', 'selected') THEN EXCLUDED.status ELSE portfolio_opportunities.status END,
+			score = CASE WHEN portfolio_opportunities.status IN ('queued', 'selected') THEN EXCLUDED.score ELSE portfolio_opportunities.score END,
+			confidence = CASE WHEN portfolio_opportunities.status IN ('queued', 'selected') THEN EXCLUDED.confidence ELSE portfolio_opportunities.confidence END,
+			edge_pct = CASE WHEN portfolio_opportunities.status IN ('queued', 'selected') THEN EXCLUDED.edge_pct ELSE portfolio_opportunities.edge_pct END,
+			expected_return_pct = CASE WHEN portfolio_opportunities.status IN ('queued', 'selected') THEN EXCLUDED.expected_return_pct ELSE portfolio_opportunities.expected_return_pct END,
+			max_loss_pct = CASE WHEN portfolio_opportunities.status IN ('queued', 'selected') THEN EXCLUDED.max_loss_pct ELSE portfolio_opportunities.max_loss_pct END,
+			entry_price = CASE WHEN portfolio_opportunities.status IN ('queued', 'selected') THEN EXCLUDED.entry_price ELSE portfolio_opportunities.entry_price END,
+			liquidity_usd = CASE WHEN portfolio_opportunities.status IN ('queued', 'selected') THEN EXCLUDED.liquidity_usd ELSE portfolio_opportunities.liquidity_usd END,
+			market_cap_usd = CASE WHEN portfolio_opportunities.status IN ('queued', 'selected') THEN EXCLUDED.market_cap_usd ELSE portfolio_opportunities.market_cap_usd END,
+			spread_pct = CASE WHEN portfolio_opportunities.status IN ('queued', 'selected') THEN EXCLUDED.spread_pct ELSE portfolio_opportunities.spread_pct END,
+			proposed_notional = CASE WHEN portfolio_opportunities.status IN ('queued', 'selected') THEN EXCLUDED.proposed_notional ELSE portfolio_opportunities.proposed_notional END,
+			selected_notional = CASE WHEN portfolio_opportunities.status IN ('queued', 'selected') THEN EXCLUDED.selected_notional ELSE portfolio_opportunities.selected_notional END,
+			reason = CASE WHEN portfolio_opportunities.status IN ('queued', 'selected') THEN EXCLUDED.reason ELSE portfolio_opportunities.reason END,
+			reject_reason = CASE WHEN portfolio_opportunities.status IN ('queued', 'selected') THEN EXCLUDED.reject_reason ELSE portfolio_opportunities.reject_reason END,
+			evidence = CASE WHEN portfolio_opportunities.status IN ('queued', 'selected') THEN EXCLUDED.evidence ELSE portfolio_opportunities.evidence END,
+			expires_at = CASE WHEN portfolio_opportunities.status IN ('queued', 'selected') THEN EXCLUDED.expires_at ELSE portfolio_opportunities.expires_at END,
+			updated_at = CASE WHEN portfolio_opportunities.status IN ('queued', 'selected') THEN NOW() ELSE portfolio_opportunities.updated_at END`
 	}
 	query += ` RETURNING id, created_at, updated_at`
 
@@ -132,6 +134,7 @@ func (r *OpportunityRepo) save(ctx context.Context, opportunity *domain.Opportun
 		opportunity.MarketType,
 		opportunity.Ticker,
 		opportunity.Side,
+		opportunity.PredictionSide,
 		opportunity.Signal,
 		opportunity.Status,
 		opportunity.Score,
@@ -139,6 +142,7 @@ func (r *OpportunityRepo) save(ctx context.Context, opportunity *domain.Opportun
 		opportunity.EdgePct,
 		opportunity.ExpectedReturnPct,
 		opportunity.MaxLossPct,
+		opportunity.EntryPrice,
 		opportunity.LiquidityUSD,
 		opportunity.MarketCapUSD,
 		opportunity.SpreadPct,
@@ -157,9 +161,9 @@ func (r *OpportunityRepo) save(ctx context.Context, opportunity *domain.Opportun
 	return nil
 }
 
-const opportunitySelectSQL = `SELECT id, strategy_id, pipeline_run_id, market_type, ticker, side, signal,
+const opportunitySelectSQL = `SELECT id, strategy_id, pipeline_run_id, market_type, ticker, side, prediction_side, signal,
 	status, score::double precision, confidence::double precision, edge_pct::double precision,
-	expected_return_pct::double precision, max_loss_pct::double precision, liquidity_usd::double precision,
+	expected_return_pct::double precision, max_loss_pct::double precision, entry_price::double precision, liquidity_usd::double precision,
 	market_cap_usd::double precision, spread_pct::double precision, proposed_notional::double precision, selected_notional::double precision,
 	reason, reject_reason, evidence, expires_at, created_at, updated_at, dedupe_key
 	FROM portfolio_opportunities`
@@ -200,6 +204,7 @@ func scanOpportunity(sc scanner) (*domain.Opportunity, error) {
 		&opportunity.MarketType,
 		&opportunity.Ticker,
 		&opportunity.Side,
+		&opportunity.PredictionSide,
 		&opportunity.Signal,
 		&opportunity.Status,
 		&score,
@@ -207,6 +212,7 @@ func scanOpportunity(sc scanner) (*domain.Opportunity, error) {
 		&opportunity.EdgePct,
 		&opportunity.ExpectedReturnPct,
 		&opportunity.MaxLossPct,
+		&opportunity.EntryPrice,
 		&opportunity.LiquidityUSD,
 		&opportunity.MarketCapUSD,
 		&opportunity.SpreadPct,

@@ -18,6 +18,7 @@ import (
 	kalshidiscovery "github.com/PatrickFanella/get-rich-quick/internal/kalshidiscovery"
 	"github.com/PatrickFanella/get-rich-quick/internal/llm"
 	"github.com/PatrickFanella/get-rich-quick/internal/llm/embedding"
+	"github.com/PatrickFanella/get-rich-quick/internal/portfolio"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 	pgrepo "github.com/PatrickFanella/get-rich-quick/internal/repository/postgres"
 	"github.com/PatrickFanella/get-rich-quick/internal/scheduler"
@@ -74,6 +75,8 @@ type OrchestratorDeps struct {
 	KalshiCatalog           interface {
 		ListMarkets(context.Context, kalshidiscovery.ListOptions) ([]kalshidiscovery.MarketCandidate, string, error)
 	}
+	PortfolioAllocatorMode    portfolio.AllocatorMode
+	PortfolioPaperProcessor   portfolio.PaperOrderProcessor
 	KalshiWatchedRepo         repository.KalshiWatchedMarketsRepository
 	KalshiMarketSnapshotsRepo repository.KalshiMarketSnapshotsRepository
 	KalshiDiscoveryRuns       repository.KalshiDiscoveryRunRepository // optional; nil = skip progress recording

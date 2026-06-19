@@ -34,6 +34,7 @@ import (
 	polymarketdata "github.com/PatrickFanella/get-rich-quick/internal/marketdata/polymarket"
 	"github.com/PatrickFanella/get-rich-quick/internal/metrics"
 	"github.com/PatrickFanella/get-rich-quick/internal/notification"
+	"github.com/PatrickFanella/get-rich-quick/internal/portfolio"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 	"github.com/PatrickFanella/get-rich-quick/internal/risk"
 )
@@ -76,38 +77,40 @@ type polymarketTickFeed interface {
 }
 
 type realStrategyRunner struct {
-	cfg                   config.Config
-	globals               agent.GlobalSettings
-	dataService           marketDataService
-	runRepo               repository.PipelineRunRepository
-	snapshotRepo          repository.PipelineRunSnapshotRepository
-	decisionRepo          repository.AgentDecisionRepository
-	eventRepo             repository.AgentEventRepository
-	orderRepo             repository.OrderRepository
-	positionRepo          repository.PositionRepository
-	tradeRepo             repository.TradeRepository
-	auditLogRepo          repository.AuditLogRepository
-	riskEngine            risk.RiskEngine
-	tradeDecisionRecorder execution.DecisionRecorder
-	metrics               *metrics.Metrics
-	notificationManager   *notification.Manager
-	runRegistry           *agent.RunContextRegistry
-	llmBudget             *llm.Budget
-	promptOverrides       promptOverrideSource
-	logger                *slog.Logger
-	localPaperMu          sync.Mutex
-	localPaperBroker      *paper.PaperBroker
-	kalshiLiveClient      kalshiexecution.LiveClient
-	polymarketClient      *polymarketexecution.Client // nil if not configured
-	polymarketMarketData  polymarketMarketDataSource
-	kalshiMarketData      kalshiMarketDataSource
-	polymarketFeed        polymarketTickFeed
-	polymarketStopGuard   *polymarketexecution.StopGuard
-	polymarketWorkers     sync.Map
-	polymarketWorkerCtx   context.Context
-	polymarketWorkerStop  context.CancelFunc
-	polymarketWorkerWG    sync.WaitGroup
-	hub                   *api.Hub // nil until wired; optional WebSocket broadcast
+	cfg                    config.Config
+	globals                agent.GlobalSettings
+	dataService            marketDataService
+	runRepo                repository.PipelineRunRepository
+	snapshotRepo           repository.PipelineRunSnapshotRepository
+	decisionRepo           repository.AgentDecisionRepository
+	eventRepo              repository.AgentEventRepository
+	orderRepo              repository.OrderRepository
+	positionRepo           repository.PositionRepository
+	tradeRepo              repository.TradeRepository
+	opportunityRepo        repository.OpportunityRepository
+	auditLogRepo           repository.AuditLogRepository
+	riskEngine             risk.RiskEngine
+	tradeDecisionRecorder  execution.DecisionRecorder
+	metrics                *metrics.Metrics
+	notificationManager    *notification.Manager
+	runRegistry            *agent.RunContextRegistry
+	llmBudget              *llm.Budget
+	promptOverrides        promptOverrideSource
+	logger                 *slog.Logger
+	localPaperMu           sync.Mutex
+	localPaperBroker       *paper.PaperBroker
+	portfolioAllocatorMode portfolio.AllocatorMode
+	kalshiLiveClient       kalshiexecution.LiveClient
+	polymarketClient       *polymarketexecution.Client // nil if not configured
+	polymarketMarketData   polymarketMarketDataSource
+	kalshiMarketData       kalshiMarketDataSource
+	polymarketFeed         polymarketTickFeed
+	polymarketStopGuard    *polymarketexecution.StopGuard
+	polymarketWorkers      sync.Map
+	polymarketWorkerCtx    context.Context
+	polymarketWorkerStop   context.CancelFunc
+	polymarketWorkerWG     sync.WaitGroup
+	hub                    *api.Hub // nil until wired; optional WebSocket broadcast
 }
 
 func newRealStrategyRunner(
@@ -277,32 +280,35 @@ func (r *realStrategyRunner) RunStrategy(ctx context.Context, strategy domain.St
 
 	decisionMetadata := r.executionDecisionMetadata(ctx, run.ID)
 
-	if err := orderManager.ProcessSignal(
-		ctx,
-		execution.FinalSignal{
-			Signal:     signal,
-			Confidence: result.State.FinalSignal.Confidence,
-		},
-		execution.TradingPlan{
-			Action:           signal,
-			MarketType:       strategy.MarketType.Normalize(),
-			Ticker:           planTicker,
-			EntryType:        result.State.TradingPlan.EntryType,
-			EntryPrice:       result.State.TradingPlan.EntryPrice,
-			PositionSize:     result.State.TradingPlan.PositionSize,
-			StopLoss:         result.State.TradingPlan.StopLoss,
-			TakeProfit:       result.State.TradingPlan.TakeProfit,
-			TimeHorizon:      result.State.TradingPlan.TimeHorizon,
-			Confidence:       result.State.TradingPlan.Confidence,
-			Rationale:        result.State.TradingPlan.Rationale,
-			RiskReward:       result.State.TradingPlan.RiskReward,
-			Side:             result.State.TradingPlan.Side,
-			DecisionMetadata: decisionMetadata,
-		},
-		strategy.ID,
-		run.ID,
-	); err != nil {
-		return nil, err
+	finalSignal := execution.FinalSignal{Signal: signal, Confidence: result.State.FinalSignal.Confidence}
+	tradingPlan := execution.TradingPlan{
+		Action:           signal,
+		MarketType:       strategy.MarketType.Normalize(),
+		Ticker:           planTicker,
+		EntryType:        result.State.TradingPlan.EntryType,
+		EntryPrice:       result.State.TradingPlan.EntryPrice,
+		PositionSize:     result.State.TradingPlan.PositionSize,
+		StopLoss:         result.State.TradingPlan.StopLoss,
+		TakeProfit:       result.State.TradingPlan.TakeProfit,
+		TimeHorizon:      result.State.TradingPlan.TimeHorizon,
+		Confidence:       result.State.TradingPlan.Confidence,
+		Rationale:        result.State.TradingPlan.Rationale,
+		RiskReward:       result.State.TradingPlan.RiskReward,
+		Side:             result.State.TradingPlan.Side,
+		DecisionMetadata: decisionMetadata,
+	}
+	r.recordPortfolioOpportunity(ctx, strategy, &run.ID, finalSignal, tradingPlan)
+
+	if !r.portfolioAllocatorOwnsPaperExecution(strategy, signal) {
+		if err := orderManager.ProcessSignal(
+			ctx,
+			finalSignal,
+			tradingPlan,
+			strategy.ID,
+			run.ID,
+		); err != nil {
+			return nil, err
+		}
 	}
 
 	if err := r.dispatchNotifications(ctx, strategy, run, state); err != nil {
@@ -405,7 +411,8 @@ func (r *realStrategyRunner) runPolymarketNative(ctx context.Context, strategy d
 	if err != nil {
 		return failRun(err)
 	}
-	if err := orderManager.ProcessSignal(ctx, execution.FinalSignal{Signal: signal, Confidence: decision.Confidence}, execution.TradingPlan{
+	finalSignal := execution.FinalSignal{Signal: signal, Confidence: decision.Confidence}
+	tradingPlan := execution.TradingPlan{
 		Action:      signal,
 		MarketType:  domain.MarketTypePolymarket,
 		Ticker:      strategy.Ticker,
@@ -418,8 +425,12 @@ func (r *realStrategyRunner) runPolymarketNative(ctx context.Context, strategy d
 		Rationale:   decision.Rationale,
 		RiskReward:  decision.RiskReward,
 		Side:        decision.Side,
-	}, strategy.ID, run.ID); err != nil {
-		return failRun(err)
+	}
+	r.recordPortfolioOpportunity(ctx, strategy, &run.ID, finalSignal, tradingPlan)
+	if !r.portfolioAllocatorOwnsPaperExecution(strategy, signal) {
+		if err := orderManager.ProcessSignal(ctx, finalSignal, tradingPlan, strategy.ID, run.ID); err != nil {
+			return failRun(err)
+		}
 	}
 
 	if err := completeRun(domain.PipelineStatusCompleted, signal, ""); err != nil {
@@ -522,7 +533,8 @@ func (r *realStrategyRunner) runKalshiNative(ctx context.Context, strategy domai
 	if err != nil {
 		return failRun(err)
 	}
-	if err := orderManager.ProcessSignal(ctx, execution.FinalSignal{Signal: signal, Confidence: decision.Confidence}, execution.TradingPlan{
+	finalSignal := execution.FinalSignal{Signal: signal, Confidence: decision.Confidence}
+	tradingPlan := execution.TradingPlan{
 		Action:      signal,
 		MarketType:  domain.MarketTypeKalshi,
 		Ticker:      strategy.Ticker,
@@ -533,8 +545,12 @@ func (r *realStrategyRunner) runKalshiNative(ctx context.Context, strategy domai
 		RiskReward:  decision.RiskReward,
 		Side:        decision.Side,
 		TimeHorizon: decision.TimeHorizon,
-	}, strategy.ID, run.ID); err != nil {
-		return failRun(err)
+	}
+	r.recordPortfolioOpportunity(ctx, strategy, &run.ID, finalSignal, tradingPlan)
+	if !r.portfolioAllocatorOwnsPaperExecution(strategy, signal) {
+		if err := orderManager.ProcessSignal(ctx, finalSignal, tradingPlan, strategy.ID, run.ID); err != nil {
+			return failRun(err)
+		}
 	}
 
 	if err := completeRun(domain.PipelineStatusCompleted, signal, ""); err != nil {
@@ -1252,6 +1268,105 @@ func (r *realStrategyRunner) newOrderManager(ctx context.Context, strategy domai
 		applyPolymarketSizingCap(strategy.MarketType, sizingConfigForStrategy(ctx, strategy, strategyConfig, resolved, r.positionRepo, r.logger), r.cfg.Risk.Polymarket.MaxPositionUSDC),
 		r.logger,
 	).WithMetrics(r.metrics).WithDecisionRecorder(r.tradeDecisionRecorder).WithLiveGate(gate).WithLiveTrading(!strategy.IsPaper), nil
+}
+
+func (r *realStrategyRunner) recordPortfolioOpportunity(ctx context.Context, strategy domain.Strategy, runID *uuid.UUID, finalSignal execution.FinalSignal, plan execution.TradingPlan) {
+	if r == nil || r.opportunityRepo == nil {
+		return
+	}
+	if finalSignal.Signal != domain.PipelineSignalBuy && finalSignal.Signal != domain.PipelineSignalSell {
+		return
+	}
+	maxLossPct := opportunityMaxLossPct(finalSignal.Signal, plan.EntryPrice, plan.StopLoss)
+	proposedNotional := plan.PositionSize * plan.EntryPrice
+	opportunity, reason, err := portfolio.BuildOpportunity(portfolio.OpportunityBuildInput{
+		Strategy:          strategy,
+		Run:               runFromID(runID),
+		Signal:            finalSignal.Signal,
+		PredictionSide:    plan.Side,
+		Confidence:        firstPositive(finalSignal.Confidence, plan.Confidence),
+		EdgePct:           positiveEdgeFromRiskReward(plan.RiskReward),
+		ExpectedReturnPct: positiveEdgeFromRiskReward(plan.RiskReward),
+		MaxLossPct:        maxLossPct,
+		EntryPrice:        plan.EntryPrice,
+		ProposedNotional:  proposedNotional,
+		Reason:            plan.Rationale,
+		Evidence:          opportunityEvidence(plan),
+	}, portfolio.OpportunityBuilderConfig{})
+	if err != nil {
+		r.logger.WarnContext(ctx, "portfolio opportunity skipped", "strategy_id", strategy.ID, "ticker", strategy.Ticker, "reason", reason, "error", err)
+		return
+	}
+	if opportunity == nil {
+		return
+	}
+	if err := r.opportunityRepo.UpsertQueuedByDedupeKey(ctx, opportunity); err != nil {
+		r.logger.WarnContext(ctx, "portfolio opportunity persist failed", "strategy_id", strategy.ID, "ticker", strategy.Ticker, "error", err)
+	}
+}
+
+func (r *realStrategyRunner) portfolioAllocatorOwnsPaperExecution(strategy domain.Strategy, signal domain.PipelineSignal) bool {
+	if r == nil || r.portfolioAllocatorMode != portfolio.AllocatorModePaper || !strategy.IsPaper {
+		return false
+	}
+	return signal == domain.PipelineSignalBuy || signal == domain.PipelineSignalSell
+}
+
+func runFromID(id *uuid.UUID) *domain.PipelineRun {
+	if id == nil || *id == uuid.Nil {
+		return nil
+	}
+	return &domain.PipelineRun{ID: *id}
+}
+
+func firstPositive(values ...float64) float64 {
+	for _, value := range values {
+		if value > 0 {
+			return value
+		}
+	}
+	return 0
+}
+
+func positiveEdgeFromRiskReward(riskReward float64) float64 {
+	if riskReward <= 0 {
+		return 0
+	}
+	return riskReward / 100
+}
+
+func opportunityMaxLossPct(signal domain.PipelineSignal, entryPrice, stopLoss float64) float64 {
+	if entryPrice <= 0 || stopLoss <= 0 {
+		return 0
+	}
+	switch signal {
+	case domain.PipelineSignalSell:
+		if stopLoss <= entryPrice {
+			return 0
+		}
+		return (stopLoss - entryPrice) / entryPrice
+	default:
+		if stopLoss >= entryPrice {
+			return 0
+		}
+		return (entryPrice - stopLoss) / entryPrice
+	}
+}
+
+func opportunityEvidence(plan execution.TradingPlan) json.RawMessage {
+	payload, err := json.Marshal(map[string]any{
+		"entry_type":   plan.EntryType,
+		"entry_price":  plan.EntryPrice,
+		"stop_loss":    plan.StopLoss,
+		"take_profit":  plan.TakeProfit,
+		"time_horizon": plan.TimeHorizon,
+		"risk_reward":  plan.RiskReward,
+		"side":         plan.Side,
+	})
+	if err != nil {
+		return json.RawMessage("{}")
+	}
+	return payload
 }
 
 func (r *realStrategyRunner) liveGateForStrategy(strategy domain.Strategy) (execution.LiveGateConfig, error) {
