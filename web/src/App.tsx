@@ -1,96 +1,14 @@
-import { BrowserRouter, Route, Routes } from 'react-router-dom'
-
-import { AppShell } from '@/components/layout/app-shell'
-import { ProtectedRoute, PublicOnlyRoute } from '@/components/routes/route-guards'
-import { AppProviders } from '@/lib/providers'
-import { BacktestDetailPage } from '@/pages/backtest-detail-page'
-import { BacktestsPage } from '@/pages/backtests-page'
-import { DashboardPage } from '@/pages/dashboard-page'
-import { LoginPage } from '@/pages/login-page'
-import { PipelineRunPage } from '@/pages/pipeline-run-page'
-import { MemoriesPage } from '@/pages/memories-page'
-import { RealtimePage } from '@/pages/realtime-page'
-import { RiskPage } from '@/pages/risk-page'
-import { RunsPage } from '@/pages/runs-page'
-import { SettingsPage } from '@/pages/settings-page'
-import { StrategiesPage } from '@/pages/strategies-page'
-import { StrategyDetailPage } from '@/pages/strategy-detail-page'
-import { OrdersPage } from '@/pages/orders-page'
-import { OrderDetailPage } from '@/pages/order-detail-page'
-import { OptionsPage } from '@/pages/options-page'
-import { PortfolioPage } from '@/pages/portfolio-page'
-import { DiscoveryPage } from '@/pages/discovery-page'
-import { AutomationPage } from '@/pages/automation-page'
-import { AutomationDetailPage } from '@/pages/automation-detail-page'
-import { CalendarPage } from '@/pages/calendar-page'
-import { StockDetailPage } from '@/pages/stock-detail-page'
-import { UniversePage } from '@/pages/universe-page'
-import { SignalsPage } from '@/pages/signals-page'
-import { KalshiPage } from '@/pages/kalshi-page'
-import { PolymarketPage } from '@/pages/polymarket-page'
-import { PolymarketAccountPage } from '@/pages/polymarket-account-page'
-import { PromptsPage } from '@/pages/prompts-page'
-import { GlossaryPage } from '@/pages/glossary-page'
-import { DecisionJournalPage } from '@/pages/decision-journal-page'
-import { ReplayPage } from '@/pages/replay-page'
-import { ReliabilityPage } from '@/pages/reliability-page'
-import { SurfersOpsPage } from '@/pages/surfers-ops-page'
-
-export function AppRoutes() {
-  return (
-    <Routes>
-      <Route element={<PublicOnlyRoute />}>
-        <Route path="login" element={<LoginPage />} />
-      </Route>
-
-      <Route element={<AppShell />}>
-        <Route path="options" element={<OptionsPage />} />
-        <Route path="calendar" element={<CalendarPage />} />
-        <Route path="universe" element={<UniversePage />} />
-        <Route path="glossary" element={<GlossaryPage />} />
-        <Route path="glossary/:slug" element={<GlossaryPage />} />
-
-        <Route element={<ProtectedRoute />}>
-          <Route index element={<DashboardPage />} />
-          <Route path="strategies" element={<StrategiesPage />} />
-          <Route path="strategies/:id" element={<StrategyDetailPage />} />
-          <Route path="runs" element={<RunsPage />} />
-          <Route path="runs/:id" element={<PipelineRunPage />} />
-          <Route path="backtests" element={<BacktestsPage />} />
-          <Route path="backtests/:id" element={<BacktestDetailPage />} />
-          <Route path="stocks/:ticker" element={<StockDetailPage />} />
-          <Route path="orders" element={<OrdersPage />} />
-          <Route path="orders/:id" element={<OrderDetailPage />} />
-          <Route path="discovery" element={<DiscoveryPage />} />
-          <Route path="automation" element={<AutomationPage />} />
-          <Route path="automation/:name" element={<AutomationDetailPage />} />
-          <Route path="portfolio" element={<PortfolioPage />} />
-          <Route path="memories" element={<MemoriesPage />} />
-          <Route path="prompts" element={<PromptsPage />} />
-          <Route path="journal" element={<DecisionJournalPage />} />
-          <Route path="replay/decisions/:id" element={<ReplayPage />} />
-          <Route path="settings" element={<SettingsPage />} />
-          <Route path="risk" element={<RiskPage />} />
-          <Route path="realtime" element={<RealtimePage />} />
-          <Route path="signals" element={<SignalsPage />} />
-          <Route path="kalshi" element={<KalshiPage />} />
-          <Route path="polymarket" element={<PolymarketPage />} />
-          <Route path="polymarket/accounts/:address" element={<PolymarketAccountPage />} />
-          <Route path="surfers/ops" element={<SurfersOpsPage />} />
-          <Route path="reliability" element={<ReliabilityPage />} />
-        </Route>
-      </Route>
-    </Routes>
-  )
-}
-
 function App() {
   return (
-    <AppProviders>
-      <BrowserRouter>
-        <AppRoutes />
-      </BrowserRouter>
-    </AppProviders>
+    <main className="app-shell" aria-labelledby="app-title">
+      <section className="app-card">
+        <p className="eyebrow">Frontend reset</p>
+        <h1 id="app-title">Ready to rebuild</h1>
+        <p>
+          The old web UI has been removed while keeping the React/Vite scaffold in place.
+        </p>
+      </section>
+    </main>
   )
 }
 
