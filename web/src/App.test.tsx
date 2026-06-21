@@ -188,6 +188,20 @@ describe('first vertical slice app', () => {
     expect(screen.getAllByRole('link', { name: /^Position trades$/i })[0]).toHaveAttribute('href', '/trades?position_id=00000000-0000-4000-8000-000000000030')
   })
 
+  it('treats open circuit breaker state as safe when all cockpit signals are normal', async () => {
+    resetApp('/cockpit')
+    setTokenSnapshot(buildAuthResponse())
+    server.use(
+      http.get(`${apiBaseUrl}/risk/status`, () => HttpResponse.json(buildRiskStatus())),
+      http.get(`${apiBaseUrl}/risk/cockpit`, () => HttpResponse.json({ generated_at: fixtureDate, kill_switch_active: false, circuit_breaker: false, exposures: [], warnings: [] })),
+      http.get(`${apiBaseUrl}/risk/breakers`, () => HttpResponse.json(buildRiskBreakers({ tripped: [] }))),
+    )
+    render(<App />)
+
+    await waitFor(() => expect(FakeWebSocket.instances[0]?.readyState).toBe(1))
+    expect(await screen.findByText(/Cockpit classification: safe/i)).toBeTruthy()
+  })
+
   it('shows empty active-runs state', async () => {
     resetApp('/cockpit')
     state.scenario = 'empty-data'

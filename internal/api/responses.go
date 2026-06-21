@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"reflect"
 	"time"
 )
 
@@ -58,7 +59,7 @@ func respondError(w http.ResponseWriter, status int, msg, code string) {
 // the repository layer does not return a count of all matching rows.
 func respondList(w http.ResponseWriter, data any, limit, offset int) {
 	respondJSON(w, http.StatusOK, ListResponse{
-		Data:   data,
+		Data:   nonNilListData(data),
 		Limit:  limit,
 		Offset: offset,
 	})
@@ -68,9 +69,20 @@ func respondList(w http.ResponseWriter, data any, limit, offset int) {
 // total count of matching rows for proper client-side pagination.
 func respondListWithTotal(w http.ResponseWriter, data any, total, limit, offset int) {
 	respondJSON(w, http.StatusOK, ListResponse{
-		Data:   data,
+		Data:   nonNilListData(data),
 		Total:  total,
 		Limit:  limit,
 		Offset: offset,
 	})
+}
+
+func nonNilListData(data any) any {
+	if data == nil {
+		return []any{}
+	}
+	value := reflect.ValueOf(data)
+	if value.Kind() == reflect.Slice && value.IsNil() {
+		return []any{}
+	}
+	return data
 }

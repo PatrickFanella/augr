@@ -56,7 +56,7 @@ function classifyCockpit({
   if (realtimeStatus !== 'connected') return 'degraded'
   if (health && health.status !== 'ok') return 'degraded'
   if (automationHealthy === false) return 'degraded'
-  if (risk.kill_switch.active || risk.circuit_breaker.state !== 'closed' || risk.risk_status !== 'normal') return 'degraded'
+  if (risk.kill_switch.active || !['closed', 'open'].includes(risk.circuit_breaker.state.toLowerCase()) || risk.risk_status !== 'normal') return 'degraded'
   if (cockpit.kill_switch_active || cockpit.circuit_breaker || cockpit.warnings.length > 0) return 'degraded'
   if (breakers.tripped.some((breaker) => !breaker.reset_at)) return 'degraded'
   return 'safe'

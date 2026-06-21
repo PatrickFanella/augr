@@ -1409,6 +1409,14 @@ func TestListRuns(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
 	}
+
+	var response ListResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Data == nil {
+		t.Fatal("data = nil, want empty array")
+	}
 }
 
 func TestListRunsRejectsBadStatus(t *testing.T) {
