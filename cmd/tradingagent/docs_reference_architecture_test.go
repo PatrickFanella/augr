@@ -58,7 +58,7 @@ func TestArchitectureAuditContent(t *testing.T) {
 		"internal/regime",
 		"internal/repository/postgres",
 		"internal/risk",
-		"web/src/pages",
+		"web/src/features",
 	} {
 		path := filepath.Join(repoRootPath(t), rel)
 		info, err := os.Stat(path)
@@ -75,7 +75,7 @@ func TestArchitectureAuditContent(t *testing.T) {
 		"internal/edge/options_pricing.go",
 		"internal/repository/postgres/trade_decision_journal.go",
 		"internal/domain/trade_decision.go",
-		"web/src/pages/decision-journal-page.tsx",
+		"web/src/features/risk/RiskPage.tsx",
 	} {
 		path := filepath.Join(repoRootPath(t), rel)
 		if _, err := os.Stat(path); err != nil {

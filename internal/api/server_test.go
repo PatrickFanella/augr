@@ -79,6 +79,7 @@ var (
 		Ticker:     "AAPL",
 		MarketType: domain.MarketTypeStock,
 		Status:     domain.StrategyStatusActive,
+		IsPaper:    true,
 		CreatedAt:  time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 		UpdatedAt:  time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 	}
@@ -732,6 +733,99 @@ func TestCreateStrategy(t *testing.T) {
 	if body.ID == uuid.Nil {
 		t.Fatal("ID should be set")
 	}
+	if !body.IsPaper {
+		t.Fatal("is_paper should be forced true")
+	}
+	if body.SkipNextRun {
+		t.Fatal("skip_next_run should be forced false")
+	}
+	if string(body.Config) != "{}" {
+		t.Fatalf("config = %s, want {}", string(body.Config))
+	}
+}
+
+func TestCreateStrategyForcesPaperAndAudits(t *testing.T) {
+	t.Parallel()
+	deps := testDeps()
+	audit := &stubAuditLogRepo{}
+	deps.AuditLog = audit
+	srv := newTestServerWithDeps(t, deps)
+
+	rr := doRequest(t, srv, http.MethodPost, "/api/v1/strategies", map[string]any{
+		"name":        "Gamma",
+		"ticker":      "TSLA",
+		"market_type": "stock",
+		"is_paper":    true,
+	})
+
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d\nbody: %s", rr.Code, http.StatusCreated, rr.Body.String())
+	}
+	body := decodeJSON[domain.Strategy](t, rr)
+	if !body.IsPaper || body.Status != domain.StrategyStatusActive || body.SkipNextRun {
+		t.Fatalf("created strategy = %#v, want forced paper active non-skipped", body)
+	}
+	if len(audit.entries) != 1 {
+		t.Fatalf("audit entries = %d, want 1", len(audit.entries))
+	}
+	entry := audit.entries[0]
+	if entry.EventType != "strategy.created" || entry.EntityType != "strategy" || entry.EntityID == nil || *entry.EntityID != body.ID {
+		t.Fatalf("audit entry = %#v, want strategy.created for created strategy", entry)
+	}
+}
+
+func TestCreateStrategyRejectsLiveOrPrivilegeFields(t *testing.T) {
+	t.Parallel()
+	srv := newTestServer(t)
+
+	tests := []struct {
+		name    string
+		payload map[string]any
+		code    string
+	}{
+		{
+			name: "is_paper false",
+			payload: map[string]any{
+				"name":        "Gamma",
+				"ticker":      "TSLA",
+				"market_type": "stock",
+				"is_paper":    false,
+			},
+			code: ErrCodeValidation,
+		},
+		{
+			name: "client status rejected",
+			payload: map[string]any{
+				"name":        "Gamma",
+				"ticker":      "TSLA",
+				"market_type": "stock",
+				"status":      "inactive",
+			},
+			code: ErrCodeBadRequest,
+		},
+		{
+			name: "client id rejected",
+			payload: map[string]any{
+				"id":          uuid.New().String(),
+				"name":        "Gamma",
+				"ticker":      "TSLA",
+				"market_type": "stock",
+			},
+			code: ErrCodeBadRequest,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rr := doRequest(t, srv, http.MethodPost, "/api/v1/strategies", tt.payload)
+			if rr.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want %d\nbody: %s", rr.Code, http.StatusBadRequest, rr.Body.String())
+			}
+			body := decodeJSON[ErrorResponse](t, rr)
+			if body.Code != tt.code {
+				t.Fatalf("code = %q, want %q", body.Code, tt.code)
+			}
+		})
+	}
 }
 
 func TestCreateStrategyConfigValidation(t *testing.T) {
@@ -1012,6 +1106,30 @@ func TestRunStrategyNotFound(t *testing.T) {
 	}
 }
 
+func TestRunStrategyRejectsLiveOrInactiveStrategies(t *testing.T) {
+	t.Parallel()
+	deps := testDeps()
+	deps.Runner = &stubStrategyRunner{}
+	liveActive := stratB
+	liveActive.Status = domain.StrategyStatusActive
+	deps.Strategies.(*stubStrategyRepo).items[liveActive.ID] = liveActive
+	srv := newTestServerWithDeps(t, deps)
+
+	rr := doRequest(t, srv, http.MethodPost, "/api/v1/strategies/"+liveActive.ID.String()+"/run", nil)
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("live status = %d, want %d; body: %s", rr.Code, http.StatusConflict, rr.Body.String())
+	}
+
+	inactivePaper := stratA
+	inactivePaper.ID = uuid.MustParse("33333333-3333-3333-3333-333333333333")
+	inactivePaper.Status = domain.StrategyStatusInactive
+	deps.Strategies.(*stubStrategyRepo).items[inactivePaper.ID] = inactivePaper
+	rr = doRequest(t, srv, http.MethodPost, "/api/v1/strategies/"+inactivePaper.ID.String()+"/run", nil)
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("inactive status = %d, want %d; body: %s", rr.Code, http.StatusConflict, rr.Body.String())
+	}
+}
+
 func TestRunStrategyNilResultAccepted(t *testing.T) {
 	t.Parallel()
 
@@ -1071,18 +1189,122 @@ func TestBroadcastRunResultUsesRunningStatusForStartEvent(t *testing.T) {
 
 func TestUpdateStrategy(t *testing.T) {
 	t.Parallel()
-	srv := newTestServer(t)
+	deps := testDeps()
+	audit := &stubAuditLogRepo{}
+	deps.AuditLog = audit
+	srv := newTestServerWithDeps(t, deps)
 
 	payload := map[string]any{
 		"name":        "Alpha Updated",
 		"ticker":      "AAPL",
 		"market_type": "stock",
+		"updated_at":  stratA.UpdatedAt.Format(time.RFC3339Nano),
 	}
 
 	rr := doRequest(t, srv, http.MethodPut, "/api/v1/strategies/"+stratA.ID.String(), payload)
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d\nbody: %s", rr.Code, http.StatusOK, rr.Body.String())
+	}
+	body := decodeJSON[domain.Strategy](t, rr)
+	if body.Name != "Alpha Updated" || !body.IsPaper || body.Status != domain.StrategyStatusActive || body.SkipNextRun {
+		t.Fatalf("updated strategy = %#v, want safe fields changed and protected fields preserved", body)
+	}
+	if len(audit.entries) != 1 || audit.entries[0].EventType != "strategy.updated" {
+		t.Fatalf("audit entries = %#v, want strategy.updated", audit.entries)
+	}
+}
+
+func TestUpdateStrategyRejectsLiveOrPrivilegeFields(t *testing.T) {
+	t.Parallel()
+	srv := newTestServer(t)
+
+	tests := []struct {
+		name   string
+		id     uuid.UUID
+		body   map[string]any
+		status int
+		code   string
+	}{
+		{
+			name: "live strategy rejected",
+			id:   stratB.ID,
+			body: map[string]any{
+				"name":        "Beta Updated",
+				"ticker":      "MSFT",
+				"market_type": "stock",
+			},
+			status: http.StatusConflict,
+			code:   ErrCodeConflict,
+		},
+		{
+			name: "status rejected",
+			id:   stratA.ID,
+			body: map[string]any{
+				"name":        "Alpha Updated",
+				"ticker":      "AAPL",
+				"market_type": "stock",
+				"status":      "inactive",
+			},
+			status: http.StatusBadRequest,
+			code:   ErrCodeBadRequest,
+		},
+		{
+			name: "is_paper rejected",
+			id:   stratA.ID,
+			body: map[string]any{
+				"name":        "Alpha Updated",
+				"ticker":      "AAPL",
+				"market_type": "stock",
+				"is_paper":    false,
+			},
+			status: http.StatusBadRequest,
+			code:   ErrCodeBadRequest,
+		},
+		{
+			name: "skip next rejected",
+			id:   stratA.ID,
+			body: map[string]any{
+				"name":          "Alpha Updated",
+				"ticker":        "AAPL",
+				"market_type":   "stock",
+				"skip_next_run": true,
+			},
+			status: http.StatusBadRequest,
+			code:   ErrCodeBadRequest,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rr := doRequest(t, srv, http.MethodPut, "/api/v1/strategies/"+tt.id.String(), tt.body)
+			if rr.Code != tt.status {
+				t.Fatalf("status = %d, want %d\nbody: %s", rr.Code, tt.status, rr.Body.String())
+			}
+			body := decodeJSON[ErrorResponse](t, rr)
+			if body.Code != tt.code {
+				t.Fatalf("code = %q, want %q", body.Code, tt.code)
+			}
+		})
+	}
+}
+
+func TestUpdateStrategyRejectsStaleUpdatedAt(t *testing.T) {
+	t.Parallel()
+	srv := newTestServer(t)
+
+	rr := doRequest(t, srv, http.MethodPut, "/api/v1/strategies/"+stratA.ID.String(), map[string]any{
+		"name":        "Alpha Updated",
+		"ticker":      "AAPL",
+		"market_type": "stock",
+		"updated_at":  stratA.UpdatedAt.Add(-time.Minute).Format(time.RFC3339Nano),
+	})
+
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want %d\nbody: %s", rr.Code, http.StatusConflict, rr.Body.String())
+	}
+	body := decodeJSON[ErrorResponse](t, rr)
+	if body.Code != ErrCodeConflict {
+		t.Fatalf("code = %q, want %q", body.Code, ErrCodeConflict)
 	}
 }
 
@@ -2220,6 +2442,34 @@ func (s *stubStrategyRepo) Update(_ context.Context, strategy *domain.Strategy) 
 	return nil
 }
 
+func (s *stubStrategyRepo) TransitionPaperStatus(_ context.Context, id uuid.UUID, fromStatus, toStatus string) (*domain.Strategy, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	strategy, ok := s.items[id]
+	if !ok || !strategy.IsPaper || strategy.Status != fromStatus {
+		return nil, fmt.Errorf("strategy %v: %w", id, repository.ErrNotFound)
+	}
+	strategy.Status = toStatus
+	strategy.UpdatedAt = time.Now().UTC()
+	s.items[id] = strategy
+	strategyCopy := strategy
+	return &strategyCopy, nil
+}
+
+func (s *stubStrategyRepo) MarkPaperSkipNext(_ context.Context, id uuid.UUID) (*domain.Strategy, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	strategy, ok := s.items[id]
+	if !ok || !strategy.IsPaper || strategy.Status != domain.StrategyStatusActive {
+		return nil, fmt.Errorf("strategy %v: %w", id, repository.ErrNotFound)
+	}
+	strategy.SkipNextRun = true
+	strategy.UpdatedAt = time.Now().UTC()
+	s.items[id] = strategy
+	strategyCopy := strategy
+	return &strategyCopy, nil
+}
+
 func (s *stubStrategyRepo) Delete(_ context.Context, id uuid.UUID) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -2688,6 +2938,20 @@ func TestPauseStrategyAlreadyPaused(t *testing.T) {
 	}
 }
 
+func TestPauseStrategyRejectsLiveStrategy(t *testing.T) {
+	t.Parallel()
+	deps := testDeps()
+	liveActive := stratB
+	liveActive.Status = domain.StrategyStatusActive
+	deps.Strategies.(*stubStrategyRepo).items[liveActive.ID] = liveActive
+	srv := newTestServerWithDeps(t, deps)
+
+	rr := doRequest(t, srv, http.MethodPost, "/api/v1/strategies/"+liveActive.ID.String()+"/pause", nil)
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want %d; body: %s", rr.Code, http.StatusConflict, rr.Body.String())
+	}
+}
+
 func TestResumeStrategy(t *testing.T) {
 	t.Parallel()
 	deps := testDeps()
@@ -2706,6 +2970,20 @@ func TestResumeStrategy(t *testing.T) {
 	}
 }
 
+func TestResumeStrategyRejectsLiveStrategy(t *testing.T) {
+	t.Parallel()
+	deps := testDeps()
+	livePaused := stratB
+	livePaused.Status = domain.StrategyStatusPaused
+	deps.Strategies.(*stubStrategyRepo).items[livePaused.ID] = livePaused
+	srv := newTestServerWithDeps(t, deps)
+
+	rr := doRequest(t, srv, http.MethodPost, "/api/v1/strategies/"+livePaused.ID.String()+"/resume", nil)
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want %d; body: %s", rr.Code, http.StatusConflict, rr.Body.String())
+	}
+}
+
 func TestSkipNextStrategy(t *testing.T) {
 	t.Parallel()
 	srv := newTestServer(t)
@@ -2717,6 +2995,20 @@ func TestSkipNextStrategy(t *testing.T) {
 	body := decodeJSON[domain.Strategy](t, rr)
 	if !body.SkipNextRun {
 		t.Fatal("skip_next_run should be true")
+	}
+}
+
+func TestSkipNextStrategyRejectsLiveStrategy(t *testing.T) {
+	t.Parallel()
+	deps := testDeps()
+	liveActive := stratB
+	liveActive.Status = domain.StrategyStatusActive
+	deps.Strategies.(*stubStrategyRepo).items[liveActive.ID] = liveActive
+	srv := newTestServerWithDeps(t, deps)
+
+	rr := doRequest(t, srv, http.MethodPost, "/api/v1/strategies/"+liveActive.ID.String()+"/skip-next", nil)
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want %d; body: %s", rr.Code, http.StatusConflict, rr.Body.String())
 	}
 }
 

@@ -64,7 +64,7 @@ func readFrontendEventTypes() ([]string, error) {
 	if !ok {
 		return nil, errors.New("runtime.Caller failed")
 	}
-	path := filepath.Join(filepath.Dir(filename), "..", "..", "web", "src", "lib", "api", "websocket-events.ts")
+	path := filepath.Join(filepath.Dir(filename), "..", "..", "web", "src", "shared", "types", "websocket.ts")
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -75,12 +75,12 @@ func readFrontendEventTypes() ([]string, error) {
 	for _, line := range strings.Split(string(raw), "\n") {
 		trimmed := strings.TrimSpace(line)
 		if !inList {
-			if strings.HasPrefix(trimmed, "export const WEBSOCKET_EVENT_TYPES = [") {
+			if strings.HasPrefix(trimmed, "export const websocketEventTypes = [") {
 				inList = true
 			}
 			continue
 		}
-		if strings.HasPrefix(trimmed, "] as const;") {
+		if strings.HasPrefix(trimmed, "] as const") {
 			break
 		}
 		if trimmed == "" {

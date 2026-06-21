@@ -21,6 +21,12 @@ This directory records material technical decisions that shaped the current syst
 - [ADR-007: Deployment topology](007-deployment-topology.md)
 - [ADR-008: Correlated exposure controls](008-correlated-exposure.md)
 - [ADR-009: Human review gate](009-human-review-gate.md)
+- [ADR-010: Frontend routing, app shell, and repository organization](010-frontend-routing-app-shell-organization.md)
+- [ADR-011: Frontend server state and API client](011-frontend-server-state-api-client.md)
+- [ADR-012: Frontend authentication, token storage, and refresh](012-frontend-auth-token-refresh.md)
+- [ADR-013: Frontend WebSocket and realtime cache synchronization](013-frontend-websocket-realtime.md)
+- [ADR-014: Frontend UI data entry and display infrastructure](014-frontend-ui-data-entry-display.md)
+- [ADR-015: Frontend testing, mocks, accessibility, E2E, and observability](015-frontend-testing-mocks-observability.md)
 
 ## ADR status lifecycle
 

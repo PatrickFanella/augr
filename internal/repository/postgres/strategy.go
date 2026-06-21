@@ -192,6 +192,53 @@ func (r *StrategyRepo) Update(ctx context.Context, s *domain.Strategy) error {
 	return nil
 }
 
+// TransitionPaperStatus atomically changes a paper strategy from one status to
+// another. It returns ErrNotFound when no row satisfies the ID, paper-mode, and
+// status preconditions.
+func (r *StrategyRepo) TransitionPaperStatus(ctx context.Context, id uuid.UUID, fromStatus, toStatus string) (*domain.Strategy, error) {
+	row := r.pool.QueryRow(ctx,
+		`UPDATE strategies
+		 SET status = $1, updated_at = NOW()
+		 WHERE id = $2 AND is_paper = TRUE AND status = $3
+		 RETURNING id, name, description, ticker, market_type, schedule_cron, config, status, skip_next_run, is_paper, created_at, updated_at`,
+		toStatus,
+		id,
+		fromStatus,
+	)
+
+	s, err := scanStrategy(row)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("postgres: transition paper strategy %s: %w", id, ErrNotFound)
+		}
+		return nil, fmt.Errorf("postgres: transition paper strategy: %w", err)
+	}
+	return s, nil
+}
+
+// MarkPaperSkipNext atomically marks an active paper strategy to skip its next
+// scheduled run. It returns ErrNotFound when the ID, paper-mode, and active
+// status preconditions are not all satisfied.
+func (r *StrategyRepo) MarkPaperSkipNext(ctx context.Context, id uuid.UUID) (*domain.Strategy, error) {
+	row := r.pool.QueryRow(ctx,
+		`UPDATE strategies
+		 SET skip_next_run = TRUE, updated_at = NOW()
+		 WHERE id = $1 AND is_paper = TRUE AND status = $2
+		 RETURNING id, name, description, ticker, market_type, schedule_cron, config, status, skip_next_run, is_paper, created_at, updated_at`,
+		id,
+		domain.StrategyStatusActive,
+	)
+
+	s, err := scanStrategy(row)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("postgres: mark paper skip-next %s: %w", id, ErrNotFound)
+		}
+		return nil, fmt.Errorf("postgres: mark paper skip-next: %w", err)
+	}
+	return s, nil
+}
+
 // Delete removes a strategy by ID. It returns ErrNotFound when no row matches.
 func (r *StrategyRepo) Delete(ctx context.Context, id uuid.UUID) error {
 	tag, err := r.pool.Exec(ctx,

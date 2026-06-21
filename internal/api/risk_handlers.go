@@ -7,11 +7,13 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
+	"github.com/PatrickFanella/get-rich-quick/internal/risk"
 )
 
 type riskBreakerListerFunc interface {
@@ -32,34 +34,63 @@ func (s *Server) handleRiskStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleKillSwitchToggle(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Active bool   `json:"active"`
-		Reason string `json:"reason"`
-	}
+	var body KillSwitchToggleRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		respondError(w, http.StatusBadRequest, "invalid request body", ErrCodeBadRequest)
 		return
 	}
+	body.Reason = strings.TrimSpace(body.Reason)
+
+	if body.Reason == "" {
+		respondError(w, http.StatusBadRequest, "reason is required for kill switch changes", ErrCodeValidation)
+		return
+	}
+
+	if !body.Active && !s.requireAdminKey(w, r) {
+		return
+	}
 
 	if body.Active {
-		if body.Reason == "" {
-			respondError(w, http.StatusBadRequest, "reason is required when activating kill switch", ErrCodeValidation)
-			return
-		}
 		if err := s.risk.ActivateKillSwitch(r.Context(), body.Reason); err != nil {
 			respondError(w, http.StatusInternalServerError, "failed to activate kill switch", ErrCodeInternal)
 			return
 		}
 		s.writeAuditLog(r.Context(), actorOf(r), "kill_switch.activated", "system", nil,
-			map[string]string{"reason": body.Reason})
+			map[string]any{"reason": body.Reason, "requested_active": body.Active})
 	} else {
 		if err := s.risk.DeactivateKillSwitch(r.Context()); err != nil {
 			respondError(w, http.StatusInternalServerError, "failed to deactivate kill switch", ErrCodeInternal)
 			return
 		}
-		s.writeAuditLog(r.Context(), actorOf(r), "kill_switch.deactivated", "system", nil, nil)
+		s.writeAuditLog(r.Context(), actorOf(r), "kill_switch.deactivated", "system", nil,
+			map[string]any{"reason": body.Reason, "requested_active": body.Active})
 	}
-	respondJSON(w, http.StatusOK, map[string]bool{"active": body.Active})
+
+	status, err := s.risk.GetStatus(r.Context())
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to verify kill switch status", ErrCodeInternal)
+		return
+	}
+	respondJSON(w, http.StatusOK, KillSwitchToggleResponse{
+		Active:      status.KillSwitch.Active,
+		Reason:      status.KillSwitch.Reason,
+		Mechanisms:  status.KillSwitch.Mechanisms,
+		ActivatedAt: status.KillSwitch.ActivatedAt,
+		UpdatedAt:   status.UpdatedAt,
+	})
+}
+
+type KillSwitchToggleRequest struct {
+	Active bool   `json:"active"`
+	Reason string `json:"reason"`
+}
+
+type KillSwitchToggleResponse struct {
+	Active      bool                       `json:"active"`
+	Reason      string                     `json:"reason,omitempty"`
+	Mechanisms  []risk.KillSwitchMechanism `json:"mechanisms,omitempty"`
+	ActivatedAt *time.Time                 `json:"activated_at,omitempty"`
+	UpdatedAt   time.Time                  `json:"updated_at"`
 }
 
 func (s *Server) handleMarketKillSwitch(w http.ResponseWriter, r *http.Request) {
@@ -113,17 +144,24 @@ type RiskBreakerResetResponse struct {
 
 func (s *Server) requireAdmin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		adminKey := os.Getenv("ADMIN_API_KEY")
-		if adminKey == "" {
-			respondError(w, http.StatusServiceUnavailable, "ADMIN_API_KEY not configured", ErrCodeNotImplemented)
-			return
-		}
-		if r.Header.Get("X-Admin-Key") != adminKey {
-			respondError(w, http.StatusUnauthorized, "admin key required", ErrCodeUnauthorized)
+		if !s.requireAdminKey(w, r) {
 			return
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func (s *Server) requireAdminKey(w http.ResponseWriter, r *http.Request) bool {
+	adminKey := os.Getenv("ADMIN_API_KEY")
+	if adminKey == "" {
+		respondError(w, http.StatusServiceUnavailable, "ADMIN_API_KEY not configured", ErrCodeNotImplemented)
+		return false
+	}
+	if r.Header.Get("X-Admin-Key") != adminKey {
+		respondError(w, http.StatusUnauthorized, "admin key required", ErrCodeUnauthorized)
+		return false
+	}
+	return true
 }
 
 func (s *Server) handleRiskBreakerReset(w http.ResponseWriter, r *http.Request) {

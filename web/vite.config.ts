@@ -8,6 +8,11 @@ export default defineConfig({
   server: {
     host: '0.0.0.0', // Listen on all interfaces for LAN access
     proxy: {
+      '/api/v1/health': {
+        target: 'http://localhost:8081',
+        changeOrigin: true,
+        rewrite: () => '/health',
+      },
       '/api': {
         target: 'http://localhost:8081',
         changeOrigin: true,
