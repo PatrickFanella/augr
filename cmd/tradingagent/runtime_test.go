@@ -351,8 +351,9 @@ func TestNewAPIServerWiresAlpacaReconcileAutomationJob(t *testing.T) {
 		Environment: "development",
 		Database:    config.DatabaseConfig{URL: "postgres://ignored"},
 		Features: config.FeatureFlags{
-			EnableScheduler:       true,
-			EnableTickerDiscovery: true,
+			EnableScheduler:            true,
+			EnableTickerDiscovery:      true,
+			EnablePolymarketAutomation: true,
 		},
 		DataProviders: config.DataProviderConfigs{
 			Polygon: config.DataProviderConfig{APIKey: "polygon-key"},
@@ -423,8 +424,9 @@ func TestNewAPIServerWiresPolymarketReconcileAutomationJob(t *testing.T) {
 		Environment: "development",
 		Database:    config.DatabaseConfig{URL: "postgres://ignored"},
 		Features: config.FeatureFlags{
-			EnableScheduler:       true,
-			EnableTickerDiscovery: true,
+			EnableScheduler:            true,
+			EnableTickerDiscovery:      true,
+			EnablePolymarketAutomation: true,
 		},
 		DataProviders: config.DataProviderConfigs{
 			Polygon: config.DataProviderConfig{APIKey: "polygon-key"},

@@ -49,30 +49,31 @@ type StrategyTrigger interface {
 
 // OrchestratorDeps bundles external dependencies required by the orchestrator.
 type OrchestratorDeps struct {
-	Universe                *universe.Universe
-	Polygon                 *polygon.Client
-	DataService             *data.DataService
-	AlpacaReconciler        *AlpacaReconciler
-	OptionsProvider         data.OptionsDataProvider
-	LLMProvider             llm.Provider
-	EmbeddingProvider       embedding.Provider // optional; nil = skip embedding during triage
-	EventsProvider          data.EventsProvider
-	StrategyRepo            repository.StrategyRepository
-	PositionRepo            repository.PositionRepository
-	OpportunityRepo         repository.OpportunityRepository
-	AllocationDecisionRepo  repository.AllocationDecisionRepository
-	RunRepo                 repository.PipelineRunRepository
-	JobRunRepo              *pgrepo.JobRunRepo
-	OptionsScanRepo         *pgrepo.OptionsScanRepo
-	NewsFeedRepo            *pgrepo.NewsFeedRepo
-	StrategyTrigger         StrategyTrigger                        // optional; nil = no event-driven triggers
-	PolymarketAccountRepo   repository.PolymarketAccountRepository // optional; nil = skip profiling job
-	PolymarketReconciler    *polymarketexecution.Reconciler        // optional; nil = skip reconciliation job
-	PolymarketResolvedRepo  repository.PolymarketResolvedMarketsRepository
-	PolymarketWatchedRepo   repository.PolymarketWatchedMarketsRepository // optional; nil = skip discovery auto-watch
-	PolymarketDiscoveryRuns repository.PolymarketDiscoveryRunRepository   // optional; nil = skip chunked discovery job registration/execution
-	PolymarketCLOBURL       string                                        // optional; defaults to Polymarket CLOB base URL
-	KalshiCatalog           interface {
+	Universe                    *universe.Universe
+	Polygon                     *polygon.Client
+	DataService                 *data.DataService
+	AlpacaReconciler            *AlpacaReconciler
+	OptionsProvider             data.OptionsDataProvider
+	LLMProvider                 llm.Provider
+	EmbeddingProvider           embedding.Provider // optional; nil = skip embedding during triage
+	EventsProvider              data.EventsProvider
+	StrategyRepo                repository.StrategyRepository
+	PositionRepo                repository.PositionRepository
+	OpportunityRepo             repository.OpportunityRepository
+	AllocationDecisionRepo      repository.AllocationDecisionRepository
+	RunRepo                     repository.PipelineRunRepository
+	JobRunRepo                  *pgrepo.JobRunRepo
+	OptionsScanRepo             *pgrepo.OptionsScanRepo
+	NewsFeedRepo                *pgrepo.NewsFeedRepo
+	StrategyTrigger             StrategyTrigger                        // optional; nil = no event-driven triggers
+	PolymarketAccountRepo       repository.PolymarketAccountRepository // optional; nil = skip profiling job
+	PolymarketReconciler        *polymarketexecution.Reconciler        // optional; nil = skip reconciliation job
+	PolymarketResolvedRepo      repository.PolymarketResolvedMarketsRepository
+	PolymarketWatchedRepo       repository.PolymarketWatchedMarketsRepository // optional; nil = skip discovery auto-watch
+	PolymarketDiscoveryRuns     repository.PolymarketDiscoveryRunRepository   // optional; nil = skip chunked discovery job registration/execution
+	PolymarketCLOBURL           string                                        // optional; defaults to Polymarket CLOB base URL
+	DisablePolymarketAutomation bool                                          // disables Polymarket profile/reconcile/resolution/discovery cron jobs
+	KalshiCatalog               interface {
 		ListMarkets(context.Context, kalshidiscovery.ListOptions) ([]kalshidiscovery.MarketCandidate, string, error)
 	}
 	PortfolioAllocatorMode    portfolio.AllocatorMode
@@ -217,10 +218,12 @@ func (o *JobOrchestrator) RegisterAll() {
 	o.registerOvernightJobs()
 	o.registerWeeklyJobs()
 	o.registerNewsJobs()
-	o.registerPolymarketProfileJob()
-	o.registerPolymarketReconciliationJobs()
-	o.registerPolymarketResolutionsJob()
-	o.registerPolymarketDiscoveryJob()
+	if !o.deps.DisablePolymarketAutomation {
+		o.registerPolymarketProfileJob()
+		o.registerPolymarketReconciliationJobs()
+		o.registerPolymarketResolutionsJob()
+		o.registerPolymarketDiscoveryJob()
+	}
 	o.registerKalshiDiscoveryJob()
 	o.registerReportJobs()
 	o.registerPortfolioAllocatorJobs()

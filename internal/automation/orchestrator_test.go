@@ -244,6 +244,29 @@ func TestJobOrchestratorRegisterAllAddsPolymarketReconcile(t *testing.T) {
 	}
 }
 
+func TestJobOrchestratorRegisterAllCanDisablePolymarketAutomation(t *testing.T) {
+	t.Parallel()
+
+	reconciler := polymarketexecution.NewReconciler(polymarketexecution.ReconcilerDeps{
+		Broker:       &polymarketBrokerStub{},
+		PositionRepo: &polymarketPositionRepoStub{},
+		AuditLogRepo: &polymarketAuditRepoStub{},
+		Metrics:      &polymarketReconcilerMetricsStub{},
+		Logger:       slog.Default(),
+	})
+	orch := NewJobOrchestrator(OrchestratorDeps{
+		PolymarketReconciler:        reconciler,
+		DisablePolymarketAutomation: true,
+	})
+	orch.RegisterAll()
+
+	for _, name := range []string{"polymarket_profiles", "polymarket_reconcile", "polymarket_resolutions", "polymarket_strategy_discovery"} {
+		if _, ok := orch.jobs[name]; ok {
+			t.Fatalf("job %q registered with DisablePolymarketAutomation=true", name)
+		}
+	}
+}
+
 func TestJobOrchestratorRegisterAllAddsKalshiDiscovery(t *testing.T) {
 	t.Parallel()
 

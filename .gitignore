@@ -400,3 +400,8 @@ TradingAgents/
 /bin/
 /tradingagent
 .golangci.yml.bak
+
+# BEGIN Blacktower worktrees
+.blacktower/worktrees/
+.blacktower/worktrees.json
+# END Blacktower worktrees

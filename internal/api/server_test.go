@@ -352,7 +352,7 @@ func TestHealthEndpoint(t *testing.T) {
 	deps.RedisHealth = redisHealth
 	srv := newTestServerWithDeps(t, deps)
 
-	for _, path := range []string{"/health", "/healthz"} {
+	for _, path := range []string{"/health", "/healthz", "/api/v1/health"} {
 		rr := doRequest(t, srv, http.MethodGet, path, nil)
 
 		if rr.Code != http.StatusOK {
@@ -370,11 +370,11 @@ func TestHealthEndpoint(t *testing.T) {
 		}
 	}
 
-	if dbHealth.calls.Load() != 2 {
-		t.Fatalf("db health calls = %d, want 2", dbHealth.calls.Load())
+	if dbHealth.calls.Load() != 3 {
+		t.Fatalf("db health calls = %d, want 3", dbHealth.calls.Load())
 	}
-	if redisHealth.calls.Load() != 2 {
-		t.Fatalf("redis health calls = %d, want 2", redisHealth.calls.Load())
+	if redisHealth.calls.Load() != 3 {
+		t.Fatalf("redis health calls = %d, want 3", redisHealth.calls.Load())
 	}
 }
 

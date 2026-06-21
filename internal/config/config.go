@@ -265,12 +265,13 @@ type HighLatencyAlertRuleConfig struct {
 
 // FeatureFlags contains boolean feature toggles.
 type FeatureFlags struct {
-	EnableScheduler       bool
-	SchedulerJobTimeout   time.Duration
-	EnableRedisCache      bool
-	EnableAgentMemory     bool
-	EnableLiveTrading     bool
-	EnableTickerDiscovery bool
+	EnableScheduler            bool
+	SchedulerJobTimeout        time.Duration
+	EnableRedisCache           bool
+	EnableAgentMemory          bool
+	EnableLiveTrading          bool
+	EnableTickerDiscovery      bool
+	EnablePolymarketAutomation bool
 }
 
 // Load loads configuration from the environment and validates it.
@@ -500,6 +501,11 @@ func loadFromEnvironment() (Config, error) {
 		return Config{}, err
 	}
 
+	enablePolymarketAutomation, err := getEnvBool("ENABLE_POLYMARKET_AUTOMATION", true)
+	if err != nil {
+		return Config{}, err
+	}
+
 	tickerDiscoveryMinADV, err := getEnvFloat64("TICKER_DISCOVERY_MIN_ADV", 100000)
 	if err != nil {
 		return Config{}, err
@@ -696,12 +702,13 @@ func loadFromEnvironment() (Config, error) {
 			},
 		},
 		Features: FeatureFlags{
-			EnableScheduler:       enableScheduler,
-			SchedulerJobTimeout:   schedulerJobTimeout,
-			EnableRedisCache:      enableRedisCache,
-			EnableAgentMemory:     enableAgentMemory,
-			EnableLiveTrading:     enableLiveTrading,
-			EnableTickerDiscovery: enableTickerDiscovery,
+			EnableScheduler:            enableScheduler,
+			SchedulerJobTimeout:        schedulerJobTimeout,
+			EnableRedisCache:           enableRedisCache,
+			EnableAgentMemory:          enableAgentMemory,
+			EnableLiveTrading:          enableLiveTrading,
+			EnableTickerDiscovery:      enableTickerDiscovery,
+			EnablePolymarketAutomation: enablePolymarketAutomation,
 		},
 		LiveTradingAllowedStrategies: getEnvCSV("LIVE_TRADING_ALLOWED_STRATEGIES"),
 		LiveTradingAllowedBrokers:    getEnvCSV("LIVE_TRADING_ALLOWED_BROKERS"),

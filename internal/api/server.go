@@ -406,6 +406,7 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 	// Health check
 	r.Get("/healthz", s.handleHealth)
 	r.Get("/health", s.handleHealth)
+	r.Get("/api/v1/health", s.handleHealth)
 	r.Get("/metrics", s.handleMetrics)
 
 	// WebSocket endpoint for real-time event streaming.
