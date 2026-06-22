@@ -1,4 +1,6 @@
+import { useState, useEffect } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
+import { Menu, ChevronLeft, LayoutDashboard, Bot, Lightbulb, Play, Clock, ShoppingCart, ArrowLeftRight, PieChart, ShieldAlert } from 'lucide-react'
 
 import { getSettings } from '@/shared/api/endpoints'
 import { useAuth } from '@/shared/auth/AuthProvider'
@@ -7,6 +9,28 @@ import { queryKeys } from '@/shared/query/keys'
 import { useRealtime } from '@/shared/websocket/RealtimeProvider'
 import { useQuery } from '@tanstack/react-query'
 
+const STORAGE_KEY = 'augr-sidebar-collapsed'
+
+const navItems = [
+  { to: '/cockpit', label: 'Cockpit', icon: LayoutDashboard },
+  { to: '/automation', label: 'Automation', icon: Bot },
+  { to: '/strategies', label: 'Strategies', icon: Lightbulb },
+  { to: '/runs', label: 'Runs', icon: Play },
+  { to: '/events', label: 'Events', icon: Clock },
+  { to: '/orders', label: 'Orders', icon: ShoppingCart },
+  { to: '/trades', label: 'Trades', icon: ArrowLeftRight },
+  { to: '/portfolio', label: 'Portfolio', icon: PieChart },
+  { to: '/risk', label: 'Risk', icon: ShieldAlert },
+]
+
+function getInitialCollapsedState(): boolean {
+  if (typeof window === 'undefined') return false
+  const stored = localStorage.getItem(STORAGE_KEY)
+  if (stored !== null) return stored === 'true'
+  // Auto-collapse on mobile by default
+  return window.innerWidth <= 840
+}
+
 export function AppShell() {
   const auth = useAuth()
   const realtime = useRealtime()
@@ -14,28 +38,78 @@ export function AppShell() {
   const broker = settings.data?.system.connected_brokers.find((item) => item.configured)
   const mode = broker?.paper_mode === false ? 'Live' : 'Paper'
 
+  const [isCollapsed, setIsCollapsed] = useState(getInitialCollapsedState)
+  const [isMobileOpen, setIsMobileOpen] = useState(false)
+
+  const isMobile = typeof window !== 'undefined' && window.innerWidth <= 840
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, String(isCollapsed))
+  }, [isCollapsed])
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth <= 840 && !isCollapsed) {
+        setIsCollapsed(true)
+      }
+    }
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [isCollapsed])
+
+  const toggleSidebar = () => {
+    if (isMobile) {
+      setIsMobileOpen(!isMobileOpen)
+    } else {
+      setIsCollapsed(!isCollapsed)
+    }
+  }
+
+  const handleSidebarClose = () => {
+    setIsMobileOpen(false)
+  }
+
+  const sidebarCollapsed = isMobile ? false : isCollapsed
+
   return (
-    <div className="app-layout">
+    <div className="app-layout" data-sidebar-collapsed={String(sidebarCollapsed)}>
       <a className="skip-link" href="#main-content">Skip to main content</a>
-      <aside className="sidebar" aria-label="Primary navigation">
-        <div className="brand">Augr</div>
+      
+      {/* Mobile backdrop */}
+      {isMobile && isMobileOpen && (
+        <div className="sidebar-backdrop" onClick={handleSidebarClose} />
+      )}
+      
+      <aside className={`sidebar ${isMobile ? 'mobile' : ''} ${isMobileOpen ? 'open' : ''}`} aria-label="Primary navigation">
+        <div className="brand">
+          {sidebarCollapsed ? 'A' : 'Augr'}
+        </div>
         <nav aria-label="Primary">
-          <NavLink to="/cockpit">Cockpit</NavLink>
-          <NavLink to="/automation">Automation</NavLink>
-          <NavLink to="/strategies">Strategies</NavLink>
-          <NavLink to="/runs">Runs</NavLink>
-          <NavLink to="/events">Events</NavLink>
-          <NavLink to="/orders">Orders</NavLink>
-          <NavLink to="/trades">Trades</NavLink>
-          <NavLink to="/portfolio">Portfolio</NavLink>
-          <NavLink to="/risk">Risk</NavLink>
+          {navItems.map(({ to, label, icon: Icon }) => (
+            <NavLink key={to} to={to} data-label={label} onClick={isMobile ? handleSidebarClose : undefined}>
+              <Icon size={18} />
+              <span className="nav-label">{label}</span>
+            </NavLink>
+          ))}
         </nav>
       </aside>
+      
       <div className="workspace">
         <header className="topbar">
-          <div>
-            <p className="eyebrow">{settings.data?.system.environment ?? 'Environment unknown'}</p>
-            <strong>{mode} mode</strong>
+          <div className="topbar-left">
+            <button
+              type="button"
+              className="sidebar-toggle"
+              onClick={toggleSidebar}
+              aria-label={isMobileOpen ? 'Close sidebar' : (sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar')}
+              aria-expanded={!sidebarCollapsed}
+            >
+              {isMobile ? (isMobileOpen ? <ChevronLeft size={20} /> : <Menu size={20} />) : (sidebarCollapsed ? <Menu size={20} /> : <ChevronLeft size={20} />)}
+            </button>
+            <div className="topbar-info">
+              <p className="eyebrow">{settings.data?.system.environment ?? 'Environment unknown'}</p>
+              <strong>{mode} mode</strong>
+            </div>
           </div>
           <div className="header-cluster">
             <span className={`status-pill ${realtime.status}`}>Realtime: {realtime.status}</span>
@@ -55,8 +129,8 @@ export function AppShell() {
                 <strong>{event.type}</strong>
                 <time>{new Date(event.timestamp).toLocaleTimeString()}</time>
                 <div className="header-cluster">
-                  {event.strategy_id ? <EntityLink kind="strategy" id={event.strategy_id} label="Strategy" copy={false} /> : null}
-                  {event.run_id ? <EntityLink kind="run" id={event.run_id} label="Run" copy={false} /> : null}
+                  {event.strategy_id ? <EntityLink kind="strategy" id={event.strategy_id} copy={false} /> : null}
+                  {event.run_id ? <EntityLink kind="run" id={event.run_id} copy={false} /> : null}
                 </div>
               </li>
             ))}

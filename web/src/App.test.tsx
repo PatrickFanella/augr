@@ -180,12 +180,12 @@ describe('first vertical slice app', () => {
     render(<App />)
 
     expect(await screen.findByText(/Cockpit classification: degraded/i)).toBeTruthy()
-    expect(await screen.findByRole('heading', { name: /infrastructure health/i })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: /System health/i })).toBeTruthy()
     expect(await screen.findByRole('table', { name: /cockpit open positions/i })).toBeTruthy()
     expect(await screen.findByRole('table', { name: /cockpit recent orders/i })).toBeTruthy()
     expect(await screen.findByRole('table', { name: /cockpit recent trades/i })).toBeTruthy()
-    expect(screen.getAllByRole('link', { name: /^Order$/i })[0]).toHaveAttribute('href', '/orders/00000000-0000-4000-8000-000000000040')
-    expect(screen.getAllByRole('link', { name: /^Position trades$/i })[0]).toHaveAttribute('href', '/trades?position_id=00000000-0000-4000-8000-000000000030')
+    expect(screen.getAllByRole('link', { name: /Order/i })[0]).toHaveAttribute('href', '/orders/00000000-0000-4000-8000-000000000040')
+    expect(screen.getAllByRole('link', { name: /Position/i })[0]).toHaveAttribute('href', '/trades?position_id=00000000-0000-4000-8000-000000000030')
   })
 
   it('treats open circuit breaker state as safe when all cockpit signals are normal', async () => {
@@ -226,7 +226,7 @@ describe('first vertical slice app', () => {
       http.get(`${apiBaseUrl}/automation/health`, () => HttpResponse.json({ error: 'not configured', code: 'ERR_NOT_IMPLEMENTED' }, { status: 501 })),
     )
     render(<App />)
-    const panel = await screen.findByRole('heading', { name: /automation health/i })
+    const panel = await screen.findByRole('heading', { name: /System health/i })
     expect(await within(panel.closest('section') as HTMLElement).findByText(/feature unavailable/i)).toBeTruthy()
   })
 
@@ -240,7 +240,7 @@ describe('first vertical slice app', () => {
 
     expect(await screen.findByRole('heading', { name: /system overview/i })).toBeTruthy()
     expect(await screen.findByText('normal')).toBeTruthy()
-    const panel = await screen.findByRole('heading', { name: /automation health/i })
+    const panel = await screen.findByRole('heading', { name: /System health/i })
     expect((await within(panel.closest('section') as HTMLElement).findByRole('alert')).textContent).toContain('automation exploded')
   })
 
@@ -354,7 +354,7 @@ describe('first vertical slice app', () => {
     render(<App />)
 
     expect(await screen.findByRole('alert')).toHaveTextContent('strategy list exploded')
-    await userEvent.click(screen.getByRole('button', { name: /retry/i }))
+    await userEvent.click(screen.getByRole('button', { name: /reload/i }))
     expect((await screen.findAllByRole('link', { name: /dev paper mean reversion/i })).length).toBeGreaterThan(0)
 
     resetApp('/strategies')
@@ -426,7 +426,7 @@ describe('first vertical slice app', () => {
     }))
     render(<App />)
     expect(await screen.findByRole('alert')).toHaveTextContent('run list exploded')
-    await userEvent.click(screen.getByRole('button', { name: /retry/i }))
+    await userEvent.click(screen.getByRole('button', { name: /reload/i }))
     expect(await screen.findByRole('table')).toBeTruthy()
 
     resetApp('/runs')
@@ -531,7 +531,7 @@ describe('first vertical slice app', () => {
     }))
     render(<App />)
     expect(await screen.findByRole('alert')).toHaveTextContent('decisions exploded')
-    await userEvent.click(screen.getByRole('button', { name: /retry/i }))
+    await userEvent.click(screen.getByRole('button', { name: /reload/i }))
     expect(await screen.findByText(/Recovered decision/i)).toBeTruthy()
 
     resetApp('/runs/00000000-0000-4000-8000-000000000020?tab=decisions')
@@ -603,8 +603,8 @@ describe('first vertical slice app', () => {
 
     expect(await screen.findByRole('heading', { name: /^persisted events$/i })).toBeTruthy()
     expect(await screen.findByText(/Analyst decision recorded/i)).toBeTruthy()
-    expect(screen.getAllByRole('link', { name: /^Strategy$/i })[0]).toHaveAttribute('href', '/strategies/00000000-0000-4000-8000-000000000010')
-    expect(screen.getAllByRole('link', { name: /^Run$/i })[0]).toHaveAttribute('href', '/runs/00000000-0000-4000-8000-000000000020')
+    expect(screen.getAllByRole('link', { name: /Strategy/i })[0]).toHaveAttribute('href', '/strategies/00000000-0000-4000-8000-000000000010')
+    expect(screen.getAllByRole('link', { name: /Run/i })[0]).toHaveAttribute('href', '/runs/00000000-0000-4000-8000-000000000020')
     await userEvent.type(screen.getByLabelText(/event kind/i), 'signal')
     expect(window.location.search).toContain('event_kind=signal')
     expect(await screen.findByText(/Risk signal reviewed/i)).toBeTruthy()
@@ -616,9 +616,9 @@ describe('first vertical slice app', () => {
     render(<App />)
 
     expect(await screen.findByText(/Analyst decision recorded/i)).toBeTruthy()
-    expect(screen.getByRole('link', { name: /^Order$/i })).toHaveAttribute('href', '/orders/00000000-0000-4000-8000-000000000040?from=%2Fevents%3Fevent_kind%3Dagent_decision')
+    expect(screen.getByRole('link', { name: /Order/i })).toHaveAttribute('href', '/orders/00000000-0000-4000-8000-000000000040?from=%2Fevents%3Fevent_kind%3Dagent_decision')
     expect(screen.getAllByRole('button', { name: /copy event id/i }).length).toBeGreaterThan(0)
-    expect(screen.getByRole('link', { name: /^Strategy$/i })).toHaveAttribute('href', '/strategies/00000000-0000-4000-8000-000000000010?from=%2Fevents%3Fevent_kind%3Dagent_decision')
+    expect(screen.getByRole('link', { name: /Strategy/i })).toHaveAttribute('href', '/strategies/00000000-0000-4000-8000-000000000010?from=%2Fevents%3Fevent_kind%3Dagent_decision')
   })
 
   it('links realtime drawer activity to strategy and run when ids exist', async () => {
@@ -630,8 +630,8 @@ describe('first vertical slice app', () => {
     act(() => FakeWebSocket.instances[0]!.onmessage?.({ data: JSON.stringify({ type: 'pipeline_start', strategy_id: '00000000-0000-4000-8000-000000000010', run_id: '00000000-0000-4000-8000-000000000020', timestamp: fixtureDate }) }))
 
     const drawer = screen.getByRole('complementary', { name: /global realtime activity/i })
-    expect(await within(drawer).findByRole('link', { name: /^Strategy$/i })).toHaveAttribute('href', '/strategies/00000000-0000-4000-8000-000000000010')
-    expect(within(drawer).getByRole('link', { name: /^Run$/i })).toHaveAttribute('href', '/runs/00000000-0000-4000-8000-000000000020')
+    expect(await within(drawer).findByRole('link', { name: /Strategy/i })).toHaveAttribute('href', '/strategies/00000000-0000-4000-8000-000000000010')
+    expect(within(drawer).getByRole('link', { name: /Run/i })).toHaveAttribute('href', '/runs/00000000-0000-4000-8000-000000000020')
   })
 
   it('shows persisted event empty, retry, and 501 states', async () => {
@@ -651,7 +651,7 @@ describe('first vertical slice app', () => {
     }))
     render(<App />)
     expect(await screen.findByRole('alert')).toHaveTextContent('events exploded')
-    await userEvent.click(screen.getByRole('button', { name: /retry/i }))
+    await userEvent.click(screen.getByRole('button', { name: /reload/i }))
     expect(await screen.findByText(/Recovered event/i)).toBeTruthy()
 
     resetApp('/events')
@@ -682,7 +682,7 @@ describe('first vertical slice app', () => {
     expect(await screen.findByRole('heading', { name: /^portfolio$/i })).toBeTruthy()
     expect(await screen.findByRole('table', { name: /open positions/i })).toBeTruthy()
     expect(screen.getAllByText(/Unrealized P\/L/i).length).toBeGreaterThan(0)
-    expect(screen.getAllByRole('link', { name: /^Strategy$/i })[0]).toHaveAttribute('href', '/strategies/00000000-0000-4000-8000-000000000010')
+    expect(screen.getAllByRole('link', { name: /Strategy/i })[0]).toHaveAttribute('href', '/strategies/00000000-0000-4000-8000-000000000010')
   })
 
   it('keeps portfolio filters in URL and handles unknown sides and missing totals', async () => {
@@ -715,7 +715,7 @@ describe('first vertical slice app', () => {
     }))
     render(<App />)
     expect(await screen.findByRole('alert')).toHaveTextContent('positions exploded')
-    await userEvent.click(screen.getByRole('button', { name: /retry/i }))
+    await userEvent.click(screen.getByRole('button', { name: /reload/i }))
     expect(await screen.findByRole('table', { name: /open positions/i })).toBeTruthy()
 
     act(() => FakeWebSocket.instances[0]!.onmessage?.({ data: JSON.stringify({ type: 'position_update', timestamp: fixtureDate }) }))
@@ -731,8 +731,8 @@ describe('first vertical slice app', () => {
     expect(await screen.findByRole('table', { name: /allocator opportunities/i })).toBeTruthy()
     expect(await screen.findByRole('table', { name: /allocator decisions/i })).toBeTruthy()
     expect(screen.getByText(/account_balance_unavailable/i)).toBeTruthy()
-    expect(screen.getAllByRole('link', { name: /^Strategy$/i })[0]).toHaveAttribute('href', '/strategies/00000000-0000-4000-8000-000000000010?from=%2Fportfolio%3Ftab%3Dallocator')
-    expect(screen.getAllByRole('link', { name: /^Run$/i })[0]).toHaveAttribute('href', '/runs/00000000-0000-4000-8000-000000000020?from=%2Fportfolio%3Ftab%3Dallocator')
+    expect(screen.getAllByRole('link', { name: /Strategy/i })[0]).toHaveAttribute('href', '/strategies/00000000-0000-4000-8000-000000000010?from=%2Fportfolio%3Ftab%3Dallocator')
+    expect(screen.getAllByRole('link', { name: /Run/i })[0]).toHaveAttribute('href', '/runs/00000000-0000-4000-8000-000000000020?from=%2Fportfolio%3Ftab%3Dallocator')
   })
 
   it('keeps allocator filters in URL and renders unknown allocator data safely', async () => {
@@ -770,7 +770,7 @@ describe('first vertical slice app', () => {
     }))
     render(<App />)
     expect(await screen.findByRole('alert')).toHaveTextContent('allocator exploded')
-    await userEvent.click(screen.getByRole('button', { name: /retry/i }))
+    await userEvent.click(screen.getByRole('button', { name: /reload/i }))
     expect(await screen.findByText(/Recovered opportunity/i)).toBeTruthy()
 
     resetApp('/portfolio?tab=allocator')
@@ -787,8 +787,8 @@ describe('first vertical slice app', () => {
 
     expect(await screen.findByRole('heading', { name: /^orders$/i })).toBeTruthy()
     expect(await screen.findByRole('table', { name: /^orders$/i })).toBeTruthy()
-    expect(screen.getAllByRole('link', { name: /^Strategy$/i })[0]).toHaveAttribute('href', '/strategies/00000000-0000-4000-8000-000000000010')
-    expect(screen.getAllByRole('link', { name: /^Run$/i })[0]).toHaveAttribute('href', '/runs/00000000-0000-4000-8000-000000000020')
+    expect(screen.getAllByRole('link', { name: /Strategy/i })[0]).toHaveAttribute('href', '/strategies/00000000-0000-4000-8000-000000000010')
+    expect(screen.getAllByRole('link', { name: /Run/i })[0]).toHaveAttribute('href', '/runs/00000000-0000-4000-8000-000000000020')
     expect(screen.getAllByText(/paper-broker|backup-broker/i).length).toBeGreaterThan(0)
   })
 
@@ -825,7 +825,7 @@ describe('first vertical slice app', () => {
     }))
     render(<App />)
     expect(await screen.findByRole('alert')).toHaveTextContent('orders exploded')
-    await userEvent.click(screen.getByRole('button', { name: /retry/i }))
+    await userEvent.click(screen.getByRole('button', { name: /reload/i }))
     expect(await screen.findByRole('table', { name: /^orders$/i })).toBeTruthy()
 
     act(() => FakeWebSocket.instances[0]!.onmessage?.({ data: JSON.stringify({ type: 'order_filled', timestamp: fixtureDate }) }))
@@ -931,7 +931,7 @@ describe('first vertical slice app', () => {
     }))
     render(<App />)
     expect(await screen.findByRole('alert')).toHaveTextContent('trades exploded')
-    await userEvent.click(screen.getByRole('button', { name: /retry/i }))
+    await userEvent.click(screen.getByRole('button', { name: /reload/i }))
     expect(await screen.findByRole('table', { name: /^trades$/i })).toBeTruthy()
 
     act(() => FakeWebSocket.instances[0]!.onmessage?.({ data: JSON.stringify({ type: 'order_filled', timestamp: fixtureDate }) }))
@@ -990,7 +990,7 @@ describe('first vertical slice app', () => {
     const statusHeading = await screen.findByRole('heading', { name: /risk engine status/i })
     const statusPanel = statusHeading.closest('section') as HTMLElement
     expect(await within(statusPanel).findByRole('alert')).toHaveTextContent('risk exploded')
-    await userEvent.click(within(statusPanel).getByRole('button', { name: /retry/i }))
+    await userEvent.click(within(statusPanel).getByRole('button', { name: /reload/i }))
     expect(await screen.findByText('normal')).toBeTruthy()
 
     resetApp('/risk')

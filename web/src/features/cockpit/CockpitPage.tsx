@@ -1,5 +1,7 @@
 import { useEffect, useId, type ReactNode } from 'react'
 import { useQuery, type UseQueryResult } from '@tanstack/react-query'
+import { RefreshCw } from 'lucide-react'
+import { AreaChart, Area, ResponsiveContainer, Tooltip, PieChart, Pie, Cell } from 'recharts'
 
 import { getAutomationHealth, getHealth, getOpenPortfolioPositions, getOrders, getPortfolioSummary, getRiskBreakers, getRiskCockpit, getRiskStatus, getRunningRuns, getTrades } from '@/shared/api/endpoints'
 import { isApiClientError } from '@/shared/api/errors'
@@ -18,13 +20,27 @@ function statusClass(status: string) {
   return 'warning'
 }
 
+function pnlClass(value: number) {
+  if (value > 0) return 'success'
+  if (value < 0) return 'warning'
+  return 'unknown'
+}
+
+function formatCurrency(value: number) {
+  return value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
 function QueryPanel<T>({ title, query, children, wide = false }: { title: string; query: UseQueryResult<T, Error>; children: (data: T) => ReactNode; wide?: boolean }) {
   const titleId = useId()
   return (
     <section className={`panel ${wide ? 'wide-panel' : ''}`} aria-labelledby={titleId}>
       <div className="panel-header">
         <h2 id={titleId}>{title}</h2>
-        <button type="button" onClick={() => void query.refetch()}>Retry</button>
+        {query.isError ? (
+          <button type="button" onClick={() => void query.refetch()}><RefreshCw size={14} /> Reload</button>
+        ) : (
+          <button type="button" className="btn-icon" onClick={() => void query.refetch()} aria-label="Reload"><RefreshCw size={14} /></button>
+        )}
       </div>
       {query.isLoading ? <LoadingState label={`Loading ${title.toLowerCase()}…`} /> : null}
       {query.isError ? <ErrorState error={query.error} onRetry={() => void query.refetch()} /> : null}
@@ -77,8 +93,8 @@ function RecentRuns({ runs }: { runs: PipelineRun[] }) {
         <tr key={run.id}>
           <td>{run.ticker}</td>
           <td><span className={`status-pill ${statusClass(run.status)}`}>{run.status}</span></td>
-          <td><EntityLink kind="run" id={run.id} label="Run" /></td>
-          <td><EntityLink kind="strategy" id={run.strategy_id} label="Strategy" /></td>
+          <td><EntityLink kind="run" id={run.id} /></td>
+          <td><EntityLink kind="strategy" id={run.strategy_id} /></td>
           <td>{new Date(run.started_at).toLocaleString()}</td>
         </tr>
       ))}</tbody>
@@ -90,12 +106,12 @@ function OpenPositions({ positions }: { positions: Position[] }) {
   if (positions.length === 0) return <p>No open positions.</p>
   return (
     <table aria-label="cockpit open positions">
-      <thead><tr><th>Ticker</th><th>Side</th><th>P&L</th><th>Position</th><th>Strategy</th></tr></thead>
+      <thead><tr><th>Ticker</th><th>Side</th><th>P&amp;L</th><th>Position</th><th>Strategy</th></tr></thead>
       <tbody>{positions.slice(0, 5).map((position) => (
         <tr key={position.id}>
           <td>{position.ticker}</td><td>{position.side}</td><td>{position.unrealized_pnl?.toFixed(2) ?? 'Unknown'}</td>
-          <td><EntityLink kind="position" id={position.id} label="Position trades" /></td>
-          <td><EntityLink kind="strategy" id={position.strategy_id} label="Strategy" /></td>
+          <td><EntityLink kind="position" id={position.id} /></td>
+          <td><EntityLink kind="strategy" id={position.strategy_id} /></td>
         </tr>
       ))}</tbody>
     </table>
@@ -110,8 +126,8 @@ function RecentOrders({ orders }: { orders: Order[] }) {
       <tbody>{orders.slice(0, 5).map((order) => (
         <tr key={order.id}>
           <td>{order.ticker}</td><td><span className={`status-pill ${statusClass(order.status)}`}>{order.status}</span></td>
-          <td><EntityLink kind="order" id={order.id} label="Order" /></td>
-          <td><EntityLink kind="run" id={order.pipeline_run_id} label="Run" /></td>
+          <td><EntityLink kind="order" id={order.id} /></td>
+          <td><EntityLink kind="run" id={order.pipeline_run_id} /></td>
         </tr>
       ))}</tbody>
     </table>
@@ -126,8 +142,8 @@ function RecentTrades({ trades }: { trades: Trade[] }) {
       <tbody>{trades.slice(0, 5).map((trade) => (
         <tr key={trade.id}>
           <td>{trade.ticker}</td><td>{trade.side}</td><td>{trade.price.toFixed(2)}</td>
-          <td><EntityLink kind="order" id={trade.order_id} label="Order" /></td>
-          <td><EntityLink kind="position" id={trade.position_id} label="Position trades" /></td>
+          <td><EntityLink kind="order" id={trade.order_id} /></td>
+          <td><EntityLink kind="position" id={trade.position_id} /></td>
         </tr>
       ))}</tbody>
     </table>
@@ -149,6 +165,9 @@ export function CockpitPage() {
   const automation = useQuery({ queryKey: queryKeys.automationHealth, queryFn: ({ signal }) => getAutomationHealth(signal), refetchInterval: 30_000 })
   const hasWidgetError = [health, portfolio, openPositions, runs, orders, trades, automation].some((query) => query.isError && !(isApiClientError(query.error) && query.error.kind === 'not_implemented'))
   const classification = classifyCockpit({ risk: risk.data, cockpit: riskCockpit.data, breakers: breakers.data, health: health.data, automationHealthy: automation.data?.healthy, realtimeStatus: realtime.status, hasWidgetError })
+  const portfolioPnl = portfolio.data ? portfolio.data.unrealized_pnl + portfolio.data.realized_pnl : 0
+  const pnlSparklineData = portfolio.data ? [{ name: 'P/L', unrealized: portfolio.data.unrealized_pnl, realized: portfolio.data.realized_pnl }] : []
+  const portfolioDistribution = openPositions.data?.data?.slice(0, 6).map((position, index) => ({ name: position.ticker, value: Math.max(Math.abs(position.unrealized_pnl ?? 0), 1), fill: ['#4f46e5', '#0f766e', '#06b6d4', '#8b5cf6', '#14b8a6', '#6366f1'][index % 6] })) ?? []
 
   useEffect(() => {
     send({ action: 'subscribe_all' })
@@ -160,76 +179,125 @@ export function CockpitPage() {
         <Breadcrumbs items={[{ label: 'Cockpit' }]} />
         <p className="eyebrow">Operator cockpit</p>
         <h1 id="cockpit-heading">System overview</h1>
-        <p role="status" className={`status-pill ${classification}`}>Cockpit classification: {classification}</p>
-        <p>{classificationCopy(classification)}</p>
-        <div className="metric-row">
-          <span className={`status-pill ${statusClass(realtime.status)}`}>WebSocket {realtime.status}</span>
-          <span>Reconnect failures: {realtime.failedAttempts}</span>
-          <span>Buffered events: {realtime.events.length}/250</span>
+        <div className="metrics-grid">
+          <div>
+            <p role="status" className={`status-pill ${classification}`}>Cockpit classification: {classification}</p>
+            <p>{classificationCopy(classification)}</p>
+            <div className="metric-row">
+              <span className={`status-pill ${statusClass(realtime.status)}`}>WebSocket {realtime.status}</span>
+              <span>Reconnect failures: {realtime.failedAttempts}</span>
+              <span>Buffered events: {realtime.events.length}/250</span>
+            </div>
+          </div>
+          <dl className="kv-grid">
+            <dt>Open positions</dt><dd>{portfolio.data?.open_positions ?? '—'}</dd>
+            <dt>Unrealized P&amp;L</dt><dd><span className={`status-pill ${pnlClass(portfolio.data?.unrealized_pnl ?? 0)}`}>{formatCurrency(portfolio.data?.unrealized_pnl ?? 0)}</span></dd>
+            <dt>Realized P&amp;L</dt><dd><span className={`status-pill ${pnlClass(portfolio.data?.realized_pnl ?? 0)}`}>{formatCurrency(portfolio.data?.realized_pnl ?? 0)}</span></dd>
+            <dt>Total P&amp;L</dt><dd><span className={`status-pill ${pnlClass(portfolioPnl)}`}>{formatCurrency(portfolioPnl)}</span></dd>
+          </dl>
+        </div>
+        <div className="metrics-grid">
+          <div style={{ minHeight: 120 }}>
+            <ResponsiveContainer width="100%" height={120}>
+              <AreaChart data={pnlSparklineData}>
+                <defs>
+                  <linearGradient id="unrealizedPnlGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.45} />
+                    <stop offset="95%" stopColor="#4f46e5" stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="realizedPnlGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#0f766e" stopOpacity={0.45} />
+                    <stop offset="95%" stopColor="#0f766e" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <Tooltip formatter={(value) => formatCurrency(Number(value ?? 0))} />
+                <Area type="monotone" dataKey="unrealized" stroke="#4f46e5" fill="url(#unrealizedPnlGradient)" strokeWidth={2} dot={false} />
+                <Area type="monotone" dataKey="realized" stroke="#0f766e" fill="url(#realizedPnlGradient)" strokeWidth={2} dot={false} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+          <div style={{ minHeight: 120 }}>
+            {portfolioDistribution.length > 0 ? (
+              <ResponsiveContainer width="100%" height={120}>
+                <PieChart>
+                  <Pie data={portfolioDistribution} dataKey="value" nameKey="name" innerRadius={26} outerRadius={48} paddingAngle={2}>
+                    {portfolioDistribution.map((entry) => <Cell key={entry.name} fill={entry.fill} />)}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className={`status-pill ${pnlClass(portfolioPnl)}`}>P/L {formatCurrency(portfolioPnl)}</div>
+            )}
+          </div>
         </div>
       </section>
 
       <StaleBanner show={realtime.status !== 'connected'} message={`Realtime is ${realtime.status}; cockpit data may be stale.`} />
 
-      <QueryPanel title="Infrastructure health" query={health}>{(data) => (
-        <dl className="kv-grid">
-          <dt>Status</dt><dd><span className={`status-pill ${statusClass(data.status)}`}>{data.status}</span></dd>
-          <dt>Database</dt><dd>{data.db}</dd>
-          <dt>Redis</dt><dd>{data.redis}</dd>
-        </dl>
+      <QueryPanel title="System health" query={health}>{(data) => (
+        <div className="metrics-grid">
+          <dl className="kv-grid">
+            <dt>Status</dt><dd><span className={`status-pill ${statusClass(data.status)}`}>{data.status}</span></dd>
+            <dt>Database</dt><dd>{data.db}</dd>
+            <dt>Redis</dt><dd>{data.redis}</dd>
+          </dl>
+          <dl className="kv-grid">
+            <dt>Automation</dt><dd><span className={`status-pill ${statusClass(automation.data?.healthy ? 'healthy' : 'warning')}`}>{automation.data?.healthy ? 'healthy' : automation.isSuccess ? 'failing' : 'loading'}</span></dd>
+            <dt>Healthy jobs</dt><dd>{automation.data?.healthy ? automation.data.total_jobs - automation.data.failing_jobs : automation.data?.total_jobs ?? '—'}</dd>
+            <dt>Failing jobs</dt><dd>{automation.data?.failing_jobs ?? '—'}</dd>
+          </dl>
+        </div>
       )}</QueryPanel>
 
-      <QueryPanel title="Risk cockpit" query={riskCockpit}>{(data) => (
+      <QueryPanel title="Risk overview" query={riskCockpit} wide>{(cockpitData) => (
         <>
-          <dl className="kv-grid">
-            <dt>Kill switch</dt><dd>{data.kill_switch_active ? 'Active' : 'Inactive'}</dd>
-            <dt>Circuit breaker</dt><dd>{data.circuit_breaker ? 'Tripped' : 'Clear'}</dd>
-            <dt>Warnings</dt><dd>{data.warnings.length}</dd>
-          </dl>
-          {data.warnings.length > 0 ? <ul>{data.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul> : null}
-          {data.exposures.length > 0 ? <table aria-label="cockpit risk exposure"><thead><tr><th>Market</th><th>Open positions</th><th>Gross exposure</th><th>Expected value</th></tr></thead><tbody>{data.exposures.slice(0, 5).map((exposure) => <tr key={exposure.market_type}><td>{exposure.market_type}</td><td>{exposure.open_positions}</td><td>{exposure.gross_exposure.toFixed(2)}</td><td>{exposure.net_expected_value.toFixed(2)}</td></tr>)}</tbody></table> : <p>No risk exposure recorded.</p>}
+          <div className="metrics-grid">
+            <dl className="kv-grid">
+              <dt>Risk status</dt><dd><span className={`status-pill ${statusClass(risk.data?.risk_status ?? 'unknown')}`}>{risk.data?.risk_status ?? 'unknown'}</span></dd>
+              <dt>Kill switch</dt><dd>{risk.data?.kill_switch.active ? 'Active' : 'Inactive'}</dd>
+              <dt>Circuit breaker</dt><dd>{risk.data?.circuit_breaker.state ?? 'unknown'}</dd>
+            </dl>
+            <dl className="kv-grid">
+              <dt>Cockpit kill switch</dt><dd>{cockpitData.kill_switch_active ? 'Active' : 'Inactive'}</dd>
+              <dt>Cockpit breaker</dt><dd>{cockpitData.circuit_breaker ? 'Tripped' : 'Clear'}</dd>
+              <dt>Warnings</dt><dd>{cockpitData.warnings.length}</dd>
+            </dl>
+          </div>
+          {cockpitData.warnings.length > 0 ? <ul>{cockpitData.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul> : null}
+          {breakers.data?.tripped.length ? <ul>{breakers.data.tripped.map((breaker) => <li key={`${breaker.scope}-${breaker.tripped_at}`}>{breaker.scope}: {breaker.reason}</li>)}</ul> : <p>No tripped breakers.</p>}
+          {cockpitData.exposures.length > 0 ? <table aria-label="cockpit risk exposure"><thead><tr><th>Market</th><th>Open positions</th><th>Gross exposure</th><th>Expected value</th></tr></thead><tbody>{cockpitData.exposures.slice(0, 5).map((exposure) => <tr key={exposure.market_type}><td>{exposure.market_type}</td><td>{exposure.open_positions}</td><td>{exposure.gross_exposure.toFixed(2)}</td><td>{exposure.net_expected_value.toFixed(2)}</td></tr>)}</tbody></table> : <p>No risk exposure recorded.</p>}
         </>
       )}</QueryPanel>
 
-      <QueryPanel title="Risk status" query={risk}>{(data) => (
-        <dl className="kv-grid">
-          <dt>Status</dt><dd><span className={`status-pill ${statusClass(data.risk_status)}`}>{data.risk_status}</span></dd>
-          <dt>Circuit breaker</dt><dd>{data.circuit_breaker.state}</dd>
-          <dt>Kill switch</dt><dd>{data.kill_switch.active ? 'Active' : 'Inactive'}</dd>
-          <dt>Market switches</dt><dd>{Object.entries(data.market_kill_switches ?? {}).filter(([, value]) => value?.active).length} active</dd>
-        </dl>
-      )}</QueryPanel>
-
-      <QueryPanel title="Circuit breakers" query={breakers}>{(data) => (
-        data.tripped.length === 0 ? <p>No tripped breakers.</p> : <ul>{data.tripped.map((breaker) => <li key={`${breaker.scope}-${breaker.tripped_at}`}>{breaker.scope}: {breaker.reason}</li>)}</ul>
-      )}</QueryPanel>
-
       <QueryPanel title="Portfolio summary" query={portfolio}>{(data) => (
-        <dl className="kv-grid">
-          <dt>Open positions</dt><dd>{data.open_positions}</dd>
-          <dt>Unrealized P&L</dt><dd>{data.unrealized_pnl.toFixed(2)}</dd>
-          <dt>Realized P&L</dt><dd>{data.realized_pnl.toFixed(2)}</dd>
-        </dl>
+        <div className="metrics-grid">
+          <dl className="kv-grid">
+            <dt>Open positions</dt><dd>{data.open_positions}</dd>
+            <dt>Unrealized P&amp;L</dt><dd><span className={`status-pill ${pnlClass(data.unrealized_pnl)}`}>{formatCurrency(data.unrealized_pnl)}</span></dd>
+            <dt>Realized P&amp;L</dt><dd><span className={`status-pill ${pnlClass(data.realized_pnl)}`}>{formatCurrency(data.realized_pnl)}</span></dd>
+          </dl>
+          <div style={{ minHeight: 72 }}>
+            <ResponsiveContainer width="100%" height={72}>
+              <AreaChart data={[{ name: 'P/L', unrealized: data.unrealized_pnl, realized: data.realized_pnl }]}>
+                <defs>
+                  <linearGradient id="portfolioMiniGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor={data.unrealized_pnl + data.realized_pnl >= 0 ? '#16a34a' : '#dc2626'} stopOpacity={0.45} />
+                    <stop offset="95%" stopColor={data.unrealized_pnl + data.realized_pnl >= 0 ? '#16a34a' : '#dc2626'} stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <Tooltip formatter={(value) => formatCurrency(Number(value ?? 0))} />
+                <Area type="monotone" dataKey="unrealized" stroke={data.unrealized_pnl >= 0 ? '#16a34a' : '#dc2626'} fill="url(#portfolioMiniGradient)" dot={false} strokeWidth={2} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
       )}</QueryPanel>
 
       <QueryPanel title="Open positions" query={openPositions} wide>{(data) => <OpenPositions positions={data.data} />}</QueryPanel>
       <QueryPanel title="Active runs" query={runs} wide>{(data) => <RecentRuns runs={data.data} />}</QueryPanel>
       <QueryPanel title="Recent orders" query={orders} wide>{(data) => <RecentOrders orders={data.data} />}</QueryPanel>
       <QueryPanel title="Recent trades" query={trades} wide>{(data) => <RecentTrades trades={data.data} />}</QueryPanel>
-
-      <QueryPanel title="Automation health" query={automation}>{(data) => (
-        <dl className="kv-grid">
-          <dt>Healthy</dt><dd>{data.healthy ? 'Yes' : 'No'}</dd>
-          <dt>Total jobs</dt><dd>{data.total_jobs}</dd>
-          <dt>Failing jobs</dt><dd>{data.failing_jobs}</dd>
-        </dl>
-      )}</QueryPanel>
-
-      <section className="panel wide-panel">
-        <h2>Recent realtime events</h2>
-        {realtime.status !== 'connected' ? <p role="status">Realtime is {realtime.status}; data may be stale.</p> : null}
-        {realtime.events.length === 0 ? <p>No events received.</p> : <ul className="event-list">{realtime.events.slice(0, 20).map((event, index) => <li key={`${event.timestamp}-${index}`}><strong>{event.type}</strong><span>{new Date(event.timestamp).toLocaleString()}</span>{event.strategy_id ? <EntityLink kind="strategy" id={event.strategy_id} label="Strategy" copy={false} /> : null}{event.run_id ? <EntityLink kind="run" id={event.run_id} label="Run" copy={false} /> : null}</li>)}</ul>}
-      </section>
     </div>
   )
 }

@@ -10,6 +10,7 @@ import { LoginPage } from '@/features/auth-login/LoginPage'
 import { OrderDetailPage } from '@/features/orders/OrderDetailPage'
 import { OrdersListPage } from '@/features/orders/OrdersListPage'
 import { PortfolioPage } from '@/features/portfolio/PortfolioPage'
+import { StockPage } from '@/features/stock/StockPage'
 import { RiskPage } from '@/features/risk/RiskPage'
 import { RunDetailPage } from '@/features/runs/RunDetailPage'
 import { RunsListPage } from '@/features/runs/RunsListPage'
@@ -36,6 +37,7 @@ export function createAppRouter() {
             { path: '/orders', element: <OrdersListPage /> },
             { path: '/orders/:id', element: <OrderDetailPage /> },
             { path: '/portfolio', element: <PortfolioPage /> },
+            { path: '/stock/:ticker', element: <StockPage /> },
             { path: '/risk', element: <RiskPage /> },
             { path: '/runs', element: <RunsListPage /> },
             { path: '/runs/:id', element: <RunDetailPage /> },

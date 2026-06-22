@@ -33,7 +33,7 @@ function OrdersRows({ orders }: { orders: Order[] }) {
           <thead><tr><th>Order</th><th>Ticker</th><th>Side</th><th>Type</th><th>Status</th><th>Quantity</th><th>Filled</th><th>Limit</th><th>Broker</th><th>Created</th></tr></thead>
           <tbody>{orders.map((order) => (
             <tr key={order.id}>
-              <td><EntityLink kind="order" id={order.id} />{order.strategy_id ? <><br /><EntityLink kind="strategy" id={order.strategy_id} label="Strategy" copy={false} /></> : null}{order.pipeline_run_id ? <><br /><EntityLink kind="run" id={order.pipeline_run_id} label="Run" copy={false} /></> : null}</td>
+              <td><EntityLink kind="order" id={order.id} />{order.strategy_id ? <><br /><EntityLink kind="strategy" id={order.strategy_id} copy={false} /></> : null}{order.pipeline_run_id ? <><br /><EntityLink kind="run" id={order.pipeline_run_id} copy={false} /></> : null}</td>
               <td>{order.ticker}</td>
               <td><OrderPill value={order.side} known={['buy', 'sell']} /></td>
               <td><OrderPill value={order.order_type} known={['market', 'limit', 'stop', 'stop_limit', 'trailing_stop']} /></td>

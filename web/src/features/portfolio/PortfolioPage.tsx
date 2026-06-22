@@ -1,6 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { Area, AreaChart, ResponsiveContainer, Tooltip } from 'recharts'
+import { RefreshCw } from 'lucide-react'
 
 import { getAllocationDecisions, getAllocatorDiagnostics, getAllocatorOpportunities, getAllocatorSummary, getOpenPortfolioPositions, getPortfolioSummary } from '@/shared/api/endpoints'
 import { Breadcrumbs, EntityId, EntityLink } from '@/shared/components/EntityLinks'
@@ -26,12 +28,19 @@ function percent(value?: number) {
   return `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(value)}%`
 }
 
+function pnlClass(value?: number) {
+  if (value === undefined) return 'unknown'
+  if (value > 0) return 'active'
+  if (value < 0) return 'unknown'
+  return 'unknown'
+}
+
 function compactMap(entries: Record<string, number>) {
   const pairs = Object.entries(entries).sort(([left], [right]) => left.localeCompare(right))
   if (pairs.length === 0) return <p className="muted">No counts reported.</p>
   return (
     <dl className="compact-kv">
-      {pairs.map(([key, value]) => <div key={key}><dt>{key || 'unknown'}</dt><dd>{value}</dd></div>)}
+      {pairs.map(([key, value]) => <div key={key}><dt>{key || 'unknown'}</dt><dd><span className={`status-pill ${value > 0 ? 'active' : 'unknown'}`}>{value}</span></dd></div>)}
     </dl>
   )
 }
@@ -56,7 +65,7 @@ function PositionRows({ positions }: { positions: Position[] }) {
           <tbody>
             {positions.map((position) => (
               <tr key={position.id}>
-                <td><EntityLink kind="position" id={position.id} label="Position trades" />{position.strategy_id ? <><br /><EntityLink kind="strategy" id={position.strategy_id} label="Strategy" copy={false} /></> : null}</td>
+                <td><EntityLink kind="position" id={position.id} />{position.strategy_id ? <><br /><EntityLink kind="strategy" id={position.strategy_id} copy={false} /></> : null}</td>
                 <td>{position.ticker}</td>
                 <td><SidePill value={position.side} /></td>
                 <td>{numberValue(position.quantity)}</td>
@@ -85,15 +94,26 @@ function PositionRows({ positions }: { positions: Position[] }) {
 }
 
 function DiagnosticsGrid({ diagnostics }: { diagnostics: AllocatorDiagnostics }) {
+  const healthyValue = (value: number | undefined, formatter = percent) => (
+    <span className={`status-pill ${value !== undefined && value > 0 ? 'active' : 'unknown'}`}>{formatter(value)}</span>
+  )
+
   return (
-    <div className="detail-grid">
-      <article className="panel nested-panel"><h3>Exposure</h3><dl className="compact-kv"><div><dt>Buying power utilization</dt><dd>{percent(diagnostics.buying_power_utilization_pct)}</dd></div><div><dt>Gross exposure</dt><dd>{percent(diagnostics.gross_exposure_pct)}</dd></div><div><dt>Target exposure</dt><dd>{percent(diagnostics.target_gross_exposure_pct)}</dd></div><div><dt>Utilization gap</dt><dd>{percent(diagnostics.utilization_gap_pct)}</dd></div></dl></article>
-      <article className="panel nested-panel"><h3>Run signals</h3>{compactMap(diagnostics.run_counts_by_signal)}</article>
-      <article className="panel nested-panel"><h3>Run statuses</h3>{compactMap(diagnostics.run_counts_by_status)}</article>
-      <article className="panel nested-panel"><h3>Decision statuses</h3>{compactMap(diagnostics.decision_counts_by_status)}</article>
-      <article className="panel nested-panel"><h3>No-action reasons</h3>{compactMap(diagnostics.no_action_reasons)}</article>
-      <article className="panel nested-panel"><h3>Active strategies by market</h3>{compactMap(diagnostics.active_strategies_by_market)}</article>
-      <article className="panel nested-panel"><h3>Open positions by market</h3>{compactMap(diagnostics.open_positions_by_market)}</article>
+    <div className="detail-stack">
+      <section className="metrics-grid" aria-label="Allocator diagnostic summary">
+        <article className="panel"><p className="eyebrow">Buying power</p><strong>{healthyValue(diagnostics.buying_power_utilization_pct)}</strong></article>
+        <article className="panel"><p className="eyebrow">Exposure</p><strong>{healthyValue(diagnostics.gross_exposure_pct)}</strong></article>
+        <article className="panel"><p className="eyebrow">Utilization gap</p><strong>{healthyValue(diagnostics.utilization_gap_pct)}</strong></article>
+      </section>
+      <div className="detail-grid">
+        <article className="panel nested-panel"><h3>Exposure</h3><dl className="detail-grid"><div><dt>Buying power utilization</dt><dd><span className={`status-pill ${diagnostics.buying_power_utilization_pct !== undefined && diagnostics.buying_power_utilization_pct <= 80 ? 'active' : 'unknown'}`}>{percent(diagnostics.buying_power_utilization_pct)}</span></dd></div><div><dt>Gross exposure</dt><dd><span className={`status-pill ${diagnostics.gross_exposure_pct !== undefined && diagnostics.gross_exposure_pct <= 100 ? 'active' : 'unknown'}`}>{percent(diagnostics.gross_exposure_pct)}</span></dd></div><div><dt>Target exposure</dt><dd><span className="status-pill active">{percent(diagnostics.target_gross_exposure_pct)}</span></dd></div><div><dt>Utilization gap</dt><dd><span className={`status-pill ${diagnostics.utilization_gap_pct !== undefined && diagnostics.utilization_gap_pct <= 10 ? 'active' : 'unknown'}`}>{percent(diagnostics.utilization_gap_pct)}</span></dd></div></dl></article>
+        <article className="panel nested-panel"><h3>Run signals</h3>{compactMap(diagnostics.run_counts_by_signal)}</article>
+        <article className="panel nested-panel"><h3>Run statuses</h3>{compactMap(diagnostics.run_counts_by_status)}</article>
+        <article className="panel nested-panel"><h3>Decision statuses</h3>{compactMap(diagnostics.decision_counts_by_status)}</article>
+        <article className="panel nested-panel"><h3>No-action reasons</h3>{compactMap(diagnostics.no_action_reasons)}</article>
+        <article className="panel nested-panel"><h3>Active strategies by market</h3>{compactMap(diagnostics.active_strategies_by_market)}</article>
+        <article className="panel nested-panel"><h3>Open positions by market</h3>{compactMap(diagnostics.open_positions_by_market)}</article>
+      </div>
     </div>
   )
 }
@@ -105,7 +125,7 @@ function OpportunityRows({ opportunities }: { opportunities: AllocatorOpportunit
         <thead><tr><th>Opportunity</th><th>Ticker</th><th>Market</th><th>Status</th><th>Signal</th><th>Edge</th><th>Selected notional</th><th>Reason</th></tr></thead>
         <tbody>{opportunities.map((opportunity) => (
           <tr key={opportunity.id}>
-            <td><EntityId kind="opportunity" id={opportunity.id} label="Opportunity" /><br /><EntityLink kind="strategy" id={opportunity.strategy_id} label="Strategy" copy={false} />{opportunity.pipeline_run_id ? <><br /><EntityLink kind="run" id={opportunity.pipeline_run_id} label="Run" copy={false} /></> : null}</td>
+            <td><EntityId kind="opportunity" id={opportunity.id} label="Opportunity" /><br /><EntityLink kind="strategy" id={opportunity.strategy_id} copy={false} />{opportunity.pipeline_run_id ? <><br /><EntityLink kind="run" id={opportunity.pipeline_run_id} copy={false} /></> : null}</td>
             <td>{opportunity.ticker}</td>
             <td>{opportunity.market_type}</td>
             <td><StatusPill value={opportunity.status} /></td>
@@ -127,7 +147,7 @@ function DecisionRows({ decisions }: { decisions: AllocationDecision[] }) {
         <thead><tr><th>Decision</th><th>Mode</th><th>Action</th><th>Score</th><th>Notional</th><th>Quantity</th><th>Reasons</th></tr></thead>
         <tbody>{decisions.map((decision) => (
           <tr key={decision.id}>
-            <td><EntityId kind="decision" id={decision.id} />{decision.strategy_id ? <><br /><EntityLink kind="strategy" id={decision.strategy_id} label="Strategy" copy={false} /></> : null}{decision.created_order_id ? <><br /><EntityLink kind="order" id={decision.created_order_id} label="Created order" copy={false} /></> : null}</td>
+            <td><EntityId kind="decision" id={decision.id} />{decision.strategy_id ? <><br /><EntityLink kind="strategy" id={decision.strategy_id} copy={false} /></> : null}{decision.created_order_id ? <><br /><EntityLink kind="order" id={decision.created_order_id} label="Created order" copy={false} /></> : null}</td>
             <td><StatusPill value={decision.mode} /></td>
             <td><StatusPill value={decision.action} /></td>
             <td>{numberValue(decision.score)}</td>
@@ -257,6 +277,11 @@ export function PortfolioPage() {
   const total = positionsQuery.data?.total
   const currentOffset = filters.offset ?? 0
   const hasNext = total === undefined ? positions.length === pageSize : currentOffset + pageSize < total
+  const portfolioPnl = (summaryQuery.data?.unrealized_pnl ?? 0) + (summaryQuery.data?.realized_pnl ?? 0)
+  const pnlSparklineData = summaryQuery.data ? [
+    { name: 'Unrealized', value: summaryQuery.data.unrealized_pnl },
+    { name: 'Realized', value: summaryQuery.data.realized_pnl },
+  ] : []
 
   useEffect(() => {
     const latest = realtime.events[0]
@@ -315,18 +340,36 @@ export function PortfolioPage() {
 
       <section className="metrics-grid" aria-label="Portfolio summary">
         <article className="panel"><p className="eyebrow">Open positions</p><strong>{summaryQuery.data?.open_positions ?? '—'}</strong></article>
-        <article className="panel"><p className="eyebrow">Unrealized P/L</p><strong>{summaryQuery.data ? money(summaryQuery.data.unrealized_pnl) : '—'}</strong></article>
-        <article className="panel"><p className="eyebrow">Realized P/L</p><strong>{summaryQuery.data ? money(summaryQuery.data.realized_pnl) : '—'}</strong></article>
+        <article className="panel"><p className="eyebrow">Unrealized P/L</p><strong><span className={`status-pill ${pnlClass(summaryQuery.data?.unrealized_pnl)}`}>{summaryQuery.data ? money(summaryQuery.data.unrealized_pnl) : '—'}</span></strong></article>
+        <article className="panel"><p className="eyebrow">Realized P/L</p><strong><span className={`status-pill ${pnlClass(summaryQuery.data?.realized_pnl)}`}>{summaryQuery.data ? money(summaryQuery.data.realized_pnl) : '—'}</span></strong></article>
       </section>
       {summaryQuery.isLoading ? <LoadingState label="Loading portfolio summary…" /> : null}
       {summaryQuery.error ? <ErrorState error={summaryQuery.error} onRetry={() => void summaryQuery.refetch()} /> : null}
 
+      {summaryQuery.data ? (
+        <div className="chart-container" aria-label="Portfolio P/L chart">
+          <div className="chart-title">Portfolio P/L</div>
+          <ResponsiveContainer width="100%" height={88}>
+            <AreaChart data={pnlSparklineData}>
+              <defs>
+                <linearGradient id="portfolioPnlGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={portfolioPnl >= 0 ? '#16a34a' : '#dc2626'} stopOpacity={0.4} />
+                  <stop offset="95%" stopColor={portfolioPnl >= 0 ? '#16a34a' : '#dc2626'} stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <Tooltip formatter={(value) => money(Number(value ?? 0))} />
+              <Area type="monotone" dataKey="value" stroke={portfolioPnl >= 0 ? '#16a34a' : '#dc2626'} fill="url(#portfolioPnlGradient)" dot={false} strokeWidth={2} />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      ) : null}
+
       <section className="panel" aria-labelledby="open-positions-heading">
         <div className="panel-header">
-          <div><h2 id="open-positions-heading">Open positions</h2><p className="muted">Backend supports ticker and side filters for this slice.</p></div>
-          {positionsQuery.data ? <LastUpdated date={positionsQuery.dataUpdatedAt} /> : null}
+          <div><h2 id="open-positions-heading">Open positions</h2><p className="muted">Backend supports ticker and side filters for this slice.</p>{realtimeStale ? <span className="inline-alert warning">Data may be stale</span> : null}</div>
+          <div className="panel-actions">{positionsQuery.data ? <LastUpdated date={positionsQuery.dataUpdatedAt} /> : null}<button type="button" className="secondary-button" onClick={() => { void summaryQuery.refetch(); void positionsQuery.refetch(); setRealtimeStale(false) }} aria-label="Refresh portfolio data"><RefreshCw size={16} /> Refresh</button></div>
         </div>
-        <form className="filter-bar" aria-label="Position filters" onSubmit={(event) => event.preventDefault()}>
+        <form className="filter-bar" aria-label="Position filters" onSubmit={(event) => event.preventDefault()} style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
           <label>Ticker<input value={searchParams.get('ticker') ?? ''} onChange={(event) => updateFilters({ ticker: event.target.value.toUpperCase() })} placeholder="AUGR" /></label>
           <label>Side<select value={searchParams.get('side') ?? ''} onChange={(event) => updateFilters({ side: event.target.value })}><option value="">All</option><option value="long">Long</option><option value="short">Short</option></select></label>
           <button type="button" onClick={() => updateFilters({ ticker: '', side: '' })}>Clear filters</button>

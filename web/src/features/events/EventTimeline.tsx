@@ -25,10 +25,10 @@ function EventLinks({ event }: { event: AgentEvent }) {
   const decisionId = typeof metadata.decision_id === 'string' ? metadata.decision_id : undefined
   return (
     <div className="header-cluster">
-      {event.strategy_id ? <EntityLink kind="strategy" id={event.strategy_id} label="Strategy" copy={false} /> : null}
-      {event.pipeline_run_id ? <EntityLink kind="run" id={event.pipeline_run_id} label="Run" copy={false} /> : null}
-      {orderId ? <EntityLink kind="order" id={orderId} label="Order" copy={false} /> : null}
-      {positionId ? <EntityLink kind="position" id={positionId} label="Position trades" copy={false} /> : null}
+      {event.strategy_id ? <EntityLink kind="strategy" id={event.strategy_id} copy={false} /> : null}
+      {event.pipeline_run_id ? <EntityLink kind="run" id={event.pipeline_run_id} copy={false} /> : null}
+      {orderId ? <EntityLink kind="order" id={orderId} copy={false} /> : null}
+      {positionId ? <EntityLink kind="position" id={positionId} copy={false} /> : null}
       {decisionId ? <EntityId kind="decision" id={decisionId} /> : null}
     </div>
   )

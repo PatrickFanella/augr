@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 
-import { getRiskBreakers, getRiskCockpit, getRiskStatus, resetRiskBreaker, resumeMarketKillSwitch, stopMarketKillSwitch, toggleKillSwitch } from '@/shared/api/endpoints'
+import { getAllocatorDiagnostics, getRiskBreakers, getRiskCockpit, getRiskStatus, resetRiskBreaker, resumeMarketKillSwitch, stopMarketKillSwitch, toggleKillSwitch } from '@/shared/api/endpoints'
 import { isApiClientError } from '@/shared/api/errors'
 import { refreshAccessToken } from '@/shared/auth/refresh'
 import { isAccessTokenExpiringSoon } from '@/shared/auth/tokenStore'
@@ -30,6 +30,10 @@ function displayEnum(value: string) {
   return value.replaceAll('_', ' ')
 }
 
+function statusTone(value: string, mapping: Record<string, string>) {
+  return mapping[value] ?? 'unknown'
+}
+
 function StatusPill({ value, known }: { value: string; known: string[] }) {
   const normalized = displayEnum(value)
   return <span className={`status-pill ${known.includes(value) ? value : 'unknown'}`}>{known.includes(value) ? normalized : `Unknown: ${normalized}`}</span>
@@ -39,21 +43,41 @@ function RiskStatusPanel({ status }: { status: RiskEngineStatus }) {
   return (
     <div className="reports-stack">
       <div className="metrics-grid">
-        <div><span className="muted">Risk status</span><strong><StatusPill value={status.risk_status} known={['normal', 'warning', 'breached']} /></strong></div>
-        <div><span className="muted">Circuit breaker</span><strong><StatusPill value={status.circuit_breaker.state} known={['open', 'tripped', 'cooldown']} /></strong></div>
-        <div><span className="muted">Kill switch</span><strong>{status.kill_switch.active ? 'Active' : 'Inactive'}</strong></div>
+        <div><span className="muted">Risk status</span><strong><span className={`status-pill ${statusTone(status.risk_status, { normal: 'active', warning: 'warning', breached: 'breached' })}`}>{displayEnum(status.risk_status)}</span></strong></div>
+        <div><span className="muted">Circuit breaker</span><strong><span className={`status-pill ${statusTone(status.circuit_breaker.state, { open: 'active', tripped: 'warning', cooldown: 'degraded' })}`}>{displayEnum(status.circuit_breaker.state)}</span></strong></div>
+        <div><span className="muted">Kill switch</span><strong><span className={`status-pill ${status.kill_switch.active ? 'breached' : 'active'}`}>{status.kill_switch.active ? 'Active' : 'Inactive'}</span></strong></div>
         <div><span className="muted">Open positions</span><strong>{status.position_limits.current_open_positions ?? '—'} / {status.position_limits.max_concurrent}</strong></div>
       </div>
-      <div className="detail-grid">
-        <div><span>Max per position</span><strong>{percent(status.position_limits.max_per_position_pct)}</strong></div>
-        <div><span>Max total exposure</span><strong>{percent(status.position_limits.max_total_pct)}</strong></div>
-        <div><span>Current total exposure</span><strong>{percent(status.position_limits.current_total_exposure_pct)}</strong></div>
-        <div><span>Max per market</span><strong>{percent(status.position_limits.max_per_market_pct)}</strong></div>
-        <div><span>Circuit reason</span><strong>{status.circuit_breaker.reason ?? '—'}</strong></div>
-        <div><span>Kill reason</span><strong>{status.kill_switch.reason ?? '—'}</strong></div>
-        <div><span>Tripped at</span><strong>{timeValue(status.circuit_breaker.tripped_at)}</strong></div>
-        <div><span>Cooldown end</span><strong>{timeValue(status.circuit_breaker.cooldown_end)}</strong></div>
+      <dl className="kv-grid">
+        <dt>Max per position</dt><dd>{percent(status.position_limits.max_per_position_pct)}</dd>
+        <dt>Max total exposure</dt><dd>{percent(status.position_limits.max_total_pct)}</dd>
+        <dt>Current total exposure</dt><dd>{percent(status.position_limits.current_total_exposure_pct)}</dd>
+        <dt>Max per market</dt><dd>{percent(status.position_limits.max_per_market_pct)}</dd>
+        <dt>Circuit reason</dt><dd>{status.circuit_breaker.reason ?? '—'}</dd>
+        <dt>Kill reason</dt><dd>{status.kill_switch.reason ?? '—'}</dd>
+        <dt>Tripped at</dt><dd>{timeValue(status.circuit_breaker.tripped_at)}</dd>
+        <dt>Cooldown end</dt><dd>{timeValue(status.circuit_breaker.cooldown_end)}</dd>
+      </dl>
+    </div>
+  )
+}
+
+function AllocatorDiagnosticsPanel({ diagnostics }: { diagnostics: Awaited<ReturnType<typeof getAllocatorDiagnostics>> }) {
+  return (
+    <div className="reports-stack">
+      <div className="metrics-grid">
+        <div><span className="muted">Buying power utilization</span><strong>{percent(diagnostics.buying_power_utilization_pct)}</strong></div>
+        <div><span className="muted">Gross exposure</span><strong>{percent(diagnostics.gross_exposure_pct)}</strong></div>
+        <div><span className="muted">Target exposure</span><strong>{percent(diagnostics.target_gross_exposure_pct)}</strong></div>
+        <div><span className="muted">Utilization gap</span><strong>{percent(diagnostics.utilization_gap_pct)}</strong></div>
       </div>
+      <div className="detail-grid">
+        <dl className="kv-grid">
+          <dt>Active strategies by market</dt><dd>{Object.entries(diagnostics.active_strategies_by_market).map(([market, count]) => `${displayEnum(market)}: ${count}`).join(', ') || '—'}</dd>
+          <dt>Open positions by market</dt><dd>{Object.entries(diagnostics.open_positions_by_market).map(([market, count]) => `${displayEnum(market)}: ${count}`).join(', ') || '—'}</dd>
+        </dl>
+      </div>
+      {diagnostics.warnings.length > 0 ? <div role="alert" className="inline-alert warning">Warnings: {diagnostics.warnings.join(', ')}</div> : null}
     </div>
   )
 }
@@ -102,7 +126,7 @@ function BreakerRows({ breakers, canReset, busyScope, onReset }: { breakers: Ris
             <td>{breaker.reason}</td>
             <td>{timeValue(breaker.tripped_at)}</td>
             <td>{timeValue(breaker.reset_at)}</td>
-            <td><button type="button" className="danger-button" disabled={!canReset || busyScope === breaker.scope} onClick={() => onReset(breaker.scope)}>{busyScope === breaker.scope ? 'Working…' : `Reset ${breaker.scope} breaker`}</button></td>
+            <td><button type="button" className="danger-button" title={`Reset ${breaker.scope} breaker`} aria-label={`Reset ${breaker.scope} breaker`} disabled={!canReset || busyScope === breaker.scope} onClick={() => onReset(breaker.scope)}>{busyScope === breaker.scope ? 'Working…' : 'Reset'}</button></td>
           </tr>
         ))}</tbody>
       </table>
@@ -267,6 +291,7 @@ export function RiskPage() {
   const statusQuery = useQuery({ queryKey: queryKeys.riskStatus, queryFn: ({ signal }) => getRiskStatus(signal) })
   const cockpitQuery = useQuery({ queryKey: queryKeys.riskCockpit, queryFn: ({ signal }) => getRiskCockpit(signal) })
   const breakersQuery = useQuery({ queryKey: queryKeys.riskBreakers, queryFn: ({ signal }) => getRiskBreakers(signal) })
+  const allocatorDiagnosticsQuery = useQuery({ queryKey: queryKeys.allocatorDiagnostics, queryFn: ({ signal }) => getAllocatorDiagnostics(signal) })
 
   useEffect(() => {
     const latest = realtime.events[0]
@@ -446,18 +471,20 @@ export function RiskPage() {
           </div>
           {statusQuery.data ? <LastUpdated date={statusQuery.dataUpdatedAt} /> : null}
         </div>
-        <label className="filter-field">
-          Market filter
-          <select value={marketTypeFilter} onChange={(event) => {
-            const next = new URLSearchParams(searchParams)
-            if (event.target.value) next.set('market_type', event.target.value)
-            else next.delete('market_type')
-            setSearchParams(next)
-          }}>
-            <option value="">All markets</option>
-            {marketTypes.map((marketType) => <option key={marketType} value={marketType}>{displayEnum(marketType)}</option>)}
-          </select>
-        </label>
+        <form className="filter-bar filter-bar-single" aria-label="Market filter" onSubmit={(event) => event.preventDefault()}>
+          <label>
+            Market filter
+            <select value={marketTypeFilter} onChange={(event) => {
+              const next = new URLSearchParams(searchParams)
+              if (event.target.value) next.set('market_type', event.target.value)
+              else next.delete('market_type')
+              setSearchParams(next)
+            }}>
+              <option value="">All markets</option>
+              {marketTypes.map((marketType) => <option key={marketType} value={marketType}>{displayEnum(marketType)}</option>)}
+            </select>
+          </label>
+        </form>
         {statusQuery.data ? (
           <MarketStopRows
             rows={marketRows}
@@ -482,6 +509,13 @@ export function RiskPage() {
           {cockpitQuery.data.warnings.length > 0 ? <div role="alert" className="inline-alert warning">{cockpitQuery.data.warnings.join(', ')}</div> : null}
           <ExposureRows exposures={cockpitQuery.data.exposures} />
         </> : null}
+      </section>
+
+      <section className="panel" aria-labelledby="allocator-diagnostics-heading">
+        <div className="panel-header"><div><h2 id="allocator-diagnostics-heading">Allocator diagnostics</h2><p className="muted">Read-only allocator health and exposure guidance. This surface adds visibility into buying power and market allocation pressure.</p></div>{allocatorDiagnosticsQuery.data ? <LastUpdated date={allocatorDiagnosticsQuery.dataUpdatedAt} /> : null}</div>
+        {allocatorDiagnosticsQuery.isLoading ? <LoadingState label="Loading allocator diagnostics…" /> : null}
+        {allocatorDiagnosticsQuery.error ? <ErrorState error={allocatorDiagnosticsQuery.error} onRetry={() => void allocatorDiagnosticsQuery.refetch()} /> : null}
+        {allocatorDiagnosticsQuery.data ? <AllocatorDiagnosticsPanel diagnostics={allocatorDiagnosticsQuery.data} /> : null}
       </section>
 
       <section className="panel" aria-labelledby="breakers-heading">

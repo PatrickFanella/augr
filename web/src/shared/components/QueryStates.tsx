@@ -1,4 +1,5 @@
 import { isApiClientError } from '@/shared/api/errors'
+import { RefreshCw } from 'lucide-react'
 
 export function LoadingState({ label = 'Loading…' }: { label?: string }) {
   return <p className="muted" aria-live="polite">{label}</p>
@@ -23,7 +24,7 @@ export function ErrorState({ error, onRetry }: { error: unknown; onRetry: () => 
   return (
     <div role="alert" className="error-box state-box">
       <p>{message}</p>
-      <button type="button" onClick={onRetry}>Retry</button>
+      <button type="button" onClick={onRetry}><RefreshCw size={14} /> Reload</button>
     </div>
   )
 }

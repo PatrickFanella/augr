@@ -1,5 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { Link, useLocation } from 'react-router-dom'
+import { Copy, Check } from 'lucide-react'
 
 type EntityKind = 'strategy' | 'run' | 'order' | 'trade' | 'position' | 'decision' | 'event' | 'opportunity' | 'risk'
 
@@ -45,7 +46,7 @@ export function CopyButton({ value, label = 'Copy ID' }: { value: string; label?
   return (
     <button
       type="button"
-      className="secondary-button"
+      className="btn-icon copy-btn"
       onClick={() => {
         void navigator.clipboard?.writeText(value)
         setCopied(true)
@@ -53,7 +54,7 @@ export function CopyButton({ value, label = 'Copy ID' }: { value: string; label?
       }}
       aria-label={label}
     >
-      {copied ? 'Copied' : 'Copy'}
+      {copied ? <Check size={14} /> : <Copy size={14} />}
     </button>
   )
 }

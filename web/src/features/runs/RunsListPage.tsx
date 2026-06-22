@@ -182,7 +182,7 @@ export function RunsListPage() {
                   {rows.map((run) => (
                     <tr key={run.id} tabIndex={0} onKeyDown={(event) => onRowKeyDown(event, run.id)}>
                       <th scope="row"><Link to={`/runs/${run.id}`}>{run.id}</Link></th>
-                      <td><EntityLink kind="strategy" id={run.strategy_id} label="Strategy" copy={false} /></td>
+                      <td><EntityLink kind="strategy" id={run.strategy_id} copy={false} /></td>
                       <td>{run.ticker}</td>
                       <td><RunStatusPill value={run.status} /></td>
                       <td><SignalValue value={run.signal} /></td>
