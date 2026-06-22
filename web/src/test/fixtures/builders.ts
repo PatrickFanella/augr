@@ -7,6 +7,8 @@ import type {
   AllocatorOpportunity,
   AllocatorSummary,
   AutomationHealthResponse,
+  AutomationJobRun,
+  AutomationJobStatus,
   Order,
   PipelineRun,
   Position,
@@ -375,6 +377,37 @@ export function buildAutomationHealth(overrides: Partial<AutomationHealthRespons
     total_jobs: 1,
     failing_jobs: 0,
     degraded_jobs: 0,
+    ...overrides,
+  }
+}
+
+export function buildAutomationJobStatus(overrides: Partial<AutomationJobStatus> = {}): AutomationJobStatus {
+  return {
+    name: 'deep_scan',
+    description: 'Deep strategy scan',
+    schedule: 'Every hour (market hours only), skip holidays',
+    enabled: true,
+    running: false,
+    last_run: fixtureDate,
+    last_result: 'completed',
+    last_summary: { scanned: 12, triggered: 1 },
+    error_count: 0,
+    consecutive_failures: 0,
+    run_count: 8,
+    ...overrides,
+  }
+}
+
+export function buildAutomationJobRun(overrides: Partial<AutomationJobRun> = {}): AutomationJobRun {
+  return {
+    id: fixtureId(70),
+    job_name: 'deep_scan',
+    status: 'completed',
+    started_at: fixtureDate,
+    completed_at: fixtureLaterDate,
+    duration_ns: 2_000_000_000,
+    consecutive_failures: 0,
+    created_at: fixtureDate,
     ...overrides,
   }
 }

@@ -244,6 +244,41 @@ describe('first vertical slice app', () => {
     expect((await within(panel.closest('section') as HTMLElement).findByRole('alert')).textContent).toContain('automation exploded')
   })
 
+  it('restores automation job list controls and detail links', async () => {
+    resetApp('/automation')
+    setTokenSnapshot(buildAuthResponse())
+    let runCalls = 0
+    server.use(
+      http.post(`${apiBaseUrl}/automation/jobs/:name/run`, () => {
+        runCalls += 1
+        return HttpResponse.json({ status: 'triggered' })
+      }),
+    )
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: /^automations$/i })).toBeTruthy()
+    const deepScanLink = await screen.findByRole('link', { name: 'deep_scan' })
+    expect(deepScanLink).toHaveAttribute('href', '/automation/deep_scan')
+    const row = deepScanLink.closest('tr') as HTMLElement
+    expect(within(row).getByText(/deep strategy scan/i)).toBeTruthy()
+    expect(within(row).getByText(/healthy/i)).toBeTruthy()
+    await userEvent.click(within(row).getByRole('button', { name: /run now/i }))
+    await waitFor(() => expect(runCalls).toBe(1))
+  })
+
+  it('shows automation job details and recent run history', async () => {
+    resetApp('/automation/deep_scan')
+    setTokenSnapshot(buildAuthResponse())
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: /^deep_scan$/i })).toBeTruthy()
+    expect(await screen.findByText(/deep strategy scan/i)).toBeTruthy()
+    expect(screen.getByText(/Every hour/i)).toBeTruthy()
+    expect(screen.getByText(/"scanned": 12/i)).toBeTruthy()
+    expect(await screen.findByRole('table', { name: /automation run history/i })).toBeTruthy()
+    expect(screen.getAllByText('completed').length).toBeGreaterThan(0)
+  })
+
   it('renders unsafe-looking event text as escaped content', async () => {
     resetApp('/cockpit')
     setTokenSnapshot(buildAuthResponse())

@@ -430,6 +430,28 @@ export type AutomationHealthResponse = {
   degraded_jobs: number
 }
 
+export type AutomationJobStatus = AutomationJobHealth & {
+  description: string
+  schedule: string
+  last_result: string
+  last_summary?: Record<string, unknown>
+  last_error_at?: ISODate
+  stuck_for?: number
+}
+
+export type AutomationJobRun = {
+  id: UUID
+  job_name: string
+  status: string
+  started_at: ISODate
+  completed_at?: ISODate
+  duration_ns?: number
+  error?: string
+  last_error_at?: ISODate
+  consecutive_failures: number
+  created_at: ISODate
+}
+
 export type HealthStatusResponse = {
   status: string
   db: string

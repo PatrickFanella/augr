@@ -2,6 +2,8 @@ import { createBrowserRouter, Navigate } from 'react-router-dom'
 
 import { AppShell } from '@/app/layout/AppShell'
 import { ProtectedRoute } from '@/app/router/ProtectedRoute'
+import { AutomationDetailPage } from '@/features/automation/AutomationDetailPage'
+import { AutomationPage } from '@/features/automation/AutomationPage'
 import { CockpitPage } from '@/features/cockpit/CockpitPage'
 import { EventsPage } from '@/features/events/EventsPage'
 import { LoginPage } from '@/features/auth-login/LoginPage'
@@ -27,6 +29,8 @@ export function createAppRouter() {
           element: <AppShell />,
           children: [
             { path: '/', element: <Navigate to="/cockpit" replace /> },
+            { path: '/automation', element: <AutomationPage /> },
+            { path: '/automation/:name', element: <AutomationDetailPage /> },
             { path: '/cockpit', element: <CockpitPage /> },
             { path: '/events', element: <EventsPage /> },
             { path: '/orders', element: <OrdersListPage /> },

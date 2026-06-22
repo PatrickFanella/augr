@@ -3,7 +3,7 @@ import { delay, http, HttpResponse } from 'msw'
 import type { ApiError } from '@/shared/types/api'
 import type { LoginRequest, RefreshRequest } from '@/shared/types/auth'
 import { expiredAccessToken, mockAccessToken, mockRefreshToken } from '@/test/fixtures/builders'
-import { fixtureDate } from '@/test/fixtures/ids'
+import { fixtureDate, fixtureId } from '@/test/fixtures/ids'
 import {
   buildAuthResponse,
   buildAgentDecision,
@@ -13,6 +13,8 @@ import {
   buildAllocatorOpportunity,
   buildAllocatorSummary,
   buildAutomationHealth,
+  buildAutomationJobRun,
+  buildAutomationJobStatus,
   buildLatestReport,
   buildOrder,
   buildPortfolioSummary,
@@ -672,6 +674,48 @@ export function createP0RestHandlers(options: P0MockHandlersOptions = {}) {
         )
       }
       return HttpResponse.json(state.scenario === 'empty-data' ? buildAutomationHealth({ jobs: [], total_jobs: 0 }) : buildAutomationHealth())
+    }),
+
+    http.get(endpoint(apiBaseUrl, '/automation/status'), async ({ request }) => {
+      await applyScenarioDelay(state)
+      const authError = authGuard(request, state)
+      if (authError) return authError
+      const error = scenarioError(state)
+      if (error) return error
+      if (state.scenario === 'empty-data') return HttpResponse.json([])
+      return HttpResponse.json([
+        buildAutomationJobStatus(),
+        buildAutomationJobStatus({ name: 'portfolio_allocator', description: 'Shadow portfolio allocator', enabled: true, last_run: undefined, run_count: 0, last_result: '' }),
+      ])
+    }),
+
+    http.get(endpoint(apiBaseUrl, '/automation/runs'), async ({ request }) => {
+      await applyScenarioDelay(state)
+      const authError = authGuard(request, state)
+      if (authError) return authError
+      const error = scenarioError(state)
+      if (error) return error
+      const url = new URL(request.url)
+      const limit = Number(url.searchParams.get('limit') ?? '20')
+      const offset = Number(url.searchParams.get('offset') ?? '0')
+      const all = state.scenario === 'empty-data' ? [] : [buildAutomationJobRun(), buildAutomationJobRun({ id: fixtureId(71), job_name: 'hot_scan', status: 'failed', error: 'fixture failed' })]
+      const page = all.slice(offset, offset + limit)
+      return HttpResponse.json({ data: page, total: all.length, limit, offset })
+    }),
+
+    http.post(endpoint(apiBaseUrl, '/automation/jobs/:name/run'), async ({ request }) => {
+      await applyScenarioDelay(state)
+      const authError = authGuard(request, state)
+      if (authError) return authError
+      return HttpResponse.json({ status: 'triggered' })
+    }),
+
+    http.post(endpoint(apiBaseUrl, '/automation/jobs/:name/enable'), async ({ request }) => {
+      await applyScenarioDelay(state)
+      const authError = authGuard(request, state)
+      if (authError) return authError
+      const body = await request.json().catch(() => ({ enabled: false })) as { enabled?: boolean }
+      return HttpResponse.json({ enabled: Boolean(body.enabled) })
     }),
 
     http.get(endpoint(apiBaseUrl, '/health'), async () => {

@@ -28,5 +28,8 @@ export const queryKeys = {
   tradesListFiltered: (filters: Record<string, string | number | undefined>) => ['trades', 'list', filters] as const,
   strategyRuns: (strategyId: string) => ['runs', 'list', { strategyId }] as const,
   automationHealth: ['automation', 'health'] as const,
+  automationStatus: ['automation', 'status'] as const,
+  automationRuns: (filters: Record<string, string | number | undefined>) => ['automation', 'runs', filters] as const,
+  automationDetail: (name: string) => ['automation', 'detail', name] as const,
   health: ['health'] as const,
 }

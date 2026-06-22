@@ -8,6 +8,8 @@ import {
   allocatorSummarySchema,
   agentDecisionSchema,
   agentEventSchema,
+  automationJobRunSchema,
+  automationJobStatusListSchema,
   automationHealthResponseSchema,
   healthStatusResponseSchema,
   orderDetailResponseSchema,
@@ -37,7 +39,7 @@ import {
 } from '@/shared/api/schemas'
 import type { ListResponse, PortfolioSummary } from '@/shared/types/api'
 import type { AuthResponse, LoginRequest } from '@/shared/types/auth'
-import type { AgentDecision, AgentEvent, AllocationDecision, AllocatorDiagnostics, AllocatorOpportunity, AllocatorSummary, AutomationHealthResponse, BreakerResetRequest, BreakerResetResponse, HealthStatusResponse, KillSwitchToggleRequest, KillSwitchToggleResponse, MarketKillSwitchRequest, MarketKillSwitchResponse, Order, OrderDetailResponse, PipelineRun, Position, ReportArtifact, ReportLatestResponse, RiskBreakersResponse, RiskCockpitSummary, RiskEngineStatus, RunSnapshot, Strategy, StrategyCreateRequest, StrategyRunAcceptedResponse, StrategyUpdateRequest, Trade, User } from '@/shared/types/domain'
+import type { AgentDecision, AgentEvent, AllocationDecision, AllocatorDiagnostics, AllocatorOpportunity, AllocatorSummary, AutomationHealthResponse, AutomationJobRun, AutomationJobStatus, BreakerResetRequest, BreakerResetResponse, HealthStatusResponse, KillSwitchToggleRequest, KillSwitchToggleResponse, MarketKillSwitchRequest, MarketKillSwitchResponse, Order, OrderDetailResponse, PipelineRun, Position, ReportArtifact, ReportLatestResponse, RiskBreakersResponse, RiskCockpitSummary, RiskEngineStatus, RunSnapshot, Strategy, StrategyCreateRequest, StrategyRunAcceptedResponse, StrategyUpdateRequest, Trade, User } from '@/shared/types/domain'
 import type { SettingsResponse } from '@/shared/types/settings'
 
 export type StrategyListParams = {
@@ -109,6 +111,11 @@ export type AllocationDecisionListParams = {
   strategy_id?: string
   opportunity_id?: string
   created_after?: string
+  limit?: number
+  offset?: number
+}
+
+export type AutomationRunListParams = {
   limit?: number
   offset?: number
 }
@@ -272,6 +279,22 @@ export function getTrades(params: TradeListParams = {}, signal?: AbortSignal): P
 
 export function getAutomationHealth(signal?: AbortSignal): Promise<AutomationHealthResponse> {
   return api.get<AutomationHealthResponse>('/automation/health', { schema: automationHealthResponseSchema as never, signal })
+}
+
+export function getAutomationStatus(signal?: AbortSignal): Promise<AutomationJobStatus[]> {
+  return api.get<AutomationJobStatus[]>('/automation/status', { schema: automationJobStatusListSchema as never, signal })
+}
+
+export function getAutomationRuns(params: AutomationRunListParams = {}, signal?: AbortSignal): Promise<ListResponse<AutomationJobRun>> {
+  return api.get<ListResponse<AutomationJobRun>>(`/automation/runs${buildQuery(params)}`, { schema: listResponseSchema(automationJobRunSchema) as never, signal })
+}
+
+export function runAutomationJob(name: string, signal?: AbortSignal): Promise<{ status: string }> {
+  return api.post<{ status: string }>(`/automation/jobs/${encodeURIComponent(name)}/run`, undefined, { signal, retryOnUnauthorized: false })
+}
+
+export function setAutomationJobEnabled(name: string, enabled: boolean, signal?: AbortSignal): Promise<{ enabled: boolean }> {
+  return api.post<{ enabled: boolean }>(`/automation/jobs/${encodeURIComponent(name)}/enable`, { enabled }, { signal, retryOnUnauthorized: false })
 }
 
 export function getHealth(signal?: AbortSignal): Promise<HealthStatusResponse> {

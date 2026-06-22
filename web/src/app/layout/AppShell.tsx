@@ -21,6 +21,7 @@ export function AppShell() {
         <div className="brand">Augr</div>
         <nav aria-label="Primary">
           <NavLink to="/cockpit">Cockpit</NavLink>
+          <NavLink to="/automation">Automation</NavLink>
           <NavLink to="/strategies">Strategies</NavLink>
           <NavLink to="/runs">Runs</NavLink>
           <NavLink to="/events">Events</NavLink>

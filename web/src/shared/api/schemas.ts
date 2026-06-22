@@ -459,6 +459,42 @@ export const automationHealthResponseSchema = z
   })
   .passthrough()
 
+export const automationJobStatusSchema = z
+  .object({
+    name: z.string(),
+    description: z.string(),
+    schedule: z.string(),
+    last_run: optionalNullable(isoDateSchema).optional(),
+    last_result: z.string(),
+    last_summary: z.record(z.string(), z.unknown()).optional(),
+    last_error: z.string().optional(),
+    last_error_at: optionalNullable(isoDateSchema).optional(),
+    run_count: z.number().int(),
+    error_count: z.number().int(),
+    consecutive_failures: z.number().int(),
+    stuck_for: z.number().optional(),
+    running: z.boolean(),
+    enabled: z.boolean(),
+  })
+  .passthrough()
+
+export const automationJobStatusListSchema = z.array(automationJobStatusSchema)
+
+export const automationJobRunSchema = z
+  .object({
+    id: uuidSchema,
+    job_name: z.string(),
+    status: forwardCompatibleEnumSchema,
+    started_at: isoDateSchema,
+    completed_at: optionalNullable(isoDateSchema).optional(),
+    duration_ns: z.number().optional(),
+    error: z.string().optional(),
+    last_error_at: optionalNullable(isoDateSchema).optional(),
+    consecutive_failures: z.number().int(),
+    created_at: isoDateSchema,
+  })
+  .passthrough()
+
 export const healthStatusResponseSchema = z
   .object({
     status: forwardCompatibleEnumSchema,
