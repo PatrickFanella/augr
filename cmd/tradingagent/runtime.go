@@ -652,15 +652,19 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 	signalSources = append(signalSources,
 		signal.NewRSSSource(signal.DefaultRSSFeeds(), 60*time.Second, logger),
 		signal.NewRedditSource(signal.DefaultSubreddits(), 5*time.Minute, logger),
-		signal.NewPolymarketSource(signal.PolymarketSourceConfig{
+	)
+	if cfg.Features.EnablePolymarketAutomation {
+		signalSources = append(signalSources, signal.NewPolymarketSource(signal.PolymarketSourceConfig{
 			CLOBURL:               clobURL,
 			Interval:              10 * time.Minute,
 			PriceMoveThreshold:    0.05,
 			VolumeSpikeMultiplier: 3.0,
 			Loader:                watchedMarketsLoaderAdapter{repo: polymarketWatchedRepo},
-		}, logger),
-	)
-	if polymarketAccountRepo != nil {
+		}, logger))
+	} else {
+		logger.Info("polymarket signal source disabled by feature flag")
+	}
+	if cfg.Features.EnablePolymarketAutomation && polymarketAccountRepo != nil {
 		signalSources = append(signalSources, signal.NewWhaleSource(signal.WhaleSourceConfig{
 			CLOBURL:      clobURL,
 			Interval:     30 * time.Second,

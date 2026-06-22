@@ -168,7 +168,8 @@ type evaluatorOutput struct {
 
 func (e *Evaluator) parseResponse(content string, event RawSignalEvent, strategies []StrategyContext) (*EvaluatedSignal, error) {
 	var out evaluatorOutput
-	if err := json.Unmarshal([]byte(content), &out); err != nil {
+	jsonContent := extractJSONObject(content)
+	if err := json.Unmarshal([]byte(jsonContent), &out); err != nil {
 		e.logger.Warn("signal evaluator: failed to parse LLM output, using fallback",
 			slog.String("content", content),
 			slog.Any("error", err),
@@ -217,6 +218,24 @@ func (e *Evaluator) parseResponse(content string, event RawSignalEvent, strategi
 		Summary:            out.Summary,
 		RecommendedAction:  action,
 	}, nil
+}
+
+func extractJSONObject(content string) string {
+	trimmed := strings.TrimSpace(content)
+	trimmed = strings.TrimPrefix(trimmed, "```json")
+	trimmed = strings.TrimPrefix(trimmed, "```")
+	trimmed = strings.TrimSuffix(trimmed, "```")
+	trimmed = strings.TrimSpace(trimmed)
+	if strings.HasPrefix(trimmed, "{") && strings.HasSuffix(trimmed, "}") {
+		return trimmed
+	}
+
+	start := strings.Index(trimmed, "{")
+	end := strings.LastIndex(trimmed, "}")
+	if start >= 0 && end > start {
+		return trimmed[start : end+1]
+	}
+	return trimmed
 }
 
 func (e *Evaluator) completeWithTransientRetry(ctx context.Context, request llm.CompletionRequest) (*llm.CompletionResponse, error) {

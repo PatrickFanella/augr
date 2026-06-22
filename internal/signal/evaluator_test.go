@@ -202,6 +202,34 @@ func TestEvaluatorSuccess_NoMetricFired(t *testing.T) {
 	}
 }
 
+func TestEvaluatorParseResponse_ExtractsJSONFromMarkdownFence(t *testing.T) {
+	t.Parallel()
+
+	m := &stubMetrics{}
+	strategyID := uuid.New()
+	content := "Here is the evaluation:\n```json\n{" +
+		"\"affected_strategy_ids\":[\"" + strategyID.String() + "\"]," +
+		"\"urgency\":4,\"summary\":\"material update\",\"recommended_action\":\"re-evaluate\"}" +
+		"\n```"
+	e := NewEvaluator(stubEvaluatorProvider{response: &llm.CompletionResponse{Content: content}}, "quick", nil).
+		WithMetrics(m)
+
+	got, err := e.Evaluate(context.Background(), RawSignalEvent{Source: "rss", Title: "headline"},
+		[]StrategyContext{{ID: strategyID}})
+	if err != nil {
+		t.Fatalf("Evaluate() error = %v", err)
+	}
+	if got.Urgency != 4 {
+		t.Fatalf("Urgency = %d, want 4", got.Urgency)
+	}
+	if len(got.AffectedStrategies) != 1 || got.AffectedStrategies[0] != strategyID {
+		t.Fatalf("AffectedStrategies = %v, want [%s]", got.AffectedStrategies, strategyID)
+	}
+	if m.parseFailures != 0 {
+		t.Fatalf("parseFailures = %d, want 0", m.parseFailures)
+	}
+}
+
 // TestEvaluatorFallback_NilMetrics_NoPanic verifies nil metrics doesn't panic.
 func TestEvaluatorFallback_NilMetrics_NoPanic(t *testing.T) {
 	t.Parallel()
