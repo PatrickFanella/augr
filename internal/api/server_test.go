@@ -1608,6 +1608,50 @@ func TestPortfolioSummary(t *testing.T) {
 	}
 }
 
+func TestPortfolioSummaryIncludesClosedPositionRealizedPnL(t *testing.T) {
+	t.Parallel()
+
+	unrealized := 12.5
+	positionRepo := &stubPositionRepo{
+		positions: []domain.Position{{
+			ID:          uuid.New(),
+			Ticker:      "CCL",
+			Side:        domain.PositionSideLong,
+			Quantity:    80,
+			AvgEntry:    10,
+			RealizedPnL: 211.21,
+			ClosedAt:    timePtr(time.Date(2026, 6, 23, 15, 47, 17, 0, time.UTC)),
+		}, {
+			ID:            uuid.New(),
+			Ticker:        "OPEN",
+			Side:          domain.PositionSideLong,
+			Quantity:      1,
+			AvgEntry:      100,
+			UnrealizedPnL: &unrealized,
+			RealizedPnL:   3,
+		}},
+	}
+	deps := testDeps()
+	deps.Positions = positionRepo
+	srv := newTestServerWithDeps(t, deps)
+
+	rr := doRequest(t, srv, http.MethodGet, "/api/v1/portfolio/summary", nil)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", rr.Code, http.StatusOK, rr.Body.String())
+	}
+	body := decodeJSON[map[string]any](t, rr)
+	if got := body["open_positions"]; got != float64(1) {
+		t.Fatalf("open_positions = %v, want 1", got)
+	}
+	if got := body["unrealized_pnl"]; got != unrealized {
+		t.Fatalf("unrealized_pnl = %v, want %v", got, unrealized)
+	}
+	if got := body["realized_pnl"]; got != 214.21 {
+		t.Fatalf("realized_pnl = %v, want 214.21", got)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Orders
 // ---------------------------------------------------------------------------
@@ -2589,20 +2633,28 @@ func (stubOrderRepo) Count(context.Context, repository.OrderFilter) (int, error)
 
 // stubPositionRepo
 
-type stubPositionRepo struct{}
+type stubPositionRepo struct {
+	positions []domain.Position
+}
 
 func (stubPositionRepo) Create(context.Context, *domain.Position) error { return nil }
 func (stubPositionRepo) Get(_ context.Context, _ uuid.UUID) (*domain.Position, error) {
 	return nil, fmt.Errorf("position: %w", repository.ErrNotFound)
 }
 
-func (stubPositionRepo) List(context.Context, repository.PositionFilter, int, int) ([]domain.Position, error) {
-	return nil, nil
+func (s *stubPositionRepo) List(context.Context, repository.PositionFilter, int, int) ([]domain.Position, error) {
+	return append([]domain.Position(nil), s.positions...), nil
 }
 func (stubPositionRepo) Update(context.Context, *domain.Position) error { return nil }
 func (stubPositionRepo) Delete(context.Context, uuid.UUID) error        { return nil }
-func (stubPositionRepo) GetOpen(context.Context, repository.PositionFilter, int, int) ([]domain.Position, error) {
-	return nil, nil
+func (s *stubPositionRepo) GetOpen(context.Context, repository.PositionFilter, int, int) ([]domain.Position, error) {
+	var open []domain.Position
+	for _, position := range s.positions {
+		if position.ClosedAt == nil {
+			open = append(open, position)
+		}
+	}
+	return open, nil
 }
 
 func (stubPositionRepo) GetByStrategy(context.Context, uuid.UUID, repository.PositionFilter, int, int) ([]domain.Position, error) {

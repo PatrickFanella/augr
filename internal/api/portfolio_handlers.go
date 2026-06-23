@@ -51,21 +51,28 @@ func (s *Server) handleGetOpenPositions(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) handlePortfolioSummary(w http.ResponseWriter, r *http.Request) {
-	positions, err := s.positions.GetOpen(r.Context(), repository.PositionFilter{}, maxLimit, 0)
+	openPositions, err := s.positions.GetOpen(r.Context(), repository.PositionFilter{}, maxLimit, 0)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to get portfolio summary", ErrCodeInternal)
+		return
+	}
+	allPositions, err := s.positions.List(r.Context(), repository.PositionFilter{}, maxLimit, 0)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to get portfolio summary", ErrCodeInternal)
 		return
 	}
 
 	var totalUnrealized, totalRealized float64
-	for _, p := range positions {
+	for _, p := range openPositions {
 		if p.UnrealizedPnL != nil {
 			totalUnrealized += *p.UnrealizedPnL
 		}
+	}
+	for _, p := range allPositions {
 		totalRealized += p.RealizedPnL
 	}
 	summary := map[string]any{
-		"open_positions": len(positions),
+		"open_positions": len(openPositions),
 		"unrealized_pnl": totalUnrealized,
 		"realized_pnl":   totalRealized,
 	}
