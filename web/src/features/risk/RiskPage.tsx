@@ -2,6 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 
+import { Alert } from '@/components/ui/alert'
+import { PageHeader } from '@/components/ui/page-header'
 import { getAllocatorDiagnostics, getRiskBreakers, getRiskCockpit, getRiskStatus, resetRiskBreaker, resumeMarketKillSwitch, stopMarketKillSwitch, toggleKillSwitch } from '@/shared/api/endpoints'
 import { isApiClientError } from '@/shared/api/errors'
 import { refreshAccessToken } from '@/shared/auth/refresh'
@@ -77,7 +79,7 @@ function AllocatorDiagnosticsPanel({ diagnostics }: { diagnostics: Awaited<Retur
           <dt>Open positions by market</dt><dd>{Object.entries(diagnostics.open_positions_by_market).map(([market, count]) => `${displayEnum(market)}: ${count}`).join(', ') || '—'}</dd>
         </dl>
       </div>
-      {diagnostics.warnings.length > 0 ? <div role="alert" className="inline-alert warning">Warnings: {diagnostics.warnings.join(', ')}</div> : null}
+      {diagnostics.warnings.length > 0 ? <Alert variant="warning">Warnings: {diagnostics.warnings.join(', ')}</Alert> : null}
     </div>
   )
 }
@@ -433,11 +435,10 @@ export function RiskPage() {
   return (
     <div className="detail-stack">
       <nav className="breadcrumbs" aria-label="Breadcrumbs"><Link to="/cockpit">Cockpit</Link><span aria-hidden="true">/</span><span>Risk</span></nav>
-      <section className="panel hero-panel">
-        <p className="eyebrow">Safety console</p>
-        <div className="panel-header"><div><h1>Risk</h1><p className="muted">Inspect global risk, circuit breakers, kill switch state, market exposure, persisted breakers, and approved risk controls. This slice adds only breaker reset on top of existing controls.</p></div><span className="status-pill active">Risk console</span></div>
+      <PageHeader eyebrow="Safety console" title="Risk" description="Inspect global risk, circuit breakers, kill switch state, market exposure, persisted breakers, and approved risk controls. This slice adds only breaker reset on top of existing controls." actions={<span className="status-pill active">Risk console</span>} />
+      <section className="panel">
         <StaleBanner show={realtimeStale || realtime.status === 'disconnected' || realtime.status === 'degraded'} message="Risk console data is read-only and may be stale after realtime risk or execution activity." />
-        {verifiedMessage ? <p role="status" className="success-box">{verifiedMessage}</p> : null}
+        {verifiedMessage ? <Alert variant="success">{verifiedMessage}</Alert> : null}
       </section>
 
       <section className="panel" aria-labelledby="risk-status-heading">

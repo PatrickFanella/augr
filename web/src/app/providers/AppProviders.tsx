@@ -4,6 +4,7 @@ import { useState, type ReactNode } from 'react'
 import { appConfig } from '@/app/config/env'
 import { configureApiClient } from '@/shared/api/client'
 import { AuthProvider, useAuth } from '@/shared/auth/AuthProvider'
+import { ThemeProvider } from '@/app/providers/ThemeProvider'
 import { createAppQueryClient } from '@/shared/query/client'
 import { RealtimeProvider } from '@/shared/websocket/RealtimeProvider'
 
@@ -18,9 +19,11 @@ export function AppProviders({ children }: { children: ReactNode }) {
   const [queryClient] = useState(() => createAppQueryClient())
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <RealtimeBridge>{children}</RealtimeBridge>
-      </AuthProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <RealtimeBridge>{children}</RealtimeBridge>
+        </AuthProvider>
+      </ThemeProvider>
     </QueryClientProvider>
   )
 }

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 
 import { getTrades } from '@/shared/api/endpoints'
+import { PageHeader } from '@/components/ui/page-header'
 import { Breadcrumbs, EntityId, EntityLink } from '@/shared/components/EntityLinks'
 import { EmptyState, ErrorState, LastUpdated, LoadingState, StaleBanner } from '@/shared/components/QueryStates'
 import { queryKeys } from '@/shared/query/keys'
@@ -120,11 +121,8 @@ export function TradesListPage() {
   return (
     <div className="detail-stack">
       <Breadcrumbs items={[{ label: 'Cockpit', to: '/cockpit' }, { label: 'Trades' }]} />
-      <section className="panel hero-panel">
-        <p className="eyebrow">Read-only execution evidence</p>
-        <div className="panel-header"><div><h1>Trades</h1><p className="muted">Browse fills/executions and trace them back to orders and positions. Trade detail and broker actions are excluded.</p></div><span className="status-pill active">Read-only</span></div>
-        <StaleBanner show={realtimeStale || realtime.status === 'disconnected' || realtime.status === 'degraded'} message="Trade rows are read-only and may be stale after realtime order fills." />
-      </section>
+      <PageHeader eyebrow="Read-only execution evidence" title="Trades" description="Browse fills/executions and trace them back to orders and positions. Trade detail and broker actions are excluded." actions={<span className="status-pill active">Read-only</span>} />
+      <StaleBanner show={realtimeStale || realtime.status === 'disconnected' || realtime.status === 'degraded'} message="Trade rows are read-only and may be stale after realtime order fills." />
       <section className="panel" aria-labelledby="trades-heading">
         <div className="panel-header"><div><h2 id="trades-heading">Recent trades</h2><p className="muted">Backend filters support either order ID or position ID, plus ticker, side, executed date range, and pagination.</p></div>{query.data ? <LastUpdated date={query.dataUpdatedAt} /> : null}</div>
         <form className="filter-bar" aria-label="Trade filters" onSubmit={(event) => event.preventDefault()}>

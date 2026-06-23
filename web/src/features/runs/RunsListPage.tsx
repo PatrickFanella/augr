@@ -2,11 +2,15 @@ import { useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
+import { Alert } from '@/components/ui/alert'
+import { PageHeader } from '@/components/ui/page-header'
+import { StatusBadge } from '@/components/ui/status-badge'
 import { getRuns, type RunListParams } from '@/shared/api/endpoints'
 import { EntityLink } from '@/shared/components/EntityLinks'
 import { EmptyState, ErrorState, LastUpdated, LoadingState, StaleBanner } from '@/shared/components/QueryStates'
 import { queryKeys } from '@/shared/query/keys'
 import type { PipelineRun } from '@/shared/types/domain'
+import { normalizeStatus } from '@/lib/status'
 import { useRealtime } from '@/shared/websocket/RealtimeProvider'
 
 const pageSize = 20
@@ -51,8 +55,7 @@ function updateSearch(searchParams: URLSearchParams, updates: Record<string, str
 }
 
 function RunStatusPill({ value }: { value: string }) {
-  const known = ['running', 'completed', 'failed', 'cancelled'].includes(value)
-  return <span className={`status-pill ${known ? value : 'unknown'}`}>{known ? value : `Unknown: ${value}`}</span>
+  return <StatusBadge status={normalizeStatus(value)} label={value} />
 }
 
 function SignalValue({ value }: { value?: string }) {
@@ -119,16 +122,14 @@ export function RunsListPage() {
 
   return (
     <div className="detail-stack runs-page">
-      <section className="panel hero-panel">
-        <div className="panel-header">
-          <div>
-            <p className="eyebrow">Runs</p>
-            <h1>Runs</h1>
-            <p className="muted">Browse pipeline runs, preserve filter URLs, and deep-link to run or strategy evidence.</p>
-          </div>
-          <LastUpdated date={query.dataUpdatedAt || undefined} />
-        </div>
+      <PageHeader
+        eyebrow="Runs"
+        title="Runs"
+        description="Browse pipeline runs, preserve filter URLs, and deep-link to run or strategy evidence."
+        actions={<LastUpdated date={query.dataUpdatedAt || undefined} />}
+      />
 
+      <section className="panel">
         <form className="filter-bar" aria-label="Run filters" onSubmit={(event) => event.preventDefault()}>
           <label>
             Status
@@ -157,7 +158,7 @@ export function RunsListPage() {
         <p className="muted">{filterSummary} active filters. Date filters are sent as UTC day bounds.</p>
 
         <StaleBanner show={tableStale && Boolean(query.data)} message="Run rows are read-only and may be stale. Refresh before acting from a future detail page." />
-        {realtime.status === 'disconnected' || realtime.status === 'degraded' ? <p role="status" className="warning-box">WebSocket {realtime.status}; run rows may lag realtime changes.</p> : null}
+        {realtime.status === 'disconnected' || realtime.status === 'degraded' ? <Alert variant="warning">WebSocket {realtime.status}; run rows may lag realtime changes.</Alert> : null}
         {query.isLoading ? <LoadingState label="Loading runs…" /> : null}
         {query.error ? <ErrorState error={query.error} onRetry={() => void query.refetch()} /> : null}
         {!query.isLoading && !query.error && rows.length === 0 ? <EmptyState title="No runs found" message="Adjust filters or wait for a pipeline run to start." /> : null}

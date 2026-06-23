@@ -4,9 +4,12 @@ import { useSearchParams } from 'react-router-dom'
 import { Area, AreaChart, ResponsiveContainer, Tooltip } from 'recharts'
 import { RefreshCw } from 'lucide-react'
 
+import { Alert } from '@/components/ui/alert'
+import { PageHeader } from '@/components/ui/page-header'
 import { getAllocationDecisions, getAllocatorDiagnostics, getAllocatorOpportunities, getAllocatorSummary, getOpenPortfolioPositions, getPortfolioSummary } from '@/shared/api/endpoints'
 import { Breadcrumbs, EntityId, EntityLink } from '@/shared/components/EntityLinks'
 import { EmptyState, ErrorState, LastUpdated, LoadingState, StaleBanner } from '@/shared/components/QueryStates'
+import { getChartColors } from '@/lib/chart-theme'
 import { queryKeys } from '@/shared/query/keys'
 import type { AllocationDecision, AllocatorDiagnostics, AllocatorOpportunity, Position } from '@/shared/types/domain'
 import { useRealtime } from '@/shared/websocket/RealtimeProvider'
@@ -217,7 +220,7 @@ function AllocatorPanel({ searchParams, setSearchParams }: { searchParams: URLSe
         {diagnosticsQuery.isLoading ? <LoadingState label="Loading allocator diagnostics…" /> : null}
         {diagnosticsQuery.error ? <ErrorState error={diagnosticsQuery.error} onRetry={() => void diagnosticsQuery.refetch()} /> : null}
         {diagnosticsQuery.data ? <DiagnosticsGrid diagnostics={diagnosticsQuery.data} /> : null}
-        {diagnosticsQuery.data?.warnings.length ? <div role="status" className="inline-alert warning">Warnings: {diagnosticsQuery.data.warnings.join(', ')}</div> : null}
+        {diagnosticsQuery.data?.warnings.length ? <Alert variant="warning">Warnings: {diagnosticsQuery.data.warnings.join(', ')}</Alert> : null}
       </section>
 
       <section className="metrics-grid" aria-label="Allocator summary">
@@ -319,13 +322,9 @@ export function PortfolioPage() {
 
   return (
     <div className="detail-stack">
+      <PageHeader eyebrow="Paper/live clarity" title="Portfolio" description="Read-only exposure, P/L, and open positions. Broker reconciliation and actions are excluded." actions={<span className="status-pill active">Read-only</span>} />
       <Breadcrumbs items={[{ label: 'Cockpit', to: '/cockpit' }, { label: 'Portfolio' }]} />
-      <section className="panel hero-panel">
-        <p className="eyebrow">Paper/live clarity</p>
-        <div className="panel-header">
-          <div><h1>Portfolio</h1><p className="muted">Read-only exposure, P/L, and open positions. Broker reconciliation and actions are excluded.</p></div>
-          <span className="status-pill active">Read-only</span>
-        </div>
+      <section className="panel">
         <StaleBanner show={realtimeStale || realtime.status === 'disconnected' || realtime.status === 'degraded'} message="Portfolio data may be stale after realtime position/order activity. Values are display-only." />
       </section>
 
@@ -353,12 +352,12 @@ export function PortfolioPage() {
             <AreaChart data={pnlSparklineData}>
               <defs>
                 <linearGradient id="portfolioPnlGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={portfolioPnl >= 0 ? '#16a34a' : '#dc2626'} stopOpacity={0.4} />
-                  <stop offset="95%" stopColor={portfolioPnl >= 0 ? '#16a34a' : '#dc2626'} stopOpacity={0} />
+                  <stop offset="5%" stopColor={portfolioPnl >= 0 ? getChartColors().success : getChartColors().danger} stopOpacity={0.4} />
+                  <stop offset="95%" stopColor={portfolioPnl >= 0 ? getChartColors().success : getChartColors().danger} stopOpacity={0} />
                 </linearGradient>
               </defs>
               <Tooltip formatter={(value) => money(Number(value ?? 0))} />
-              <Area type="monotone" dataKey="value" stroke={portfolioPnl >= 0 ? '#16a34a' : '#dc2626'} fill="url(#portfolioPnlGradient)" dot={false} strokeWidth={2} />
+              <Area type="monotone" dataKey="value" stroke={portfolioPnl >= 0 ? getChartColors().success : getChartColors().danger} fill="url(#portfolioPnlGradient)" dot={false} strokeWidth={2} />
             </AreaChart>
           </ResponsiveContainer>
         </div>
@@ -366,7 +365,7 @@ export function PortfolioPage() {
 
       <section className="panel" aria-labelledby="open-positions-heading">
         <div className="panel-header">
-          <div><h2 id="open-positions-heading">Open positions</h2><p className="muted">Backend supports ticker and side filters for this slice.</p>{realtimeStale ? <span className="inline-alert warning">Data may be stale</span> : null}</div>
+          <div><h2 id="open-positions-heading">Open positions</h2><p className="muted">Backend supports ticker and side filters for this slice.</p>{realtimeStale ? <Alert variant="warning">Data may be stale</Alert> : null}</div>
           <div className="panel-actions">{positionsQuery.data ? <LastUpdated date={positionsQuery.dataUpdatedAt} /> : null}<button type="button" className="secondary-button" onClick={() => { void summaryQuery.refetch(); void positionsQuery.refetch(); setRealtimeStale(false) }} aria-label="Refresh portfolio data"><RefreshCw size={16} /> Refresh</button></div>
         </div>
         <form className="filter-bar" aria-label="Position filters" onSubmit={(event) => event.preventDefault()} style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>

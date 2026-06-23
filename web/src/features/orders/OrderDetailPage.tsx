@@ -3,9 +3,12 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 
 import { getOrder } from '@/shared/api/endpoints'
+import { PageHeader } from '@/components/ui/page-header'
 import { Breadcrumbs, EntityId, EntityLink } from '@/shared/components/EntityLinks'
 import { EmptyState, ErrorState, LastUpdated, LoadingState, StaleBanner } from '@/shared/components/QueryStates'
 import { queryKeys } from '@/shared/query/keys'
+import { StatusBadge } from '@/components/ui/status-badge'
+import { normalizeStatus } from '@/lib/status'
 import type { Order, Trade } from '@/shared/types/domain'
 import { useRealtime } from '@/shared/websocket/RealtimeProvider'
 
@@ -29,8 +32,8 @@ function displayEnum(value?: string) {
 }
 
 function DetailPill({ value, known }: { value: string; known: string[] }) {
-  const normalized = displayEnum(value)
-  return <span className={`status-pill ${known.includes(value) ? value : 'unknown'}`}>{known.includes(value) ? normalized : `Unknown: ${normalized}`}</span>
+  const isKnown = known.includes(value)
+  return <StatusBadge status={isKnown ? normalizeStatus(value) : 'unknown'} label={isKnown ? value : `Unknown: ${value}`} />
 }
 
 function OrderSummary({ order }: { order: Order }) {
@@ -139,12 +142,10 @@ export function OrderDetailPage() {
   return (
     <div className="detail-stack">
       <Breadcrumbs items={[{ label: 'Cockpit', to: '/cockpit' }, { label: 'Orders', to: '/orders' }, { label: order.ticker }]} />
-      <section className="panel hero-panel">
-        <p className="eyebrow">Read-only order detail</p>
-        <div className="panel-header"><div><h1>{order.ticker} order</h1><p className="muted"><EntityId kind="order" id={order.id} /></p></div><div className="header-actions"><DetailPill value={order.status} known={['pending', 'submitted', 'partial', 'filled', 'cancelled', 'rejected']} /><span className="status-pill active">Read-only</span></div></div>
-        <StaleBanner show={realtimeStale || query.isStale || realtime.status === 'disconnected' || realtime.status === 'degraded'} message="Order detail and fills are read-only and may be stale after realtime fill activity." />
-        <LastUpdated date={query.dataUpdatedAt} />
-      </section>
+      <PageHeader eyebrow="Read-only order detail" title={`${order.ticker} order`} description="Broker order state, execution quantities, and linked operational evidence." actions={<div className="header-actions"><DetailPill value={order.status} known={['pending', 'submitted', 'partial', 'filled', 'cancelled', 'rejected']} /><span className="status-pill active">Read-only</span></div>} />
+      <p className="muted"><EntityId kind="order" id={order.id} /></p>
+      <StaleBanner show={realtimeStale || query.isStale || realtime.status === 'disconnected' || realtime.status === 'degraded'} message="Order detail and fills are read-only and may be stale after realtime fill activity." />
+      <LastUpdated date={query.dataUpdatedAt} />
       <OrderSummary order={order} />
       <LinkedEvidence order={order} fills={detail.fills} />
       <section className="panel" aria-labelledby="order-fills-heading">

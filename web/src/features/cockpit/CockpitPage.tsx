@@ -3,10 +3,12 @@ import { useQuery, type UseQueryResult } from '@tanstack/react-query'
 import { RefreshCw } from 'lucide-react'
 import { AreaChart, Area, ResponsiveContainer, Tooltip, PieChart, Pie, Cell } from 'recharts'
 
+import { PageHeader } from '@/components/ui/page-header'
 import { getAutomationHealth, getHealth, getOpenPortfolioPositions, getOrders, getPortfolioSummary, getRiskBreakers, getRiskCockpit, getRiskStatus, getRunningRuns, getTrades } from '@/shared/api/endpoints'
 import { isApiClientError } from '@/shared/api/errors'
 import { Breadcrumbs, EntityLink } from '@/shared/components/EntityLinks'
 import { ErrorState, LastUpdated, LoadingState, StaleBanner } from '@/shared/components/QueryStates'
+import { getChartColors } from '@/lib/chart-theme'
 import { queryKeys } from '@/shared/query/keys'
 import type { HealthStatusResponse, Order, PipelineRun, Position, RiskBreakersResponse, RiskCockpitSummary, RiskEngineStatus, Trade } from '@/shared/types/domain'
 import { useRealtime } from '@/shared/websocket/RealtimeProvider'
@@ -167,7 +169,7 @@ export function CockpitPage() {
   const classification = classifyCockpit({ risk: risk.data, cockpit: riskCockpit.data, breakers: breakers.data, health: health.data, automationHealthy: automation.data?.healthy, realtimeStatus: realtime.status, hasWidgetError })
   const portfolioPnl = portfolio.data ? portfolio.data.unrealized_pnl + portfolio.data.realized_pnl : 0
   const pnlSparklineData = portfolio.data ? [{ name: 'P/L', unrealized: portfolio.data.unrealized_pnl, realized: portfolio.data.realized_pnl }] : []
-  const portfolioDistribution = openPositions.data?.data?.slice(0, 6).map((position, index) => ({ name: position.ticker, value: Math.max(Math.abs(position.unrealized_pnl ?? 0), 1), fill: ['#4f46e5', '#0f766e', '#06b6d4', '#8b5cf6', '#14b8a6', '#6366f1'][index % 6] })) ?? []
+  const portfolioDistribution = openPositions.data?.data?.slice(0, 6).map((position, index) => ({ name: position.ticker, value: Math.max(Math.abs(position.unrealized_pnl ?? 0), 1), fill: getChartColors().distribution[index % 6] })) ?? []
 
   useEffect(() => {
     send({ action: 'subscribe_all' })
@@ -175,10 +177,8 @@ export function CockpitPage() {
 
   return (
     <div className="cockpit-grid">
-      <section className="panel hero-panel" aria-labelledby="cockpit-heading">
-        <Breadcrumbs items={[{ label: 'Cockpit' }]} />
-        <p className="eyebrow">Operator cockpit</p>
-        <h1 id="cockpit-heading">System overview</h1>
+      <PageHeader eyebrow="Operator cockpit" title="System overview" actions={<Breadcrumbs items={[{ label: 'Cockpit' }]} />} />
+      <section className="panel">
         <div className="metrics-grid">
           <div>
             <p role="status" className={`status-pill ${classification}`}>Cockpit classification: {classification}</p>
@@ -202,17 +202,17 @@ export function CockpitPage() {
               <AreaChart data={pnlSparklineData}>
                 <defs>
                   <linearGradient id="unrealizedPnlGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.45} />
-                    <stop offset="95%" stopColor="#4f46e5" stopOpacity={0} />
+                    <stop offset="5%" stopColor={getChartColors().accent} stopOpacity={0.45} />
+                    <stop offset="95%" stopColor={getChartColors().accent} stopOpacity={0} />
                   </linearGradient>
                   <linearGradient id="realizedPnlGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#0f766e" stopOpacity={0.45} />
-                    <stop offset="95%" stopColor="#0f766e" stopOpacity={0} />
+                    <stop offset="5%" stopColor={getChartColors().accentSecondary} stopOpacity={0.45} />
+                    <stop offset="95%" stopColor={getChartColors().accentSecondary} stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <Tooltip formatter={(value) => formatCurrency(Number(value ?? 0))} />
-                <Area type="monotone" dataKey="unrealized" stroke="#4f46e5" fill="url(#unrealizedPnlGradient)" strokeWidth={2} dot={false} />
-                <Area type="monotone" dataKey="realized" stroke="#0f766e" fill="url(#realizedPnlGradient)" strokeWidth={2} dot={false} />
+                <Area type="monotone" dataKey="unrealized" stroke={getChartColors().accent} fill="url(#unrealizedPnlGradient)" strokeWidth={2} dot={false} />
+                <Area type="monotone" dataKey="realized" stroke={getChartColors().accentSecondary} fill="url(#realizedPnlGradient)" strokeWidth={2} dot={false} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -282,12 +282,12 @@ export function CockpitPage() {
               <AreaChart data={[{ name: 'P/L', unrealized: data.unrealized_pnl, realized: data.realized_pnl }]}>
                 <defs>
                   <linearGradient id="portfolioMiniGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={data.unrealized_pnl + data.realized_pnl >= 0 ? '#16a34a' : '#dc2626'} stopOpacity={0.45} />
-                    <stop offset="95%" stopColor={data.unrealized_pnl + data.realized_pnl >= 0 ? '#16a34a' : '#dc2626'} stopOpacity={0} />
+                    <stop offset="5%" stopColor={data.unrealized_pnl + data.realized_pnl >= 0 ? getChartColors().success : getChartColors().danger} stopOpacity={0.45} />
+                    <stop offset="95%" stopColor={data.unrealized_pnl + data.realized_pnl >= 0 ? getChartColors().success : getChartColors().danger} stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <Tooltip formatter={(value) => formatCurrency(Number(value ?? 0))} />
-                <Area type="monotone" dataKey="unrealized" stroke={data.unrealized_pnl >= 0 ? '#16a34a' : '#dc2626'} fill="url(#portfolioMiniGradient)" dot={false} strokeWidth={2} />
+                <Area type="monotone" dataKey="unrealized" stroke={data.unrealized_pnl >= 0 ? getChartColors().success : getChartColors().danger} fill="url(#portfolioMiniGradient)" dot={false} strokeWidth={2} />
               </AreaChart>
             </ResponsiveContainer>
           </div>

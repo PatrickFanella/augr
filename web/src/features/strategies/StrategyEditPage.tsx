@@ -2,6 +2,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
+import { Alert } from '@/components/ui/alert'
+import { PageHeader } from '@/components/ui/page-header'
+import { StatusBadge } from '@/components/ui/status-badge'
+import { normalizeStatus } from '@/lib/status'
 import { getSettings, getStrategy, updateStrategy } from '@/shared/api/endpoints'
 import { isApiClientError } from '@/shared/api/errors'
 import { strategyUpdateRequestSchema } from '@/shared/api/schemas'
@@ -12,72 +16,12 @@ import type { KnownMarketType, Strategy, StrategyUpdateRequest } from '@/shared/
 import { useRealtime } from '@/shared/websocket/RealtimeProvider'
 
 const marketOptions: KnownMarketType[] = ['stock', 'crypto', 'polymarket', 'kalshi', 'options']
-
-type Snapshot = {
-  name: string
-  description: string
-  ticker: string
-  market_type: string
-  schedule_cron: string
-  config: string
-}
-
+type Snapshot = { name: string; description: string; ticker: string; market_type: string; schedule_cron: string; config: string }
 type FieldErrors = Partial<Record<keyof Snapshot | 'submit', string>>
 
-function snapshotFromStrategy(strategy: Strategy): Snapshot {
-  return {
-    name: strategy.name,
-    description: strategy.description ?? '',
-    ticker: strategy.ticker,
-    market_type: marketOptions.includes(strategy.market_type as KnownMarketType) ? strategy.market_type : 'stock',
-    schedule_cron: strategy.schedule_cron ?? '',
-    config: JSON.stringify(strategy.config ?? {}, null, 2),
-  }
-}
-
-function mutationMessage(error: unknown) {
-  if (!isApiClientError(error)) return { message: 'Save failed after submission. Completion is unknown; refetch before retrying.', unknownCompletion: true }
-  switch (error.kind) {
-    case 'conflict':
-      return { message: error.message || 'Strategy changed or is not paper-editable. Refresh before retrying.' }
-    case 'validation':
-    case 'bad_request':
-      return { message: error.message || 'The strategy edit was rejected by server validation.' }
-    case 'rate_limited':
-      return { message: 'Strategy edits are temporarily rate limited. Wait before retrying.' }
-    case 'network':
-      return { message: 'Network failed while saving. Completion is unknown; refetch before retrying.', unknownCompletion: true }
-    default:
-      return { message: error.message || 'Unable to save strategy edit.' }
-  }
-}
-
-function validateSnapshot(snapshot: Snapshot, updatedAt: string): { request?: StrategyUpdateRequest; errors: FieldErrors } {
-  const errors: FieldErrors = {}
-  let config: unknown
-  try {
-    config = JSON.parse(snapshot.config)
-  } catch {
-    errors.config = 'Config must be valid JSON.'
-  }
-  const raw = {
-    name: snapshot.name.trim(),
-    description: snapshot.description.trim() || undefined,
-    ticker: snapshot.ticker.trim().toUpperCase(),
-    market_type: snapshot.market_type,
-    schedule_cron: snapshot.schedule_cron.trim() || undefined,
-    config: config ?? {},
-    updated_at: updatedAt,
-  }
-  const parsed = strategyUpdateRequestSchema.safeParse(raw)
-  if (!parsed.success) {
-    for (const issue of parsed.error.issues) {
-      const key = issue.path[0]
-      if (typeof key === 'string' && key in raw) errors[key as keyof FieldErrors] = issue.message
-    }
-  }
-  return Object.keys(errors).length > 0 ? { errors } : { request: parsed.success ? parsed.data as StrategyUpdateRequest : undefined, errors }
-}
+function snapshotFromStrategy(strategy: Strategy): Snapshot { return { name: strategy.name, description: strategy.description ?? '', ticker: strategy.ticker, market_type: marketOptions.includes(strategy.market_type as KnownMarketType) ? strategy.market_type : 'stock', schedule_cron: strategy.schedule_cron ?? '', config: JSON.stringify(strategy.config ?? {}, null, 2) } }
+function mutationMessage(error: unknown) { if (!isApiClientError(error)) return { message: 'Save failed after submission. Completion is unknown; refetch before retrying.', unknownCompletion: true }; switch (error.kind) { case 'conflict': return { message: error.message || 'Strategy changed or is not paper-editable. Refresh before retrying.' }; case 'validation': case 'bad_request': return { message: error.message || 'The strategy edit was rejected by server validation.' }; case 'rate_limited': return { message: 'Strategy edits are temporarily rate limited. Wait before retrying.' }; case 'network': return { message: 'Network failed while saving. Completion is unknown; refetch before retrying.', unknownCompletion: true }; default: return { message: error.message || 'Unable to save strategy edit.' } } }
+function validateSnapshot(snapshot: Snapshot, updatedAt: string): { request?: StrategyUpdateRequest; errors: FieldErrors } { const errors: FieldErrors = {}; let config: unknown; try { config = JSON.parse(snapshot.config) } catch { errors.config = 'Config must be valid JSON.' } const raw = { name: snapshot.name.trim(), description: snapshot.description.trim() || undefined, ticker: snapshot.ticker.trim().toUpperCase(), market_type: snapshot.market_type, schedule_cron: snapshot.schedule_cron.trim() || undefined, config: config ?? {}, updated_at: updatedAt }; const parsed = strategyUpdateRequestSchema.safeParse(raw); if (!parsed.success) for (const issue of parsed.error.issues) { const key = issue.path[0]; if (typeof key === 'string' && key in raw) errors[key as keyof FieldErrors] = issue.message } return Object.keys(errors).length > 0 ? { errors } : { request: parsed.success ? parsed.data as StrategyUpdateRequest : undefined, errors } }
 
 export function StrategyEditPage() {
   const { id = '' } = useParams()
@@ -92,94 +36,15 @@ export function StrategyEditPage() {
   const [pendingRequest, setPendingRequest] = useState<StrategyUpdateRequest | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [dialogError, setDialogError] = useState<{ message: string; unknownCompletion?: boolean } | null>(null)
-
-  useEffect(() => {
-    if (strategy && !snapshot) setSnapshot(snapshotFromStrategy(strategy))
-  }, [snapshot, strategy])
-
+  useEffect(() => { if (strategy && !snapshot) setSnapshot(snapshotFromStrategy(strategy)) }, [snapshot, strategy])
   const realtimeStale = useMemo(() => realtime.events.some((event) => event.strategy_id === id), [id, realtime.events])
   const isLive = strategy?.is_paper === false
   const dirty = strategy && snapshot ? JSON.stringify(snapshot) !== JSON.stringify(snapshotFromStrategy(strategy)) : false
-
-  const mutation = useMutation({
-    mutationFn: async (request: StrategyUpdateRequest) => updateStrategy(id, request),
-    retry: false,
-    onSuccess: async (saved) => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.strategyList })
-      void queryClient.invalidateQueries({ queryKey: queryKeys.strategyDetail(id), refetchType: 'none' })
-      try {
-        await queryClient.fetchQuery({ queryKey: queryKeys.strategyDetail(id), queryFn: ({ signal }) => getStrategy(id, signal), retry: false })
-        setDialogOpen(false)
-        navigate(`/strategies/${saved.id}`)
-      } catch {
-        setDialogError({ message: 'Strategy was saved, but verification fetch failed. Refetch detail before retrying.', unknownCompletion: true })
-      }
-    },
-    onError: (error) => setDialogError(mutationMessage(error)),
-  })
-
-  function updateField(field: keyof Snapshot, value: string) {
-    setSnapshot((current) => current ? { ...current, [field]: field === 'ticker' ? value.toUpperCase() : value } : current)
-  }
-
-  function onSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (!strategy || !snapshot) return
-    const result = validateSnapshot(snapshot, strategy.updated_at)
-    setFieldErrors(result.errors)
-    setDialogError(null)
-    if (!result.request) return
-    setPendingRequest(result.request)
-    setDialogOpen(true)
-  }
-
+  const mutation = useMutation({ mutationFn: async (request: StrategyUpdateRequest) => updateStrategy(id, request), retry: false, onSuccess: async (saved) => { void queryClient.invalidateQueries({ queryKey: queryKeys.strategyList }); void queryClient.invalidateQueries({ queryKey: queryKeys.strategyDetail(id), refetchType: 'none' }); try { await queryClient.fetchQuery({ queryKey: queryKeys.strategyDetail(id), queryFn: ({ signal }) => getStrategy(id, signal), retry: false }); setDialogOpen(false); navigate(`/strategies/${saved.id}`) } catch { setDialogError({ message: 'Strategy was saved, but verification fetch failed. Refetch detail before retrying.', unknownCompletion: true }) } }, onError: (error) => setDialogError(mutationMessage(error)) })
+  function updateField(field: keyof Snapshot, value: string) { setSnapshot((current) => current ? { ...current, [field]: field === 'ticker' ? value.toUpperCase() : value } : current) }
+  function onSubmit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (!strategy || !snapshot) return; const result = validateSnapshot(snapshot, strategy.updated_at); setFieldErrors(result.errors); setDialogError(null); if (!result.request) return; setPendingRequest(result.request); setDialogOpen(true) }
   if (strategyQuery.isLoading) return <LoadingState label="Loading strategy edit form…" />
   if (strategyQuery.error && !strategy) return <ErrorState error={strategyQuery.error} onRetry={() => void strategyQuery.refetch()} />
   if (!strategy || !snapshot) return <ErrorState error={new Error('Strategy unavailable')} onRetry={() => void strategyQuery.refetch()} />
-
-  return (
-    <div className="detail-stack">
-      <nav className="breadcrumbs" aria-label="Breadcrumbs">
-        <Link to="/cockpit">Cockpit</Link><span aria-hidden="true">/</span><Link to="/strategies">Strategies</Link><span aria-hidden="true">/</span><Link to={`/strategies/${strategy.id}`}>{strategy.name}</Link><span aria-hidden="true">/</span><span>Edit</span>
-      </nav>
-      <section className="panel hero-panel">
-        <div className="panel-header">
-          <div>
-            <p className="eyebrow">Paper strategy edit</p>
-            <h1>Edit {strategy.name}</h1>
-            <p className="muted">Only safe fields are editable. Status, mode, skip-next, IDs, and timestamps are server-protected.</p>
-          </div>
-          <span className={`status-pill ${strategy.is_paper ? 'paper' : 'live'}`}>{strategy.is_paper ? 'PAPER' : 'LIVE'}</span>
-        </div>
-        <p className="warning-box" role="status">Environment: {settings.data?.system.environment ?? 'Environment unknown'}. Refetch before saving if realtime marks this form stale.</p>
-        <StaleBanner show={realtimeStale} message="Realtime activity was received for this strategy. Refetch before saving to avoid overwriting newer context." />
-        {isLive ? <div className="error-box" role="alert">Live strategies cannot be edited from this paper-only slice.</div> : null}
-        <form className="strategy-form" onSubmit={onSubmit} noValidate>
-          <label>Name<input value={snapshot.name} onChange={(event) => updateField('name', event.target.value)} aria-invalid={Boolean(fieldErrors.name)} disabled={isLive} />{fieldErrors.name ? <span className="error-text">{fieldErrors.name}</span> : null}</label>
-          <label>Ticker<input value={snapshot.ticker} onChange={(event) => updateField('ticker', event.target.value)} disabled={isLive} />{fieldErrors.ticker ? <span className="error-text">{fieldErrors.ticker}</span> : null}</label>
-          <label>Market type<select value={snapshot.market_type} onChange={(event) => updateField('market_type', event.target.value)} disabled={isLive}>{marketOptions.map((market) => <option key={market} value={market}>{market}</option>)}</select></label>
-          <label>Schedule cron <span className="muted">optional</span><input value={snapshot.schedule_cron} onChange={(event) => updateField('schedule_cron', event.target.value)} disabled={isLive} />{fieldErrors.schedule_cron ? <span className="error-text">{fieldErrors.schedule_cron}</span> : null}</label>
-          <label className="form-wide">Description <span className="muted">optional</span><textarea value={snapshot.description} onChange={(event) => updateField('description', event.target.value)} rows={3} disabled={isLive} /></label>
-          <label className="form-wide">Config JSON<textarea value={snapshot.config} onChange={(event) => updateField('config', event.target.value)} rows={10} aria-invalid={Boolean(fieldErrors.config)} disabled={isLive} />{fieldErrors.config ? <span className="error-text">{fieldErrors.config}</span> : null}</label>
-          <div className="dialog-actions form-wide">
-            <Link to={`/strategies/${strategy.id}`} className="secondary-link">Cancel</Link>
-            <button type="submit" disabled={isLive || !dirty || mutation.isPending}>Review paper edit</button>
-          </div>
-        </form>
-      </section>
-      <ConfirmationDialog
-        open={dialogOpen}
-        title="Save paper strategy edit?"
-        confirmLabel="Save paper edit"
-        busy={mutation.isPending}
-        disableDismiss={mutation.isPending}
-        error={dialogError ? <>{dialogError.message}{dialogError.unknownCompletion ? <strong> Do not retry until detail is refetched.</strong> : null}</> : null}
-        onCancel={() => { if (!mutation.isPending) setDialogOpen(false) }}
-        onConfirm={() => { if (pendingRequest && !mutation.isPending) mutation.mutate(pendingRequest) }}
-      >
-        <p><strong>{strategy.name}</strong> will be updated as a PAPER strategy only.</p>
-        <p>Status, mode, skip-next, IDs, and timestamps are not submitted by the UI.</p>
-      </ConfirmationDialog>
-    </div>
-  )
+  return <div className="detail-stack"><nav className="breadcrumbs" aria-label="Breadcrumbs"><Link to="/cockpit">Cockpit</Link><span aria-hidden="true">/</span><Link to="/strategies">Strategies</Link><span aria-hidden="true">/</span><Link to={`/strategies/${strategy.id}`}>{strategy.name}</Link><span aria-hidden="true">/</span><span>Edit</span></nav><PageHeader eyebrow="Paper strategy edit" title={`Edit ${strategy.name}`} description="Only safe fields are editable. Status, mode, skip-next, IDs, and timestamps are server-protected." actions={<StatusBadge status={normalizeStatus(strategy.is_paper ? 'running' : 'paused')} label={strategy.is_paper ? 'PAPER' : 'LIVE'} />} /><section className="panel hero-panel">{settings.isLoading ? <LoadingState label="Loading environment context…" /> : null}{settings.error ? <ErrorState error={settings.error} onRetry={() => void settings.refetch()} /> : null}<Alert variant="warning">Environment: {settings.data?.system.environment ?? 'Environment unknown'}. Refetch before saving if realtime marks this form stale.</Alert><StaleBanner show={realtimeStale} message="Realtime activity was received for this strategy. Refetch before saving to avoid overwriting newer context." />{isLive ? <Alert variant="danger">Live strategies cannot be edited from this paper-only slice.</Alert> : null}<form className="strategy-form" onSubmit={onSubmit} noValidate><label>Name<input value={snapshot.name} onChange={(event) => updateField('name', event.target.value)} aria-invalid={Boolean(fieldErrors.name)} disabled={isLive} />{fieldErrors.name ? <span className="error-text">{fieldErrors.name}</span> : null}</label><label>Ticker<input value={snapshot.ticker} onChange={(event) => updateField('ticker', event.target.value)} disabled={isLive} />{fieldErrors.ticker ? <span className="error-text">{fieldErrors.ticker}</span> : null}</label><label>Market type<select value={snapshot.market_type} onChange={(event) => updateField('market_type', event.target.value)} disabled={isLive}>{marketOptions.map((market) => <option key={market} value={market}>{market}</option>)}</select></label><label>Schedule cron <span className="muted">optional</span><input value={snapshot.schedule_cron} onChange={(event) => updateField('schedule_cron', event.target.value)} disabled={isLive} />{fieldErrors.schedule_cron ? <span className="error-text">{fieldErrors.schedule_cron}</span> : null}</label><label className="form-wide">Description <span className="muted">optional</span><textarea value={snapshot.description} onChange={(event) => updateField('description', event.target.value)} rows={3} disabled={isLive} /></label><label className="form-wide">Config JSON<textarea value={snapshot.config} onChange={(event) => updateField('config', event.target.value)} rows={10} aria-invalid={Boolean(fieldErrors.config)} disabled={isLive} />{fieldErrors.config ? <span className="error-text">{fieldErrors.config}</span> : null}</label><div className="dialog-actions form-wide"><Link to={`/strategies/${strategy.id}`} className="secondary-link">Cancel</Link><button type="submit" disabled={isLive || !dirty || mutation.isPending}>Review paper edit</button></div></form></section><ConfirmationDialog open={dialogOpen} title="Save paper strategy edit?" confirmLabel="Save paper edit" busy={mutation.isPending} disableDismiss={mutation.isPending} error={dialogError ? <>{dialogError.message}{dialogError.unknownCompletion ? <strong> Do not retry until detail is refetched.</strong> : null}</> : null} onCancel={() => { if (!mutation.isPending) setDialogOpen(false) }} onConfirm={() => { if (pendingRequest && !mutation.isPending) mutation.mutate(pendingRequest) }}><p><strong>{strategy.name}</strong> will be updated as a PAPER strategy only.</p><p>Status, mode, skip-next, IDs, and timestamps are not submitted by the UI.</p></ConfirmationDialog></div>
 }

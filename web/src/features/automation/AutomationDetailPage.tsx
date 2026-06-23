@@ -1,10 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 
+import { PageHeader } from '@/components/ui/page-header'
+import { StatusBadge } from '@/components/ui/status-badge'
 import { getAutomationRuns, getAutomationStatus, runAutomationJob, setAutomationJobEnabled } from '@/shared/api/endpoints'
 import { EmptyState, ErrorState, LastUpdated, LoadingState } from '@/shared/components/QueryStates'
 import { queryKeys } from '@/shared/query/keys'
 import type { AutomationJobStatus } from '@/shared/types/domain'
+import { normalizeStatus } from '@/lib/status'
 
 function formatDuration(ns?: number): string {
   if (!ns) return '--'
@@ -20,11 +23,11 @@ function formatDate(value?: string): string {
 }
 
 function JobStatePill({ job }: { job: AutomationJobStatus }) {
-  if (!job.enabled) return <span className="status-pill cancelled">disabled</span>
-  if (job.running) return <span className="status-pill running">running</span>
-  if (job.consecutive_failures >= 3) return <span className="status-pill failed">failing</span>
-  if (job.consecutive_failures > 0) return <span className="status-pill unknown">degraded</span>
-  return <span className="status-pill completed">healthy</span>
+  if (!job.enabled) return <StatusBadge status="unknown" label="disabled" />
+  if (job.running) return <StatusBadge status="running" />
+  if (job.consecutive_failures >= 3) return <StatusBadge status="danger" label="failing" />
+  if (job.consecutive_failures > 0) return <StatusBadge status="warning" label="degraded" />
+  return <StatusBadge status="success" label="healthy" />
 }
 
 export function AutomationDetailPage() {
@@ -49,15 +52,9 @@ export function AutomationDetailPage() {
 
   return (
     <div className="detail-stack">
-      <section className="panel hero-panel">
-        <div className="panel-header">
-          <div>
-            <p className="eyebrow"><Link to="/automation">Automation</Link></p>
-            <h1>{name}</h1>
-            <p className="muted">Job status, controls, and recent execution history.</p>
-          </div>
-          <LastUpdated date={statusQuery.dataUpdatedAt || undefined} />
-        </div>
+      <PageHeader eyebrow="Automation" title={name} description="Job status, controls, and recent execution history." actions={<LastUpdated date={statusQuery.dataUpdatedAt || undefined} />} />
+
+      <section className="panel">
 
         {statusQuery.isLoading ? <LoadingState label="Loading automation job…" /> : null}
         {statusQuery.error ? <ErrorState error={statusQuery.error} onRetry={() => void statusQuery.refetch()} /> : null}
@@ -107,7 +104,7 @@ export function AutomationDetailPage() {
               <tbody>
                 {runs.map((run) => (
                   <tr key={run.id}>
-                    <td><span className={`status-pill ${run.status}`}>{run.status}</span></td>
+                    <td><StatusBadge status={normalizeStatus(run.status)} label={run.status} /></td>
                     <td>{formatDate(run.started_at)}</td>
                     <td>{formatDate(run.completed_at)}</td>
                     <td>{formatDuration(run.duration_ns)}</td>

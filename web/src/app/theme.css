@@ -1,6 +1,6 @@
 /**
  * Augr Design System - Theme Tokens
- * A striking, modern palette for a trading/finance dashboard
+ * Catppuccin Mocha (dark) + Latte (light) with neubrutalist structure.
  */
 
 /* ==========================================================================
@@ -10,76 +10,91 @@
 :root,
 [data-theme="dark"] {
   /* --------------------------------------------------------------------------
-     COLOR PALETTE - DARK (Default)
+     COLOR PALETTE - DARK (Catppuccin Mocha, default)
      -------------------------------------------------------------------------- */
-  
-  /* Surface Colors */
-  --color-surface-base: #0a0a0f;
-  --color-surface-raised: #12121a;
-  --color-surface-overlay: #1a1a24;
-  --color-surface-elevated: #22222e;
-  --color-surface-active: #2a2a38;
-  
+
+  /* Surface Colors — mapped to Catppuccin base/mantle/crust/surface-N */
+  --color-surface-base: #1e1e2e;      /* ctp-base */
+  --color-surface-raised: #313244;    /* ctp-surface-0 */
+  --color-surface-overlay: #45475a;   /* ctp-surface-1 */
+  --color-surface-elevated: #585b70;  /* ctp-surface-2 */
+  --color-surface-active: #45475a;    /* ctp-surface-1 */
+
   /* Text Colors */
-  --color-text-primary: #f0f0f5;
-  --color-text-secondary: #a0a0b0;
-  --color-text-muted: #606070;
-  --color-text-disabled: #404050;
-  
+  --color-text-primary: #cdd6f4;      /* ctp-text */
+  --color-text-secondary: #bac2de;    /* ctp-subtext-1 */
+  --color-text-muted: #a6adc8;        /* ctp-subtext-0 */
+  --color-text-disabled: #6c7086;     /* ctp-overlay-0 */
+
   /* Border Colors */
-  --color-border-subtle: #2a2a38;
-  --color-border-default: #3a3a4a;
-  --color-border-strong: #4a4a5a;
-  --color-border-focus: #6366f1;
-  
-  /* Accent Colors - Electric Indigo */
-  --color-accent-primary: #6366f1;
-  --color-accent-primary-hover: #818cf8;
-  --color-accent-primary-muted: rgba(99, 102, 241, 0.15);
-  --color-accent-secondary: #a855f7;
-  --color-accent-glow: rgba(99, 102, 241, 0.4);
-  
+  --color-border-subtle: #313244;     /* ctp-surface-0 */
+  --color-border-default: #45475a;    /* ctp-surface-1 */
+  --color-border-strong: #585b70;     /* ctp-surface-2 */
+  --color-border-focus: #cba6f7;      /* ctp-mauve */
+
+  /* Accent Colors — Mauve primary, Blue secondary */
+  --color-accent-primary: #cba6f7;        /* ctp-mauve */
+  --color-accent-primary-hover: #f5c2e7;  /* ctp-pink */
+  --color-accent-primary-muted: rgba(203, 166, 247, 0.15);
+  --color-accent-secondary: #89b4fa;      /* ctp-blue */
+  --color-accent-glow: rgba(203, 166, 247, 0.4);
+
   /* Status Colors */
-  --color-success: #10b981;
-  --color-success-muted: rgba(16, 185, 129, 0.15);
-  --color-success-text: #34d399;
-  
-  --color-warning: #f59e0b;
-  --color-warning-muted: rgba(245, 158, 11, 0.15);
-  --color-warning-text: #fbbf24;
-  
-  --color-danger: #ef4444;
-  --color-danger-muted: rgba(239, 68, 68, 0.15);
-  --color-danger-text: #f87171;
-  
-  --color-info: #38bdf8;
-  --color-info-muted: rgba(56, 189, 248, 0.15);
-  --color-info-text: #7dd3fc;
-  
-  --color-neutral: #64748b;
-  --color-neutral-muted: rgba(100, 116, 139, 0.15);
-  
+  --color-success: #a6e3a1;          /* ctp-green */
+  --color-success-muted: rgba(166, 227, 161, 0.15);
+  --color-success-text: #a6e3a1;
+
+  --color-warning: #f9e2af;          /* ctp-yellow */
+  --color-warning-muted: rgba(249, 226, 175, 0.15);
+  --color-warning-text: #f9e2af;
+
+  --color-danger: #f38ba8;           /* ctp-red */
+  --color-danger-muted: rgba(243, 139, 168, 0.15);
+  --color-danger-text: #f38ba8;
+
+  --color-info: #89dceb;             /* ctp-sky */
+  --color-info-muted: rgba(137, 220, 235, 0.15);
+  --color-info-text: #89dceb;
+
+  --color-neutral: #a6adc8;          /* ctp-subtext-0 */
+  --color-neutral-muted: rgba(166, 173, 200, 0.15);
+
+  /* Extended status colors */
+  --color-caution: #fab387;          /* ctp-peach */
+  --color-caution-muted: rgba(250, 179, 135, 0.15);
+  --color-caution-text: #fab387;
+
+  --color-running: #74c7ec;          /* ctp-sapphire */
+  --color-running-muted: rgba(116, 199, 236, 0.15);
+  --color-running-text: #74c7ec;
+
+  --color-processing: #89dceb;       /* ctp-sky */
+  --color-processing-muted: rgba(137, 220, 235, 0.15);
+  --color-processing-text: #89dceb;
+
+  --color-paused: #b4befe;           /* ctp-lavender */
+  --color-paused-muted: rgba(180, 190, 254, 0.15);
+  --color-paused-text: #b4befe;
+
   /* Trading Side Colors */
-  --color-long: #14b8a6;
-  --color-long-muted: rgba(20, 184, 166, 0.15);
-  --color-long-text: #2dd4bf;
-  --color-short: #f43f5e;
-  --color-short-muted: rgba(244, 63, 94, 0.15);
-  --color-short-text: #fb7185;
-  
+  --color-long: #a6e3a1;             /* ctp-green */
+  --color-long-muted: rgba(166, 227, 161, 0.15);
+  --color-long-text: #a6e3a1;
+  --color-short: #f38ba8;            /* ctp-red */
+  --color-short-muted: rgba(243, 139, 168, 0.15);
+  --color-short-text: #f38ba8;
+
   /* Background (alias for surface-base) */
   --color-bg: var(--color-surface-base);
   --color-bg-raised: var(--color-surface-raised);
-  
+
   /* --------------------------------------------------------------------------
      TYPOGRAPHY
      -------------------------------------------------------------------------- */
-  
-  /* Font Stacks */
+
   --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Monaco, 'Cascadia Code', monospace;
-  
-  /* Font Sizes */
+
   --text-xs: 0.6875rem;
   --text-sm: 0.8125rem;
   --text-base: 0.9375rem;
@@ -88,23 +103,21 @@
   --text-2xl: 1.5rem;
   --text-3xl: 2rem;
   --text-4xl: 2.5rem;
-  
-  /* Font Weights */
+
   --font-normal: 400;
   --font-medium: 500;
   --font-semibold: 600;
   --font-bold: 700;
   --font-extrabold: 800;
-  
-  /* Line Heights */
+
   --leading-tight: 1.25;
   --leading-normal: 1.5;
   --leading-relaxed: 1.7;
-  
+
   /* --------------------------------------------------------------------------
      SPACING
      -------------------------------------------------------------------------- */
-  
+
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 0.75rem;
@@ -115,87 +128,150 @@
   --space-10: 2.5rem;
   --space-12: 3rem;
   --space-16: 4rem;
-  
+
   /* --------------------------------------------------------------------------
      BORDER RADIUS
      -------------------------------------------------------------------------- */
-  
+
   --radius-sm: 0.25rem;
   --radius-md: 0.5rem;
   --radius-lg: 0.75rem;
   --radius-xl: 1rem;
   --radius-2xl: 1.5rem;
   --radius-full: 9999px;
-  
+
   /* --------------------------------------------------------------------------
      SHADOWS
      -------------------------------------------------------------------------- */
-  
+
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
   --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.6);
   --shadow-glow: 0 0 20px var(--color-accent-glow);
-  
+
+  /* Neubrutalist hard shadows */
+  --shadow-brutal-sm: 2px 2px 0 var(--color-surface-active);
+  --shadow-brutal: 4px 4px 0 var(--color-surface-active);
+
   /* --------------------------------------------------------------------------
      BORDERS
      -------------------------------------------------------------------------- */
-  
+
   --border-width: 1px;
   --border-width-2: 2px;
-  
+
   /* --------------------------------------------------------------------------
      TRANSITIONS
      -------------------------------------------------------------------------- */
-  
+
   --transition-fast: 150ms ease;
   --transition-normal: 250ms ease;
   --transition-slow: 350ms ease;
-  
+
   /* --------------------------------------------------------------------------
      FOCUS
      -------------------------------------------------------------------------- */
-  
+
   --focus-ring: 0 0 0 2px var(--color-surface-base), 0 0 0 4px var(--color-accent-primary);
-  
+
   /* --------------------------------------------------------------------------
      SCROLLBAR
      -------------------------------------------------------------------------- */
-  
+
   --scrollbar-track: var(--color-surface-base);
   --scrollbar-thumb: var(--color-border-strong);
   --scrollbar-thumb-hover: var(--color-text-muted);
 }
 
-/* Light Theme */
+/* Light Theme — Catppuccin Latte (first-class, full override) */
 [data-theme="light"] {
   /* Surface Colors */
-  --color-surface-base: #f8fafc;
-  --color-surface-raised: #ffffff;
-  --color-surface-overlay: #f1f5f9;
-  --color-surface-elevated: #e2e8f0;
-  --color-surface-active: #cbd5e1;
-  
+  --color-surface-base: #eff1f5;      /* ctp-base */
+  --color-surface-raised: #ccd0da;    /* ctp-surface-0 */
+  --color-surface-overlay: #bcc0cc;   /* ctp-surface-1 */
+  --color-surface-elevated: #acb0be;  /* ctp-surface-2 */
+  --color-surface-active: #bcc0cc;    /* ctp-surface-1 */
+
   /* Text Colors */
-  --color-text-primary: #0f172a;
-  --color-text-secondary: #475569;
-  --color-text-muted: #64748b;
-  --color-text-disabled: #94a3b8;
-  
+  --color-text-primary: #4c4f69;      /* ctp-text */
+  --color-text-secondary: #5c5f77;    /* ctp-subtext-1 */
+  --color-text-muted: #6c6f85;        /* ctp-subtext-0 */
+  --color-text-disabled: #9ca0b0;     /* ctp-overlay-0 */
+
   /* Border Colors */
-  --color-border-subtle: #e2e8f0;
-  --color-border-default: #cbd5e1;
-  --color-border-strong: #94a3b8;
-  --color-border-focus: #6366f1;
-  
+  --color-border-subtle: #ccd0da;     /* ctp-surface-0 */
+  --color-border-default: #bcc0cc;    /* ctp-surface-1 */
+  --color-border-strong: #acb0be;     /* ctp-surface-2 */
+  --color-border-focus: #8839ef;      /* ctp-mauve */
+
+  /* Accent Colors */
+  --color-accent-primary: #8839ef;        /* ctp-mauve */
+  --color-accent-primary-hover: #ea76cb;  /* ctp-pink */
+  --color-accent-primary-muted: rgba(136, 57, 239, 0.12);
+  --color-accent-secondary: #1e66f5;      /* ctp-blue */
+  --color-accent-glow: rgba(136, 57, 239, 0.3);
+
+  /* Status Colors */
+  --color-success: #40a02b;          /* ctp-green */
+  --color-success-muted: rgba(64, 160, 43, 0.12);
+  --color-success-text: #40a02b;
+
+  --color-warning: #df8e1d;          /* ctp-yellow */
+  --color-warning-muted: rgba(223, 142, 29, 0.12);
+  --color-warning-text: #df8e1d;
+
+  --color-danger: #d20f39;           /* ctp-red */
+  --color-danger-muted: rgba(210, 15, 57, 0.12);
+  --color-danger-text: #d20f39;
+
+  --color-info: #04a5e5;             /* ctp-sky */
+  --color-info-muted: rgba(4, 165, 229, 0.12);
+  --color-info-text: #04a5e5;
+
+  --color-neutral: #6c6f85;          /* ctp-subtext-0 */
+  --color-neutral-muted: rgba(108, 111, 133, 0.12);
+
+  /* Extended status colors */
+  --color-caution: #fe640b;          /* ctp-peach */
+  --color-caution-muted: rgba(254, 100, 11, 0.12);
+  --color-caution-text: #fe640b;
+
+  --color-running: #209fb5;          /* ctp-sapphire */
+  --color-running-muted: rgba(32, 159, 181, 0.12);
+  --color-running-text: #209fb5;
+
+  --color-processing: #04a5e5;       /* ctp-sky */
+  --color-processing-muted: rgba(4, 165, 229, 0.12);
+  --color-processing-text: #04a5e5;
+
+  --color-paused: #7287fd;           /* ctp-lavender */
+  --color-paused-muted: rgba(114, 135, 253, 0.12);
+  --color-paused-text: #7287fd;
+
+  /* Trading Side Colors */
+  --color-long: #40a02b;             /* ctp-green */
+  --color-long-muted: rgba(64, 160, 43, 0.12);
+  --color-long-text: #40a02b;
+  --color-short: #d20f39;            /* ctp-red */
+  --color-short-muted: rgba(210, 15, 57, 0.12);
+  --color-short-text: #d20f39;
+
   /* Background */
   --color-bg: var(--color-surface-base);
   --color-bg-raised: var(--color-surface-raised);
-  
+
   /* Scrollbar */
   --scrollbar-track: var(--color-surface-overlay);
   --scrollbar-thumb: var(--color-border-strong);
   --scrollbar-thumb-hover: var(--color-text-muted);
+
+  /* Neubrutalist hard shadows (lighter for light theme) */
+  --shadow-brutal-sm: 2px 2px 0 var(--color-surface-elevated);
+  --shadow-brutal: 4px 4px 0 var(--color-surface-elevated);
+
+  /* Focus ring */
+  --focus-ring: 0 0 0 2px var(--color-surface-base), 0 0 0 4px var(--color-accent-primary);
 }
 
 /* ==========================================================================
@@ -210,21 +286,21 @@
   --color-surface-overlay: var(--color-surface-overlay);
   --color-surface-elevated: var(--color-surface-elevated);
   --color-surface-active: var(--color-surface-active);
-  
+
   --color-text-primary: var(--color-text-primary);
   --color-text-secondary: var(--color-text-secondary);
   --color-text-muted: var(--color-text-muted);
   --color-text-disabled: var(--color-text-disabled);
-  
+
   --color-border-subtle: var(--color-border-subtle);
   --color-border-default: var(--color-border-default);
   --color-border-strong: var(--color-border-strong);
   --color-border-focus: var(--color-border-focus);
-  
+
   --color-accent: var(--color-accent-primary);
   --color-accent-hover: var(--color-accent-primary-hover);
   --color-accent-muted: var(--color-accent-primary-muted);
-  
+
   --color-success: var(--color-success);
   --color-success-muted: var(--color-success-muted);
   --color-warning: var(--color-warning);
@@ -233,16 +309,25 @@
   --color-danger-muted: var(--color-danger-muted);
   --color-info: var(--color-info);
   --color-info-muted: var(--color-info-muted);
-  
+
+  --color-caution: var(--color-caution);
+  --color-caution-muted: var(--color-caution-muted);
+  --color-running: var(--color-running);
+  --color-running-muted: var(--color-running-muted);
+  --color-processing: var(--color-processing);
+  --color-processing-muted: var(--color-processing-muted);
+  --color-paused: var(--color-paused);
+  --color-paused-muted: var(--color-paused-muted);
+
   --color-long: var(--color-long);
   --color-long-muted: var(--color-long-muted);
   --color-short: var(--color-short);
   --color-short-muted: var(--color-short-muted);
-  
+
   /* Typography */
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
-  
+
   /* Font Sizes */
   --text-xs: var(--text-xs);
   --text-sm: var(--text-sm);
@@ -252,13 +337,13 @@
   --text-2xl: var(--text-2xl);
   --text-3xl: var(--text-3xl);
   --text-4xl: var(--text-4xl);
-  
+
   /* Font Weights */
   --font-normal: var(--font-normal);
   --font-medium: var(--font-medium);
   --font-semibold: var(--font-semibold);
   --font-bold: var(--font-bold);
-  
+
   /* Spacing */
   --spacing-1: var(--space-1);
   --spacing-2: var(--space-2);
@@ -270,7 +355,7 @@
   --spacing-10: var(--space-10);
   --spacing-12: var(--space-12);
   --spacing-16: var(--space-16);
-  
+
   /* Border Radius */
   --radius-sm: var(--radius-sm);
   --radius-md: var(--radius-md);
@@ -278,13 +363,15 @@
   --radius-xl: var(--radius-xl);
   --radius-2xl: var(--radius-2xl);
   --radius-full: var(--radius-full);
-  
+
   /* Shadows */
   --shadow-sm: var(--shadow-sm);
   --shadow-md: var(--shadow-md);
   --shadow-lg: var(--shadow-lg);
   --shadow-xl: var(--shadow-xl);
-  
+  --shadow-brutal-sm: var(--shadow-brutal-sm);
+  --shadow-brutal: var(--shadow-brutal);
+
   /* Transitions */
   --transition-fast: var(--transition-fast);
   --transition-normal: var(--transition-normal);
@@ -294,30 +381,30 @@
    SCROLLBAR STYLING
    ========================================================================== */
 
-[data-theme="dark"] ::-webkit-scrollbar {
+::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
-[data-theme="dark"] ::-webkit-scrollbar-track {
+::-webkit-scrollbar-track {
   background: var(--scrollbar-track);
 }
 
-[data-theme="dark"] ::-webkit-scrollbar-thumb {
+::-webkit-scrollbar-thumb {
   background: var(--scrollbar-thumb);
   border-radius: var(--radius-full);
 }
 
-[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+::-webkit-scrollbar-thumb:hover {
   background: var(--scrollbar-thumb-hover);
 }
 
-[data-theme="dark"] ::-webkit-scrollbar-corner {
+::-webkit-scrollbar-corner {
   background: var(--scrollbar-track);
 }
 
 /* Firefox scrollbar */
-[data-theme="dark"] {
+html {
   scrollbar-width: thin;
   scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
 }

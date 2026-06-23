@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 
+import { Alert } from '@/components/ui/alert'
 import { getEvents, type EventListParams } from '@/shared/api/endpoints'
 import { EntityId, EntityLink } from '@/shared/components/EntityLinks'
 import { EmptyState, ErrorState, LastUpdated, LoadingState } from '@/shared/components/QueryStates'
@@ -113,6 +114,7 @@ export function EventTimeline({ fixedRunId, fixedStrategyId }: { fixedRunId?: st
       </form>
       {query.isLoading ? <LoadingState label="Loading persisted events…" /> : null}
       {query.error ? <ErrorState error={query.error} onRetry={() => void query.refetch()} /> : null}
+      {query.error ? <Alert variant="danger">Unable to load persisted events.</Alert> : null}
       {query.data && events.length === 0 ? <EmptyState title="No persisted events" message="No stored events match these filters." /> : null}
       {events.length > 0 ? (
         <>

@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 
+import { PageHeader } from '@/components/ui/page-header'
+import { StatusBadge } from '@/components/ui/status-badge'
 import { getAutomationHealth, getAutomationStatus, runAutomationJob, setAutomationJobEnabled } from '@/shared/api/endpoints'
 import { EmptyState, ErrorState, LastUpdated, LoadingState } from '@/shared/components/QueryStates'
 import { queryKeys } from '@/shared/query/keys'
@@ -19,11 +21,11 @@ function formatRelativeTime(iso?: string): string {
 }
 
 function JobStatePill({ job }: { job: AutomationJobStatus }) {
-  if (!job.enabled) return <span className="status-pill cancelled">disabled</span>
-  if (job.running) return <span className="status-pill running">running</span>
-  if (job.consecutive_failures >= 3) return <span className="status-pill failed">failing</span>
-  if (job.consecutive_failures > 0) return <span className="status-pill unknown">degraded</span>
-  return <span className="status-pill completed">healthy</span>
+  if (!job.enabled) return <StatusBadge status="unknown" label="disabled" />
+  if (job.running) return <StatusBadge status="running" />
+  if (job.consecutive_failures >= 3) return <StatusBadge status="danger" label="failing" />
+  if (job.consecutive_failures > 0) return <StatusBadge status="warning" label="degraded" />
+  return <StatusBadge status="success" label="healthy" />
 }
 
 function AutomationActions({ job }: { job: AutomationJobStatus }) {
@@ -58,15 +60,9 @@ export function AutomationPage() {
 
   return (
     <div className="detail-stack">
-      <section className="panel hero-panel">
-        <div className="panel-header">
-          <div>
-            <p className="eyebrow">Automation</p>
-            <h1>Automations</h1>
-            <p className="muted">Scheduled jobs like deep_scan, hot_scan, reconciles, reports, and portfolio allocation.</p>
-          </div>
-          <LastUpdated date={statusQuery.dataUpdatedAt || undefined} />
-        </div>
+      <PageHeader eyebrow="Automation" title="Automations" description="Scheduled jobs like deep_scan, hot_scan, reconciles, reports, and portfolio allocation." actions={<LastUpdated date={statusQuery.dataUpdatedAt || undefined} />} />
+
+      <section className="panel">
 
         {healthQuery.data ? (
           <div className="metrics-grid">
@@ -106,7 +102,7 @@ export function AutomationPage() {
                     <td>{job.schedule || 'Manual only'}</td>
                     <td>{formatRelativeTime(job.last_run)}</td>
                     <td>{job.run_count}</td>
-                    <td>{job.error_count > 0 ? <span className="status-pill failed">{job.error_count}</span> : job.error_count}</td>
+                    <td>{job.error_count > 0 ? <StatusBadge status="danger" label={String(job.error_count)} /> : job.error_count}</td>
                     <td><AutomationActions job={job} /></td>
                   </tr>
                 ))}

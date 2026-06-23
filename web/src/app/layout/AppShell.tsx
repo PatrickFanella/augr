@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
-import { Menu, ChevronLeft, LayoutDashboard, Bot, Lightbulb, Play, Clock, ShoppingCart, ArrowLeftRight, PieChart, ShieldAlert } from 'lucide-react'
+import { Menu, ChevronLeft, LayoutDashboard, Bot, Lightbulb, Play, Clock, ShoppingCart, ArrowLeftRight, PieChart, ShieldAlert, Sun, Moon } from 'lucide-react'
 
+import { useTheme } from '@/app/providers/ThemeProvider'
+import { CommandPalette } from '@/components/CommandPalette'
 import { getSettings } from '@/shared/api/endpoints'
 import { useAuth } from '@/shared/auth/AuthProvider'
 import { EntityLink } from '@/shared/components/EntityLinks'
@@ -34,6 +36,7 @@ function getInitialCollapsedState(): boolean {
 export function AppShell() {
   const auth = useAuth()
   const realtime = useRealtime()
+  const { theme, toggleTheme } = useTheme()
   const settings = useQuery({ queryKey: queryKeys.settings, queryFn: ({ signal }) => getSettings(signal), enabled: auth.status === 'authenticated' })
   const broker = settings.data?.system.connected_brokers.find((item) => item.configured)
   const mode = broker?.paper_mode === false ? 'Live' : 'Paper'
@@ -74,6 +77,7 @@ export function AppShell() {
   return (
     <div className="app-layout" data-sidebar-collapsed={String(sidebarCollapsed)}>
       <a className="skip-link" href="#main-content">Skip to main content</a>
+      <CommandPalette />
       
       {/* Mobile backdrop */}
       {isMobile && isMobileOpen && (
@@ -113,6 +117,15 @@ export function AppShell() {
           </div>
           <div className="header-cluster">
             <span className={`status-pill ${realtime.status}`}>Realtime: {realtime.status}</span>
+            <button
+              type="button"
+              className="sidebar-toggle"
+              onClick={toggleTheme}
+              aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+              title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+            >
+              {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+            </button>
             <span>{auth.session?.user.username}</span>
             <button type="button" onClick={auth.logout}>Logout</button>
           </div>

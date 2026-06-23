@@ -2,6 +2,10 @@ import { useQuery } from '@tanstack/react-query'
 import type { KeyboardEvent } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
+import { Alert } from '@/components/ui/alert'
+import { PageHeader } from '@/components/ui/page-header'
+import { StatusBadge } from '@/components/ui/status-badge'
+import { normalizeStatus } from '@/lib/status'
 import { getStrategies, type StrategyListParams } from '@/shared/api/endpoints'
 import { EmptyState, ErrorState, LastUpdated, LoadingState, StaleBanner } from '@/shared/components/QueryStates'
 import { queryKeys } from '@/shared/query/keys'
@@ -42,11 +46,6 @@ function updateSearch(searchParams: URLSearchParams, updates: Record<string, str
   }
   next.delete('offset')
   return next
-}
-
-function StatusPill({ value }: { value: string }) {
-  const known = ['active', 'paused', 'inactive'].includes(value)
-  return <span className={`status-pill ${known ? value : 'unknown'}`}>{known ? value : `Unknown: ${value}`}</span>
 }
 
 function ModePill({ isPaper }: { isPaper: boolean }) {
@@ -94,19 +93,14 @@ export function StrategiesListPage() {
 
   return (
     <div className="detail-stack strategies-page">
-      <section className="panel hero-panel">
-        <div className="panel-header">
-          <div>
-            <p className="eyebrow">Strategies</p>
-            <h1>Strategies</h1>
-            <p className="muted">Browse strategies, verify PAPER/LIVE mode, and open deep-linked strategy detail.</p>
-          </div>
-          <div className="header-cluster">
-            <Link className="secondary-link" to="/strategies/new">New paper strategy</Link>
-            <LastUpdated date={query.dataUpdatedAt || undefined} />
-          </div>
-        </div>
+      <PageHeader
+        eyebrow="Strategies"
+        title="Strategies"
+        description="Browse strategies, verify PAPER/LIVE mode, and open deep-linked strategy detail."
+        actions={<div className="header-cluster"><Link className="secondary-link" to="/strategies/new">New paper strategy</Link><LastUpdated date={query.dataUpdatedAt || undefined} /></div>}
+      />
 
+      <section className="panel hero-panel">
         <form className="filter-bar" aria-label="Strategy filters" onSubmit={(event) => event.preventDefault()}>
           <label>
             Ticker
@@ -142,7 +136,7 @@ export function StrategiesListPage() {
         </form>
 
         <StaleBanner show={tableStale && Boolean(query.data)} message="Strategy data may be stale. Refresh before taking operational action on a detail page." />
-        {realtime.status === 'disconnected' || realtime.status === 'degraded' ? <p role="status" className="warning-box">WebSocket {realtime.status}; rows are read-only and may lag realtime changes.</p> : null}
+        {realtime.status === 'disconnected' || realtime.status === 'degraded' ? <Alert variant="warning">WebSocket {realtime.status}; rows are read-only and may lag realtime changes.</Alert> : null}
         {query.isLoading ? <LoadingState label="Loading strategies…" /> : null}
         {query.error ? <ErrorState error={query.error} onRetry={() => void query.refetch()} /> : null}
         {!query.isLoading && !query.error && rows.length === 0 ? <EmptyState title="No strategies found" message="Adjust filters or create a paper strategy." /> : null}
@@ -168,7 +162,7 @@ export function StrategiesListPage() {
                       <th scope="row"><Link to={`/strategies/${strategy.id}`}>{strategy.name}</Link></th>
                       <td>{strategy.ticker}</td>
                       <td>{titleCase(strategy.market_type)}</td>
-                      <td><StatusPill value={strategy.status} /></td>
+                      <td><StatusBadge status={normalizeStatus(strategy.status)} label={strategy.status} /></td>
                       <td><ModePill isPaper={strategy.is_paper} /></td>
                       <td><LatestRun strategy={strategy} /></td>
                       <td>{new Date(strategy.updated_at).toLocaleString()}</td>
@@ -185,7 +179,7 @@ export function StrategiesListPage() {
                     <ModePill isPaper={strategy.is_paper} />
                   </div>
                   <p>{strategy.ticker} · {titleCase(strategy.market_type)}</p>
-                  <p><StatusPill value={strategy.status} /></p>
+                  <p><StatusBadge status={normalizeStatus(strategy.status)} label={strategy.status} /></p>
                   <p><LatestRun strategy={strategy} /></p>
                 </article>
               ))}

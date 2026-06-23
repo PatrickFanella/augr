@@ -2,6 +2,9 @@ import { useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useState, type KeyboardEvent } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 
+import { Alert } from '@/components/ui/alert'
+import { PageHeader } from '@/components/ui/page-header'
+import { StatusBadge } from '@/components/ui/status-badge'
 import { EventTimeline } from '@/features/events/EventTimeline'
 import { getRun, getRunDecisions, getRunSnapshot } from '@/shared/api/endpoints'
 import { isApiClientError } from '@/shared/api/errors'
@@ -9,6 +12,7 @@ import { Breadcrumbs, CopyButton, EntityId, EntityLink } from '@/shared/componen
 import { EmptyState, ErrorState, LastUpdated, LoadingState, StaleBanner } from '@/shared/components/QueryStates'
 import { queryKeys } from '@/shared/query/keys'
 import type { AgentDecision, PipelineRun, RunSnapshot } from '@/shared/types/domain'
+import { normalizeStatus } from '@/lib/status'
 import { useRealtime } from '@/shared/websocket/RealtimeProvider'
 
 const staleEventTypes = new Set(['agent_decision', 'debate_round', 'signal', 'error', 'pipeline_health'])
@@ -21,8 +25,7 @@ function titleCase(value?: string) {
 }
 
 function RunStatusPill({ value }: { value: string }) {
-  const known = ['running', 'completed', 'failed', 'cancelled'].includes(value)
-  return <span className={`status-pill ${known ? value : 'unknown'}`}>{known ? value : `Unknown: ${value}`}</span>
+  return <StatusBadge status={normalizeStatus(value)} label={value} />
 }
 
 function SignalValue({ value }: { value?: string }) {
@@ -274,26 +277,17 @@ export function RunDetailPage() {
     <div className="detail-stack">
       <Breadcrumbs items={[{ label: 'Cockpit', to: '/cockpit' }, { label: 'Runs', to: '/runs' }, { label: run?.ticker ?? 'Run detail' }]} />
 
-      <section className="panel hero-panel">
-        <p className="eyebrow">Run detail</p>
+      <PageHeader eyebrow="Run detail" title={run ? `${run.ticker} run` : 'Run detail'} description={run ? `Run ID: ${run.id}` : 'Loading run detail…'} actions={run ? <div className="header-cluster"><EntityLink kind="strategy" id={run.strategy_id} label="Open strategy" copy={false} /><RunStatusPill value={run.status} /></div> : undefined} />
+
+      <section className="panel">
         {runQuery.isLoading ? <LoadingState label="Loading run detail…" /> : null}
-        {notFound ? <div role="alert" className="error-box">Run not found. Return to the runs list and verify the link.</div> : null}
+        {notFound ? <Alert variant="danger">Run not found. Return to the runs list and verify the link.</Alert> : null}
         {runQuery.error && !notFound ? <ErrorState error={runQuery.error} onRetry={() => void runQuery.refetch()} /> : null}
         {run ? (
           <>
-            <div className="panel-header">
-              <div>
-                <h1>{run.ticker} run</h1>
-                <p className="muted"><code>{run.id}</code></p>
-              </div>
-              <div className="header-cluster">
-                <EntityLink kind="strategy" id={run.strategy_id} label="Open strategy" copy={false} />
-                <RunStatusPill value={run.status} />
-              </div>
-            </div>
             <LastUpdated date={runQuery.dataUpdatedAt || run.started_at} />
             <StaleBanner show={showStale} message="Run detail is read-only and may be stale. Refresh before using this evidence for operational decisions." />
-            {realtime.status === 'disconnected' || realtime.status === 'degraded' ? <p role="status" className="warning-box">WebSocket {realtime.status}; run detail may lag realtime changes.</p> : null}
+            {realtime.status === 'disconnected' || realtime.status === 'degraded' ? <Alert variant="warning">WebSocket {realtime.status}; run detail may lag realtime changes.</Alert> : null}
 
             <DetailTabs activeTab={activeTab} onChange={setTab} />
 

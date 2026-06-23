@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 
+import { Alert } from '@/components/ui/alert'
 import { isApiClientError } from '@/shared/api/errors'
 import { useAuth } from '@/shared/auth/AuthProvider'
 
@@ -48,7 +49,7 @@ export function LoginPage() {
           Password
           <input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required />
         </label>
-        {error ? <div role="alert" className="error-box">{error}</div> : null}
+        {error ? <Alert variant="danger">{error}</Alert> : null}
         <button type="submit" disabled={submitting}>{submitting ? 'Signing in…' : 'Sign in'}</button>
       </form>
     </main>

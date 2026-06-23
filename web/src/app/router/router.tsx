@@ -1,24 +1,67 @@
+import { lazy, Suspense } from 'react'
 import { createBrowserRouter, Navigate } from 'react-router-dom'
 
 import { AppShell } from '@/app/layout/AppShell'
 import { ProtectedRoute } from '@/app/router/ProtectedRoute'
-import { AutomationDetailPage } from '@/features/automation/AutomationDetailPage'
-import { AutomationPage } from '@/features/automation/AutomationPage'
-import { CockpitPage } from '@/features/cockpit/CockpitPage'
-import { EventsPage } from '@/features/events/EventsPage'
+import { LoadingState } from '@/shared/components/QueryStates'
 import { LoginPage } from '@/features/auth-login/LoginPage'
-import { OrderDetailPage } from '@/features/orders/OrderDetailPage'
-import { OrdersListPage } from '@/features/orders/OrdersListPage'
-import { PortfolioPage } from '@/features/portfolio/PortfolioPage'
-import { StockPage } from '@/features/stock/StockPage'
-import { RiskPage } from '@/features/risk/RiskPage'
-import { RunDetailPage } from '@/features/runs/RunDetailPage'
-import { RunsListPage } from '@/features/runs/RunsListPage'
-import { StrategyCreatePage } from '@/features/strategies/StrategyCreatePage'
-import { StrategyDetailPage } from '@/features/strategies/StrategyDetailPage'
-import { StrategyEditPage } from '@/features/strategies/StrategyEditPage'
-import { StrategiesListPage } from '@/features/strategies/StrategiesListPage'
-import { TradesListPage } from '@/features/trades/TradesListPage'
+
+// Lazy-load all route components for code splitting.
+// LoginPage stays eager — it's the first paint for unauthenticated users.
+const AutomationDetailPage = lazy(() =>
+  import('@/features/automation/AutomationDetailPage').then((m) => ({ default: m.AutomationDetailPage })),
+)
+const AutomationPage = lazy(() =>
+  import('@/features/automation/AutomationPage').then((m) => ({ default: m.AutomationPage })),
+)
+const CockpitPage = lazy(() =>
+  import('@/features/cockpit/CockpitPage').then((m) => ({ default: m.CockpitPage })),
+)
+const EventsPage = lazy(() =>
+  import('@/features/events/EventsPage').then((m) => ({ default: m.EventsPage })),
+)
+const OrderDetailPage = lazy(() =>
+  import('@/features/orders/OrderDetailPage').then((m) => ({ default: m.OrderDetailPage })),
+)
+const OrdersListPage = lazy(() =>
+  import('@/features/orders/OrdersListPage').then((m) => ({ default: m.OrdersListPage })),
+)
+const PortfolioPage = lazy(() =>
+  import('@/features/portfolio/PortfolioPage').then((m) => ({ default: m.PortfolioPage })),
+)
+const StockPage = lazy(() =>
+  import('@/features/stock/StockPage').then((m) => ({ default: m.StockPage })),
+)
+const RiskPage = lazy(() =>
+  import('@/features/risk/RiskPage').then((m) => ({ default: m.RiskPage })),
+)
+const RunDetailPage = lazy(() =>
+  import('@/features/runs/RunDetailPage').then((m) => ({ default: m.RunDetailPage })),
+)
+const RunsListPage = lazy(() =>
+  import('@/features/runs/RunsListPage').then((m) => ({ default: m.RunsListPage })),
+)
+const StrategyCreatePage = lazy(() =>
+  import('@/features/strategies/StrategyCreatePage').then((m) => ({ default: m.StrategyCreatePage })),
+)
+const StrategyDetailPage = lazy(() =>
+  import('@/features/strategies/StrategyDetailPage').then((m) => ({ default: m.StrategyDetailPage })),
+)
+const StrategyEditPage = lazy(() =>
+  import('@/features/strategies/StrategyEditPage').then((m) => ({ default: m.StrategyEditPage })),
+)
+const StrategiesListPage = lazy(() =>
+  import('@/features/strategies/StrategiesListPage').then((m) => ({ default: m.StrategiesListPage })),
+)
+const TradesListPage = lazy(() =>
+  import('@/features/trades/TradesListPage').then((m) => ({ default: m.TradesListPage })),
+)
+
+const routeFallback = <LoadingState />
+
+function withSuspense(element: React.ReactElement) {
+  return <Suspense fallback={routeFallback}>{element}</Suspense>
+}
 
 export function createAppRouter() {
   return createBrowserRouter([
@@ -30,22 +73,22 @@ export function createAppRouter() {
           element: <AppShell />,
           children: [
             { path: '/', element: <Navigate to="/cockpit" replace /> },
-            { path: '/automation', element: <AutomationPage /> },
-            { path: '/automation/:name', element: <AutomationDetailPage /> },
-            { path: '/cockpit', element: <CockpitPage /> },
-            { path: '/events', element: <EventsPage /> },
-            { path: '/orders', element: <OrdersListPage /> },
-            { path: '/orders/:id', element: <OrderDetailPage /> },
-            { path: '/portfolio', element: <PortfolioPage /> },
-            { path: '/stock/:ticker', element: <StockPage /> },
-            { path: '/risk', element: <RiskPage /> },
-            { path: '/runs', element: <RunsListPage /> },
-            { path: '/runs/:id', element: <RunDetailPage /> },
-            { path: '/strategies', element: <StrategiesListPage /> },
-            { path: '/strategies/new', element: <StrategyCreatePage /> },
-            { path: '/strategies/:id/edit', element: <StrategyEditPage /> },
-            { path: '/strategies/:id', element: <StrategyDetailPage /> },
-            { path: '/trades', element: <TradesListPage /> },
+            { path: '/automation', element: withSuspense(<AutomationPage />) },
+            { path: '/automation/:name', element: withSuspense(<AutomationDetailPage />) },
+            { path: '/cockpit', element: withSuspense(<CockpitPage />) },
+            { path: '/events', element: withSuspense(<EventsPage />) },
+            { path: '/orders', element: withSuspense(<OrdersListPage />) },
+            { path: '/orders/:id', element: withSuspense(<OrderDetailPage />) },
+            { path: '/portfolio', element: withSuspense(<PortfolioPage />) },
+            { path: '/stock/:ticker', element: withSuspense(<StockPage />) },
+            { path: '/risk', element: withSuspense(<RiskPage />) },
+            { path: '/runs', element: withSuspense(<RunsListPage />) },
+            { path: '/runs/:id', element: withSuspense(<RunDetailPage />) },
+            { path: '/strategies', element: withSuspense(<StrategiesListPage />) },
+            { path: '/strategies/new', element: withSuspense(<StrategyCreatePage />) },
+            { path: '/strategies/:id/edit', element: withSuspense(<StrategyEditPage />) },
+            { path: '/strategies/:id', element: withSuspense(<StrategyDetailPage />) },
+            { path: '/trades', element: withSuspense(<TradesListPage />) },
           ],
         },
       ],

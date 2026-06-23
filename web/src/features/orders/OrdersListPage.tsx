@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 
 import { getOrders } from '@/shared/api/endpoints'
+import { PageHeader } from '@/components/ui/page-header'
 import { Breadcrumbs, EntityLink } from '@/shared/components/EntityLinks'
 import { EmptyState, ErrorState, LastUpdated, LoadingState, StaleBanner } from '@/shared/components/QueryStates'
 import { queryKeys } from '@/shared/query/keys'
@@ -113,11 +114,8 @@ export function OrdersListPage() {
   return (
     <div className="detail-stack">
       <Breadcrumbs items={[{ label: 'Cockpit', to: '/cockpit' }, { label: 'Orders' }]} />
-      <section className="panel hero-panel">
-        <p className="eyebrow">Read-only execution evidence</p>
-        <div className="panel-header"><div><h1>Orders</h1><p className="muted">Browse recent orders and deep-link to strategy/run evidence. Detail, fills, cancel, and replace are excluded.</p></div><span className="status-pill active">Read-only</span></div>
-        <StaleBanner show={realtimeStale || realtime.status === 'disconnected' || realtime.status === 'degraded'} message="Order rows are read-only and may be stale after realtime order activity." />
-      </section>
+      <PageHeader eyebrow="Read-only execution evidence" title="Orders" description="Browse recent orders and deep-link to strategy/run evidence. Detail, fills, cancel, and replace are excluded." actions={<span className="status-pill active">Read-only</span>} />
+      <StaleBanner show={realtimeStale || realtime.status === 'disconnected' || realtime.status === 'degraded'} message="Order rows are read-only and may be stale after realtime order activity." />
       <section className="panel" aria-labelledby="orders-heading">
         <div className="panel-header"><div><h2 id="orders-heading">Recent orders</h2><p className="muted">Backend-supported filters: ticker, broker, market type, status, side, order type. Strategy/run filters are deferred until backend support exists.</p></div>{query.data ? <LastUpdated date={query.dataUpdatedAt} /> : null}</div>
         <form className="filter-bar" aria-label="Order filters" onSubmit={(event) => event.preventDefault()}>

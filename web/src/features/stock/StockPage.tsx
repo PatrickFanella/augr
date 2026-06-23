@@ -4,9 +4,13 @@ import { useParams } from 'react-router-dom'
 import { AreaChart, Area, ResponsiveContainer, Tooltip } from 'recharts'
 
 import { getOpenPortfolioPositions, getTrades, getRuns, getStrategies } from '@/shared/api/endpoints'
+import { PageHeader } from '@/components/ui/page-header'
 import { Breadcrumbs, EntityLink } from '@/shared/components/EntityLinks'
 import { ErrorState, LastUpdated, LoadingState, EmptyState } from '@/shared/components/QueryStates'
+import { getChartColors } from '@/lib/chart-theme'
+import { StatusBadge } from '@/components/ui/status-badge'
 import { queryKeys } from '@/shared/query/keys'
+import { normalizeStatus } from '@/lib/status'
 
 function money(value?: number) {
   if (value === undefined) return '—'
@@ -59,7 +63,7 @@ export function StockPage() {
   const unrealized = positions.reduce((sum, position) => sum + (position.unrealized_pnl ?? 0), 0)
   const realized = positions.reduce((sum, position) => sum + position.realized_pnl, 0)
   const pnlSeries = [...positions].sort((a, b) => new Date(a.opened_at).getTime() - new Date(b.opened_at).getTime()).map((position, index) => ({ name: `${index + 1}`, value: (position.unrealized_pnl ?? 0) + position.realized_pnl }))
-  const chartColor = unrealized + realized >= 0 ? '#16a34a' : '#dc2626'
+  const chartColor = unrealized + realized >= 0 ? getChartColors().success : getChartColors().danger
 
   if (!activeTicker) {
     return <div className="detail-stack"><section className="panel hero-panel"><h1>Stock</h1><p className="muted">Missing ticker symbol.</p></section></div>
@@ -68,16 +72,7 @@ export function StockPage() {
   return (
     <div className="detail-stack">
       <Breadcrumbs items={[{ label: 'Cockpit', to: '/cockpit' }, { label: ticker }]} />
-      <section className="panel hero-panel">
-        <p className="eyebrow">Ticker detail</p>
-        <div className="panel-header">
-          <div>
-            <h1>{ticker}</h1>
-            <p className="muted">Aggregated position, trade, run, and strategy activity for this symbol.</p>
-          </div>
-          <span className="status-pill active">Live</span>
-        </div>
-      </section>
+      <PageHeader eyebrow="Ticker detail" title={ticker} description="Aggregated position, trade, run, and strategy activity for this symbol." actions={<span className="status-pill active">Live</span>} />
 
       <section className="metrics-grid" aria-label={`${ticker} summary`}>
         <article className="panel"><p className="eyebrow">Open positions</p><strong>{positionsQuery.data ? positions.length : '—'}</strong></article>
@@ -120,7 +115,7 @@ export function StockPage() {
         <div className="table-wrap">
           <table aria-label="Recent runs for ticker">
             <thead><tr><th>Run</th><th>Status</th><th>Signal</th><th>Started</th><th>Completed</th></tr></thead>
-            <tbody>{runs.map((run) => (<tr key={run.id}><td><EntityLink kind="run" id={run.id} label={run.id} /></td><td><span className={`status-pill ${run.status}`}>{run.status}</span></td><td>{run.signal ?? '—'}</td><td>{new Date(run.started_at).toLocaleString()}</td><td>{run.completed_at ? new Date(run.completed_at).toLocaleString() : '—'}</td></tr>))}</tbody>
+            <tbody>{runs.map((run) => (<tr key={run.id}><td><EntityLink kind="run" id={run.id} label={run.id} /></td><td><StatusBadge status={normalizeStatus(run.status)} label={run.status} /></td><td>{run.signal ?? '—'}</td><td>{new Date(run.started_at).toLocaleString()}</td><td>{run.completed_at ? new Date(run.completed_at).toLocaleString() : '—'}</td></tr>))}</tbody>
           </table>
         </div>
       </SectionState>
@@ -129,7 +124,7 @@ export function StockPage() {
         <div className="table-wrap">
           <table aria-label="Active strategies for ticker">
             <thead><tr><th>Strategy</th><th>Status</th><th>Market</th><th>Paper</th><th>Updated</th></tr></thead>
-            <tbody>{strategies.map((strategy) => (<tr key={strategy.id}><td><EntityLink kind="strategy" id={strategy.id} label={strategy.name} /></td><td><span className={`status-pill ${strategy.status}`}>{strategy.status}</span></td><td>{strategy.market_type}</td><td>{strategy.is_paper ? 'Yes' : 'No'}</td><td>{new Date(strategy.updated_at).toLocaleString()}</td></tr>))}</tbody>
+            <tbody>{strategies.map((strategy) => (<tr key={strategy.id}><td><EntityLink kind="strategy" id={strategy.id} label={strategy.name} /></td><td><StatusBadge status={normalizeStatus(strategy.status)} label={strategy.status} /></td><td>{strategy.market_type}</td><td>{strategy.is_paper ? 'Yes' : 'No'}</td><td>{new Date(strategy.updated_at).toLocaleString()}</td></tr>))}</tbody>
           </table>
         </div>
       </SectionState>

@@ -159,6 +159,18 @@ th {
   outline-offset: 2px;
 }
 
+/* Respect reduced motion preferences — disable all CSS animations */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* ==========================================================================
    LAYOUT SHELLS
    ========================================================================== */
@@ -206,6 +218,8 @@ th {
   min-height: 100vh;
   grid-template-columns: 16rem 1fr;
   background: var(--color-surface-base);
+  max-width: 100%;
+  overflow: hidden;
 }
 
 /* ==========================================================================
@@ -222,6 +236,7 @@ th {
   gap: var(--space-6);
   transition: width 0.2s ease-in-out, padding 0.2s ease-in-out;
   overflow: hidden;
+  min-width: 0;
 }
 
 .brand {
@@ -279,7 +294,9 @@ th {
   display: grid;
   grid-template-rows: auto 1fr;
   min-height: 100vh;
+  min-width: 0;
   background: var(--color-surface-base);
+  overflow: hidden;
 }
 
 .topbar {
@@ -290,6 +307,7 @@ th {
   border-bottom: var(--border-width) solid var(--color-border-subtle);
   background: var(--color-surface-raised);
   padding: var(--space-3) var(--space-4);
+  min-width: 0;
 }
 
 .header-cluster,
@@ -299,11 +317,14 @@ th {
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3);
+  min-width: 0;
 }
 
 .content {
   padding: var(--space-4);
   overflow-y: auto;
+  min-width: 0;
+  overflow-x: hidden;
 }
 
 /* ==========================================================================
@@ -358,6 +379,8 @@ th {
   background: var(--color-surface-raised);
   padding: var(--space-4);
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  min-width: 0;
+  overflow: hidden;
 }
 
 .panel:hover {
@@ -522,9 +545,9 @@ th {
 }
 
 .status-pill.breached {
-  border-color: #dc2626;
-  color: #fecaca;
-  background: rgba(220, 38, 38, 0.12);
+  border-color: var(--color-danger);
+  color: var(--color-danger-text);
+  background: var(--color-danger-muted);
 }
 
 .status-pill.paper::before,
@@ -570,6 +593,29 @@ th {
 .status-pill.cancelled::before,
 .status-pill.unknown::before {
   background: var(--color-text-muted);
+}
+
+.status-pill.caution {
+  border-color: var(--color-caution);
+  color: var(--color-caution-text);
+  background: var(--color-caution-muted);
+}
+
+.status-pill.caution::before {
+  background: var(--color-caution);
+  box-shadow: 0 0 6px var(--color-caution);
+}
+
+.status-pill.processing {
+  border-color: var(--color-processing);
+  color: var(--color-processing-text);
+  background: var(--color-processing-muted);
+}
+
+.status-pill.processing::before {
+  background: var(--color-processing);
+  box-shadow: 0 0 6px var(--color-processing);
+  animation: pulse 2s ease-in-out infinite;
 }
 
 @keyframes pulse {
@@ -817,8 +863,8 @@ th {
 }
 
 .danger-button:hover:not(:disabled) {
-  background: #dc2626;
-  border-color: #dc2626;
+  background: var(--color-danger);
+  border-color: var(--color-danger);
 }
 
 /* ==========================================================================
@@ -1334,6 +1380,7 @@ p {
   gap: var(--space-6);
   transition: width 0.2s ease-in-out, padding 0.2s ease-in-out;
   overflow: hidden;
+  min-width: 0;
 }
 
 /* Collapsed sidebar brand */
@@ -1416,21 +1463,29 @@ p {
   display: flex;
   align-items: center;
   gap: var(--space-3);
+  min-width: 0;
 }
 
 .topbar-info {
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
 .topbar-info .eyebrow {
   margin: 0;
   line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .topbar-info strong {
   font-size: var(--text-sm);
   line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Mobile overlay styles */
