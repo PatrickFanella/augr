@@ -656,6 +656,97 @@ func TestAlpacaReconcilerReconcile_UpdatesExistingRecordsAndSkipsKnownFills(t *t
 	}
 }
 
+func TestAlpacaReconcilerReconcile_ClosesLocalAlpacaPositionsMissingFromBroker(t *testing.T) {
+	t.Parallel()
+
+	unrealized := -63.4
+	stalePosition := &domain.Position{
+		ID:            uuid.New(),
+		MarketType:    domain.MarketTypeStock,
+		Ticker:        "SNAL",
+		Side:          domain.PositionSideLong,
+		Quantity:      200,
+		AvgEntry:      0.92,
+		CurrentPrice:  float64Ptr(0.603),
+		UnrealizedPnL: &unrealized,
+	}
+	polymarketPosition := &domain.Position{
+		ID:         uuid.New(),
+		MarketType: domain.MarketTypePolymarket,
+		Ticker:     "POLY-ELECTION",
+		Side:       domain.PositionSideLong,
+		Quantity:   10,
+		AvgEntry:   0.45,
+	}
+	orders := newRecordingOrderRepo()
+	positions := newRecordingPositionRepo(stalePosition, polymarketPosition)
+	audit := &auditLogRepoStub{}
+	reconciler := NewAlpacaReconciler(AlpacaReconcilerDeps{
+		Broker:       &alpacaReconciliationBrokerStub{},
+		OrderRepo:    orders,
+		PositionRepo: positions,
+		TradeRepo:    newRecordingTradeRepo(orders),
+		AuditLogRepo: audit,
+		Logger:       slog.New(slog.NewTextHandler(testWriter{t}, nil)),
+	})
+
+	summary, err := reconciler.Reconcile(context.Background())
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v", err)
+	}
+	if summary.BrokerPositions != 0 {
+		t.Fatalf("BrokerPositions = %d, want 0", summary.BrokerPositions)
+	}
+	if summary.LocalOpenPositions != 1 {
+		t.Fatalf("LocalOpenPositions = %d, want 1", summary.LocalOpenPositions)
+	}
+	if summary.PositionsUpdated != 1 {
+		t.Fatalf("PositionsUpdated = %d, want 1", summary.PositionsUpdated)
+	}
+	if summary.PositionsClosed != 1 {
+		t.Fatalf("PositionsClosed = %d, want 1", summary.PositionsClosed)
+	}
+	if len(positions.updated) != 1 {
+		t.Fatalf("len(positions.updated) = %d, want 1", len(positions.updated))
+	}
+	closed := positions.updated[0]
+	if closed.Ticker != "SNAL" {
+		t.Fatalf("closed ticker = %q, want SNAL", closed.Ticker)
+	}
+	if closed.ClosedAt == nil {
+		t.Fatal("ClosedAt = nil, want timestamp")
+	}
+	if closed.UnrealizedPnL != nil {
+		t.Fatalf("UnrealizedPnL = %v, want nil after close", *closed.UnrealizedPnL)
+	}
+	if closed.RealizedPnL != unrealized {
+		t.Fatalf("RealizedPnL = %v, want %v", closed.RealizedPnL, unrealized)
+	}
+	open, err := positions.GetOpen(context.Background(), repository.PositionFilter{}, 1000, 0)
+	if err != nil {
+		t.Fatalf("GetOpen() error = %v", err)
+	}
+	if len(open) != 1 || open[0].Ticker != "POLY-ELECTION" {
+		t.Fatalf("open positions = %#v, want only polymarket position", open)
+	}
+	if len(audit.entries) != 1 {
+		t.Fatalf("len(audit.entries) = %d, want 1", len(audit.entries))
+	}
+	var details map[string]any
+	if err := json.Unmarshal(audit.entries[0].Details, &details); err != nil {
+		t.Fatalf("unmarshal audit details: %v", err)
+	}
+	if got := details["broker_positions"]; got != float64(0) {
+		t.Fatalf("audit broker_positions = %v, want 0", got)
+	}
+	if got := details["local_open_positions"]; got != float64(1) {
+		t.Fatalf("audit local_open_positions = %v, want 1", got)
+	}
+	if got := details["positions_closed"]; got != float64(1) {
+		t.Fatalf("audit positions_closed = %v, want 1", got)
+	}
+}
+
 func TestAlpacaReconcilerReconcile_ReturnsErrorWhenBrokerFails(t *testing.T) {
 	t.Parallel()
 

@@ -47,8 +47,11 @@ func (o *JobOrchestrator) alpacaReconcile(ctx context.Context) error {
 	o.logger.Info("alpaca_reconcile: complete",
 		slog.Int("orders_created", summary.OrdersCreated),
 		slog.Int("orders_updated", summary.OrdersUpdated),
+		slog.Int("broker_positions", summary.BrokerPositions),
+		slog.Int("local_open_positions", summary.LocalOpenPositions),
 		slog.Int("positions_created", summary.PositionsCreated),
 		slog.Int("positions_updated", summary.PositionsUpdated),
+		slog.Int("positions_closed", summary.PositionsClosed),
 		slog.Int("trades_created", summary.TradesCreated),
 	)
 	return nil

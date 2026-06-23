@@ -91,11 +91,14 @@ type AlpacaReconcilerDeps struct {
 
 // AlpacaReconcileSummary reports how many local records changed during a run.
 type AlpacaReconcileSummary struct {
-	OrdersCreated    int
-	OrdersUpdated    int
-	PositionsCreated int
-	PositionsUpdated int
-	TradesCreated    int
+	OrdersCreated      int
+	OrdersUpdated      int
+	BrokerPositions    int
+	LocalOpenPositions int
+	PositionsCreated   int
+	PositionsUpdated   int
+	PositionsClosed    int
+	TradesCreated      int
 }
 
 type AlpacaVerificationMismatch struct {
@@ -117,11 +120,14 @@ type AlpacaVerificationReport struct {
 
 func (s AlpacaReconcileSummary) Map() map[string]int {
 	return map[string]int{
-		"orders_created":    s.OrdersCreated,
-		"orders_updated":    s.OrdersUpdated,
-		"positions_created": s.PositionsCreated,
-		"positions_updated": s.PositionsUpdated,
-		"trades_created":    s.TradesCreated,
+		"orders_created":       s.OrdersCreated,
+		"orders_updated":       s.OrdersUpdated,
+		"broker_positions":     s.BrokerPositions,
+		"local_open_positions": s.LocalOpenPositions,
+		"positions_created":    s.PositionsCreated,
+		"positions_updated":    s.PositionsUpdated,
+		"positions_closed":     s.PositionsClosed,
+		"trades_created":       s.TradesCreated,
 	}
 }
 
@@ -205,6 +211,9 @@ func (r *AlpacaReconciler) Reconcile(ctx context.Context) (AlpacaReconcileSummar
 	positionByTicker := make(map[string]*domain.Position, len(existingPositions))
 	for i := range existingPositions {
 		position := existingPositions[i]
+		if !isAlpacaManagedPosition(position) {
+			continue
+		}
 		cloned := position
 		positionByTicker[position.Ticker] = &cloned
 	}
@@ -219,7 +228,10 @@ func (r *AlpacaReconciler) Reconcile(ctx context.Context) (AlpacaReconcileSummar
 	}
 	fillLegacyKeyCounts := fillLegacyKeyCounts(fills)
 
-	summary := AlpacaReconcileSummary{}
+	summary := AlpacaReconcileSummary{
+		BrokerPositions:    len(positions),
+		LocalOpenPositions: len(positionByTicker),
+	}
 
 	for _, snapshot := range orders {
 		strategyID := snapshot.StrategyIDHint
@@ -245,7 +257,9 @@ func (r *AlpacaReconciler) Reconcile(ctx context.Context) (AlpacaReconcileSummar
 		summary.OrdersCreated++
 	}
 
+	brokerPositionTickers := make(map[string]struct{}, len(positions))
 	for _, snapshot := range positions {
+		brokerPositionTickers[snapshot.Ticker] = struct{}{}
 		strategyID := strategyByTicker[snapshot.Ticker]
 		if existing, ok := positionByTicker[snapshot.Ticker]; ok {
 			changed := applyPositionSnapshot(existing, snapshot, strategyID)
@@ -264,6 +278,26 @@ func (r *AlpacaReconciler) Reconcile(ctx context.Context) (AlpacaReconcileSummar
 		}
 		positionByTicker[position.Ticker] = position
 		summary.PositionsCreated++
+	}
+
+	closedAt := time.Now().UTC()
+	for ticker, existing := range positionByTicker {
+		if _, stillOpen := brokerPositionTickers[ticker]; stillOpen {
+			continue
+		}
+		if existing.ClosedAt != nil {
+			continue
+		}
+		existing.ClosedAt = &closedAt
+		if existing.UnrealizedPnL != nil {
+			existing.RealizedPnL += *existing.UnrealizedPnL
+			existing.UnrealizedPnL = nil
+		}
+		if err := r.positionRepo.Update(ctx, existing); err != nil {
+			return summary, fmt.Errorf("alpaca_reconcile: close missing broker position %s: %w", ticker, err)
+		}
+		summary.PositionsUpdated++
+		summary.PositionsClosed++
 	}
 
 	sort.Slice(fills, func(i, j int) bool {
@@ -315,6 +349,15 @@ func (r *AlpacaReconciler) Reconcile(ctx context.Context) (AlpacaReconcileSummar
 	}
 
 	return summary, nil
+}
+
+func isAlpacaManagedPosition(position domain.Position) bool {
+	switch position.MarketType.Normalize() {
+	case domain.MarketTypePolymarket, domain.MarketTypeKalshi:
+		return false
+	default:
+		return true
+	}
 }
 
 func (r *AlpacaReconciler) Verify(ctx context.Context) (AlpacaVerificationReport, error) {
