@@ -14,12 +14,10 @@ export function StatusBadge({ status, label, className }: StatusBadgeProps) {
       className={cn(
         'status-pill',
         config.pillClass,
-        status === 'running' && 'motion-safe:animate-pulse',
         className,
       )}
     >
-      <span aria-hidden="true">{config.icon}</span>
-      <span>{label ?? config.label}</span>
+      {label ?? config.label}
     </span>
   )
 }

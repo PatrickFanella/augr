@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { Menu, ChevronLeft, LayoutDashboard, Bot, Lightbulb, Play, Clock, ShoppingCart, ArrowLeftRight, PieChart, ShieldAlert, Sun, Moon } from 'lucide-react'
 
@@ -25,12 +25,20 @@ const navItems = [
   { to: '/risk', label: 'Risk', icon: ShieldAlert },
 ]
 
+const MOBILE_QUERY = '(max-width: 840px)'
+
 function getInitialCollapsedState(): boolean {
   if (typeof window === 'undefined') return false
   const stored = localStorage.getItem(STORAGE_KEY)
   if (stored !== null) return stored === 'true'
   // Auto-collapse on mobile by default
   return window.innerWidth <= 840
+}
+
+function getInitialMobileState(): boolean {
+  if (typeof window === 'undefined') return false
+  if (typeof window.matchMedia !== 'function') return window.innerWidth <= 840
+  return window.matchMedia(MOBILE_QUERY).matches
 }
 
 export function AppShell() {
@@ -43,21 +51,42 @@ export function AppShell() {
 
   const [isCollapsed, setIsCollapsed] = useState(getInitialCollapsedState)
   const [isMobileOpen, setIsMobileOpen] = useState(false)
-
-  const isMobile = typeof window !== 'undefined' && window.innerWidth <= 840
+  const [isMobile, setIsMobile] = useState(getInitialMobileState)
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, String(isCollapsed))
   }, [isCollapsed])
 
   useEffect(() => {
+    if (typeof window.matchMedia !== 'function') {
+      const handleResize = () => {
+        const nextIsMobile = window.innerWidth <= 840
+        setIsMobile(nextIsMobile)
+        if (nextIsMobile && !isCollapsed) {
+          setIsCollapsed(true)
+        }
+        if (!nextIsMobile) {
+          setIsMobileOpen(false)
+        }
+      }
+      handleResize()
+      window.addEventListener('resize', handleResize)
+      return () => window.removeEventListener('resize', handleResize)
+    }
+
+    const media = window.matchMedia(MOBILE_QUERY)
     const handleResize = () => {
-      if (window.innerWidth <= 840 && !isCollapsed) {
+      setIsMobile(media.matches)
+      if (media.matches && !isCollapsed) {
         setIsCollapsed(true)
       }
+      if (!media.matches) {
+        setIsMobileOpen(false)
+      }
     }
-    window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
+    handleResize()
+    media.addEventListener('change', handleResize)
+    return () => media.removeEventListener('change', handleResize)
   }, [isCollapsed])
 
   const toggleSidebar = () => {
@@ -111,12 +140,12 @@ export function AppShell() {
               {isMobile ? (isMobileOpen ? <ChevronLeft size={20} /> : <Menu size={20} />) : (sidebarCollapsed ? <Menu size={20} /> : <ChevronLeft size={20} />)}
             </button>
             <div className="topbar-info">
-              <p className="eyebrow">{settings.data?.system.environment ?? 'Environment unknown'}</p>
-              <strong>{mode} mode</strong>
+              <p className="eyebrow">~/augr/{settings.data?.system.environment ?? 'environment-unknown'}</p>
+              <strong>{mode} command center</strong>
             </div>
           </div>
           <div className="header-cluster">
-            <span className={`status-pill ${realtime.status}`}>Realtime: {realtime.status}</span>
+            <span className={`status-pill ${realtime.status}`}>Realtime {realtime.status}</span>
             <button
               type="button"
               className="sidebar-toggle"

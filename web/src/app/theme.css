@@ -1,410 +1,364 @@
-/**
- * Augr Design System - Theme Tokens
- * Catppuccin Mocha (dark) + Latte (light) with neubrutalist structure.
+/*
+ * Augr Design System — Catppuccin Mocha + Latte
+ * Rich color-driven instrumentation terminal.
+ * Every status, side, and state gets a distinct color.
  */
 
 /* ==========================================================================
-   ROOT & THEME VARIABLES
+   DARK THEME — Catppuccin Mocha (default)
    ========================================================================== */
 
 :root,
-[data-theme="dark"] {
-  /* --------------------------------------------------------------------------
-     COLOR PALETTE - DARK (Catppuccin Mocha, default)
-     -------------------------------------------------------------------------- */
+[data-theme='dark'] {
+  color-scheme: dark;
 
-  /* Surface Colors — mapped to Catppuccin base/mantle/crust/surface-N */
-  --color-surface-base: #1e1e2e;      /* ctp-base */
-  --color-surface-raised: #313244;    /* ctp-surface-0 */
-  --color-surface-overlay: #45475a;   /* ctp-surface-1 */
-  --color-surface-elevated: #585b70;  /* ctp-surface-2 */
-  --color-surface-active: #45475a;    /* ctp-surface-1 */
+  /* Raw palette */
+  --ctp-rosewater: #f5e0dc;
+  --ctp-flamingo:  #f2cdcd;
+  --ctp-pink:      #f5c2e7;
+  --ctp-mauve:     #cba6f7;
+  --ctp-red:       #f38ba8;
+  --ctp-maroon:    #eba0ac;
+  --ctp-peach:     #fab387;
+  --ctp-yellow:    #f9e2af;
+  --ctp-green:     #a6e3a1;
+  --ctp-teal:      #94e2d5;
+  --ctp-sky:       #89dceb;
+  --ctp-sapphire:  #74c7ec;
+  --ctp-blue:      #89b4fa;
+  --ctp-lavender:  #b4befe;
+  --ctp-text:      #cdd6f4;
+  --ctp-subtext1:  #bac2de;
+  --ctp-subtext0:  #a6adc8;
+  --ctp-overlay2:  #9399b2;
+  --ctp-overlay1:  #7f849c;
+  --ctp-overlay0:  #6c7086;
+  --ctp-surface2:  #585b70;
+  --ctp-surface1:  #45475a;
+  --ctp-surface0:  #313244;
+  --ctp-base:      #1e1e2e;
+  --ctp-mantle:    #181825;
+  --ctp-crust:     #11111b;
 
-  /* Text Colors */
-  --color-text-primary: #cdd6f4;      /* ctp-text */
-  --color-text-secondary: #bac2de;    /* ctp-subtext-1 */
-  --color-text-muted: #a6adc8;        /* ctp-subtext-0 */
-  --color-text-disabled: #6c7086;     /* ctp-overlay-0 */
+  /* Surfaces */
+  --color-bg-deep:        var(--ctp-crust);
+  --color-bg:             var(--ctp-base);
+  --color-bg-muted:       var(--ctp-mantle);
+  --color-surface:        var(--ctp-surface0);
+  --color-surface-raised: var(--ctp-surface1);
+  --color-surface-high:   var(--ctp-surface2);
 
-  /* Border Colors */
-  --color-border-subtle: #313244;     /* ctp-surface-0 */
-  --color-border-default: #45475a;    /* ctp-surface-1 */
-  --color-border-strong: #585b70;     /* ctp-surface-2 */
-  --color-border-focus: #cba6f7;      /* ctp-mauve */
+  /* Borders */
+  --color-border:        var(--ctp-surface1);
+  --color-border-strong: var(--ctp-overlay0);
+  --color-border-faint:  var(--ctp-surface0);
 
-  /* Accent Colors — Mauve primary, Blue secondary */
-  --color-accent-primary: #cba6f7;        /* ctp-mauve */
-  --color-accent-primary-hover: #f5c2e7;  /* ctp-pink */
-  --color-accent-primary-muted: rgba(203, 166, 247, 0.15);
-  --color-accent-secondary: #89b4fa;      /* ctp-blue */
-  --color-accent-glow: rgba(203, 166, 247, 0.4);
+  /* Text */
+  --color-text:       var(--ctp-text);
+  --color-text-muted: var(--ctp-subtext0);
+  --color-text-soft:  var(--ctp-overlay0);
 
-  /* Status Colors */
-  --color-success: #a6e3a1;          /* ctp-green */
-  --color-success-muted: rgba(166, 227, 161, 0.15);
-  --color-success-text: #a6e3a1;
+  /* Primary accent */
+  --color-primary:      var(--ctp-mauve);
+  --color-primary-alt:  var(--ctp-blue);
+  --color-primary-muted: color-mix(in srgb, var(--ctp-mauve) 15%, transparent);
+  --color-accent-glow:  color-mix(in srgb, var(--ctp-mauve) 40%, transparent);
 
-  --color-warning: #f9e2af;          /* ctp-yellow */
-  --color-warning-muted: rgba(249, 226, 175, 0.15);
-  --color-warning-text: #f9e2af;
+  /* ── Status colors — every state gets a distinct hue ── */
+  --color-success:    var(--ctp-green);
+  --color-success-muted: color-mix(in srgb, var(--ctp-green) 14%, transparent);
+  --color-warning:    var(--ctp-yellow);
+  --color-warning-muted: color-mix(in srgb, var(--ctp-yellow) 14%, transparent);
+  --color-danger:     var(--ctp-red);
+  --color-danger-muted: color-mix(in srgb, var(--ctp-red) 14%, transparent);
+  --color-info:       var(--ctp-sky);
+  --color-info-muted: color-mix(in srgb, var(--ctp-sky) 14%, transparent);
+  --color-caution:    var(--ctp-peach);
+  --color-caution-muted: color-mix(in srgb, var(--ctp-peach) 14%, transparent);
+  --color-running:    var(--ctp-sapphire);
+  --color-running-muted: color-mix(in srgb, var(--ctp-sapphire) 14%, transparent);
+  --color-processing: var(--ctp-lavender);
+  --color-processing-muted: color-mix(in srgb, var(--ctp-lavender) 14%, transparent);
+  --color-paused:     var(--ctp-overlay0);
+  --color-paused-muted: color-mix(in srgb, var(--ctp-overlay0) 16%, transparent);
+  --color-neutral:    var(--ctp-overlay1);
 
-  --color-danger: #f38ba8;           /* ctp-red */
-  --color-danger-muted: rgba(243, 139, 168, 0.15);
-  --color-danger-text: #f38ba8;
+  /* ── Trading sides ── */
+  --color-long:       var(--ctp-green);
+  --color-long-muted: color-mix(in srgb, var(--ctp-green) 14%, transparent);
+  --color-short:      var(--ctp-red);
+  --color-short-muted: color-mix(in srgb, var(--ctp-red) 14%, transparent);
 
-  --color-info: #89dceb;             /* ctp-sky */
-  --color-info-muted: rgba(137, 220, 235, 0.15);
-  --color-info-text: #89dceb;
+  /* ── Extended semantic states ── */
+  --color-completed:       var(--ctp-green);
+  --color-completed-muted: color-mix(in srgb, var(--ctp-green) 14%, transparent);
+  --color-failed:          var(--ctp-red);
+  --color-failed-muted:    color-mix(in srgb, var(--ctp-red) 14%, transparent);
+  --color-active:          var(--ctp-teal);
+  --color-active-muted:    color-mix(in srgb, var(--ctp-teal) 14%, transparent);
+  --color-pending:         var(--ctp-peach);
+  --color-pending-muted:   color-mix(in srgb, var(--ctp-peach) 14%, transparent);
+  --color-buy:             var(--ctp-green);
+  --color-buy-muted:       color-mix(in srgb, var(--ctp-green) 14%, transparent);
+  --color-sell:            var(--ctp-red);
+  --color-sell-muted:      color-mix(in srgb, var(--ctp-red) 14%, transparent);
+  --color-open:            var(--ctp-sky);
+  --color-open-muted:      color-mix(in srgb, var(--ctp-sky) 14%, transparent);
+  --color-closed:          var(--ctp-overlay0);
+  --color-closed-muted:    color-mix(in srgb, var(--ctp-overlay0) 14%, transparent);
+  --color-stopped:         var(--ctp-maroon);
+  --color-stopped-muted:   color-mix(in srgb, var(--ctp-maroon) 14%, transparent);
+  --color-queued:          var(--ctp-blue);
+  --color-queued-muted:    color-mix(in srgb, var(--ctp-blue) 14%, transparent);
+  --color-unknown:         var(--ctp-overlay1);
+  --color-unknown-muted:   color-mix(in srgb, var(--ctp-overlay1) 14%, transparent);
 
-  --color-neutral: #a6adc8;          /* ctp-subtext-0 */
-  --color-neutral-muted: rgba(166, 173, 200, 0.15);
+  /* ── Syntax highlighting ── */
+  --color-syntax-keyword:    var(--ctp-mauve);
+  --color-syntax-string:     var(--ctp-green);
+  --color-syntax-number:     var(--ctp-peach);
+  --color-syntax-comment:    var(--ctp-overlay0);
+  --color-syntax-function:   var(--ctp-blue);
+  --color-syntax-type:       var(--ctp-yellow);
+  --color-syntax-variable:   var(--ctp-text);
+  --color-syntax-operator:   var(--ctp-sky);
+  --color-syntax-boolean:    var(--ctp-peach);
+  --color-syntax-punctuation: var(--ctp-overlay2);
+  --color-syntax-property:   var(--ctp-rosewater);
+  --color-syntax-regex:      var(--ctp-pink);
 
-  /* Extended status colors */
-  --color-caution: #fab387;          /* ctp-peach */
-  --color-caution-muted: rgba(250, 179, 135, 0.15);
-  --color-caution-text: #fab387;
+  /* ── Chart palette ── */
+  --color-chart-1: var(--ctp-mauve);
+  --color-chart-2: var(--ctp-blue);
+  --color-chart-3: var(--ctp-green);
+  --color-chart-4: var(--ctp-peach);
+  --color-chart-5: var(--ctp-red);
+  --color-chart-6: var(--ctp-sky);
+  --color-chart-7: var(--ctp-yellow);
+  --color-chart-8: var(--ctp-teal);
 
-  --color-running: #74c7ec;          /* ctp-sapphire */
-  --color-running-muted: rgba(116, 199, 236, 0.15);
-  --color-running-text: #74c7ec;
-
-  --color-processing: #89dceb;       /* ctp-sky */
-  --color-processing-muted: rgba(137, 220, 235, 0.15);
-  --color-processing-text: #89dceb;
-
-  --color-paused: #b4befe;           /* ctp-lavender */
-  --color-paused-muted: rgba(180, 190, 254, 0.15);
-  --color-paused-text: #b4befe;
-
-  /* Trading Side Colors */
-  --color-long: #a6e3a1;             /* ctp-green */
-  --color-long-muted: rgba(166, 227, 161, 0.15);
-  --color-long-text: #a6e3a1;
-  --color-short: #f38ba8;            /* ctp-red */
-  --color-short-muted: rgba(243, 139, 168, 0.15);
-  --color-short-text: #f38ba8;
-
-  /* Background (alias for surface-base) */
-  --color-bg: var(--color-surface-base);
-  --color-bg-raised: var(--color-surface-raised);
-
-  /* --------------------------------------------------------------------------
-     TYPOGRAPHY
-     -------------------------------------------------------------------------- */
-
-  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Monaco, 'Cascadia Code', monospace;
-
-  --text-xs: 0.6875rem;
-  --text-sm: 0.8125rem;
-  --text-base: 0.9375rem;
-  --text-lg: 1.0625rem;
-  --text-xl: 1.25rem;
-  --text-2xl: 1.5rem;
-  --text-3xl: 2rem;
-  --text-4xl: 2.5rem;
-
-  --font-normal: 400;
-  --font-medium: 500;
-  --font-semibold: 600;
-  --font-bold: 700;
-  --font-extrabold: 800;
-
-  --leading-tight: 1.25;
-  --leading-normal: 1.5;
-  --leading-relaxed: 1.7;
-
-  /* --------------------------------------------------------------------------
-     SPACING
-     -------------------------------------------------------------------------- */
-
-  --space-1: 0.25rem;
-  --space-2: 0.5rem;
-  --space-3: 0.75rem;
-  --space-4: 1rem;
-  --space-5: 1.25rem;
-  --space-6: 1.5rem;
-  --space-8: 2rem;
-  --space-10: 2.5rem;
-  --space-12: 3rem;
-  --space-16: 4rem;
-
-  /* --------------------------------------------------------------------------
-     BORDER RADIUS
-     -------------------------------------------------------------------------- */
-
-  --radius-sm: 0.25rem;
-  --radius-md: 0.5rem;
-  --radius-lg: 0.75rem;
-  --radius-xl: 1rem;
-  --radius-2xl: 1.5rem;
-  --radius-full: 9999px;
-
-  /* --------------------------------------------------------------------------
-     SHADOWS
-     -------------------------------------------------------------------------- */
-
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
-  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.6);
-  --shadow-glow: 0 0 20px var(--color-accent-glow);
-
-  /* Neubrutalist hard shadows */
-  --shadow-brutal-sm: 2px 2px 0 var(--color-surface-active);
-  --shadow-brutal: 4px 4px 0 var(--color-surface-active);
-
-  /* --------------------------------------------------------------------------
-     BORDERS
-     -------------------------------------------------------------------------- */
-
-  --border-width: 1px;
-  --border-width-2: 2px;
-
-  /* --------------------------------------------------------------------------
-     TRANSITIONS
-     -------------------------------------------------------------------------- */
-
-  --transition-fast: 150ms ease;
-  --transition-normal: 250ms ease;
-  --transition-slow: 350ms ease;
-
-  /* --------------------------------------------------------------------------
-     FOCUS
-     -------------------------------------------------------------------------- */
-
-  --focus-ring: 0 0 0 2px var(--color-surface-base), 0 0 0 4px var(--color-accent-primary);
-
-  /* --------------------------------------------------------------------------
-     SCROLLBAR
-     -------------------------------------------------------------------------- */
-
-  --scrollbar-track: var(--color-surface-base);
-  --scrollbar-thumb: var(--color-border-strong);
-  --scrollbar-thumb-hover: var(--color-text-muted);
-}
-
-/* Light Theme — Catppuccin Latte (first-class, full override) */
-[data-theme="light"] {
-  /* Surface Colors */
-  --color-surface-base: #eff1f5;      /* ctp-base */
-  --color-surface-raised: #ccd0da;    /* ctp-surface-0 */
-  --color-surface-overlay: #bcc0cc;   /* ctp-surface-1 */
-  --color-surface-elevated: #acb0be;  /* ctp-surface-2 */
-  --color-surface-active: #bcc0cc;    /* ctp-surface-1 */
-
-  /* Text Colors */
-  --color-text-primary: #4c4f69;      /* ctp-text */
-  --color-text-secondary: #5c5f77;    /* ctp-subtext-1 */
-  --color-text-muted: #6c6f85;        /* ctp-subtext-0 */
-  --color-text-disabled: #9ca0b0;     /* ctp-overlay-0 */
-
-  /* Border Colors */
-  --color-border-subtle: #ccd0da;     /* ctp-surface-0 */
-  --color-border-default: #bcc0cc;    /* ctp-surface-1 */
-  --color-border-strong: #acb0be;     /* ctp-surface-2 */
-  --color-border-focus: #8839ef;      /* ctp-mauve */
-
-  /* Accent Colors */
-  --color-accent-primary: #8839ef;        /* ctp-mauve */
-  --color-accent-primary-hover: #ea76cb;  /* ctp-pink */
-  --color-accent-primary-muted: rgba(136, 57, 239, 0.12);
-  --color-accent-secondary: #1e66f5;      /* ctp-blue */
-  --color-accent-glow: rgba(136, 57, 239, 0.3);
-
-  /* Status Colors */
-  --color-success: #40a02b;          /* ctp-green */
-  --color-success-muted: rgba(64, 160, 43, 0.12);
-  --color-success-text: #40a02b;
-
-  --color-warning: #df8e1d;          /* ctp-yellow */
-  --color-warning-muted: rgba(223, 142, 29, 0.12);
-  --color-warning-text: #df8e1d;
-
-  --color-danger: #d20f39;           /* ctp-red */
-  --color-danger-muted: rgba(210, 15, 57, 0.12);
-  --color-danger-text: #d20f39;
-
-  --color-info: #04a5e5;             /* ctp-sky */
-  --color-info-muted: rgba(4, 165, 229, 0.12);
-  --color-info-text: #04a5e5;
-
-  --color-neutral: #6c6f85;          /* ctp-subtext-0 */
-  --color-neutral-muted: rgba(108, 111, 133, 0.12);
-
-  /* Extended status colors */
-  --color-caution: #fe640b;          /* ctp-peach */
-  --color-caution-muted: rgba(254, 100, 11, 0.12);
-  --color-caution-text: #fe640b;
-
-  --color-running: #209fb5;          /* ctp-sapphire */
-  --color-running-muted: rgba(32, 159, 181, 0.12);
-  --color-running-text: #209fb5;
-
-  --color-processing: #04a5e5;       /* ctp-sky */
-  --color-processing-muted: rgba(4, 165, 229, 0.12);
-  --color-processing-text: #04a5e5;
-
-  --color-paused: #7287fd;           /* ctp-lavender */
-  --color-paused-muted: rgba(114, 135, 253, 0.12);
-  --color-paused-text: #7287fd;
-
-  /* Trading Side Colors */
-  --color-long: #40a02b;             /* ctp-green */
-  --color-long-muted: rgba(64, 160, 43, 0.12);
-  --color-long-text: #40a02b;
-  --color-short: #d20f39;            /* ctp-red */
-  --color-short-muted: rgba(210, 15, 57, 0.12);
-  --color-short-text: #d20f39;
-
-  /* Background */
-  --color-bg: var(--color-surface-base);
-  --color-bg-raised: var(--color-surface-raised);
-
-  /* Scrollbar */
-  --scrollbar-track: var(--color-surface-overlay);
-  --scrollbar-thumb: var(--color-border-strong);
-  --scrollbar-thumb-hover: var(--color-text-muted);
-
-  /* Neubrutalist hard shadows (lighter for light theme) */
-  --shadow-brutal-sm: 2px 2px 0 var(--color-surface-elevated);
-  --shadow-brutal: 4px 4px 0 var(--color-surface-elevated);
-
-  /* Focus ring */
-  --focus-ring: 0 0 0 2px var(--color-surface-base), 0 0 0 4px var(--color-accent-primary);
+  --color-shadow: #000;
 }
 
 /* ==========================================================================
-   TAILWIND V4 THEME MAPPING
-   @theme block to map CSS custom properties to Tailwind utilities
+   LIGHT THEME — Catppuccin Latte
    ========================================================================== */
 
-@theme {
-  /* Colors - mapped to CSS variables */
-  --color-surface-base: var(--color-surface-base);
-  --color-surface-raised: var(--color-surface-raised);
-  --color-surface-overlay: var(--color-surface-overlay);
-  --color-surface-elevated: var(--color-surface-elevated);
-  --color-surface-active: var(--color-surface-active);
+[data-theme='light'] {
+  color-scheme: light;
 
-  --color-text-primary: var(--color-text-primary);
-  --color-text-secondary: var(--color-text-secondary);
-  --color-text-muted: var(--color-text-muted);
-  --color-text-disabled: var(--color-text-disabled);
+  --ctp-rosewater: #dc8a78;
+  --ctp-flamingo:  #dd7878;
+  --ctp-pink:      #ea76cb;
+  --ctp-mauve:     #8839ef;
+  --ctp-red:       #d20f39;
+  --ctp-maroon:    #e64553;
+  --ctp-peach:     #fe640b;
+  --ctp-yellow:    #df8e1d;
+  --ctp-green:     #40a02b;
+  --ctp-teal:      #179299;
+  --ctp-sky:       #04a5e5;
+  --ctp-sapphire:  #209fb5;
+  --ctp-blue:      #1e66f5;
+  --ctp-lavender:  #7287fd;
+  --ctp-text:      #4c4f69;
+  --ctp-subtext1:  #5c5f77;
+  --ctp-subtext0:  #6c6f85;
+  --ctp-overlay2:  #7c7f93;
+  --ctp-overlay1:  #8c8fa1;
+  --ctp-overlay0:  #9ca0b0;
+  --ctp-surface2:  #acb0be;
+  --ctp-surface1:  #bcc0cc;
+  --ctp-surface0:  #ccd0da;
+  --ctp-base:      #eff1f5;
+  --ctp-mantle:    #e6e9ef;
+  --ctp-crust:     #dce0e8;
 
-  --color-border-subtle: var(--color-border-subtle);
-  --color-border-default: var(--color-border-default);
-  --color-border-strong: var(--color-border-strong);
-  --color-border-focus: var(--color-border-focus);
+  --color-bg-deep:        var(--ctp-crust);
+  --color-bg:             var(--ctp-base);
+  --color-bg-muted:       var(--ctp-mantle);
+  --color-surface:        var(--ctp-surface0);
+  --color-surface-raised: var(--ctp-surface1);
+  --color-surface-high:   var(--ctp-surface2);
 
-  --color-accent: var(--color-accent-primary);
-  --color-accent-hover: var(--color-accent-primary-hover);
-  --color-accent-muted: var(--color-accent-primary-muted);
+  --color-border:        var(--ctp-surface1);
+  --color-border-strong: var(--ctp-overlay0);
+  --color-border-faint:  var(--ctp-surface0);
 
-  --color-success: var(--color-success);
-  --color-success-muted: var(--color-success-muted);
-  --color-warning: var(--color-warning);
-  --color-warning-muted: var(--color-warning-muted);
-  --color-danger: var(--color-danger);
-  --color-danger-muted: var(--color-danger-muted);
-  --color-info: var(--color-info);
-  --color-info-muted: var(--color-info-muted);
+  --color-text:       var(--ctp-text);
+  --color-text-muted: var(--ctp-subtext0);
+  --color-text-soft:  var(--ctp-overlay0);
 
-  --color-caution: var(--color-caution);
-  --color-caution-muted: var(--color-caution-muted);
-  --color-running: var(--color-running);
-  --color-running-muted: var(--color-running-muted);
-  --color-processing: var(--color-processing);
-  --color-processing-muted: var(--color-processing-muted);
-  --color-paused: var(--color-paused);
-  --color-paused-muted: var(--color-paused-muted);
+  --color-primary:      var(--ctp-mauve);
+  --color-primary-alt:  var(--ctp-blue);
+  --color-primary-muted: color-mix(in srgb, var(--ctp-mauve) 12%, transparent);
+  --color-accent-glow:  color-mix(in srgb, var(--ctp-mauve) 30%, transparent);
 
-  --color-long: var(--color-long);
-  --color-long-muted: var(--color-long-muted);
-  --color-short: var(--color-short);
-  --color-short-muted: var(--color-short-muted);
+  --color-success:    var(--ctp-green);
+  --color-success-muted: color-mix(in srgb, var(--ctp-green) 12%, transparent);
+  --color-warning:    var(--ctp-yellow);
+  --color-warning-muted: color-mix(in srgb, var(--ctp-yellow) 12%, transparent);
+  --color-danger:     var(--ctp-red);
+  --color-danger-muted: color-mix(in srgb, var(--ctp-red) 12%, transparent);
+  --color-info:       var(--ctp-sky);
+  --color-info-muted: color-mix(in srgb, var(--ctp-sky) 12%, transparent);
+  --color-caution:    var(--ctp-peach);
+  --color-caution-muted: color-mix(in srgb, var(--ctp-peach) 12%, transparent);
+  --color-running:    var(--ctp-sapphire);
+  --color-running-muted: color-mix(in srgb, var(--ctp-sapphire) 12%, transparent);
+  --color-processing: var(--ctp-lavender);
+  --color-processing-muted: color-mix(in srgb, var(--ctp-lavender) 12%, transparent);
+  --color-paused:     var(--ctp-overlay0);
+  --color-paused-muted: color-mix(in srgb, var(--ctp-overlay0) 14%, transparent);
+  --color-neutral:    var(--ctp-overlay1);
+
+  --color-long:       var(--ctp-green);
+  --color-long-muted: color-mix(in srgb, var(--ctp-green) 12%, transparent);
+  --color-short:      var(--ctp-red);
+  --color-short-muted: color-mix(in srgb, var(--ctp-red) 12%, transparent);
+
+  --color-completed:       var(--ctp-green);
+  --color-completed-muted: color-mix(in srgb, var(--ctp-green) 12%, transparent);
+  --color-failed:          var(--ctp-red);
+  --color-failed-muted:    color-mix(in srgb, var(--ctp-red) 12%, transparent);
+  --color-active:          var(--ctp-teal);
+  --color-active-muted:    color-mix(in srgb, var(--ctp-teal) 12%, transparent);
+  --color-pending:         var(--ctp-peach);
+  --color-pending-muted:   color-mix(in srgb, var(--ctp-peach) 12%, transparent);
+  --color-buy:             var(--ctp-green);
+  --color-buy-muted:       color-mix(in srgb, var(--ctp-green) 12%, transparent);
+  --color-sell:            var(--ctp-red);
+  --color-sell-muted:      color-mix(in srgb, var(--ctp-red) 12%, transparent);
+  --color-open:            var(--ctp-sky);
+  --color-open-muted:      color-mix(in srgb, var(--ctp-sky) 12%, transparent);
+  --color-closed:          var(--ctp-overlay0);
+  --color-closed-muted:    color-mix(in srgb, var(--ctp-overlay0) 12%, transparent);
+  --color-stopped:         var(--ctp-maroon);
+  --color-stopped-muted:   color-mix(in srgb, var(--ctp-maroon) 12%, transparent);
+  --color-queued:          var(--ctp-blue);
+  --color-queued-muted:    color-mix(in srgb, var(--ctp-blue) 12%, transparent);
+  --color-unknown:         var(--ctp-overlay1);
+  --color-unknown-muted:   color-mix(in srgb, var(--ctp-overlay1) 12%, transparent);
+
+  --color-syntax-keyword:    var(--ctp-mauve);
+  --color-syntax-string:     var(--ctp-green);
+  --color-syntax-number:     var(--ctp-peach);
+  --color-syntax-comment:    var(--ctp-overlay0);
+  --color-syntax-function:   var(--ctp-blue);
+  --color-syntax-type:       var(--ctp-yellow);
+  --color-syntax-variable:   var(--ctp-text);
+  --color-syntax-operator:   var(--ctp-sky);
+  --color-syntax-boolean:    var(--ctp-peach);
+  --color-syntax-punctuation: var(--ctp-overlay2);
+  --color-syntax-property:   var(--ctp-rosewater);
+  --color-syntax-regex:      var(--ctp-pink);
+
+  --color-chart-1: var(--ctp-mauve);
+  --color-chart-2: var(--ctp-blue);
+  --color-chart-3: var(--ctp-green);
+  --color-chart-4: var(--ctp-peach);
+  --color-chart-5: var(--ctp-red);
+  --color-chart-6: var(--ctp-sky);
+  --color-chart-7: var(--ctp-yellow);
+  --color-chart-8: var(--ctp-teal);
+
+  --color-shadow: #dce0e8;
+}
+
+/* ==========================================================================
+   SHARED TOKENS (both themes)
+   ========================================================================== */
+
+:root,
+[data-theme='dark'],
+[data-theme='light'] {
+  /* Backwards-compatible aliases */
+  --color-surface-base:    var(--color-bg);
+  --color-surface-overlay: var(--color-surface-raised);
+  --color-surface-elevated: var(--color-surface-high);
+  --color-surface-active:  var(--color-surface-raised);
+  --color-text-primary:    var(--color-text);
+  --color-text-secondary:  var(--color-text-muted);
+  --color-text-disabled:   var(--color-text-soft);
+  --color-border-subtle:   var(--color-border);
+  --color-border-default:  var(--color-border);
+  --color-border-focus:    var(--color-primary);
+  --color-accent-primary:        var(--color-primary);
+  --color-accent-primary-hover:  var(--ctp-pink);
+  --color-accent-secondary:      var(--color-primary-alt);
+  --color-accent-primary-muted:  var(--color-primary-muted);
+
+  /* Status text aliases */
+  --color-success-text:    var(--color-success);
+  --color-warning-text:    var(--color-warning);
+  --color-danger-text:     var(--color-danger);
+  --color-info-text:       var(--color-info);
+  --color-caution-text:    var(--color-caution);
+  --color-running-text:    var(--color-running);
+  --color-processing-text: var(--color-processing);
+  --color-paused-text:     var(--color-paused);
+  --color-long-text:       var(--color-long);
+  --color-short-text:      var(--color-short);
 
   /* Typography */
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-mono);
+  --font-sans:   'JetBrains Mono', 'IBM Plex Mono', 'SF Mono', 'Cascadia Code', ui-monospace, monospace;
+  --font-display: 'JetBrains Mono', 'IBM Plex Mono', 'SF Mono', 'Cascadia Code', ui-monospace, monospace;
+  --font-mono:   'JetBrains Mono', 'IBM Plex Mono', 'SF Mono', 'Cascadia Code', ui-monospace, monospace;
 
-  /* Font Sizes */
-  --text-xs: var(--text-xs);
-  --text-sm: var(--text-sm);
-  --text-base: var(--text-base);
-  --text-lg: var(--text-lg);
-  --text-xl: var(--text-xl);
-  --text-2xl: var(--text-2xl);
-  --text-3xl: var(--text-3xl);
-  --text-4xl: var(--text-4xl);
+  --text-xs:   0.6875rem;
+  --text-sm:   0.75rem;
+  --text-base: 0.8125rem;
+  --text-lg:   0.9375rem;
+  --text-xl:   1.125rem;
+  --text-2xl:  1.5rem;
+  --text-3xl:  2rem;
 
-  /* Font Weights */
-  --font-normal: var(--font-normal);
-  --font-medium: var(--font-medium);
-  --font-semibold: var(--font-semibold);
-  --font-bold: var(--font-bold);
+  --font-normal:    400;
+  --font-medium:    500;
+  --font-semibold:  600;
+  --font-bold:      700;
+  --font-extrabold: 800;
 
   /* Spacing */
-  --spacing-1: var(--space-1);
-  --spacing-2: var(--space-2);
-  --spacing-3: var(--space-3);
-  --spacing-4: var(--space-4);
-  --spacing-5: var(--space-5);
-  --spacing-6: var(--space-6);
-  --spacing-8: var(--space-8);
-  --spacing-10: var(--space-10);
-  --spacing-12: var(--space-12);
-  --spacing-16: var(--space-16);
+  --space-1:  0.25rem;
+  --space-2:  0.5rem;
+  --space-3:  0.75rem;
+  --space-4:  1rem;
+  --space-5:  1.25rem;
+  --space-6:  1.5rem;
+  --space-8:  2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
 
-  /* Border Radius */
-  --radius-sm: var(--radius-sm);
-  --radius-md: var(--radius-md);
-  --radius-lg: var(--radius-lg);
-  --radius-xl: var(--radius-xl);
-  --radius-2xl: var(--radius-2xl);
-  --radius-full: var(--radius-full);
+  /* Borders */
+  --border-width:   1px;
+  --border-width-2: 1px;
+  --radius-sm:   2px;
+  --radius-md:   4px;
+  --radius-lg:   6px;
+  --radius-xl:   8px;
+  --radius-2xl:  12px;
+  --radius-full: 9999px;
 
   /* Shadows */
-  --shadow-sm: var(--shadow-sm);
-  --shadow-md: var(--shadow-md);
-  --shadow-lg: var(--shadow-lg);
-  --shadow-xl: var(--shadow-xl);
-  --shadow-brutal-sm: var(--shadow-brutal-sm);
-  --shadow-brutal: var(--shadow-brutal);
+  --shadow-sm:   0 1px 2px rgb(0 0 0 / 0.3);
+  --shadow-md:   0 2px 8px rgb(0 0 0 / 0.4);
+  --shadow-lg:   0 4px 16px rgb(0 0 0 / 0.5);
+  --shadow-xl:   0 8px 32px rgb(0 0 0 / 0.6);
+  --shadow-brutal-sm: 2px 2px 0 var(--color-shadow);
+  --shadow-brutal:    4px 4px 0 var(--color-shadow);
+  --shadow-brutal-lg: 6px 6px 0 var(--color-shadow);
+  --shadow-glow: 0 0 0 1px var(--color-primary), 0 0 12px var(--color-accent-glow);
 
   /* Transitions */
-  --transition-fast: var(--transition-fast);
-  --transition-normal: var(--transition-normal);
-}
+  --transition-fast:   120ms ease;
+  --transition-normal: 200ms ease;
 
-/* ==========================================================================
-   SCROLLBAR STYLING
-   ========================================================================== */
+  /* Focus */
+  --focus-ring: 0 0 0 2px var(--color-bg), 0 0 0 4px var(--color-primary);
 
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: var(--scrollbar-track);
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb);
-  border-radius: var(--radius-full);
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--scrollbar-thumb-hover);
-}
-
-::-webkit-scrollbar-corner {
-  background: var(--scrollbar-track);
-}
-
-/* Firefox scrollbar */
-html {
-  scrollbar-width: thin;
-  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  /* Scrollbar */
+  --scrollbar-track: var(--color-bg-muted);
+  --scrollbar-thumb: var(--color-border-strong);
+  --scrollbar-thumb-hover: var(--color-text-soft);
 }
