@@ -11,9 +11,19 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
+	"github.com/PatrickFanella/get-rich-quick/internal/execution"
 	"github.com/PatrickFanella/get-rich-quick/internal/portfolio"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 )
+
+type portfolioDiagnosticsBalanceSource struct {
+	balance execution.Balance
+	err     error
+}
+
+func (s portfolioDiagnosticsBalanceSource) GetAccountBalance(context.Context) (execution.Balance, error) {
+	return s.balance, s.err
+}
 
 type portfolioDiagnosticsRunRepo struct {
 	runs       []domain.PipelineRun
@@ -176,6 +186,7 @@ func TestPortfolioAllocatorDiagnosticsReturnsSummary(t *testing.T) {
 	deps.TradeDecisions = decisionRepo
 	deps.Strategies = strategyRepo
 	deps.Positions = positionRepo
+	deps.AccountBalance = portfolioDiagnosticsBalanceSource{balance: execution.Balance{BuyingPower: 0, Equity: 101}}
 	srv := newTestServerWithDeps(t, deps)
 
 	rr := doRequest(t, srv, http.MethodGet, "/api/v1/portfolio/allocator/diagnostics", nil)
@@ -209,8 +220,8 @@ func TestPortfolioAllocatorDiagnosticsReturnsSummary(t *testing.T) {
 	if got.BuyingPowerUtilizationPct != 1 {
 		t.Fatalf("buying power utilization pct = %v, want 1", got.BuyingPowerUtilizationPct)
 	}
-	if !containsWarning(got.Warnings, portfolioDiagnosticsWarningAccountBal) || !containsWarning(got.Warnings, portfolioDiagnosticsWarningUnknownOpen) {
-		t.Fatalf("warnings = %#v, want account balance and unknown open warnings", got.Warnings)
+	if containsWarning(got.Warnings, portfolioDiagnosticsWarningAccountBal) || !containsWarning(got.Warnings, portfolioDiagnosticsWarningUnknownOpen) {
+		t.Fatalf("warnings = %#v, want unknown open warning only", got.Warnings)
 	}
 	if len(strategyRepo.calls) != 2 || strategyRepo.calls[0].Status != domain.StrategyStatusActive || strategyRepo.calls[1].Status != "" {
 		t.Fatalf("unexpected strategy repo calls: %#v", strategyRepo.calls)
@@ -241,7 +252,6 @@ func TestPortfolioAllocatorDiagnosticsWarningsWhenReposMissing(t *testing.T) {
 		portfolioDiagnosticsWarningStrategies,
 		portfolioDiagnosticsWarningPositions,
 		portfolioDiagnosticsWarningAccountBal,
-		"equity_non_positive",
 	}
 	for _, want := range wantWarnings {
 		if !containsWarning(got.Warnings, want) {

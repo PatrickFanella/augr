@@ -40,6 +40,7 @@ type DiagnosticsInput struct {
 	OpenPositionsByMarket    map[domain.MarketType]int
 	BuyingPower              float64
 	Equity                   float64
+	AccountBalanceAvailable  bool
 	GrossExposure            float64
 	TargetGrossExposurePct   float64
 }
@@ -117,6 +118,15 @@ func BuildDiagnosticsSummary(input DiagnosticsInput) DiagnosticsSummary {
 	}
 
 	if input.Equity <= 0 {
+		if !input.AccountBalanceAvailable {
+			target := input.TargetGrossExposurePct
+			if target <= 0 {
+				target = 0.35
+			}
+			summary.TargetGrossExposurePct = target
+			summary.UtilizationGapPct = target
+			return summary
+		}
 		summary.Warnings = append(summary.Warnings, "equity_non_positive")
 	} else {
 		summary.BuyingPowerUtilizationPct = 1 - (input.BuyingPower / input.Equity)

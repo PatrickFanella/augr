@@ -444,8 +444,9 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 				cfg.Brokers.Alpaca.PaperMode,
 				logger,
 			)
+			alpacaAdapter := automation.NewAlpacaClientAdapter(alpacaClient)
 			alpacaReconciler = automation.NewAlpacaReconciler(automation.AlpacaReconcilerDeps{
-				Broker:       automation.NewAlpacaClientAdapter(alpacaClient),
+				Broker:       alpacaAdapter,
 				StrategyRepo: strategyRepo,
 				OrderRepo:    orderRepo,
 				PositionRepo: positionRepo,
@@ -454,6 +455,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 				Logger:       logger,
 			})
 			deps.AlpacaReconciler = alpacaReconciler
+			deps.AccountBalance = alpacaAdapter
 		}
 		// Options data chain: Tradier (full Greeks from ORATS) → Yahoo (free, BS Greeks)
 		// → Alpaca (paper account) → Polygon (rate-limited).

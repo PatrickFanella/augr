@@ -11,8 +11,9 @@ import (
 	"strings"
 	"time"
 
-	alpacaexec "github.com/PatrickFanella/get-rich-quick/internal/execution/alpaca"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
+	"github.com/PatrickFanella/get-rich-quick/internal/execution"
+	alpacaexec "github.com/PatrickFanella/get-rich-quick/internal/execution/alpaca"
 )
 
 const alpacaActivitiesPageSize = 100
@@ -65,6 +66,13 @@ func (a *AlpacaClientAdapter) GetPositions(ctx context.Context) ([]domain.Positi
 		return nil, errors.New("alpaca: reconciliation broker is required")
 	}
 	return a.broker.GetPositions(ctx)
+}
+
+func (a *AlpacaClientAdapter) GetAccountBalance(ctx context.Context) (execution.Balance, error) {
+	if a == nil || a.broker == nil {
+		return execution.Balance{}, errors.New("alpaca: reconciliation broker is required")
+	}
+	return a.broker.GetAccountBalance(ctx)
 }
 
 func (a *AlpacaClientAdapter) ListOrders(ctx context.Context) ([]BrokerOrderSnapshot, error) {

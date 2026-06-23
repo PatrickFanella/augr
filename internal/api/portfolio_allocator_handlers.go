@@ -11,9 +11,14 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
+	"github.com/PatrickFanella/get-rich-quick/internal/execution"
 	"github.com/PatrickFanella/get-rich-quick/internal/portfolio"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 )
+
+type AccountBalanceSource interface {
+	GetAccountBalance(ctx context.Context) (execution.Balance, error)
+}
 
 const (
 	portfolioDiagnosticsRunsLimit           = 200
@@ -259,9 +264,19 @@ func (s *Server) buildPortfolioDiagnosticsInput(ctx context.Context) (portfolio.
 	}
 
 	input.GrossExposure = grossExposure
-	input.Equity = grossExposure
-	input.BuyingPower = 0
-	warnings = append(warnings, portfolioDiagnosticsWarningAccountBal)
+	if s.accountBalance != nil {
+		balance, err := s.accountBalance.GetAccountBalance(ctx)
+		if err != nil {
+			s.logger.Warn("portfolio allocator diagnostics account balance unavailable", "error", err)
+			warnings = append(warnings, portfolioDiagnosticsWarningAccountBal)
+		} else {
+			input.BuyingPower = balance.BuyingPower
+			input.Equity = balance.Equity
+			input.AccountBalanceAvailable = true
+		}
+	} else {
+		warnings = append(warnings, portfolioDiagnosticsWarningAccountBal)
+	}
 
 	return input, warnings, nil
 }

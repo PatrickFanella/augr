@@ -109,7 +109,7 @@ func TestBuildDiagnosticsSummaryUtilizationMath(t *testing.T) {
 func TestBuildDiagnosticsSummaryZeroEquityWarning(t *testing.T) {
 	t.Parallel()
 
-	got := BuildDiagnosticsSummary(DiagnosticsInput{Equity: 0, BuyingPower: 10, GrossExposure: 20})
+	got := BuildDiagnosticsSummary(DiagnosticsInput{Equity: 0, AccountBalanceAvailable: true, BuyingPower: 10, GrossExposure: 20})
 
 	if len(got.Warnings) != 1 || got.Warnings[0] != "equity_non_positive" {
 		t.Fatalf("warnings = %#v, want [equity_non_positive]", got.Warnings)
@@ -120,6 +120,18 @@ func TestBuildDiagnosticsSummaryZeroEquityWarning(t *testing.T) {
 	if got.GrossExposurePct != 0 {
 		t.Fatalf("gross exposure pct = %v, want 0", got.GrossExposurePct)
 	}
+}
+
+func TestBuildDiagnosticsSummarySkipsEquityWarningWhenAccountBalanceUnavailable(t *testing.T) {
+	t.Parallel()
+
+	got := BuildDiagnosticsSummary(DiagnosticsInput{Equity: 0, BuyingPower: 0, GrossExposure: 0})
+
+	if len(got.Warnings) != 0 {
+		t.Fatalf("warnings = %#v, want none", got.Warnings)
+	}
+	assertNear(t, got.TargetGrossExposurePct, 0.35)
+	assertNear(t, got.UtilizationGapPct, 0.35)
 }
 
 func assertNear(t *testing.T, got, want float64) {

@@ -38,9 +38,9 @@ function pnlClass(value?: number) {
   return 'unknown'
 }
 
-function compactMap(entries: Record<string, number>) {
+function compactMap(entries: Record<string, number>, emptyLabel = 'No counts reported.') {
   const pairs = Object.entries(entries).sort(([left], [right]) => left.localeCompare(right))
-  if (pairs.length === 0) return <p className="muted">No counts reported.</p>
+  if (pairs.length === 0) return <p className="muted">{emptyLabel}</p>
   return (
     <dl className="compact-kv">
       {pairs.map(([key, value]) => <div key={key}><dt>{key || 'unknown'}</dt><dd><span className={`status-pill ${value > 0 ? 'active' : 'unknown'}`}>{value}</span></dd></div>)}
@@ -115,7 +115,7 @@ function DiagnosticsGrid({ diagnostics }: { diagnostics: AllocatorDiagnostics })
         <article className="panel nested-panel"><h3>Decision statuses</h3>{compactMap(diagnostics.decision_counts_by_status)}</article>
         <article className="panel nested-panel"><h3>No-action reasons</h3>{compactMap(diagnostics.no_action_reasons)}</article>
         <article className="panel nested-panel"><h3>Active strategies by market</h3>{compactMap(diagnostics.active_strategies_by_market)}</article>
-        <article className="panel nested-panel"><h3>Open positions by market</h3>{compactMap(diagnostics.open_positions_by_market)}</article>
+        <article className="panel nested-panel"><h3>Open positions by market</h3>{compactMap(diagnostics.open_positions_by_market, 'No open positions.')}</article>
       </div>
     </div>
   )
