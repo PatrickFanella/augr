@@ -69,6 +69,9 @@ func (s *Server) handlePortfolioSummary(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 	for _, p := range allPositions {
+		if p.ClosedAt == nil {
+			continue
+		}
 		totalRealized += p.RealizedPnL
 	}
 	summary := map[string]any{

@@ -1647,8 +1647,8 @@ func TestPortfolioSummaryIncludesClosedPositionRealizedPnL(t *testing.T) {
 	if got := body["unrealized_pnl"]; got != unrealized {
 		t.Fatalf("unrealized_pnl = %v, want %v", got, unrealized)
 	}
-	if got := body["realized_pnl"]; got != 214.21 {
-		t.Fatalf("realized_pnl = %v, want 214.21", got)
+	if got := body["realized_pnl"]; got != 211.21 {
+		t.Fatalf("realized_pnl = %v, want 211.21", got)
 	}
 }
 
