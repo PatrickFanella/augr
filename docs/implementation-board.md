@@ -7,15 +7,13 @@ tags: [kanban, tracking]
 
 ## Backlog
 
-- [ ] Phase 5: complete options product path
-- [ ] Phase 6: unify prediction-market decision architecture
 - [ ] Phase 7: backtesting and decision quality
 - [ ] Phase 8: operations, paper soak, and release readiness
 - [ ] Completion audit against all phase exit gates
 
 ## In Progress
 
-- [x] Phase 4: recover abandoned product surfaces
+- [ ] Phase 6: unify prediction-market decision architecture
 
 ## Blocked
 
@@ -29,6 +27,8 @@ tags: [kanban, tracking]
 - [x] Phase 1: structured LLM recovery, redacted response logging, terminal generator metrics, coordinated Reddit cooldowns, and freshness metrics
 - [x] Phase 2: deterministic Go/frontend gates, valid CI workflows, split frontend harness/suites, and provider seam coverage
 - [x] Phase 3: truthful responsive shell, error boundaries, constrained filters, source-backed exposure, and reconciled design system
+- [x] Phase 4: recover abandoned product surfaces
+- [x] Phase 5: dedicated paper options runtime, risk, persistence, restart, lifecycle, reconciliation, and operator evidence
 
 - [ ] Domain types
 - [ ] Repository interfaces

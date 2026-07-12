@@ -115,6 +115,22 @@ and Surfers. No recovered surface enables live trading.
 Exit gate: an end-to-end defined-risk paper trade survives restart and closes
 without using generic stock-order semantics.
 
+Completed evidence (2026-07-12): options strategies now route through a
+dedicated paper-only runtime. `options_rules` selects contracts by delta and
+DTE from executable chain quotes; long calls/puts and same-expiry 1:1 bull-call
+and bear-put debit verticals use explicit OCC identity, bid/ask pricing, whole-
+contract sizing, and options-specific open/close intents. Live options,
+uncovered shorts, credit/complex spreads, invalid quotes, and ambiguous leg
+groups fail closed. Premium/max-risk exposure includes the contract multiplier,
+and deterministic portfolio caps enforce delta, one-percent-move gamma, vega,
+and daily theta. Orders, positions, trades, Greeks, fees, premiums, and leg
+groups round-trip through PostgreSQL; startup reconstructs paper cash/equity.
+Strategy exits atomically close single positions or both spread legs, while a
+registered after-hours workflow cash-settles expiration and a reconciliation
+workflow detects partial lifecycle graphs. Current Orders and Portfolio screens
+show contract, intent, multiplier, group, and Greeks metadata. Full Go tests/vet
+and all 158 frontend tests, lint, type-check, and production build pass.
+
 ## Phase 6 — Prediction-market decision architecture
 
 - Keep deterministic execution authoritative; define the LLM as advisory

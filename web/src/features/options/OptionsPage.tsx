@@ -31,7 +31,7 @@ export function OptionsPage() {
   return (
     <div className="detail-stack">
       <Breadcrumbs items={[{ label: 'Cockpit', to: '/cockpit' }, { label: 'Options research' }]} />
-      <PageHeader eyebrow="Derivatives research" title="Options chain" description="Read-only contract prices, liquidity, IV, and Greeks. Order routing and spread lifecycle controls are intentionally excluded until the dedicated options runtime is complete." actions={<span className="status-pill unknown">Research only</span>} />
+      <PageHeader eyebrow="Derivatives research" title="Options chain" description="Read-only contract prices, liquidity, IV, and Greeks. Paper execution is automation-driven through validated strategy rules; live and manual options orders remain disabled." actions={<span className="status-pill unknown">Research only</span>} />
       <section className="panel" aria-labelledby="options-query-heading">
         <h2 id="options-query-heading">Chain query</h2>
         <form className="filter-bar" aria-label="Options chain filters" onSubmit={(event) => event.preventDefault()}>
