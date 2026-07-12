@@ -132,8 +132,7 @@ type Order struct {
 	LegGroupID         *uuid.UUID      `json:"leg_group_id,omitempty"`
 	OptionGreeks       *OptionGreeks   `json:"option_greeks,omitempty"`
 
-	// Prediction market fields. These are execution-only today and are not
-	// persisted in the current order storage schema.
+	// Prediction market fields (empty for non-prediction orders).
 	PredictionSide   string `json:"prediction_side,omitempty"`
 	PolymarketIntent string `json:"polymarket_intent,omitempty"`
 }

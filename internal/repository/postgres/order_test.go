@@ -98,18 +98,20 @@ func TestOrderRepoIntegration_CreateGetUpdateDelete(t *testing.T) {
 	limitPrice := 185.25
 
 	order := &domain.Order{
-		StrategyID:    &strategyID,
-		PipelineRunID: &runID,
-		ExternalID:    "broker-123",
-		Ticker:        "AAPL",
-		MarketType:    domain.MarketTypeCrypto,
-		Side:          domain.OrderSideBuy,
-		OrderType:     domain.OrderTypeLimit,
-		Quantity:      10,
-		LimitPrice:    &limitPrice,
-		Status:        domain.OrderStatusPending,
-		Broker:        "alpaca",
-		SubmittedAt:   &submittedAt,
+		StrategyID:       &strategyID,
+		PipelineRunID:    &runID,
+		ExternalID:       "broker-123",
+		Ticker:           "AAPL",
+		MarketType:       domain.MarketTypeCrypto,
+		Side:             domain.OrderSideBuy,
+		OrderType:        domain.OrderTypeLimit,
+		Quantity:         10,
+		LimitPrice:       &limitPrice,
+		Status:           domain.OrderStatusPending,
+		Broker:           "alpaca",
+		SubmittedAt:      &submittedAt,
+		PredictionSide:   "YES",
+		PolymarketIntent: "BUY",
 	}
 
 	if err := repo.Create(ctx, order); err != nil {
@@ -148,6 +150,9 @@ func TestOrderRepoIntegration_CreateGetUpdateDelete(t *testing.T) {
 	if got.Status != domain.OrderStatusPending {
 		t.Errorf("expected pending status, got %q", got.Status)
 	}
+	if got.PredictionSide != "YES" || got.PolymarketIntent != "BUY" {
+		t.Fatalf("expected prediction metadata to round trip, got side=%q intent=%q", got.PredictionSide, got.PolymarketIntent)
+	}
 
 	filledAt := submittedAt.Add(2 * time.Minute)
 	filledAvgPrice := 185.10
@@ -155,6 +160,8 @@ func TestOrderRepoIntegration_CreateGetUpdateDelete(t *testing.T) {
 	order.FilledAvgPrice = &filledAvgPrice
 	order.Status = domain.OrderStatusFilled
 	order.FilledAt = &filledAt
+	order.PredictionSide = "NO"
+	order.PolymarketIntent = "SELL"
 
 	if err := repo.Update(ctx, order); err != nil {
 		t.Fatalf("Update() error = %v", err)
@@ -178,6 +185,9 @@ func TestOrderRepoIntegration_CreateGetUpdateDelete(t *testing.T) {
 	}
 	if updated.FilledAt == nil || !updated.FilledAt.Equal(filledAt) {
 		t.Fatalf("expected FilledAt %v, got %v", filledAt, updated.FilledAt)
+	}
+	if updated.PredictionSide != "NO" || updated.PolymarketIntent != "SELL" {
+		t.Fatalf("expected updated prediction metadata, got side=%q intent=%q", updated.PredictionSide, updated.PolymarketIntent)
 	}
 
 	if err := repo.Delete(ctx, order.ID); err != nil {

@@ -580,7 +580,7 @@ func (m *OrderManager) ProcessSignal(
 
 	switch status {
 	case domain.OrderStatusFilled:
-		return m.handleFill(ctx, order, plan, strategyID, runID)
+		return m.handleFill(ctx, order, plan, strategyID, runID, decision.ID)
 	case domain.OrderStatusCancelled:
 		if err := m.orderRepo.Update(ctx, order); err != nil {
 			return fmt.Errorf("order_manager: update %s order: %w", status, err)
@@ -704,6 +704,19 @@ func (m *OrderManager) attachTradeDecisionOrder(ctx context.Context, decisionID,
 	}
 }
 
+func (m *OrderManager) recordTradeDecisionReplay(ctx context.Context, decisionID uuid.UUID, eventType domain.ReplayEventType, payload any) {
+	if m == nil || decisionID == uuid.Nil {
+		return
+	}
+	recorder, ok := m.decisionRecorder.(ReplayDecisionRecorder)
+	if !ok {
+		return
+	}
+	if err := recorder.RecordReplayEvent(ctx, decisionID, eventType, "order_manager", payload, m.currentTime()); err != nil {
+		m.logger.ErrorContext(ctx, "order_manager: record replay event", "error", err, "decision_id", decisionID, "event_type", eventType)
+	}
+}
+
 func (m *OrderManager) hasOpenLongPosition(ctx context.Context, strategyID uuid.UUID, ticker string) (bool, error) {
 	ticker = strings.TrimSpace(ticker)
 	if ticker == "" {
@@ -777,7 +790,7 @@ func (m *OrderManager) handleFill(
 	ctx context.Context,
 	order *domain.Order,
 	plan TradingPlan,
-	strategyID, runID uuid.UUID,
+	strategyID, runID, decisionID uuid.UUID,
 ) error {
 	now := m.currentTime()
 	order.FilledQuantity = order.Quantity
@@ -894,6 +907,15 @@ func (m *OrderManager) handleFill(
 
 		return fmt.Errorf("order_manager: create trade: %w", err)
 	}
+
+	m.recordTradeDecisionReplay(ctx, decisionID, domain.ReplayEventTypeFillObserved, map[string]any{
+		"order_id": order.ID, "trade_id": trade.ID, "price": fillPrice,
+		"quantity": order.FilledQuantity, "prediction_side": order.PredictionSide,
+	})
+	m.recordTradeDecisionReplay(ctx, decisionID, domain.ReplayEventTypePositionUpdated, map[string]any{
+		"position_id": position.ID, "ticker": position.Ticker, "quantity": position.Quantity,
+		"realized_pnl": position.RealizedPnL, "closed_at": position.ClosedAt,
+	})
 
 	if auditErr := m.audit(ctx, "order_filled", "order", &order.ID, map[string]any{
 		"fill_price":  fillPrice,

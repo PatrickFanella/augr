@@ -240,7 +240,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 	opportunityRepo := pgrepo.NewOpportunityRepo(db.Pool)
 	allocationDecisionRepo := pgrepo.NewAllocationDecisionRepo(db.Pool)
 	replayEventRepo := pgrepo.NewReplayEventRepo(db.Pool)
-	tradeDecisionRecorder := execution.NewTradeDecisionJournalRecorder(tradeDecisionRepo)
+	tradeDecisionRecorder := execution.NewTradeDecisionJournalRecorder(tradeDecisionRepo, replayEventRepo)
 	memoryRepo := pgrepo.NewMemoryRepo(db.Pool)
 	apiKeyRepo := pgrepo.NewAPIKeyRepo(db.Pool)
 	auditLogRepo := pgrepo.NewAuditLogRepo(db.Pool)

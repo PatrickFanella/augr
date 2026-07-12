@@ -42,9 +42,10 @@ func (r *OrderRepo) Create(ctx context.Context, order *domain.Order) error {
 			strategy_id, pipeline_run_id, external_id, ticker, market_type, side, order_type,
 			quantity, limit_price, stop_price, filled_quantity, filled_avg_price,
 			status, broker, submitted_at, filled_at, asset_class, underlying_ticker,
-			option_type, strike, expiry, contract_multiplier, position_intent, leg_group_id
+			option_type, strike, expiry, contract_multiplier, position_intent, leg_group_id,
+			prediction_side, polymarket_intent
 		)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
 		 RETURNING id, created_at`,
 		order.StrategyID,
 		order.PipelineRunID,
@@ -70,6 +71,8 @@ func (r *OrderRepo) Create(ctx context.Context, order *domain.Order) error {
 		order.ContractMultiplier,
 		order.PositionIntent,
 		order.LegGroupID,
+		nullString(order.PredictionSide),
+		nullString(order.PolymarketIntent),
 	)
 
 	if err := row.Scan(&order.ID, &order.CreatedAt); err != nil {
@@ -135,7 +138,9 @@ func (r *OrderRepo) Update(ctx context.Context, order *domain.Order) error {
 		     , contract_multiplier = $22
 		     , position_intent = $23
 		     , leg_group_id = $24
-		 WHERE id = $25
+		     , prediction_side = $25
+		     , polymarket_intent = $26
+		 WHERE id = $27
 		 RETURNING id`,
 		order.StrategyID,
 		order.PipelineRunID,
@@ -161,6 +166,8 @@ func (r *OrderRepo) Update(ctx context.Context, order *domain.Order) error {
 		order.ContractMultiplier,
 		order.PositionIntent,
 		order.LegGroupID,
+		nullString(order.PredictionSide),
+		nullString(order.PolymarketIntent),
 		order.ID,
 	)
 
@@ -209,7 +216,7 @@ const orderSelectSQL = `SELECT id, strategy_id, pipeline_run_id, external_id, ti
 		filled_avg_price::double precision, status, broker, submitted_at,
 		filled_at, created_at, asset_class, underlying_ticker, option_type,
 		strike::double precision, expiry, contract_multiplier::double precision,
-		position_intent, leg_group_id
+		position_intent, leg_group_id, prediction_side, polymarket_intent
 	 FROM orders`
 
 func (r *OrderRepo) list(ctx context.Context, query string, args []any, op string) ([]domain.Order, error) {
@@ -281,6 +288,8 @@ func scanOrder(sc scanner) (*domain.Order, error) {
 		&order.ContractMultiplier,
 		&order.PositionIntent,
 		&order.LegGroupID,
+		&order.PredictionSide,
+		&order.PolymarketIntent,
 	)
 	if err != nil {
 		return nil, err
