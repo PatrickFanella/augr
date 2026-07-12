@@ -69,6 +69,19 @@ describe('authentication and cockpit', () => {
     expect(screen.getByRole('link', { name: /return to cockpit/i })).toHaveAttribute('href', '/cockpit')
   })
 
+  it('renders effective settings and readiness without exposing secrets', async () => {
+    resetApp('/settings')
+    setTokenSnapshot(buildAuthResponse())
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: /settings & readiness/i })).toBeTruthy()
+    expect(screen.getByRole('table', { name: /broker readiness/i })).toBeTruthy()
+    expect(screen.getByRole('table', { name: /llm provider readiness/i })).toBeTruthy()
+    expect(screen.getAllByText(/development-paper/i).length).toBeGreaterThan(0)
+    expect(screen.queryByText(/dev-paper-access-token/i)).toBeNull()
+    expect(screen.getByRole('link', { name: /settings/i })).toHaveAttribute('aria-current', 'page')
+  })
+
   it('handles failed refresh by cleaning up the session', async () => {
     resetApp('/cockpit')
     state.scenario = 'failed-refresh'

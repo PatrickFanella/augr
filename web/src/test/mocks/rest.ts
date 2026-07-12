@@ -154,6 +154,25 @@ export function createP0RestHandlers(options: P0MockHandlersOptions = {}) {
       return HttpResponse.json(buildSettings())
     }),
 
+    http.get(endpoint(apiBaseUrl, '/event-markets/summary'), async ({ request }) => {
+      await applyScenarioDelay(state)
+      const authError = authGuard(request, state)
+      if (authError) return authError
+      const error = scenarioError(state)
+      if (error) return error
+      if (state.scenario === 'empty-data') return HttpResponse.json({ providers: [] })
+      return HttpResponse.json({ providers: [{ provider: 'kalshi', watched_markets: 4, active_paper: 2, last_run_status: 'completed', live_trading_ready: false }, { provider: 'polymarket', watched_markets: 3, active_paper: 1, last_run_status: state.scenario === 'partial-service-failure' ? 'new_discovery_status' : 'running', live_trading_ready: false }] })
+    }),
+
+    http.get(endpoint(apiBaseUrl, '/marketdata/polymarket/status'), async ({ request }) => {
+      await applyScenarioDelay(state)
+      const authError = authGuard(request, state)
+      if (authError) return authError
+      const error = scenarioError(state)
+      if (error) return error
+      return HttpResponse.json({ enabled: true, ws_connections: 2, avg_jitter_ms: 12.5, dropped: 0, ready_slugs: ['fixture-market'], recorder_lag_seconds: 0.5, updated_at: fixtureDate })
+    }),
+
     http.get(endpoint(apiBaseUrl, '/events'), async ({ request }) => {
       await applyScenarioDelay(state)
       const authError = authGuard(request, state)

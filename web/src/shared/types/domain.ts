@@ -457,3 +457,25 @@ export type HealthStatusResponse = {
   db: string
   redis: string
 }
+
+export type EventMarketProviderSummary = {
+  provider: string
+  watched_markets: number
+  active_paper: number
+  last_run_status: string
+  live_trading_ready: boolean
+}
+
+export type EventMarketsSummaryResponse = {
+  providers: EventMarketProviderSummary[]
+}
+
+export type PolymarketDataStatus = {
+  enabled: boolean
+  ws_connections: number
+  avg_jitter_ms: number
+  dropped: number
+  ready_slugs: string[]
+  recorder_lag_seconds: number
+  updated_at: ISODate
+}

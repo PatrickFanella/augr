@@ -395,6 +395,7 @@ describe('first vertical slice app', () => {
     render(<App />)
 
     expect(await screen.findByRole('heading', { name: /system overview/i })).toBeTruthy()
+    await waitFor(() => expect(FakeWebSocket.instances.length).toBeGreaterThan(0))
     act(() => FakeWebSocket.instances[0]!.onmessage?.({ data: JSON.stringify({ type: 'pipeline_start', strategy_id: '00000000-0000-4000-8000-000000000010', run_id: '00000000-0000-4000-8000-000000000020', timestamp: fixtureDate }) }))
 
     const drawer = screen.getByRole('complementary', { name: /global realtime activity/i })

@@ -15,6 +15,8 @@ import {
   Moon,
   ChevronRight,
   Activity,
+  Settings,
+  Landmark,
 } from 'lucide-react';
 
 import { useTheme } from '@/app/providers/theme-context';
@@ -37,7 +39,9 @@ const navItems = [
   { to: '/orders', label: 'Orders', icon: ShoppingCart },
   { to: '/trades', label: 'Trades', icon: ArrowLeftRight },
   { to: '/portfolio', label: 'Portfolio', icon: PieChart },
+  { to: '/event-markets', label: 'Event markets', icon: Landmark },
   { to: '/risk', label: 'Risk', icon: ShieldAlert },
+  { to: '/settings', label: 'Settings', icon: Settings },
 ];
 
 const MOBILE_QUERY = '(max-width: 840px)';

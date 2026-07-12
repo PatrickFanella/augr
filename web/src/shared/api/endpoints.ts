@@ -36,10 +36,12 @@ import {
   strategyUpdateRequestSchema,
   tradeSchema,
   userSchema,
+  eventMarketsSummarySchema,
+  polymarketDataStatusSchema,
 } from '@/shared/api/schemas'
 import type { ListResponse, PortfolioSummary } from '@/shared/types/api'
 import type { AuthResponse, LoginRequest } from '@/shared/types/auth'
-import type { AgentDecision, AgentEvent, AllocationDecision, AllocatorDiagnostics, AllocatorOpportunity, AllocatorSummary, AutomationHealthResponse, AutomationJobRun, AutomationJobStatus, BreakerResetRequest, BreakerResetResponse, HealthStatusResponse, KillSwitchToggleRequest, KillSwitchToggleResponse, MarketKillSwitchRequest, MarketKillSwitchResponse, Order, OrderDetailResponse, PipelineRun, Position, ReportArtifact, ReportLatestResponse, RiskBreakersResponse, RiskCockpitSummary, RiskEngineStatus, RunSnapshot, Strategy, StrategyCreateRequest, StrategyRunAcceptedResponse, StrategyUpdateRequest, Trade, User } from '@/shared/types/domain'
+import type { AgentDecision, AgentEvent, AllocationDecision, AllocatorDiagnostics, AllocatorOpportunity, AllocatorSummary, AutomationHealthResponse, AutomationJobRun, AutomationJobStatus, BreakerResetRequest, BreakerResetResponse, EventMarketsSummaryResponse, HealthStatusResponse, KillSwitchToggleRequest, KillSwitchToggleResponse, MarketKillSwitchRequest, MarketKillSwitchResponse, Order, OrderDetailResponse, PipelineRun, PolymarketDataStatus, Position, ReportArtifact, ReportLatestResponse, RiskBreakersResponse, RiskCockpitSummary, RiskEngineStatus, RunSnapshot, Strategy, StrategyCreateRequest, StrategyRunAcceptedResponse, StrategyUpdateRequest, Trade, User } from '@/shared/types/domain'
 import type { SettingsResponse } from '@/shared/types/settings'
 
 export type StrategyListParams = {
@@ -162,6 +164,14 @@ export function getCurrentUser(signal?: AbortSignal): Promise<User> {
 
 export function getSettings(signal?: AbortSignal): Promise<SettingsResponse> {
   return api.get<SettingsResponse>('/settings', { schema: settingsResponseSchema as never, signal })
+}
+
+export function getEventMarketsSummary(signal?: AbortSignal): Promise<EventMarketsSummaryResponse> {
+  return api.get<EventMarketsSummaryResponse>('/event-markets/summary', { schema: eventMarketsSummarySchema as never, signal })
+}
+
+export function getPolymarketDataStatus(signal?: AbortSignal): Promise<PolymarketDataStatus> {
+  return api.get<PolymarketDataStatus>('/marketdata/polymarket/status', { schema: polymarketDataStatusSchema as never, signal })
 }
 
 export function getRiskStatus(signal?: AbortSignal): Promise<RiskEngineStatus> {

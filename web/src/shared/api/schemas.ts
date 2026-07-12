@@ -562,6 +562,26 @@ export const settingsResponseSchema = z
   })
   .passthrough()
 
+export const eventMarketsSummarySchema = z.object({
+  providers: z.array(z.object({
+    provider: z.string(),
+    watched_markets: z.number().int().nonnegative(),
+    active_paper: z.number().int().nonnegative(),
+    last_run_status: z.string(),
+    live_trading_ready: z.boolean(),
+  }).passthrough()),
+}).passthrough()
+
+export const polymarketDataStatusSchema = z.object({
+  enabled: z.boolean(),
+  ws_connections: z.number().int().nonnegative(),
+  avg_jitter_ms: z.number().nonnegative(),
+  dropped: z.number().int().nonnegative(),
+  ready_slugs: z.array(z.string()),
+  recorder_lag_seconds: z.number().nonnegative(),
+  updated_at: isoDateSchema,
+}).passthrough()
+
 export const websocketCommandSchema = z
   .discriminatedUnion('action', [
     z.object({ action: z.literal('subscribe'), strategy_ids: z.array(uuidSchema).optional(), run_ids: z.array(uuidSchema).optional() }).passthrough(),

@@ -13,6 +13,8 @@ import {
   ShieldAlert,
   Sun,
   Moon,
+  Settings,
+  Landmark,
 } from 'lucide-react'
 import { useTheme } from '@/app/providers/theme-context'
 
@@ -54,7 +56,9 @@ export function CommandPalette() {
     { to: '/orders', label: 'Orders', icon: <ShoppingCart size={16} /> },
     { to: '/trades', label: 'Trades', icon: <ArrowLeftRight size={16} /> },
     { to: '/portfolio', label: 'Portfolio', icon: <PieChart size={16} /> },
+    { to: '/event-markets', label: 'Event markets', icon: <Landmark size={16} /> },
     { to: '/risk', label: 'Risk', icon: <ShieldAlert size={16} /> },
+    { to: '/settings', label: 'Settings', icon: <Settings size={16} /> },
   ]
 
   const items: CommandItem[] = [

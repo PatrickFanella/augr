@@ -57,6 +57,12 @@ const StrategiesListPage = lazy(() =>
 const TradesListPage = lazy(() =>
   import('@/features/trades/TradesListPage').then((m) => ({ default: m.TradesListPage })),
 )
+const SettingsPage = lazy(() =>
+  import('@/features/settings/SettingsPage').then((m) => ({ default: m.SettingsPage })),
+)
+const EventMarketsPage = lazy(() =>
+  import('@/features/event-markets/EventMarketsPage').then((m) => ({ default: m.EventMarketsPage })),
+)
 
 const routeFallback = <LoadingState />
 
@@ -91,6 +97,8 @@ export function createAppRouter() {
             { path: '/strategies/:id/edit', element: withSuspense(<StrategyEditPage />) },
             { path: '/strategies/:id', element: withSuspense(<StrategyDetailPage />) },
             { path: '/trades', element: withSuspense(<TradesListPage />) },
+            { path: '/settings', element: withSuspense(<SettingsPage />) },
+            { path: '/event-markets', element: withSuspense(<EventMarketsPage />) },
             { path: '*', element: <NotFoundPage /> },
           ],
         },

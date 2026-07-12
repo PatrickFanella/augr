@@ -165,7 +165,7 @@ describe('risk console', () => {
     render(<App />)
     await screen.findByRole('heading', { name: /global kill switch controls/i })
     await screen.findByText((_, el) => el?.textContent === 'Inactive')
-    const verifyActivateButton = screen.getByRole('button', { name: /^Activate global kill switch$/i })
+    const verifyActivateButton = await screen.findByRole('button', { name: /^Activate global kill switch$/i })
     await userEvent.click(verifyActivateButton)
     const dialog = screen.getByRole('dialog', { name: /activate global kill switch/i })
     await userEvent.type(within(dialog).getByLabelText(/reason/i), 'operator halt')
@@ -463,4 +463,3 @@ describe('risk console', () => {
   })
 
 })
-
