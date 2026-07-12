@@ -14,6 +14,7 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/discovery"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/llm"
+	"github.com/PatrickFanella/get-rich-quick/internal/operations"
 	"github.com/PatrickFanella/get-rich-quick/internal/service"
 	"github.com/PatrickFanella/get-rich-quick/internal/signal"
 	"github.com/PatrickFanella/get-rich-quick/internal/universe"
@@ -53,11 +54,12 @@ type Server struct {
 	events             repository.AgentEventRepository
 
 	// Backtest
-	backtestConfigs repository.BacktestConfigRepository
-	backtestRuns    repository.BacktestRunRepository
-	divergenceSrc   DivergenceSource
-	mdStatusSrc     MarketDataStatusSource
-	dataService     *data.DataService
+	backtestConfigs  repository.BacktestConfigRepository
+	backtestRuns     repository.BacktestRunRepository
+	divergenceSrc    DivergenceSource
+	mdStatusSrc      MarketDataStatusSource
+	releaseReadiness operations.Source
+	dataService      *data.DataService
 
 	// Discovery
 	discoveryDeps    *discovery.DiscoveryDeps
@@ -202,6 +204,7 @@ type Deps struct {
 	BacktestConfigs        repository.BacktestConfigRepository
 	BacktestRuns           repository.BacktestRunRepository
 	DivergenceSrc          DivergenceSource
+	ReleaseReadiness       operations.Source
 	MarketDataStatus       MarketDataStatusSource
 	DataService            *data.DataService
 	OptionsProvider        data.OptionsDataProvider
@@ -335,6 +338,7 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 		backtestConfigs:       deps.BacktestConfigs,
 		backtestRuns:          deps.BacktestRuns,
 		divergenceSrc:         deps.DivergenceSrc,
+		releaseReadiness:      deps.ReleaseReadiness,
 		mdStatusSrc:           deps.MarketDataStatus,
 		dataService:           deps.DataService,
 		optionsProvider:       deps.OptionsProvider,
@@ -392,6 +396,7 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 
 	// Global middleware
 	r.Use(SecurityHeaders)
+	r.Use(CorrelationID)
 	r.Use(RequestLogger(logger))
 	r.Use(CORS(cfg.CORSConfig))
 	r.Use(MaxRequestBody(maxRequestBodyBytes))
@@ -572,6 +577,7 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 		})
 
 		// Backtests
+		v1.Get("/release/readiness", s.handleReleaseReadiness)
 		v1.Get("/backtest/divergence", s.handleGetBacktestDivergence)
 		v1.Route("/backtests", func(bt chi.Router) {
 			bt.Get("/divergence", s.handleGetBacktestDivergence)

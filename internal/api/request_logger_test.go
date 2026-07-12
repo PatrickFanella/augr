@@ -53,6 +53,9 @@ func TestRequestLoggerLogsNonSuppressedPath(t *testing.T) {
 	if !strings.Contains(out, "http request") {
 		t.Fatalf("expected request log entry, got: %s", out)
 	}
+	if !strings.Contains(out, "request_id") {
+		t.Fatalf("log output = %q, want request_id", out)
+	}
 	if !strings.Contains(out, `"path":"/api/v1/strategies/123"`) {
 		t.Fatalf("expected path field in request log, got: %s", out)
 	}

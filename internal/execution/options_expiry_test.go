@@ -16,7 +16,7 @@ func expiryPosition(symbol, underlying string, optionType domain.OptionType, str
 	return domain.Position{ID: uuid.New(), Ticker: symbol, Side: side, Quantity: quantity, AvgEntry: entry, AssetClass: domain.AssetClassOption, UnderlyingTicker: underlying, OptionType: &optionType, Strike: &strike, Expiry: &expiry, ContractMultiplier: 100}
 }
 
-func TestSettleExpiredOptionPositionsPersistsExerciseAndWorthlessExpiry(t *testing.T) {
+func TestSettleExpiredOptionPositionsPersistsExerciseAndWorthlessExpiryWithoutFabricatingAssignment(t *testing.T) {
 	now := time.Date(2027, 12, 18, 22, 0, 0, 0, time.UTC)
 	expiry := time.Date(2027, 12, 17, 0, 0, 0, 0, time.UTC)
 	positions := []domain.Position{
@@ -33,6 +33,9 @@ func TestSettleExpiredOptionPositionsPersistsExerciseAndWorthlessExpiry(t *testi
 	}
 	if math.Abs(positionRepo.updates[0].RealizedPnL-300) > 1e-9 || tradeRepo.trades[0].ExitReason != "exercise_cash_settled" || tradeRepo.trades[0].Premium != 500 {
 		t.Fatalf("ITM settlement incorrect: position=%+v trade=%+v", positionRepo.updates[0], tradeRepo.trades[0])
+	}
+	if tradeRepo.trades[0].Ticker != "AAPL271217C00150000" || tradeRepo.trades[0].AssetClass != domain.AssetClassOption {
+		t.Fatalf("paper exercise must remain an option cash-settlement trade, got %+v", tradeRepo.trades[0])
 	}
 	if math.Abs(positionRepo.updates[1].RealizedPnL-(-200)) > 1e-9 || tradeRepo.trades[1].ExitReason != "expired_worthless" {
 		t.Fatalf("OTM settlement incorrect: position=%+v trade=%+v", positionRepo.updates[1], tradeRepo.trades[1])

@@ -140,6 +140,7 @@ type JobStatus struct {
 type AutomationJobMetrics interface {
 	RecordAutomationJobError(jobName string)
 	RecordAlpacaReconcileRun(result string)
+	RecordKalshiReconcileRun(result string)
 }
 
 // ReportWorkerMetrics captures report worker success/error emission.

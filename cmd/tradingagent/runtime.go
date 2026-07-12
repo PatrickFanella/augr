@@ -56,6 +56,7 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/metrics"
 	"github.com/PatrickFanella/get-rich-quick/internal/notification"
 	"github.com/PatrickFanella/get-rich-quick/internal/observability"
+	"github.com/PatrickFanella/get-rich-quick/internal/operations"
 	"github.com/PatrickFanella/get-rich-quick/internal/portfolio"
 	"github.com/PatrickFanella/get-rich-quick/internal/recorder"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
@@ -759,6 +760,30 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 	apiCfg.JWTSecret = cfg.Server.JWTSecret
 	apiCfg.RefreshTokenTTL = 24 * time.Hour
 
+	deps.ReleaseReadiness = operations.SourceFunc(func(checkCtx context.Context) (operations.ReadinessReport, error) {
+		databaseReady := db.Pool.Ping(checkCtx) == nil
+		jobReady := func(name string) bool {
+			if deps.Automation == nil {
+				return false
+			}
+			for _, status := range deps.Automation.Status() {
+				if status.Name == name && status.Enabled {
+					return true
+				}
+			}
+			return false
+		}
+		return operations.BuildReadiness(operations.BuildInput{
+			Database: databaseReady, Schema: currentSchemaVersion == requiredSchemaVersion,
+			DecisionJournal: tradeDecisionRepo != nil, Scheduler: deps.Automation != nil,
+			OptionsData:          deps.OptionsProvider != nil,
+			PolymarketData:       cfg.Features.EnablePolymarketAutomation,
+			PolymarketSettlement: jobReady("polymarket_resolutions"),
+			KalshiData:           jobReady("kalshi_discovery"), KalshiSettlement: jobReady("kalshi_settlement"),
+			LiveTradingEnabled:   cfg.Features.EnableLiveTrading,
+			RecoveryDrillsPassed: strings.EqualFold(strings.TrimSpace(os.Getenv("RELEASE_DRILLS_VERIFIED")), "true"),
+		}), nil
+	})
 	server, err := runtimeNewServer(apiCfg, deps, logger)
 	if err != nil {
 		closeRedis()

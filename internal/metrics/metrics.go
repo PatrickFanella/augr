@@ -27,6 +27,7 @@ type Metrics struct {
 	SchedulerTickTotal                 *prometheus.CounterVec
 	AutomationJobErrorsTotal           *prometheus.CounterVec
 	AlpacaReconcileRunsTotal           *prometheus.CounterVec
+	KalshiReconcileRunsTotal           *prometheus.CounterVec
 	PolymarketReconciliationDriftTotal *prometheus.CounterVec
 	PolymarketStopGuardTriggeredTotal  *prometheus.CounterVec
 	PolymarketStopGuardSendErrorsTotal *prometheus.CounterVec
@@ -137,6 +138,11 @@ func New() *Metrics {
 			Help: "Total Alpaca reconciliation runs by outcome.",
 		}, []string{"result"}),
 
+		KalshiReconcileRunsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "tradingagent_kalshi_reconcile_runs_total",
+			Help: "Total Kalshi reconciliation runs by outcome.",
+		}, []string{"result"}),
+
 		PolymarketReconciliationDriftTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "tradingagent_polymarket_reconciliation_drift_total",
 			Help: "Total Polymarket reconciliation drifts by drift type.",
@@ -232,6 +238,7 @@ func New() *Metrics {
 		m.SchedulerTickTotal,
 		m.AutomationJobErrorsTotal,
 		m.AlpacaReconcileRunsTotal,
+		m.KalshiReconcileRunsTotal,
 		m.PolymarketReconciliationDriftTotal,
 		m.PolymarketStopGuardTriggeredTotal,
 		m.PolymarketStopGuardSendErrorsTotal,
@@ -337,6 +344,13 @@ func (m *Metrics) RecordAlpacaReconcileRun(result string) {
 		return
 	}
 	m.AlpacaReconcileRunsTotal.WithLabelValues(result).Inc()
+}
+
+func (m *Metrics) RecordKalshiReconcileRun(result string) {
+	if m == nil {
+		return
+	}
+	m.KalshiReconcileRunsTotal.WithLabelValues(result).Inc()
 }
 
 // IncDrift increments the Polymarket reconciliation drift counter for the given drift type.

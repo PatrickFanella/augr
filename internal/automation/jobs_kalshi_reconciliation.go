@@ -23,6 +23,13 @@ func (o *JobOrchestrator) kalshiReconcile(ctx context.Context) error {
 		return fmt.Errorf("kalshi_reconcile: %w", err)
 	}
 	o.SetLastSummary("kalshi_reconcile", map[string]int{"broker_positions": result.BrokerPositions, "local_positions": result.LocalPositions, "matched_positions": result.MatchedPositions, "drifts": result.DriftCount})
+	if o.metrics != nil {
+		outcome := "matched"
+		if result.DriftCount > 0 {
+			outcome = "drift"
+		}
+		o.metrics.RecordKalshiReconcileRun(outcome)
+	}
 	o.logger.Info("kalshi_reconcile: complete", slog.Int("broker_positions", result.BrokerPositions), slog.Int("local_positions", result.LocalPositions), slog.Int("drifts", result.DriftCount))
 	return nil
 }

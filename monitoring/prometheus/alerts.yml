@@ -1,0 +1,49 @@
+groups:
+  - name: augr-release-safety
+    rules:
+      - alert: AugrRuntimeDown
+        expr: up{job="tradingagent"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "Augr runtime is unreachable"
+          runbook: "docs/runbooks/rolling-restart.md"
+      - alert: AugrKillSwitchActive
+        expr: tradingagent_kill_switch_active == 1
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: "Global trading kill switch is active"
+          runbook: "docs/runbooks/emergency-kill-switch.md"
+      - alert: AugrCircuitBreakerActive
+        expr: tradingagent_circuit_breaker_state == 1
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: "Trading circuit breaker is active"
+          runbook: "docs/runbooks/circuit-breaker.md"
+      - alert: AugrAutomationJobFailing
+        expr: increase(tradingagent_automation_job_errors_total[15m]) > 0
+        labels: { severity: warning }
+        annotations:
+          summary: "Automation job {{ $labels.job_name }} failed"
+          runbook: "docs/runbooks/release-readiness.md"
+      - alert: AugrPolymarketReconciliationDrift
+        expr: increase(tradingagent_polymarket_reconciliation_drift_total[15m]) > 0
+        labels: { severity: critical }
+        annotations:
+          summary: "Polymarket position reconciliation drift detected"
+          runbook: "docs/runbooks/bad-trade.md"
+      - alert: AugrKalshiReconciliationDrift
+        expr: increase(tradingagent_kalshi_reconcile_runs_total{result="drift"}[15m]) > 0
+        labels: { severity: critical }
+        annotations:
+          summary: "Kalshi position reconciliation drift detected"
+          runbook: "docs/runbooks/kalshi-live-readiness.md"
+      - alert: AugrLLMFailureRateHigh
+        expr: sum(rate(tradingagent_llm_fallback_total[10m])) / clamp_min(sum(rate(tradingagent_llm_calls_total[10m])), 0.001) > 0.25
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "LLM provider failure rate exceeds 25%"
+          runbook: "docs/runbooks/llm-provider-outage.md"

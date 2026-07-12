@@ -169,6 +169,9 @@ func (m *stubAutomationMetrics) RecordAlpacaReconcileRun(result string) {
 	}
 	m.alpacaRuns[result]++
 }
+func (m *stubAutomationMetrics) RecordKalshiReconcileRun(result string) {
+	m.RecordAlpacaReconcileRun("kalshi_" + result)
+}
 
 func TestJobOrchestratorStatus_IncludesLastSummary(t *testing.T) {
 	t.Parallel()

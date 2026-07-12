@@ -30,6 +30,7 @@ These runbooks are for operators and contributors handling a running system, an 
 - [LLM provider outage handling](llm-provider-outage.md)
 - [Rolling restart procedure](rolling-restart.md)
 - [Database backup and restore](database-backup-restore.md)
+- [Release readiness and recovery drills](release-readiness.md)
 
 ## Routine operator tasks
 
@@ -41,6 +42,6 @@ These runbooks are for operators and contributors handling a running system, an 
 These runbooks assume the current implementation reality:
 
 - non-secret settings persist through the backend settings store, but secrets entered through the UI do not survive restart
-- WebSocket access is not yet treated as a hardened public surface
-- some runtime/frontend areas still need cleanup because of unresolved merge conflicts elsewhere in the repo
+- WebSocket access is authenticated and tested, but public exposure still requires the same reverse-proxy and origin controls as the API
+- release readiness is capability-scoped; an unavailable optional provider must remain visible without being misreported as a healthy capability
 - rollout order for schema-affecting changes is migrate first, then restart app processes, then verify schema and health

@@ -2,6 +2,7 @@ package api
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"log/slog"
 	"net"
@@ -10,7 +11,33 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
 )
+
+const correlationIDHeader = "X-Request-ID"
+
+type correlationIDContextKey struct{}
+
+// CorrelationID attaches a safe request identifier to the response and
+// context. Arbitrary client strings are rejected to prevent log injection.
+func CorrelationID(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id := strings.TrimSpace(r.Header.Get(correlationIDHeader))
+		if _, err := uuid.Parse(id); err != nil {
+			id = uuid.NewString()
+		}
+		w.Header().Set(correlationIDHeader, id)
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), correlationIDContextKey{}, id)))
+	})
+}
+
+// CorrelationIDFromContext returns the request identifier when middleware has
+// installed one.
+func CorrelationIDFromContext(ctx context.Context) string {
+	value, _ := ctx.Value(correlationIDContextKey{}).(string)
+	return value
+}
 
 // maxRequestBodyBytes is the default limit applied to incoming request bodies.
 const maxRequestBodyBytes = 1 << 20 // 1 MiB
@@ -243,6 +270,7 @@ func RequestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 			}
 
 			logger.Info("http request",
+				slog.String("request_id", CorrelationIDFromContext(r.Context())),
 				slog.String("method", r.Method),
 				slog.String("path", r.URL.Path),
 				slog.Int("status", sw.status),
