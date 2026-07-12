@@ -7,17 +7,28 @@ tags: [kanban, tracking]
 
 ## Backlog
 
-- [ ] 60-day validation plan
+- [ ] Phase 2: engineering quality gates
+- [ ] Phase 3: frontend correctness and visual integrity
+- [ ] Phase 4: recover abandoned product surfaces
+- [ ] Phase 5: complete options product path
+- [ ] Phase 6: unify prediction-market decision architecture
+- [ ] Phase 7: backtesting and decision quality
+- [ ] Phase 8: operations, paper soak, and release readiness
+- [ ] Completion audit against all phase exit gates
 
 ## In Progress
 
-- [ ] Repo-health cleanup and merge-conflict resolution pass
+- [ ] Phase 0: baseline and safeguards
+- [ ] Phase 1: structured LLM output and provider throttling
 
 ## Blocked
 
-- [ ] Public backtest surface in the main API/UI
+- [ ] None
 
 ## Done
+
+- [x] Reconcile kvant main with local backend commits
+- [x] Preserve user-owned production Compose change
 
 - [ ] Domain types
 - [ ] Repository interfaces
