@@ -15,7 +15,7 @@ tags: [kanban, tracking]
 
 ## In Progress
 
-- [ ] Phase 4: recover abandoned product surfaces
+- [x] Phase 4: recover abandoned product surfaces
 
 ## Blocked
 

@@ -94,6 +94,18 @@ frontend tests, lint, type-check, and production build pass.
 Exit gate: each significant backend capability is exposed or explicitly marked
 API-only, with tested loading, empty, error, stale, and unavailable states.
 
+Completed evidence (2026-07-12): the current shell now exposes read-only
+settings/readiness, shared prediction-market readiness and feed health, options
+chain research, persisted backtest definitions/runs, the trade-decision journal,
+and deterministic decision replay. Each uses typed runtime validation and
+distinguishes successful, empty, failed, and unconfigured responses without
+hiding healthy sibling data. The
+[[frontend/capability-surface-matrix|capability surface matrix]] classifies every
+remaining significant backend capability as API-only with its operational or
+safety boundary, including detailed event-market operations, discovery/signals,
+memory, prompt and key administration, universe/calendar, reliability metrics,
+and Surfers. No recovered surface enables live trading.
+
 ## Phase 5 — Options product completion
 
 - Add a dedicated options runtime with chain-aware structured plans, contract
