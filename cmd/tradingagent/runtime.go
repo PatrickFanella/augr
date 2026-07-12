@@ -509,6 +509,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 		)
 		portfolioAllocatorMode := portfolioAllocatorModeFromEnv()
 		strategyRunner.opportunityRepo = opportunityRepo
+		strategyRunner.optionsProvider = deps.OptionsProvider
 		strategyRunner.portfolioAllocatorMode = portfolioAllocatorMode
 		deps.Runner = strategyRunner
 		if err := bootstrapPolymarketStopGuards(ctx, strategyRunner, positionRepo, logger); err != nil {

@@ -17,6 +17,7 @@ import (
 	agentanalysts "github.com/PatrickFanella/get-rich-quick/internal/agent/analysts"
 	agentdebate "github.com/PatrickFanella/get-rich-quick/internal/agent/debate"
 	agentrisk "github.com/PatrickFanella/get-rich-quick/internal/agent/risk"
+	"github.com/PatrickFanella/get-rich-quick/internal/agent/rules"
 	agenttrader "github.com/PatrickFanella/get-rich-quick/internal/agent/trader"
 	"github.com/PatrickFanella/get-rich-quick/internal/api"
 	"github.com/PatrickFanella/get-rich-quick/internal/config"
@@ -80,6 +81,7 @@ type realStrategyRunner struct {
 	cfg                    config.Config
 	globals                agent.GlobalSettings
 	dataService            marketDataService
+	optionsProvider        data.OptionsDataProvider
 	runRepo                repository.PipelineRunRepository
 	snapshotRepo           repository.PipelineRunSnapshotRepository
 	decisionRepo           repository.AgentDecisionRepository
@@ -261,11 +263,6 @@ func (r *realStrategyRunner) RunStrategy(ctx context.Context, strategy domain.St
 	}
 	run.Signal = signal
 
-	orderManager, err := r.newOrderManager(ctx, strategy, prepared.Config, strategyConfig)
-	if err != nil {
-		return nil, err
-	}
-
 	if strategy.MarketType.Normalize() == domain.MarketTypePolymarket {
 		normalizedSide, err := normalizePolymarketStrategySide(result.State.TradingPlan.Side)
 		if err != nil {
@@ -299,14 +296,16 @@ func (r *realStrategyRunner) RunStrategy(ctx context.Context, strategy domain.St
 	}
 	r.recordPortfolioOpportunity(ctx, strategy, &run.ID, finalSignal, tradingPlan)
 
-	if !r.portfolioAllocatorOwnsPaperExecution(strategy, signal) {
-		if err := orderManager.ProcessSignal(
-			ctx,
-			finalSignal,
-			tradingPlan,
-			strategy.ID,
-			run.ID,
-		); err != nil {
+	if strategy.MarketType.Normalize() == domain.MarketTypeOptions {
+		if err := r.executeOptionsSignal(ctx, strategy, run.ID, finalSignal); err != nil {
+			return nil, err
+		}
+	} else if !r.portfolioAllocatorOwnsPaperExecution(strategy, signal) {
+		orderManager, err := r.newOrderManager(ctx, strategy, prepared.Config, strategyConfig)
+		if err != nil {
+			return nil, err
+		}
+		if err := orderManager.ProcessSignal(ctx, finalSignal, tradingPlan, strategy.ID, run.ID); err != nil {
 			return nil, err
 		}
 	}
@@ -330,6 +329,76 @@ func (r *realStrategyRunner) RunStrategy(ctx context.Context, strategy domain.St
 		Orders:    orders,
 		Positions: positions,
 	}, nil
+}
+
+func (r *realStrategyRunner) executeOptionsSignal(ctx context.Context, strategy domain.Strategy, runID uuid.UUID, signal execution.FinalSignal) error {
+	if signal.Signal == domain.PipelineSignalHold {
+		return nil
+	}
+	if !strategy.IsPaper {
+		return errors.New("options runtime: live options execution is disabled")
+	}
+	if signal.Signal != domain.PipelineSignalBuy {
+		return errors.New("options runtime: entry signals must be buy; closes require the position lifecycle path")
+	}
+	if r.optionsProvider == nil {
+		return errors.New("options runtime: options data provider is required")
+	}
+	var sections map[string]json.RawMessage
+	if err := json.Unmarshal(strategy.Config, &sections); err != nil {
+		return fmt.Errorf("options runtime: parse strategy config: %w", err)
+	}
+	cfg, err := rules.ParseOptions(sections["options_rules"])
+	if err != nil {
+		return fmt.Errorf("options runtime: %w", err)
+	}
+	if cfg == nil {
+		return errors.New("options runtime: options_rules config is required")
+	}
+	chain, err := r.optionsProvider.GetOptionsChain(ctx, cfg.Underlying, time.Time{}, "")
+	if err != nil {
+		return fmt.Errorf("options runtime: load chain: %w", err)
+	}
+	plan, err := buildPaperSingleLegPlan(cfg, chain, time.Now().UTC())
+	if err != nil {
+		return err
+	}
+	manager := execution.NewOptionsOrderManager(r.localPaperBroker, r.orderRepo, r.positionRepo, r.tradeRepo, r.riskEngine, r.logger).
+		WithBrokerName("paper").WithLiveTrading(false)
+	return manager.ProcessOptionSignal(ctx, signal, plan, strategy.ID, runID)
+}
+
+func buildPaperSingleLegPlan(cfg *rules.OptionsRulesConfig, chain []domain.OptionSnapshot, now time.Time) (execution.TradingPlan, error) {
+	if cfg == nil || len(cfg.LegSelection) != 1 {
+		return execution.TradingPlan{}, errors.New("options runtime: only atomic single-leg plans are currently executable")
+	}
+	var selector rules.LegSelector
+	for _, value := range cfg.LegSelection {
+		selector = value
+	}
+	if selector.Side != domain.OrderSideBuy || selector.Intent != domain.PositionIntentBuyToOpen {
+		return execution.TradingPlan{}, errors.New("options runtime: uncovered or non-opening short options are disabled")
+	}
+	snapshot, err := rules.SelectLeg(chain, selector, now)
+	if err != nil {
+		return execution.TradingPlan{}, fmt.Errorf("options runtime: select contract: %w", err)
+	}
+	if snapshot.Ask <= 0 || snapshot.Bid <= 0 || snapshot.Ask < snapshot.Bid {
+		return execution.TradingPlan{}, errors.New("options runtime: valid executable bid/ask is required")
+	}
+	quantity := 0.0
+	switch cfg.PositionSizing.Method {
+	case "fixed_contracts":
+		quantity = float64(cfg.PositionSizing.FixedContracts)
+	case "premium_budget":
+		quantity = float64(int(cfg.PositionSizing.PremiumBudget / (snapshot.Ask * snapshot.Contract.Multiplier)))
+	case "max_risk":
+		quantity = float64(int(cfg.PositionSizing.MaxRiskUSD / (snapshot.Ask * snapshot.Contract.Multiplier)))
+	}
+	if quantity < 1 {
+		return execution.TradingPlan{}, errors.New("options runtime: sizing budget cannot purchase one contract")
+	}
+	return execution.TradingPlan{Action: domain.PipelineSignalBuy, MarketType: domain.MarketTypeOptions, Ticker: snapshot.Contract.OCCSymbol, EntryType: "limit", EntryPrice: snapshot.Ask, PositionSize: quantity}, nil
 }
 
 func (r *realStrategyRunner) runPolymarketNative(ctx context.Context, strategy domain.Strategy) (*api.StrategyRunResult, error) {
