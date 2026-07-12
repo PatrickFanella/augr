@@ -440,6 +440,30 @@ func (m *OptionsOrderManager) ProcessSpreadSignal(
 	if err := preflight.PreflightSpread(ctx, spread, quantity); err != nil {
 		return fmt.Errorf("options_manager: spread preflight: %w", err)
 	}
+	balanceProvider, ok := m.broker.(optionsBalanceProvider)
+	if !ok {
+		return errors.New("options_manager: spread broker account balance is required")
+	}
+	balance, err := balanceProvider.GetAccountBalance(ctx)
+	if err != nil || balance.Equity <= 0 {
+		return fmt.Errorf("options_manager: valid account balance is required for spread risk: %w", err)
+	}
+	portfolio, err := BuildRiskPortfolioSnapshotFromBalance(ctx, balance, m.positionRepo)
+	if err != nil {
+		return fmt.Errorf("options_manager: build spread risk portfolio: %w", err)
+	}
+	additionalExposure := spread.MaxRisk * quantity / balance.Equity
+	if portfolio.MarketExposurePct == nil {
+		portfolio.MarketExposurePct = make(map[domain.MarketType]float64)
+	}
+	portfolio.MarketExposurePct[domain.MarketTypeOptions] += additionalExposure
+	approved, reason, err := m.riskEngine.CheckPositionLimits(ctx, spread.Underlying, additionalExposure, portfolio)
+	if err != nil {
+		return fmt.Errorf("options_manager: check spread position limits: %w", err)
+	}
+	if !approved {
+		return fmt.Errorf("options_manager: spread position limits rejected %s: %s", spread.Underlying, reason)
+	}
 
 	// 1. Kill switch check.
 	active, err := m.riskEngine.IsKillSwitchActive(ctx)
@@ -449,6 +473,13 @@ func (m *OptionsOrderManager) ProcessSpreadSignal(
 	if active {
 		m.logger.WarnContext(ctx, "options: kill switch active for spread", "underlying", spread.Underlying)
 		return fmt.Errorf("options_manager: kill switch active, spread blocked for %s", spread.Underlying)
+	}
+	marketActive, err := m.riskEngine.IsMarketKillSwitchActive(ctx, domain.MarketTypeOptions)
+	if err != nil {
+		return fmt.Errorf("options_manager: options kill switch check for spread: %w", err)
+	}
+	if marketActive {
+		return fmt.Errorf("options_manager: options kill switch active, spread blocked for %s", spread.Underlying)
 	}
 
 	if m.liveTrading {
@@ -462,33 +493,85 @@ func (m *OptionsOrderManager) ProcessSpreadSignal(
 	// 2. Create per-leg orders for tracking.
 	legGroupID := uuid.New()
 	now := time.Now().UTC()
+	legOrders := make([]*domain.Order, 0, len(spread.Legs))
 
 	for _, leg := range spread.Legs {
 		intent := leg.PositionIntent
+		orderType := domain.OrderTypeMarket
+		var limitPrice *float64
+		if leg.ExecutablePrice > 0 {
+			orderType = domain.OrderTypeLimit
+			price := leg.ExecutablePrice
+			limitPrice = &price
+		}
 		legOrder := &domain.Order{
-			ID:             uuid.New(),
-			StrategyID:     &strategyID,
-			PipelineRunID:  &runID,
-			Ticker:         leg.Contract.OCCSymbol,
-			Side:           leg.Side,
-			OrderType:      domain.OrderTypeMarket,
-			Quantity:       quantity * float64(leg.Ratio),
-			Status:         domain.OrderStatusPending,
-			AssetClass:     domain.AssetClassOption,
-			PositionIntent: &intent,
-			LegGroupID:     &legGroupID,
-			CreatedAt:      now,
+			ID:                 uuid.New(),
+			StrategyID:         &strategyID,
+			PipelineRunID:      &runID,
+			Ticker:             leg.Contract.OCCSymbol,
+			MarketType:         domain.MarketTypeOptions,
+			Side:               leg.Side,
+			OrderType:          orderType,
+			Quantity:           quantity * float64(leg.Ratio),
+			LimitPrice:         limitPrice,
+			Status:             domain.OrderStatusPending,
+			AssetClass:         domain.AssetClassOption,
+			UnderlyingTicker:   leg.Contract.Underlying,
+			OptionType:         &leg.Contract.OptionType,
+			Strike:             &leg.Contract.Strike,
+			Expiry:             &leg.Contract.Expiry,
+			ContractMultiplier: leg.Contract.Multiplier,
+			PositionIntent:     &intent,
+			LegGroupID:         &legGroupID,
+			CreatedAt:          now,
 		}
 
 		if err := m.orderRepo.Create(ctx, legOrder); err != nil {
 			return fmt.Errorf("options_manager: create leg order: %w", err)
 		}
+		legOrders = append(legOrders, legOrder)
 	}
 
 	// 3. Submit spread to broker.
 	ids, err := m.broker.SubmitSpreadOrder(ctx, spread, quantity)
 	if err != nil {
+		for _, order := range legOrders {
+			order.Status = domain.OrderStatusRejected
+			_ = m.orderRepo.Update(ctx, order)
+		}
 		return fmt.Errorf("options_manager: submit spread order: %w", err)
+	}
+	reporter, synchronous := m.broker.(OptionFillReporter)
+	for index, order := range legOrders {
+		idIndex := index
+		if len(ids) == len(legOrders)+1 {
+			idIndex++
+		}
+		if idIndex < len(ids) {
+			order.ExternalID = ids[idIndex]
+		} else if len(ids) > 0 {
+			order.ExternalID = ids[0]
+		}
+		order.Broker = m.brokerName
+		order.SubmittedAt = &now
+		order.Status = domain.OrderStatusSubmitted
+		if synchronous {
+			if order.LimitPrice == nil {
+				return errors.New("options_manager: synchronous spread fill requires executable leg prices")
+			}
+			order.Status, order.FilledQuantity, order.FilledAvgPrice, order.FilledAt = domain.OrderStatusFilled, order.Quantity, order.LimitPrice, &now
+		}
+		if err := m.orderRepo.Update(ctx, order); err != nil {
+			return fmt.Errorf("options_manager: update spread leg order: %w", err)
+		}
+		if synchronous {
+			if _, err := reporter.OptionFillReport(ctx, order); err != nil {
+				return fmt.Errorf("options_manager: spread leg accounting: %w", err)
+			}
+			if err := m.persistImmediateFill(ctx, order); err != nil {
+				return fmt.Errorf("options_manager: persist spread leg fill: %w", err)
+			}
+		}
 	}
 
 	m.logger.InfoContext(ctx, "options: spread submitted",

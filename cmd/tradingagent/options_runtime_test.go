@@ -73,3 +73,20 @@ func TestExecutableOptionClosePriceUsesBidForLongAndAskForShort(t *testing.T) {
 		t.Fatalf("short close price = %v, err=%v", price, err)
 	}
 }
+
+func TestBuildPaperDebitSpreadPlanUsesExecutableSides(t *testing.T) {
+	now := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	expiry := time.Date(2026, 12, 18, 0, 0, 0, 0, time.UTC)
+	cfg := &rules.OptionsRulesConfig{StrategyType: domain.StrategyBullCallSpread, Underlying: "AAPL", LegSelection: map[string]rules.LegSelector{
+		"long":  {OptionType: domain.OptionTypeCall, DeltaTarget: 0.6, DTEMin: 30, DTEMax: 60, Side: domain.OrderSideBuy, Intent: domain.PositionIntentBuyToOpen, Ratio: 1},
+		"short": {OptionType: domain.OptionTypeCall, DeltaTarget: 0.3, DTEMin: 30, DTEMax: 60, Side: domain.OrderSideSell, Intent: domain.PositionIntentSellToOpen, Ratio: 1},
+	}, PositionSizing: rules.OptionsSizingConfig{Method: "max_risk", MaxRiskUSD: 1000}}
+	chain := []domain.OptionSnapshot{runtimeOptionSnapshot("AAPL261218C00150000", domain.OptionTypeCall, 0.61, 4.8, 5, expiry), runtimeOptionSnapshot("AAPL261218C00155000", domain.OptionTypeCall, 0.31, 2, 2.2, expiry)}
+	spread, quantity, err := buildPaperDebitSpreadPlan(cfg, chain, now)
+	if err != nil {
+		t.Fatalf("buildPaperDebitSpreadPlan() error = %v", err)
+	}
+	if quantity != 3 || spread.MaxRisk != 300 || spread.MaxReward != 200 {
+		t.Fatalf("unexpected spread sizing: quantity=%v spread=%+v", quantity, spread)
+	}
+}

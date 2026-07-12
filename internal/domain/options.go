@@ -63,11 +63,12 @@ type OptionSnapshot struct {
 
 // SpreadLeg is one leg of a multi-leg options spread.
 type SpreadLeg struct {
-	Contract       OptionContract `json:"contract"`
-	Side           OrderSide      `json:"side"`
-	PositionIntent PositionIntent `json:"position_intent"`
-	Ratio          int            `json:"ratio"`
-	Quantity       float64        `json:"quantity"`
+	Contract        OptionContract `json:"contract"`
+	Side            OrderSide      `json:"side"`
+	PositionIntent  PositionIntent `json:"position_intent"`
+	Ratio           int            `json:"ratio"`
+	Quantity        float64        `json:"quantity"`
+	ExecutablePrice float64        `json:"executable_price"`
 }
 
 // OptionStrategyType identifies a named options strategy.

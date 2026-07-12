@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"os"
 	"strings"
 	"sync"
@@ -392,11 +393,81 @@ func (r *realStrategyRunner) executeOptionsSignal(ctx context.Context, strategy 
 	if err != nil {
 		return fmt.Errorf("options runtime: load chain: %w", err)
 	}
+	if len(cfg.LegSelection) > 1 {
+		spread, quantity, err := buildPaperDebitSpreadPlan(cfg, chain, time.Now().UTC())
+		if err != nil {
+			return err
+		}
+		return manager.ProcessSpreadSignal(ctx, spread, quantity, strategy.ID, runID)
+	}
 	plan, err := buildPaperSingleLegPlan(cfg, chain, time.Now().UTC())
 	if err != nil {
 		return err
 	}
 	return manager.ProcessOptionSignal(ctx, signal, plan, strategy.ID, runID)
+}
+
+func buildPaperDebitSpreadPlan(cfg *rules.OptionsRulesConfig, chain []domain.OptionSnapshot, now time.Time) (*domain.OptionSpread, float64, error) {
+	if cfg == nil || len(cfg.LegSelection) != 2 {
+		return nil, 0, errors.New("options runtime: paper debit vertical requires exactly two legs")
+	}
+	selected, err := rules.SelectSpreadLegs(chain, cfg.LegSelection, now)
+	if err != nil {
+		return nil, 0, fmt.Errorf("options runtime: select spread legs: %w", err)
+	}
+	spread, err := rules.BuildSpread(cfg.StrategyType, cfg.Underlying, selected, cfg.LegSelection)
+	if err != nil {
+		return nil, 0, fmt.Errorf("options runtime: build spread: %w", err)
+	}
+	var netDebit, minStrike, maxStrike float64
+	minStrike = math.Inf(1)
+	for index := range spread.Legs {
+		leg := &spread.Legs[index]
+		snapshot := selectedLegSnapshot(selected, leg.Contract.OCCSymbol)
+		if snapshot == nil || snapshot.Bid <= 0 || snapshot.Ask <= 0 || snapshot.Ask < snapshot.Bid {
+			return nil, 0, errors.New("options runtime: every spread leg requires a valid executable bid/ask")
+		}
+		if leg.Side == domain.OrderSideBuy {
+			leg.ExecutablePrice = snapshot.Ask
+			netDebit += snapshot.Ask * float64(leg.Ratio)
+		} else {
+			leg.ExecutablePrice = snapshot.Bid
+			netDebit -= snapshot.Bid * float64(leg.Ratio)
+		}
+		minStrike = math.Min(minStrike, leg.Contract.Strike)
+		maxStrike = math.Max(maxStrike, leg.Contract.Strike)
+	}
+	if netDebit <= 0 || len(spread.Legs) == 0 {
+		return nil, 0, errors.New("options runtime: only net-debit verticals are enabled")
+	}
+	multiplier := spread.Legs[0].Contract.Multiplier
+	spread.MaxRisk = netDebit * multiplier
+	spread.MaxReward = ((maxStrike - minStrike) - netDebit) * multiplier
+	if spread.MaxReward <= 0 {
+		return nil, 0, errors.New("options runtime: debit vertical has no finite positive max reward")
+	}
+	quantity := 0.0
+	switch cfg.PositionSizing.Method {
+	case "fixed_contracts":
+		quantity = float64(cfg.PositionSizing.FixedContracts)
+	case "premium_budget":
+		quantity = math.Floor(cfg.PositionSizing.PremiumBudget / spread.MaxRisk)
+	case "max_risk":
+		quantity = math.Floor(cfg.PositionSizing.MaxRiskUSD / spread.MaxRisk)
+	}
+	if quantity < 1 {
+		return nil, 0, errors.New("options runtime: sizing budget cannot purchase one spread")
+	}
+	return spread, quantity, nil
+}
+
+func selectedLegSnapshot(selected map[string]*domain.OptionSnapshot, symbol string) *domain.OptionSnapshot {
+	for _, snapshot := range selected {
+		if snapshot != nil && snapshot.Contract.OCCSymbol == symbol {
+			return snapshot
+		}
+	}
+	return nil
 }
 
 func executableOptionClosePrice(position *domain.Position, chain []domain.OptionSnapshot) (float64, error) {

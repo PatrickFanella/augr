@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
+	"strings"
 	"time"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
@@ -98,14 +100,79 @@ func (b *PaperBroker) SubmitOptionOrder(ctx context.Context, order *domain.Order
 
 // SubmitSpreadOrder remains disabled until atomic per-leg persistence and
 // rollback semantics are available. Partial paper spreads would be misleading.
-func (b *PaperBroker) SubmitSpreadOrder(context.Context, *domain.OptionSpread, float64) ([]string, error) {
-	return nil, errors.New("paper: spread submission requires atomic leg lifecycle support")
+func (b *PaperBroker) SubmitSpreadOrder(ctx context.Context, spread *domain.OptionSpread, quantity float64) ([]string, error) {
+	if err := b.PreflightSpread(ctx, spread, quantity); err != nil {
+		return nil, err
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	var debit, fees float64
+	for _, leg := range spread.Legs {
+		premium := leg.ExecutablePrice * quantity * float64(leg.Ratio) * leg.Contract.Multiplier
+		if leg.Side == domain.OrderSideBuy {
+			debit += premium
+		} else {
+			debit -= premium
+		}
+		fees += quantity * float64(leg.Ratio) * DefaultOptionFeePerContract
+	}
+	total := debit + fees
+	if b.balance.Cash < total {
+		return nil, fmt.Errorf("paper: insufficient balance for debit spread: need %.2f, have %.2f", total, b.balance.Cash)
+	}
+	b.balance.Cash -= total
+	b.balance.BuyingPower = b.balance.Cash
+	b.balance.Equity = b.markToMarketEquityLocked()
+	ids := make([]string, len(spread.Legs))
+	for index := range spread.Legs {
+		ids[index] = b.nextExternalIDLocked()
+	}
+	return ids, nil
 }
 
 // PreflightSpread fails before any leg orders are persisted. Atomic paper
 // spread accounting is required before this broker can accept the plan.
-func (b *PaperBroker) PreflightSpread(context.Context, *domain.OptionSpread, float64) error {
-	return errors.New("paper: spread submission requires atomic leg lifecycle support")
+func (b *PaperBroker) PreflightSpread(ctx context.Context, spread *domain.OptionSpread, quantity float64) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if b == nil || spread == nil || quantity <= 0 {
+		return errors.New("paper: valid spread and quantity are required")
+	}
+	if spread.StrategyType != domain.StrategyBullCallSpread && spread.StrategyType != domain.StrategyBearPutSpread {
+		return errors.New("paper: only debit vertical spreads are enabled")
+	}
+	if len(spread.Legs) != 2 || spread.MaxRisk <= 0 || spread.MaxReward <= 0 {
+		return errors.New("paper: debit vertical requires two legs and finite max risk/reward")
+	}
+	first := spread.Legs[0]
+	var buys, sells int
+	var netDebit float64
+	for _, leg := range spread.Legs {
+		if strings.TrimSpace(leg.Contract.OCCSymbol) == "" || leg.Contract.Expiry.IsZero() || leg.Contract.Multiplier <= 0 || leg.Ratio != 1 || !isFinitePositiveOptionPrice(leg.ExecutablePrice) {
+			return errors.New("paper: each debit spread leg requires contract metadata, 1:1 ratio, and executable price")
+		}
+		if leg.Contract.Expiry != first.Contract.Expiry || leg.Contract.OptionType != first.Contract.OptionType || leg.Contract.Multiplier != first.Contract.Multiplier {
+			return errors.New("paper: debit vertical legs must share type, expiry, and multiplier")
+		}
+		if leg.Side == domain.OrderSideBuy && leg.PositionIntent == domain.PositionIntentBuyToOpen {
+			buys++
+			netDebit += leg.ExecutablePrice
+		} else if leg.Side == domain.OrderSideSell && leg.PositionIntent == domain.PositionIntentSellToOpen {
+			sells++
+			netDebit -= leg.ExecutablePrice
+		} else {
+			return errors.New("paper: debit vertical requires buy-to-open and sell-to-open legs")
+		}
+	}
+	if buys != 1 || sells != 1 || netDebit <= 0 || !isFinitePositiveOptionPrice(netDebit) {
+		return errors.New("paper: spread must be a net debit with one bought and one sold leg")
+	}
+	return nil
+}
+
+func isFinitePositiveOptionPrice(value float64) bool {
+	return value > 0 && !math.IsNaN(value) && !math.IsInf(value, 0)
 }
 
 // OptionFillReport returns deterministic accounting for a synchronous paper fill.

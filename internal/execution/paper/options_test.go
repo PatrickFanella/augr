@@ -2,7 +2,9 @@ package paper
 
 import (
 	"context"
+	"math"
 	"testing"
+	"time"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 )
@@ -44,6 +46,23 @@ func TestSubmitOptionOrderFillsWithoutExternalBroker(t *testing.T) {
 func TestSubmitSpreadOrderFailsClosed(t *testing.T) {
 	broker := NewPaperBroker(10000, 0, 0)
 	if _, err := broker.SubmitSpreadOrder(context.Background(), &domain.OptionSpread{}, 1); err == nil {
-		t.Fatal("expected spreads to remain disabled without atomic persistence")
+		t.Fatal("expected malformed spread to fail closed")
+	}
+}
+
+func TestSubmitSpreadOrderAtomicallyDebitsVertical(t *testing.T) {
+	expiry := time.Date(2027, 12, 17, 0, 0, 0, 0, time.UTC)
+	spread := &domain.OptionSpread{StrategyType: domain.StrategyBullCallSpread, Underlying: "AAPL", MaxRisk: 150, MaxReward: 350, Legs: []domain.SpreadLeg{
+		{Contract: domain.OptionContract{OCCSymbol: "AAPL271217C00150000", Underlying: "AAPL", OptionType: domain.OptionTypeCall, Strike: 150, Expiry: expiry, Multiplier: 100}, Side: domain.OrderSideBuy, PositionIntent: domain.PositionIntentBuyToOpen, Ratio: 1, ExecutablePrice: 2.5},
+		{Contract: domain.OptionContract{OCCSymbol: "AAPL271217C00155000", Underlying: "AAPL", OptionType: domain.OptionTypeCall, Strike: 155, Expiry: expiry, Multiplier: 100}, Side: domain.OrderSideSell, PositionIntent: domain.PositionIntentSellToOpen, Ratio: 1, ExecutablePrice: 1},
+	}}
+	broker := NewPaperBroker(10000, 0, 0)
+	ids, err := broker.SubmitSpreadOrder(context.Background(), spread, 1)
+	if err != nil || len(ids) != 2 {
+		t.Fatalf("SubmitSpreadOrder() ids=%v err=%v", ids, err)
+	}
+	balance, _ := broker.GetAccountBalance(context.Background())
+	if math.Abs(balance.Cash-9848.70) > 1e-9 {
+		t.Fatalf("cash = %.2f, want 9848.70", balance.Cash)
 	}
 }

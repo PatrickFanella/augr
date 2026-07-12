@@ -254,3 +254,23 @@ func TestProcessSpreadSignalPreflightPreventsOrphanOrders(t *testing.T) {
 		t.Fatalf("preflight failure persisted %d orphan leg orders", len(orderRepo.orders))
 	}
 }
+
+func TestProcessSpreadSignalPersistsAtomicPaperLegs(t *testing.T) {
+	orderRepo, positionRepo, tradeRepo := &mockOrderRepo{}, &mockPositionRepo{}, &mockTradeRepo{}
+	broker := paper.NewPaperBroker(100000, 0, 0)
+	mgr := execution.NewOptionsOrderManager(broker, orderRepo, positionRepo, tradeRepo, &mockRiskEngine{}, slog.Default()).WithBrokerName("paper")
+	expiry := time.Date(2027, 12, 17, 0, 0, 0, 0, time.UTC)
+	spread := &domain.OptionSpread{StrategyType: domain.StrategyBullCallSpread, Underlying: "AAPL", MaxRisk: 150, MaxReward: 350, Legs: []domain.SpreadLeg{
+		{Contract: domain.OptionContract{OCCSymbol: "AAPL271217C00150000", Underlying: "AAPL", OptionType: domain.OptionTypeCall, Strike: 150, Expiry: expiry, Multiplier: 100}, Side: domain.OrderSideBuy, PositionIntent: domain.PositionIntentBuyToOpen, Ratio: 1, ExecutablePrice: 2.5},
+		{Contract: domain.OptionContract{OCCSymbol: "AAPL271217C00155000", Underlying: "AAPL", OptionType: domain.OptionTypeCall, Strike: 155, Expiry: expiry, Multiplier: 100}, Side: domain.OrderSideSell, PositionIntent: domain.PositionIntentSellToOpen, Ratio: 1, ExecutablePrice: 1},
+	}}
+	if err := mgr.ProcessSpreadSignal(context.Background(), spread, 1, uuid.New(), uuid.New()); err != nil {
+		t.Fatalf("ProcessSpreadSignal() error = %v", err)
+	}
+	if len(orderRepo.updates) != 2 || len(positionRepo.positions) != 2 || len(tradeRepo.trades) != 2 {
+		t.Fatalf("spread lifecycle counts orders=%d positions=%d trades=%d", len(orderRepo.updates), len(positionRepo.positions), len(tradeRepo.trades))
+	}
+	if orderRepo.updates[0].LegGroupID == nil || orderRepo.updates[1].LegGroupID == nil || *orderRepo.updates[0].LegGroupID != *orderRepo.updates[1].LegGroupID || orderRepo.updates[0].Status != domain.OrderStatusFilled || orderRepo.updates[1].Status != domain.OrderStatusFilled {
+		t.Fatalf("spread legs not atomically grouped and filled: %+v", orderRepo.updates)
+	}
+}
