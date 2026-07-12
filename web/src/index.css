@@ -24,7 +24,9 @@ body {
   font-family: var(--font-sans);
   font-size: var(--text-base);
   line-height: 1.5;
-  transition: background var(--transition-normal), color var(--transition-normal);
+  transition:
+    background var(--transition-normal),
+    color var(--transition-normal);
 }
 
 #root {
@@ -41,11 +43,17 @@ a:hover {
   color: var(--color-primary);
 }
 
-img, svg, video, canvas {
+img,
+svg,
+video,
+canvas {
   max-width: 100%;
 }
 
-button, input, textarea, select {
+button,
+input,
+textarea,
+select {
   font: inherit;
 }
 
@@ -115,7 +123,7 @@ button:disabled,
    ========================================================================== */
 
 .app-layout {
-  --sidebar-expanded: 16rem;
+  --sidebar-expanded: 10.5rem;
   --sidebar-collapsed: 4rem;
   --sidebar-width: var(--sidebar-expanded);
   display: grid;
@@ -154,15 +162,16 @@ button:disabled,
   color: var(--color-primary);
   padding: 0 var(--space-3);
   font-family: var(--font-mono);
-  font-size: var(--text-base);
+  font-size: var(--text-2xl);
   font-weight: var(--font-extrabold);
+  letter-spacing: 0.15em;
   line-height: 1;
   text-transform: uppercase;
   white-space: nowrap;
 }
 
 .brand::before {
-  content: '\25C6';
+  content: '$';
   flex: 0 0 auto;
   color: var(--color-primary-alt);
 }
@@ -189,7 +198,10 @@ button:disabled,
   text-decoration: none;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast);
 }
 
 .sidebar nav a:hover,
@@ -222,7 +234,8 @@ button:disabled,
 .app-layout[data-sidebar-collapsed='true'] .brand {
   justify-content: center;
   padding-inline: 0;
-  font-size: var(--text-sm);
+  font-size: var(--text-2xl);
+  letter-spacing: -0.1em;
 }
 
 .app-layout[data-sidebar-collapsed='true'] .brand::before {
@@ -272,7 +285,9 @@ button:disabled,
   background: var(--color-surface);
   color: var(--color-text);
   padding: var(--space-1);
-  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast);
 }
 
 .sidebar-toggle:hover,
@@ -291,7 +306,7 @@ button:disabled,
   min-width: 0;
   min-height: 100dvh;
   grid-template-rows: auto minmax(0, 1fr);
-  grid-template-columns: minmax(0, 1fr) minmax(16rem, 20rem);
+  grid-template-columns: minmax(0, 1fr) minmax(12rem, 20rem);
 }
 
 .topbar {
@@ -409,7 +424,10 @@ button:disabled,
   padding-left: var(--space-3);
 }
 
-h1, h2, h3, h4 {
+h1,
+h2,
+h3,
+h4 {
   margin: 0;
   color: var(--color-text);
   font-family: var(--font-display);
@@ -563,6 +581,7 @@ label {
   min-width: 0;
   align-items: center;
   gap: var(--space-2);
+  margin: 1em 0;
   flex-wrap: wrap;
 }
 
@@ -580,6 +599,7 @@ label {
 .kv-grid {
   display: grid;
   min-width: 0;
+  align-items: center;
   grid-template-columns: minmax(7rem, auto) minmax(0, 1fr);
   gap: var(--space-1) var(--space-3);
   margin: 0;
@@ -617,7 +637,11 @@ button,
   font-weight: var(--font-semibold);
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  transition: border-color var(--transition-fast), background var(--transition-fast), color var(--transition-fast), box-shadow var(--transition-fast);
+  transition:
+    border-color var(--transition-fast),
+    background var(--transition-fast),
+    color var(--transition-fast),
+    box-shadow var(--transition-fast);
 }
 
 button:hover:not(:disabled),
@@ -756,7 +780,9 @@ tbody tr:hover {
   font-weight: var(--font-semibold);
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  transition: color var(--transition-fast), border-color var(--transition-fast);
+  transition:
+    color var(--transition-fast),
+    border-color var(--transition-fast);
   margin-bottom: -1px;
 }
 
@@ -791,10 +817,10 @@ tbody tr:hover {
   font-family: var(--font-mono);
   font-size: 0.625rem;
   font-weight: var(--font-bold);
-  line-height: 1;
+  line-height: 0;
   white-space: nowrap;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.07em;
 }
 
 .status-pill::before {
@@ -983,7 +1009,12 @@ tbody tr:hover {
 
 .skeleton {
   border-radius: var(--radius-md);
-  background: linear-gradient(90deg, var(--color-surface), var(--color-surface-high), var(--color-surface));
+  background: linear-gradient(
+    90deg,
+    var(--color-surface),
+    var(--color-surface-high),
+    var(--color-surface)
+  );
   background-size: 200% 100%;
   animation: shimmer 1.4s ease infinite;
 }
@@ -1044,18 +1075,43 @@ tbody tr:hover {
    SYNTAX HIGHLIGHTING
    ========================================================================== */
 
-.syntax-keyword    { color: var(--color-syntax-keyword); }
-.syntax-string     { color: var(--color-syntax-string); }
-.syntax-number     { color: var(--color-syntax-number); }
-.syntax-comment    { color: var(--color-syntax-comment); font-style: italic; }
-.syntax-function   { color: var(--color-syntax-function); }
-.syntax-type       { color: var(--color-syntax-type); }
-.syntax-variable   { color: var(--color-syntax-variable); }
-.syntax-operator   { color: var(--color-syntax-operator); }
-.syntax-boolean    { color: var(--color-syntax-boolean); }
-.syntax-punctuation { color: var(--color-syntax-punctuation); }
-.syntax-property   { color: var(--color-syntax-property); }
-.syntax-regex      { color: var(--color-syntax-regex); }
+.syntax-keyword {
+  color: var(--color-syntax-keyword);
+}
+.syntax-string {
+  color: var(--color-syntax-string);
+}
+.syntax-number {
+  color: var(--color-syntax-number);
+}
+.syntax-comment {
+  color: var(--color-syntax-comment);
+  font-style: italic;
+}
+.syntax-function {
+  color: var(--color-syntax-function);
+}
+.syntax-type {
+  color: var(--color-syntax-type);
+}
+.syntax-variable {
+  color: var(--color-syntax-variable);
+}
+.syntax-operator {
+  color: var(--color-syntax-operator);
+}
+.syntax-boolean {
+  color: var(--color-syntax-boolean);
+}
+.syntax-punctuation {
+  color: var(--color-syntax-punctuation);
+}
+.syntax-property {
+  color: var(--color-syntax-property);
+}
+.syntax-regex {
+  color: var(--color-syntax-regex);
+}
 
 /* ==========================================================================
    RECHARTS
@@ -1148,13 +1204,22 @@ tbody tr:hover {
    ========================================================================== */
 
 @keyframes pulse {
-  0%, 100% { opacity: 0.5; }
-  50%      { opacity: 1; }
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 @keyframes shimmer {
-  0%   { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
