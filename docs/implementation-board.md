@@ -29,6 +29,7 @@ tags: [kanban, tracking]
 - [x] Phase 3: truthful responsive shell, error boundaries, constrained filters, source-backed exposure, and reconciled design system
 - [x] Phase 4: recover abandoned product surfaces
 - [x] Phase 5: dedicated paper options runtime, risk, persistence, restart, lifecycle, reconciliation, and operator evidence
+- [x] Phase 6: deterministic event-market probability gates, replay ledger, side-qualified persistence, reconciliation, and settlement
 
 - [ ] Domain types
 - [ ] Repository interfaces

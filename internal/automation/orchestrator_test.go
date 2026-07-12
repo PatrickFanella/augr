@@ -12,6 +12,7 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/eventmarkets"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution"
+	kalshiexecution "github.com/PatrickFanella/get-rich-quick/internal/execution/kalshi"
 	polymarketexecution "github.com/PatrickFanella/get-rich-quick/internal/execution/polymarket"
 	predictionexecution "github.com/PatrickFanella/get-rich-quick/internal/execution/prediction"
 	kalshidiscovery "github.com/PatrickFanella/get-rich-quick/internal/kalshidiscovery"
@@ -328,6 +329,16 @@ func TestJobOrchestratorRegisterAllAddsKalshiSettlement(t *testing.T) {
 	status := singleJobStatus(t, orch, "kalshi_settlement")
 	if status.Schedule == "" || status.Schedule == "Manual only" {
 		t.Fatalf("kalshi settlement schedule = %q", status.Schedule)
+	}
+}
+
+func TestJobOrchestratorRegisterAllAddsKalshiReconciliation(t *testing.T) {
+	t.Parallel()
+	orch := NewJobOrchestrator(OrchestratorDeps{KalshiReconciler: kalshiexecution.NewReconciler(kalshiexecution.ReconcilerDeps{})})
+	orch.RegisterAll()
+	status := singleJobStatus(t, orch, "kalshi_reconcile")
+	if status.Schedule == "" || status.Schedule == "Manual only" {
+		t.Fatalf("kalshi reconciliation schedule = %q", status.Schedule)
 	}
 }
 

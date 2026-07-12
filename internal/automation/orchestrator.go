@@ -15,6 +15,7 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/data/rss"
 	"github.com/PatrickFanella/get-rich-quick/internal/discovery"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
+	kalshiexecution "github.com/PatrickFanella/get-rich-quick/internal/execution/kalshi"
 	polymarketexecution "github.com/PatrickFanella/get-rich-quick/internal/execution/polymarket"
 	predictionexecution "github.com/PatrickFanella/get-rich-quick/internal/execution/prediction"
 	kalshidiscovery "github.com/PatrickFanella/get-rich-quick/internal/kalshidiscovery"
@@ -74,6 +75,7 @@ type OrchestratorDeps struct {
 	PolymarketAccountRepo       repository.PolymarketAccountRepository // optional; nil = skip profiling job
 	PolymarketReconciler        *polymarketexecution.Reconciler        // optional; nil = skip reconciliation job
 	PredictionSettler           *predictionexecution.Settler           // optional; settles paper event positions from provider outcomes
+	KalshiReconciler            *kalshiexecution.Reconciler            // optional; nil = skip live reconciliation job
 	PolymarketResolvedRepo      repository.PolymarketResolvedMarketsRepository
 	PolymarketWatchedRepo       repository.PolymarketWatchedMarketsRepository // optional; nil = skip discovery auto-watch
 	PolymarketDiscoveryRuns     repository.PolymarketDiscoveryRunRepository   // optional; nil = skip chunked discovery job registration/execution
@@ -233,6 +235,7 @@ func (o *JobOrchestrator) RegisterAll() {
 	}
 	o.registerKalshiDiscoveryJob()
 	o.registerKalshiSettlementJob()
+	o.registerKalshiReconciliationJob()
 	o.registerReportJobs()
 	o.registerPortfolioAllocatorJobs()
 }

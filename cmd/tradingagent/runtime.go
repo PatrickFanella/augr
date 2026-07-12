@@ -39,6 +39,7 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution"
 	alpacaexecution "github.com/PatrickFanella/get-rich-quick/internal/execution/alpaca"
+	kalshiexecution "github.com/PatrickFanella/get-rich-quick/internal/execution/kalshi"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution/paper"
 	polymarketexecution "github.com/PatrickFanella/get-rich-quick/internal/execution/polymarket"
 	predictionexecution "github.com/PatrickFanella/get-rich-quick/internal/execution/prediction"
@@ -525,10 +526,18 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 		var kalshiCatalog interface {
 			ListMarkets(context.Context, kalshidiscovery.ListOptions) ([]kalshidiscovery.MarketCandidate, string, error)
 		}
+		var kalshiExecutionReconciler *kalshiexecution.Reconciler
 		if err != nil {
 			logger.Warn("automation: failed to create kalshi discovery client", slog.Any("error", err))
 		} else {
 			kalshiCatalog = kalshidiscovery.NewClient(kalshiDiscoveryClient)
+			if strings.TrimSpace(cfg.Brokers.Kalshi.APIKeyID) != "" && strings.TrimSpace(cfg.Brokers.Kalshi.PrivateKeyPEMB64) != "" {
+				if liveClient, liveErr := kalshiexecution.NewLiveHTTPClient(kalshiDiscoveryClient); liveErr != nil {
+					logger.Warn("automation: failed to create kalshi reconciliation client", slog.Any("error", liveErr))
+				} else {
+					kalshiExecutionReconciler = kalshiexecution.NewReconciler(kalshiexecution.ReconcilerDeps{Broker: kalshiexecution.NewBroker(liveClient), PositionRepo: positionRepo, Logger: logger})
+				}
+			}
 		}
 
 		if cfg.Features.EnableScheduler {
@@ -631,6 +640,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 					PolymarketCLOBURL:           cfg.Brokers.Polymarket.CLOBURL,
 					DisablePolymarketAutomation: !cfg.Features.EnablePolymarketAutomation,
 					KalshiCatalog:               kalshiCatalog,
+					KalshiReconciler:            kalshiExecutionReconciler,
 					KalshiWatchedRepo:           pgrepo.NewKalshiWatchedMarketsRepo(db.Pool),
 					KalshiMarketSnapshotsRepo:   pgrepo.NewKalshiMarketSnapshotsRepo(db.Pool),
 					KalshiDiscoveryRuns:         pgrepo.NewKalshiDiscoveryRunRepo(db.Pool),

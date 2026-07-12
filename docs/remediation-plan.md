@@ -140,6 +140,15 @@ and all 158 frontend tests, lint, type-check, and production build pass.
 Exit gate: every event-market paper trade is replayable from evidence through
 settlement and no LLM output can bypass deterministic gates.
 
+Status: complete. Both providers now pass discovery output through native
+deterministic quote, liquidity, confidence, and spread-adjusted edge gates.
+The shared decision journal persists the executable snapshot, outcome,
+probability proxy and explicit uncalibrated status, evidence sources, gate
+results, risk review, side-qualified order, fill, position, and 0/1 settlement.
+Replay events are written for each lifecycle transition. Polymarket resolution
+processing and scheduled Kalshi settlement use the same idempotent paper
+settler; live activation remains independently gated and disabled by default.
+
 ## Phase 7 — Backtesting and decision quality
 
 - Implement configurable trailing stops and asset-specific fill assumptions.
