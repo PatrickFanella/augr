@@ -7,7 +7,6 @@ tags: [kanban, tracking]
 
 ## Backlog
 
-- [ ] Phase 3: frontend correctness and visual integrity
 - [ ] Phase 4: recover abandoned product surfaces
 - [ ] Phase 5: complete options product path
 - [ ] Phase 6: unify prediction-market decision architecture
@@ -17,7 +16,7 @@ tags: [kanban, tracking]
 
 ## In Progress
 
-- [ ] Phase 2: engineering quality gates
+- [ ] Phase 3: frontend correctness and visual integrity
 
 ## Blocked
 
@@ -29,6 +28,7 @@ tags: [kanban, tracking]
 - [x] Preserve user-owned production Compose change
 - [x] Phase 0: baseline and safeguards
 - [x] Phase 1: structured LLM recovery, redacted response logging, terminal generator metrics, coordinated Reddit cooldowns, and freshness metrics
+- [x] Phase 2: deterministic Go/frontend gates, valid CI workflows, split frontend harness/suites, and provider seam coverage
 
 - [ ] Domain types
 - [ ] Repository interfaces

@@ -51,6 +51,15 @@ full Go test/vet gates pass.
 
 Exit gate: Go tests/vet and frontend lint/build/tests pass repeatedly in CI.
 
+Completed evidence (2026-07-12): previously untested Finnhub, FMP,
+StockTwits, and Tradier HTTP seams now have contract tests; the tests also
+closed Tradier empty-token and malformed-expiration failures. The frontend
+suite uses a reusable isolated MSW/WebSocket harness, with authentication,
+cockpit, and risk-control workflows split from the remaining feature suite.
+All 138 frontend tests pass across nine files, lint/type-check/build are clean,
+the full Go test/vet gates pass, and both CI workflows pass `actionlint` after
+repairing the nested smoke job and invalid job-level `hashFiles` expressions.
+
 ## Phase 3 — Frontend correctness and visual integrity
 
 - Fix shell accessibility, mobile state, broker-mode presentation, 404/error
