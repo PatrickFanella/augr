@@ -11,7 +11,9 @@ This document defines the shared visual and interaction foundations for the Augr
 3. **Evidence-first navigation**: IDs, timestamps, linked entities, raw payloads, and server-state verification must remain easy to inspect and copy.
 4. **Conservative uncertainty**: stale, unknown, partial, or offline data must never read as safe.
 5. **Accessible by default**: text labels, icons, shapes, and layout must carry meaning without color alone.
-6. **Themeable tokens, one approved theme**: use semantic tokens so another theme can be added later. Do not add dark mode unless product approval is added separately.
+6. **Themeable tokens, two approved themes**: the operator shell implements
+   light and dark themes with the same semantic tokens. Both must preserve
+   status contrast, chart legibility, and paper/live safety cues.
 
 ## 2. Semantic token model
 
@@ -40,7 +42,17 @@ type SemanticColorToken =
 type Density = 'compact' | 'comfortable' | 'spacious';
 ```
 
-Baseline theme intent: light, neutral, high-contrast, low-saturation. Status colors are accents, not page backgrounds, except critical banners.
+Baseline theme intent: neutral, high-contrast, low-saturation in both light and
+dark modes. Status colors are accents, not page backgrounds, except critical
+banners. Theme selection is persisted locally and does not change operational
+meaning.
+
+Chart policy: a chart must represent a genuine ordered series or a correctly
+defined quantitative composition. A current P&L snapshot must not be drawn as
+an equity curve, and P&L magnitude must not be labeled as allocation. Until a
+historical series is returned by an API, show an explicitly labeled snapshot;
+open exposure composition uses absolute notional (`quantity × current price ×
+contract multiplier`) from position data.
 
 ## 3. Typography hierarchy
 

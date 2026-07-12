@@ -1,13 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, type ReactNode } from 'react'
 import { useParams } from 'react-router-dom'
-import { AreaChart, Area, ResponsiveContainer, Tooltip } from 'recharts'
 
 import { getOpenPortfolioPositions, getTrades, getRuns, getStrategies } from '@/shared/api/endpoints'
 import { PageHeader } from '@/components/ui/page-header'
 import { Breadcrumbs, EntityLink } from '@/shared/components/EntityLinks'
 import { ErrorState, LastUpdated, LoadingState, EmptyState } from '@/shared/components/QueryStates'
-import { getChartColors } from '@/lib/chart-theme'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { queryKeys } from '@/shared/query/keys'
 import { normalizeStatus } from '@/lib/status'
@@ -62,8 +60,6 @@ export function StockPage() {
 
   const unrealized = positions.reduce((sum, position) => sum + (position.unrealized_pnl ?? 0), 0)
   const realized = positions.reduce((sum, position) => sum + position.realized_pnl, 0)
-  const pnlSeries = [...positions].sort((a, b) => new Date(a.opened_at).getTime() - new Date(b.opened_at).getTime()).map((position, index) => ({ name: `${index + 1}`, value: (position.unrealized_pnl ?? 0) + position.realized_pnl }))
-  const chartColor = unrealized + realized >= 0 ? getChartColors().success : getChartColors().danger
 
   if (!activeTicker) {
     return <div className="detail-stack"><section className="panel hero-panel"><h1>Stock</h1><p className="muted">Missing ticker symbol.</p></section></div>
@@ -81,16 +77,8 @@ export function StockPage() {
         <article className="panel"><p className="eyebrow">Recent trades</p><strong>{tradesQuery.data ? trades.length : '—'}</strong></article>
       </section>
 
-      <section className="chart-container panel" aria-label={`${ticker} P/L chart`}>
-        <div className="chart-title">Position P/L</div>
-        {positionsQuery.data ? (
-          <ResponsiveContainer width="100%" height={88}>
-            <AreaChart data={pnlSeries}>
-              <Tooltip formatter={(value) => money(Number(value ?? 0))} />
-              <Area type="monotone" dataKey="value" stroke={chartColor} fill={chartColor} fillOpacity={0.2} dot={false} strokeWidth={2} />
-            </AreaChart>
-          </ResponsiveContainer>
-        ) : null}
+      <section className="panel">
+        <p className="muted">P/L values are current per-position snapshots. This route does not receive a historical ticker equity series.</p>
       </section>
 
       <SectionState title="Open positions" count={positions.length} isLoading={positionsQuery.isLoading} error={positionsQuery.error} onRetry={() => void positionsQuery.refetch()} empty={positions.length === 0} updatedAt={positionsQuery.dataUpdatedAt ? new Date(positionsQuery.dataUpdatedAt) : undefined}>

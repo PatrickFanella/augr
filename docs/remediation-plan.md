@@ -71,6 +71,20 @@ repairing the nested smoke job and invalid job-level `hashFiles` expressions.
 Exit gate: responsive and keyboard QA pass, charts reconcile to APIs, and the
 UI never presents inferred or misleading operational state.
 
+Completed evidence (2026-07-12): the shell distinguishes paper, live, mixed,
+and unknown broker modes; authenticated unknown routes render a recoverable
+404 and route failures have a non-trading error boundary. Mobile navigation
+and the compact activity drawer expose correct expanded state, Escape dismiss,
+focus containment/restoration, semantic backdrops, and touch-sized controls.
+Desktop rail/drawer dimensions now match the design specification. Unknown
+statuses remain text-visible, allocator enums use constrained controls, and
+the hard-coded ticker `Live` claim is removed. Fabricated single-point and
+cross-position P&L curves and P&L-weighted allocation pies were replaced by
+explicit snapshots and source-backed position notional; the unused chart
+dependency was removed. Light/dark theme and chart rules are reconciled in the
+design-system documentation. Responsive/keyboard regression tests, all 141
+frontend tests, lint, type-check, and production build pass.
+
 ## Phase 4 — Product-surface recovery
 
 - Restore settings/readiness, prediction markets, options, backtests, decision

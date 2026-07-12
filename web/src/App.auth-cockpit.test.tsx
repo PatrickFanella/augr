@@ -145,8 +145,10 @@ describe('authentication and cockpit', () => {
     await userEvent.click(toggle)
     expect(toggle).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByRole('complementary', { name: /global realtime activity/i })).toHaveClass('open')
+    expect(screen.getByRole('button', { name: /close realtime activity/i })).toHaveFocus()
     await userEvent.keyboard('{Escape}')
     expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(toggle).toHaveFocus()
   })
 
   it('exposes truthful mobile navigation state and dismisses its overlay', async () => {

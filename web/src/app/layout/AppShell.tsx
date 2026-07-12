@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import {
   ChevronLeft,
@@ -73,6 +73,10 @@ export function AppShell() {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(getInitialMobileState);
   const [isActivityOpen, setIsActivityOpen] = useState(false);
+  const activityToggleRef = useRef<HTMLButtonElement>(null);
+  const activityCloseRef = useRef<HTMLButtonElement>(null);
+  const activityDrawerRef = useRef<HTMLElement>(null);
+  const activityWasOpen = useRef(false);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, String(isCollapsed));
@@ -87,6 +91,31 @@ export function AppShell() {
     window.addEventListener('keydown', closeOverlays);
     return () => window.removeEventListener('keydown', closeOverlays);
   }, []);
+
+  useEffect(() => {
+    if (isActivityOpen) {
+      activityWasOpen.current = true;
+      activityCloseRef.current?.focus();
+    } else if (activityWasOpen.current) {
+      activityWasOpen.current = false;
+      activityToggleRef.current?.focus();
+    }
+  }, [isActivityOpen]);
+
+  const trapActivityFocus = (event: React.KeyboardEvent<HTMLElement>) => {
+    if (!isActivityOpen || event.key !== 'Tab') return;
+    const focusable = Array.from(activityDrawerRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], [tabindex]:not([tabindex="-1"])') ?? []);
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable.at(-1)!;
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
 
   useEffect(() => {
     if (typeof window.matchMedia !== 'function') {
@@ -206,10 +235,11 @@ export function AppShell() {
           <div className="header-cluster">
             <span className={`status-pill ${realtime.status}`}>Realtime {realtime.status}</span>
             <button
+              ref={activityToggleRef}
               type="button"
               className="sidebar-toggle activity-toggle"
               onClick={() => setIsActivityOpen((open) => !open)}
-              aria-label={isActivityOpen ? 'Close realtime activity' : 'Open realtime activity'}
+              aria-label={isActivityOpen ? 'Realtime activity is open' : 'Open realtime activity'}
               aria-expanded={isActivityOpen}
               aria-controls="global-activity-drawer"
             >
@@ -233,9 +263,12 @@ export function AppShell() {
         <main className="content" id="main-content" tabIndex={-1}>
           <Outlet />
         </main>
-        {isActivityOpen ? <button type="button" className="activity-backdrop" onClick={() => setIsActivityOpen(false)} aria-label="Close realtime activity" /> : null}
-        <aside id="global-activity-drawer" className={`activity-drawer ${isActivityOpen ? 'open' : ''}`} aria-label="Global realtime activity">
-          <h2>Activity</h2>
+        {isActivityOpen ? <button type="button" className="activity-backdrop" onClick={() => setIsActivityOpen(false)} aria-label="Dismiss realtime activity overlay" /> : null}
+        <aside ref={activityDrawerRef} id="global-activity-drawer" className={`activity-drawer ${isActivityOpen ? 'open' : ''}`} aria-label="Global realtime activity" onKeyDown={trapActivityFocus}>
+          <div className="panel-header">
+            <h2>Activity</h2>
+            {isActivityOpen ? <button ref={activityCloseRef} type="button" className="btn-icon" onClick={() => setIsActivityOpen(false)} aria-label="Close realtime activity"><ChevronRight size={16} /></button> : null}
+          </div>
           {realtime.events.length === 0 ? <p>No realtime events yet.</p> : null}
           <ul aria-live="polite">
             {realtime.events.slice(0, 12).map((event, index) => (
