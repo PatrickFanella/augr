@@ -479,3 +479,22 @@ export type PolymarketDataStatus = {
   recorder_lag_seconds: number
   updated_at: ISODate
 }
+
+export type OptionSnapshot = {
+  contract: {
+    occ_symbol: string
+    underlying: string
+    option_type: string
+    strike: number
+    expiry: ISODate
+    multiplier: number
+    style?: string
+  }
+  greeks: { delta: number; gamma: number; theta: number; vega: number; rho?: number; iv: number }
+  bid: number
+  ask: number
+  mid: number
+  last: number
+  volume: number
+  open_interest: number
+}

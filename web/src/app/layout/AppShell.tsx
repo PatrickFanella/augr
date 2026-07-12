@@ -17,6 +17,7 @@ import {
   Activity,
   Settings,
   Landmark,
+  ChartCandlestick,
 } from 'lucide-react';
 
 import { useTheme } from '@/app/providers/theme-context';
@@ -40,6 +41,7 @@ const navItems = [
   { to: '/trades', label: 'Trades', icon: ArrowLeftRight },
   { to: '/portfolio', label: 'Portfolio', icon: PieChart },
   { to: '/event-markets', label: 'Event markets', icon: Landmark },
+  { to: '/options', label: 'Options', icon: ChartCandlestick },
   { to: '/risk', label: 'Risk', icon: ShieldAlert },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];

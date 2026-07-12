@@ -173,6 +173,19 @@ export function createP0RestHandlers(options: P0MockHandlersOptions = {}) {
       return HttpResponse.json({ enabled: true, ws_connections: 2, avg_jitter_ms: 12.5, dropped: 0, ready_slugs: ['fixture-market'], recorder_lag_seconds: 0.5, updated_at: fixtureDate })
     }),
 
+    http.get(endpoint(apiBaseUrl, '/options/chain/:underlying'), async ({ request, params }) => {
+      await applyScenarioDelay(state)
+      const authError = authGuard(request, state)
+      if (authError) return authError
+      const error = scenarioError(state)
+      if (error) return error
+      if (state.scenario === 'empty-data') return HttpResponse.json([])
+      const url = new URL(request.url)
+      const requestedType = url.searchParams.get('type')
+      const contracts = ['call', 'put'].filter((optionType) => !requestedType || requestedType === optionType).map((optionType, index) => ({ contract: { occ_symbol: `${params.underlying}270115${optionType === 'call' ? 'C' : 'P'}00150000`, underlying: String(params.underlying), option_type: optionType, strike: 150, expiry: '2027-01-15T00:00:00Z', multiplier: 100, style: 'american' }, greeks: { delta: optionType === 'call' ? 0.4 : -0.4, gamma: 0.02, theta: -0.1, vega: 0.2, iv: 0.25 }, bid: 2 + index, ask: 4 + index, mid: 3 + index, last: 2.5 + index, volume: 12, open_interest: 30 }))
+      return HttpResponse.json(contracts)
+    }),
+
     http.get(endpoint(apiBaseUrl, '/events'), async ({ request }) => {
       await applyScenarioDelay(state)
       const authError = authGuard(request, state)

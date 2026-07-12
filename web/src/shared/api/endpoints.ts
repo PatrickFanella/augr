@@ -38,10 +38,11 @@ import {
   userSchema,
   eventMarketsSummarySchema,
   polymarketDataStatusSchema,
+  optionSnapshotSchema,
 } from '@/shared/api/schemas'
 import type { ListResponse, PortfolioSummary } from '@/shared/types/api'
 import type { AuthResponse, LoginRequest } from '@/shared/types/auth'
-import type { AgentDecision, AgentEvent, AllocationDecision, AllocatorDiagnostics, AllocatorOpportunity, AllocatorSummary, AutomationHealthResponse, AutomationJobRun, AutomationJobStatus, BreakerResetRequest, BreakerResetResponse, EventMarketsSummaryResponse, HealthStatusResponse, KillSwitchToggleRequest, KillSwitchToggleResponse, MarketKillSwitchRequest, MarketKillSwitchResponse, Order, OrderDetailResponse, PipelineRun, PolymarketDataStatus, Position, ReportArtifact, ReportLatestResponse, RiskBreakersResponse, RiskCockpitSummary, RiskEngineStatus, RunSnapshot, Strategy, StrategyCreateRequest, StrategyRunAcceptedResponse, StrategyUpdateRequest, Trade, User } from '@/shared/types/domain'
+import type { AgentDecision, AgentEvent, AllocationDecision, AllocatorDiagnostics, AllocatorOpportunity, AllocatorSummary, AutomationHealthResponse, AutomationJobRun, AutomationJobStatus, BreakerResetRequest, BreakerResetResponse, EventMarketsSummaryResponse, HealthStatusResponse, KillSwitchToggleRequest, KillSwitchToggleResponse, MarketKillSwitchRequest, MarketKillSwitchResponse, OptionSnapshot, Order, OrderDetailResponse, PipelineRun, PolymarketDataStatus, Position, ReportArtifact, ReportLatestResponse, RiskBreakersResponse, RiskCockpitSummary, RiskEngineStatus, RunSnapshot, Strategy, StrategyCreateRequest, StrategyRunAcceptedResponse, StrategyUpdateRequest, Trade, User } from '@/shared/types/domain'
 import type { SettingsResponse } from '@/shared/types/settings'
 
 export type StrategyListParams = {
@@ -172,6 +173,10 @@ export function getEventMarketsSummary(signal?: AbortSignal): Promise<EventMarke
 
 export function getPolymarketDataStatus(signal?: AbortSignal): Promise<PolymarketDataStatus> {
   return api.get<PolymarketDataStatus>('/marketdata/polymarket/status', { schema: polymarketDataStatusSchema as never, signal })
+}
+
+export function getOptionsChain(underlying: string, params: { expiry?: string; type?: string } = {}, signal?: AbortSignal): Promise<OptionSnapshot[]> {
+  return api.get<OptionSnapshot[]>(`/options/chain/${encodeURIComponent(underlying)}${buildQuery(params)}`, { schema: optionSnapshotSchema.array() as never, signal })
 }
 
 export function getRiskStatus(signal?: AbortSignal): Promise<RiskEngineStatus> {

@@ -582,6 +582,12 @@ export const polymarketDataStatusSchema = z.object({
   updated_at: isoDateSchema,
 }).passthrough()
 
+export const optionSnapshotSchema = z.object({
+  contract: z.object({ occ_symbol: z.string(), underlying: z.string(), option_type: z.string(), strike: z.number(), expiry: isoDateSchema, multiplier: z.number(), style: z.string().optional() }).passthrough(),
+  greeks: z.object({ delta: z.number(), gamma: z.number(), theta: z.number(), vega: z.number(), rho: z.number().optional(), iv: z.number() }).passthrough(),
+  bid: z.number(), ask: z.number(), mid: z.number(), last: z.number(), volume: z.number(), open_interest: z.number(),
+}).passthrough()
+
 export const websocketCommandSchema = z
   .discriminatedUnion('action', [
     z.object({ action: z.literal('subscribe'), strategy_ids: z.array(uuidSchema).optional(), run_ids: z.array(uuidSchema).optional() }).passthrough(),
