@@ -337,6 +337,13 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 		KalshiSnapshotsRepo:    pgrepo.NewKalshiMarketSnapshotsRepo(db.Pool),
 		KalshiDiscoveryRuns:    pgrepo.NewKalshiDiscoveryRunRepo(db.Pool),
 	}
+	polymarketReadClient := polymarketexecution.NewClient(cfg.Brokers.Polymarket.KeyID, cfg.Brokers.Polymarket.SecretKey, logger)
+	polymarketReadClient.SetAPIBaseURL(cfg.Brokers.Polymarket.APIBaseURL)
+	polymarketReadClient.SetGatewayBaseURL(cfg.Brokers.Polymarket.GatewayBaseURL)
+	if polymarketL2Configured(cfg.Brokers.Polymarket) {
+		polymarketReadClient.SetL2Auth(cfg.Brokers.Polymarket.Address, cfg.Brokers.Polymarket.KeyID, cfg.Brokers.Polymarket.SecretKey, cfg.Brokers.Polymarket.Passphrase)
+	}
+	deps.PolymarketClient = polymarketReadClient
 	var polymarketFeed *polymarketws.Feed
 	var polymarketRecorder *recorder.Recorder
 	var strategyRunner *realStrategyRunner
@@ -777,7 +784,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 			Database: databaseReady, Schema: currentSchemaVersion == requiredSchemaVersion,
 			DecisionJournal: tradeDecisionRepo != nil, Scheduler: deps.Automation != nil,
 			OptionsData:          deps.OptionsProvider != nil,
-			PolymarketData:       cfg.Features.EnablePolymarketAutomation,
+			PolymarketData:       cfg.Features.EnablePolymarketAutomation && deps.PolymarketClient != nil,
 			PolymarketSettlement: jobReady("polymarket_resolutions"),
 			KalshiData:           jobReady("kalshi_discovery"), KalshiSettlement: jobReady("kalshi_settlement"),
 			LiveTradingEnabled:   cfg.Features.EnableLiveTrading,

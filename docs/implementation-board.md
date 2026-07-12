@@ -31,6 +31,7 @@ tags: [kanban, tracking]
 - [x] Phase 5: dedicated paper options runtime, risk, persistence, restart, lifecycle, reconciliation, and operator evidence
 - [x] Phase 6: deterministic event-market probability gates, replay ledger, side-qualified persistence, reconciliation, and settlement
 - [x] Phase 7: versioned simulation inputs, next-bar execution, asset-specific fills, trailing stops, divergence, and segmented calibration
+- [x] Phase 8: capability readiness, correlated logs, actionable alerts, recovery-drill manifest, and executable paper release gate
 
 - [ ] Domain types
 - [ ] Repository interfaces

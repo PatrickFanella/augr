@@ -15,12 +15,7 @@ activation is explicitly approved.
 Run the automated gate from the repository root:
 
 ```sh
-go test ./...
-go vet ./...
-npm --prefix web test -- --run
-npm --prefix web run lint
-npm --prefix web run build
-docker compose config --quiet
+./scripts/release-gate.sh
 ```
 
 Validate Prometheus rules with `promtool check rules

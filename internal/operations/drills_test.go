@@ -1,6 +1,10 @@
 package operations
 
-import "testing"
+import (
+	"encoding/json"
+	"os"
+	"testing"
+)
 
 func TestValidateRecoveryDrillsRequiresEveryScenarioAndEvidence(t *testing.T) {
 	results := make([]DrillResult, 0, len(RequiredRecoveryDrills))
@@ -14,4 +18,12 @@ func TestValidateRecoveryDrillsRequiresEveryScenarioAndEvidence(t *testing.T) {
 	if err := ValidateRecoveryDrills(results); err == nil {
 		t.Fatal("missing evidence accepted")
 	}
+}
+
+func TestRepositoryRecoveryDrillManifestIsComplete(t *testing.T) {
+	raw, err := os.ReadFile("testdata/recovery_drills.json")
+	if err != nil { t.Fatal(err) }
+	var results []DrillResult
+	if err := json.Unmarshal(raw, &results); err != nil { t.Fatal(err) }
+	if err := ValidateRecoveryDrills(results); err != nil { t.Fatal(err) }
 }

@@ -179,6 +179,16 @@ Exit gate: all automated gates and recovery drills pass, decision journals are
 complete, reconciliation has no unexplained mismatches, and any live activation
 is incremental by broker, market, strategy, and capital tier.
 
+Status: complete for paper-release implementation. The authenticated
+capability-readiness endpoint checks database/schema/journal, scheduler,
+provider data, settlement jobs, and recovery-drill attestation independently;
+live execution remains a separate blocked capability. Requests carry validated
+correlation IDs, both prediction providers expose reconciliation metrics,
+Prometheus ships actionable runbook-linked alerts, and the executable release
+gate validates all Go/frontend/Compose/alert rules plus a machine-checked
+11-scenario drill manifest. Deployment-specific soak attestation remains
+fail-closed through `RELEASE_DRILLS_VERIFIED` and cannot enable live trading.
+
 ## Completion evidence
 
 Completion requires a requirement-by-requirement audit against current code,

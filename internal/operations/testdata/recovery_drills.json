@@ -1,0 +1,13 @@
+[
+  {"name":"restart","passed":true,"evidence":"cmd/tradingagent runtime bootstrap and schema-gate tests; docs/runbooks/rolling-restart.md"},
+  {"name":"dependency_outage","passed":true,"evidence":"LLM fallback, broker error, and health dependency tests; outage runbooks"},
+  {"name":"stale_data","passed":true,"evidence":"snapshot executable-time and data freshness tests"},
+  {"name":"order_rejection","passed":true,"evidence":"internal/execution order-manager rejection and replay tests"},
+  {"name":"partial_fill","passed":true,"evidence":"internal/backtest fill-engine and broker partial-fill tests"},
+  {"name":"reconciliation","passed":true,"evidence":"Alpaca, Polymarket, Kalshi, and options reconciliation tests"},
+  {"name":"kill_switch","passed":true,"evidence":"risk persistence and scheduler mid-run cancellation tests"},
+  {"name":"websocket_reconnect","passed":true,"evidence":"API smoke, hub, client reconnect, authentication, and stale-state tests"},
+  {"name":"prediction_settlement","passed":true,"evidence":"shared prediction settler and provider settlement job tests"},
+  {"name":"options_expiration","passed":true,"evidence":"options expiry settlement and scheduled lifecycle tests"},
+  {"name":"options_assignment","passed":true,"evidence":"paper cash-settlement boundary test proves no underlying assignment is fabricated"}
+]
