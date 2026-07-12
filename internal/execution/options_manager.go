@@ -20,6 +20,18 @@ type OptionsBroker interface {
 	SubmitSpreadOrder(ctx context.Context, spread *domain.OptionSpread, quantity float64) ([]string, error)
 }
 
+// OptionFillReport carries accounting fields that are not represented on Order.
+type OptionFillReport struct {
+	Premium float64
+	Fee     float64
+}
+
+// OptionFillReporter is implemented by brokers that can synchronously account
+// for an immediate fill. Submitted live orders are persisted later by reconciliation.
+type OptionFillReporter interface {
+	OptionFillReport(ctx context.Context, order *domain.Order) (OptionFillReport, error)
+}
+
 // OptionsOrderManager handles options order submission for both single-leg
 // and multi-leg strategies.
 type OptionsOrderManager struct {
@@ -218,6 +230,11 @@ func (m *OptionsOrderManager) ProcessOptionSignal(
 	if err := m.orderRepo.Update(ctx, order); err != nil {
 		return fmt.Errorf("options_manager: update submitted order: %w", err)
 	}
+	if order.Status == domain.OrderStatusFilled {
+		if err := m.persistImmediateFill(ctx, order); err != nil {
+			return err
+		}
+	}
 
 	m.logger.InfoContext(ctx, "options: order submitted",
 		"ticker", plan.Ticker,
@@ -226,6 +243,50 @@ func (m *OptionsOrderManager) ProcessOptionSignal(
 		"quantity", plan.PositionSize,
 	)
 
+	return nil
+}
+
+func (m *OptionsOrderManager) persistImmediateFill(ctx context.Context, order *domain.Order) error {
+	reporter, ok := m.broker.(OptionFillReporter)
+	if !ok {
+		return fmt.Errorf("options_manager: filled order %s lacks accounting report", order.ID)
+	}
+	if m.positionRepo == nil || m.tradeRepo == nil {
+		return fmt.Errorf("options_manager: position and trade repositories are required for filled orders")
+	}
+	if order.FilledAvgPrice == nil || order.FilledQuantity <= 0 || order.FilledAt == nil {
+		return fmt.Errorf("options_manager: filled order %s is missing fill price, quantity, or timestamp", order.ID)
+	}
+	report, err := reporter.OptionFillReport(ctx, order)
+	if err != nil {
+		return fmt.Errorf("options_manager: option fill accounting: %w", err)
+	}
+	positionSide := domain.PositionSideLong
+	if order.Side == domain.OrderSideSell {
+		positionSide = domain.PositionSideShort
+	}
+	position := &domain.Position{
+		ID: uuid.New(), StrategyID: order.StrategyID, MarketType: domain.MarketTypeOptions,
+		Ticker: order.Ticker, Side: positionSide, Quantity: order.FilledQuantity,
+		AvgEntry: *order.FilledAvgPrice, OpenedAt: *order.FilledAt,
+		AssetClass: order.AssetClass, UnderlyingTicker: order.UnderlyingTicker,
+		OptionType: order.OptionType, Strike: order.Strike, Expiry: order.Expiry,
+		ContractMultiplier: order.ContractMultiplier, LegGroupID: order.LegGroupID,
+	}
+	if err := m.positionRepo.Create(ctx, position); err != nil {
+		return fmt.Errorf("options_manager: persist filled position: %w", err)
+	}
+	orderID, positionID := order.ID, position.ID
+	trade := &domain.Trade{
+		ID: uuid.New(), OrderID: &orderID, PositionID: &positionID, ExternalID: order.ExternalID,
+		Ticker: order.Ticker, Side: order.Side, Quantity: order.FilledQuantity,
+		Price: *order.FilledAvgPrice, Fee: report.Fee, ExecutedAt: *order.FilledAt,
+		AssetClass: domain.AssetClassOption, OpenClose: "open",
+		ContractMultiplier: order.ContractMultiplier, Premium: report.Premium,
+	}
+	if err := m.tradeRepo.Create(ctx, trade); err != nil {
+		return fmt.Errorf("options_manager: persist filled trade: %w", err)
+	}
 	return nil
 }
 

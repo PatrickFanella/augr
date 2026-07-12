@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -15,6 +16,14 @@ import (
 type mockOptionsBroker struct {
 	submitOptionOrderFn func(ctx context.Context, order *domain.Order) (string, error)
 	submitSpreadOrderFn func(ctx context.Context, spread *domain.OptionSpread, quantity float64) ([]string, error)
+	optionFillReportFn  func(ctx context.Context, order *domain.Order) (execution.OptionFillReport, error)
+}
+
+func (b *mockOptionsBroker) OptionFillReport(ctx context.Context, order *domain.Order) (execution.OptionFillReport, error) {
+	if b.optionFillReportFn != nil {
+		return b.optionFillReportFn(ctx, order)
+	}
+	return execution.OptionFillReport{Premium: order.FilledQuantity * 100 * 2.5, Fee: order.FilledQuantity * 0.65}, nil
 }
 
 func (b *mockOptionsBroker) SubmitOptionOrder(ctx context.Context, order *domain.Order) (string, error) {
@@ -141,19 +150,29 @@ func TestProcessOptionSignal_PreTradeRiskRejection(t *testing.T) {
 
 func TestProcessOptionSignal_PreservesImmediatePaperFill(t *testing.T) {
 	orderRepo := &mockOrderRepo{}
+	positionRepo := &mockPositionRepo{}
+	tradeRepo := &mockTradeRepo{}
 	broker := &mockOptionsBroker{submitOptionOrderFn: func(_ context.Context, order *domain.Order) (string, error) {
 		price := 2.5
+		filledAt := time.Now().UTC()
 		order.Status = domain.OrderStatusFilled
 		order.FilledQuantity = order.Quantity
 		order.FilledAvgPrice = &price
+		order.FilledAt = &filledAt
 		return "paper-option-1", nil
 	}}
-	mgr := newTestOptionsManager(broker, orderRepo, &mockPositionRepo{}, &mockTradeRepo{}, &mockRiskEngine{})
+	mgr := newTestOptionsManager(broker, orderRepo, positionRepo, tradeRepo, &mockRiskEngine{})
 	err := mgr.ProcessOptionSignal(context.Background(), execution.FinalSignal{Signal: domain.PipelineSignalBuy}, execution.TradingPlan{Ticker: "AAPL271217C00150000", EntryPrice: 2.5, PositionSize: 1}, uuid.New(), uuid.New())
 	if err != nil {
 		t.Fatalf("ProcessOptionSignal() error = %v", err)
 	}
 	if got := orderRepo.updates[0].Status; got != domain.OrderStatusFilled {
 		t.Fatalf("paper fill status = %s, want filled", got)
+	}
+	if len(positionRepo.positions) != 1 || positionRepo.positions[0].UnderlyingTicker != "AAPL" {
+		t.Fatalf("filled option position not persisted: %+v", positionRepo.positions)
+	}
+	if len(tradeRepo.trades) != 1 || tradeRepo.trades[0].Premium != 250 || tradeRepo.trades[0].Fee != 0.65 || tradeRepo.trades[0].OpenClose != "open" {
+		t.Fatalf("filled option trade not persisted: %+v", tradeRepo.trades)
 	}
 }

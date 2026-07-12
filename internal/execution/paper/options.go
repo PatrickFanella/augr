@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
+	"github.com/PatrickFanella/get-rich-quick/internal/execution"
 )
 
 // DefaultOptionFeePerContract is the standard per-contract option commission ($0.65).
@@ -99,6 +100,15 @@ func (b *PaperBroker) SubmitOptionOrder(ctx context.Context, order *domain.Order
 // rollback semantics are available. Partial paper spreads would be misleading.
 func (b *PaperBroker) SubmitSpreadOrder(context.Context, *domain.OptionSpread, float64) ([]string, error) {
 	return nil, errors.New("paper: spread submission requires atomic leg lifecycle support")
+}
+
+// OptionFillReport returns deterministic accounting for a synchronous paper fill.
+func (b *PaperBroker) OptionFillReport(_ context.Context, order *domain.Order) (execution.OptionFillReport, error) {
+	result, err := SimulateOptionFill(order)
+	if err != nil {
+		return execution.OptionFillReport{}, err
+	}
+	return execution.OptionFillReport{Premium: result.Premium, Fee: result.Fee}, nil
 }
 
 var _ interface {
