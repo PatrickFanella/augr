@@ -7,13 +7,11 @@ tags: [kanban, tracking]
 
 ## Backlog
 
-- [ ] Phase 7: backtesting and decision quality
-- [ ] Phase 8: operations, paper soak, and release readiness
-- [ ] Completion audit against all phase exit gates
+- [ ] None
 
 ## In Progress
 
-- [ ] Phase 6: unify prediction-market decision architecture
+- [ ] None
 
 ## Blocked
 
@@ -32,31 +30,7 @@ tags: [kanban, tracking]
 - [x] Phase 6: deterministic event-market probability gates, replay ledger, side-qualified persistence, reconciliation, and settlement
 - [x] Phase 7: versioned simulation inputs, next-bar execution, asset-specific fills, trailing stops, divergence, and segmented calibration
 - [x] Phase 8: capability readiness, correlated logs, actionable alerts, recovery-drill manifest, and executable paper release gate
-
-- [ ] Domain types
-- [ ] Repository interfaces
-- [ ] PostgreSQL implementations
-- [ ] LLM provider abstraction
-- [ ] OpenAI provider
-- [ ] Anthropic provider
-- [ ] Google Gemini provider
-- [ ] Ollama provider
-- [ ] Retry/fallback wrapper
-- [ ] Broker interface
-- [ ] Data provider interface
-- [ ] Agent node interface
-- [ ] Risk engine interface
-- [ ] Memory store interface
-- [ ] Configuration system
-- [ ] Structured logging
-- [ ] Database schema + migrations
-- [ ] Data provider chain with cache integration
-- [ ] Alpaca paper trading integration
-- [ ] Alpaca broker adapter
-- [ ] Pipeline orchestration engine
-- [ ] Research debate orchestration
-- [ ] Risk debate orchestration
-- [ ] Backtesting engine core
+- [x] Completion audit against all phase exit gates and full paper release gate
 
 %% kanban:settings
 

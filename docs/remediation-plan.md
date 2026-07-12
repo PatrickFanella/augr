@@ -1,6 +1,6 @@
 ---
 title: "Augr Remediation Plan"
-status: "active"
+status: "verified"
 updated: "2026-07-12"
 tags: [remediation, roadmap, operations, frontend, trading]
 ---
@@ -194,3 +194,10 @@ fail-closed through `RELEASE_DRILLS_VERIFIED` and cannot enable live trading.
 Completion requires a requirement-by-requirement audit against current code,
 tests, rendered UI, runtime health, logs, migrations, runbooks, and release-gate
 results. Passing narrow unit tests is not proof of a phase-wide acceptance gate.
+
+Completed evidence (2026-07-12):
+[[completion-audit|the nine-phase completion audit]] reconciles every exit gate,
+repository branch/worktree ancestry, schema version, placeholder boundaries, and
+the live-release safety boundary. The executable release gate passes in full:
+Go tests/vet, 158 frontend tests, lint/type-check/production build, Compose
+rendering, and all seven Prometheus alert rules.

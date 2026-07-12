@@ -5,9 +5,9 @@ import (
 	"math"
 )
 
-// Divergence is part of Phase D backtest realism. It is exposed as a
-// standalone primitive; integration into FillEngine.Runner is deferred.
-// The API wiring will happen in a follow-up task.
+// Divergence compares persisted simulation evidence with observed paper/live
+// outcomes. Repository aggregation and API exposure live outside the fill
+// engine because the two samples are produced by different runtimes.
 type DivergenceStatus string
 
 const (

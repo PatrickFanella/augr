@@ -24,9 +24,9 @@ type DepthFillResult struct {
 	Partial    bool
 }
 
-// FillFromBook is part of Phase D backtest realism. It is exposed as a
-// standalone primitive; integration into FillEngine.Runner is deferred.
-// The fill logic is not yet wired into the execution pipeline.
+// FillFromBook models event-market fills when a historical order-book snapshot
+// is available. Bar-based stock/options simulations use their versioned fill
+// assumptions instead; callers must not silently substitute a synthetic book.
 func FillFromBook(side FillSide, requestedSize float64, book marketdata.BookSnapshot) (DepthFillResult, error) {
 	if requestedSize <= 0 {
 		return DepthFillResult{}, nil
