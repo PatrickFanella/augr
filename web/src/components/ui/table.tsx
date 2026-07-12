@@ -22,9 +22,5 @@ export function Th({ children }: TableProps) {
 }
 
 export function Td({ children }: TableProps) {
-  return (
-    <td>
-      <div className="max-w-[280px] truncate">{children}</div>
-    </td>
-  )
+  return <td className="max-w-[28rem] break-words">{children}</td>
 }

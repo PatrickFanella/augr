@@ -33,21 +33,29 @@ import { useQuery } from '@tanstack/react-query';
 
 const STORAGE_KEY = 'augr-sidebar-collapsed';
 
-const navItems = [
-  { to: '/cockpit', label: 'Cockpit', icon: LayoutDashboard },
-  { to: '/automation', label: 'Automation', icon: Bot },
-  { to: '/strategies', label: 'Strategies', icon: Lightbulb },
-  { to: '/runs', label: 'Runs', icon: Play },
-  { to: '/events', label: 'Events', icon: Clock },
-  { to: '/orders', label: 'Orders', icon: ShoppingCart },
-  { to: '/trades', label: 'Trades', icon: ArrowLeftRight },
-  { to: '/portfolio', label: 'Portfolio', icon: PieChart },
-  { to: '/event-markets', label: 'Event markets', icon: Landmark },
-  { to: '/options', label: 'Options', icon: ChartCandlestick },
-  { to: '/backtests', label: 'Backtests', icon: FlaskConical },
-  { to: '/journal', label: 'Journal', icon: BookOpenText },
-  { to: '/risk', label: 'Risk', icon: ShieldAlert },
-  { to: '/settings', label: 'Settings', icon: Settings },
+const navGroups = [
+  { label: 'Monitor', items: [
+    { to: '/cockpit', label: 'Cockpit', icon: LayoutDashboard },
+    { to: '/portfolio', label: 'Portfolio', icon: PieChart },
+    { to: '/risk', label: 'Risk', icon: ShieldAlert },
+  ] },
+  { label: 'Operate', items: [
+    { to: '/automation', label: 'Automation', icon: Bot },
+    { to: '/strategies', label: 'Strategies', icon: Lightbulb },
+    { to: '/runs', label: 'Runs', icon: Play },
+    { to: '/orders', label: 'Orders', icon: ShoppingCart },
+    { to: '/trades', label: 'Trades', icon: ArrowLeftRight },
+  ] },
+  { label: 'Research', items: [
+    { to: '/event-markets', label: 'Event markets', icon: Landmark },
+    { to: '/options', label: 'Options', icon: ChartCandlestick },
+    { to: '/backtests', label: 'Backtests', icon: FlaskConical },
+    { to: '/journal', label: 'Journal', icon: BookOpenText },
+    { to: '/events', label: 'Events', icon: Clock },
+  ] },
+  { label: 'System', items: [
+    { to: '/settings', label: 'Settings', icon: Settings },
+  ] },
 ];
 
 const MOBILE_QUERY = '(max-width: 840px)';
@@ -83,6 +91,9 @@ export function AppShell() {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(getInitialMobileState);
   const [isActivityOpen, setIsActivityOpen] = useState(false);
+  const navigationToggleRef = useRef<HTMLButtonElement>(null);
+  const navigationRef = useRef<HTMLElement>(null);
+  const navigationWasOpen = useRef(false);
   const activityToggleRef = useRef<HTMLButtonElement>(null);
   const activityCloseRef = useRef<HTMLButtonElement>(null);
   const activityDrawerRef = useRef<HTMLElement>(null);
@@ -111,6 +122,39 @@ export function AppShell() {
       activityToggleRef.current?.focus();
     }
   }, [isActivityOpen]);
+
+  useEffect(() => {
+    if (!isMobile) return;
+    if (isMobileOpen) {
+      navigationWasOpen.current = true;
+      navigationRef.current?.querySelector<HTMLElement>('a[href]')?.focus();
+    } else if (navigationWasOpen.current) {
+      navigationWasOpen.current = false;
+      navigationToggleRef.current?.focus();
+    }
+  }, [isMobile, isMobileOpen]);
+
+  useEffect(() => {
+    if (!isMobile || (!isMobileOpen && !isActivityOpen)) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = previousOverflow };
+  }, [isActivityOpen, isMobile, isMobileOpen]);
+
+  const trapNavigationFocus = (event: React.KeyboardEvent<HTMLElement>) => {
+    if (!isMobileOpen || event.key !== 'Tab') return;
+    const focusable = Array.from(navigationRef.current?.querySelectorAll<HTMLElement>('a[href], button:not(:disabled)') ?? []);
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable.at(-1)!;
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
 
   const trapActivityFocus = (event: React.KeyboardEvent<HTMLElement>) => {
     if (!isActivityOpen || event.key !== 'Tab') return;
@@ -186,22 +230,26 @@ export function AppShell() {
       )}
 
       <aside
+        ref={navigationRef}
         id="primary-navigation"
         className={`sidebar ${isMobile ? 'mobile' : ''} ${isMobileOpen ? 'open' : ''}`}
         aria-label="Primary navigation"
+        aria-hidden={isMobile && !isMobileOpen ? true : undefined}
+        inert={isMobile && !isMobileOpen ? true : undefined}
+        onKeyDown={trapNavigationFocus}
       >
         <div className="brand">{sidebarCollapsed ? '' : 'Augr'}</div>
         <nav aria-label="Primary">
-          {navItems.map(({ to, label, icon: Icon }) => (
-            <NavLink
-              key={to}
-              to={to}
-              data-label={label}
-              onClick={isMobile ? handleSidebarClose : undefined}
-            >
-              <Icon size={18} />
-              <span className="nav-label">{label}</span>
-            </NavLink>
+          {navGroups.map((group) => (
+            <section className="nav-group" aria-labelledby={`nav-${group.label.toLowerCase()}`} key={group.label}>
+              <h2 id={`nav-${group.label.toLowerCase()}`}>{group.label}</h2>
+              {group.items.map(({ to, label, icon: Icon }) => (
+                <NavLink key={to} to={to} data-label={label} onClick={isMobile ? handleSidebarClose : undefined}>
+                  <Icon size={18} aria-hidden="true" />
+                  <span className="nav-label">{label}</span>
+                </NavLink>
+              ))}
+            </section>
           ))}
         </nav>
       </aside>
@@ -210,6 +258,7 @@ export function AppShell() {
         <header className="topbar">
           <div className="topbar-left">
             <button
+              ref={navigationToggleRef}
               type="button"
               className="sidebar-toggle"
               onClick={toggleSidebar}
@@ -264,8 +313,8 @@ export function AppShell() {
             >
               {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
             </button>
-            <span>{auth.session?.user.username}</span>
-            <button type="button" onClick={auth.logout}>
+            <span className="session-user" title={auth.session?.user.username}>Signed in as <span>{auth.session?.user.username}</span></span>
+            <button type="button" onClick={auth.logout} aria-label={`Logout ${auth.session?.user.username ?? ''}`.trim()}>
               Logout
             </button>
           </div>

@@ -179,7 +179,22 @@ button:disabled,
 
 .sidebar nav {
   display: grid;
+  gap: var(--space-3);
+}
+
+.nav-group {
+  display: grid;
   gap: 2px;
+}
+
+.nav-group h2 {
+  margin: 0;
+  padding: 0 var(--space-2) var(--space-1);
+  color: var(--color-text-soft);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
 .sidebar nav a {
@@ -247,6 +262,15 @@ button:disabled,
   grid-template-columns: 1fr;
   justify-items: center;
   padding-inline: 0;
+}
+
+.app-layout[data-sidebar-collapsed='true'] .nav-group h2 {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .app-layout[data-sidebar-collapsed='true'] .nav-label {
@@ -353,6 +377,15 @@ button:disabled,
   white-space: nowrap;
   text-transform: uppercase;
   letter-spacing: 0.06em;
+}
+
+.session-user {
+  max-width: 14rem;
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Content area — scrolls independently */
@@ -1244,6 +1277,10 @@ tbody tr:hover {
 
   table {
     min-width: 36rem;
+  }
+
+  .session-user {
+    max-width: 10rem;
   }
 }
 

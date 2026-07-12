@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Command } from 'cmdk'
 import {
@@ -32,6 +32,7 @@ type CommandItem = {
 
 export function CommandPalette() {
   const [open, setOpen] = useState(false)
+  const restoreFocusRef = useRef<HTMLElement | null>(null)
   const navigate = useNavigate()
   const { theme, toggleTheme } = useTheme()
 
@@ -40,7 +41,10 @@ export function CommandPalette() {
     const handler = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
         event.preventDefault()
-        setOpen((prev) => !prev)
+        setOpen((prev) => {
+          if (!prev && document.activeElement instanceof HTMLElement) restoreFocusRef.current = document.activeElement
+          return !prev
+        })
       }
       if (event.key === 'Escape') {
         setOpen(false)
@@ -49,6 +53,17 @@ export function CommandPalette() {
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [])
+
+  useEffect(() => {
+    if (!open) {
+      restoreFocusRef.current?.focus()
+      restoreFocusRef.current = null
+      return
+    }
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = previousOverflow }
+  }, [open])
 
   const navItems = [
     { to: '/cockpit', label: 'Cockpit', icon: <LayoutDashboard size={16} /> },
@@ -98,6 +113,9 @@ export function CommandPalette() {
     <div
       className="fixed inset-0 z-50 grid place-items-start bg-[rgba(0,0,0,0.7)] p-4 pt-[15vh] backdrop-blur"
       onClick={() => setOpen(false)}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Command palette"
     >
       <Command
         loop

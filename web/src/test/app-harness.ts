@@ -69,6 +69,15 @@ export function installAppTestHarness() {
   beforeAll(() => {
     server.listen({ onUnhandledRequest: 'bypass' })
     vi.stubGlobal('WebSocket', FakeWebSocket)
+    vi.stubGlobal('ResizeObserver', class ResizeObserver {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    })
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: vi.fn(),
+    })
   })
   afterEach(() => {
     cleanup()

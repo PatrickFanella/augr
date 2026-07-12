@@ -79,7 +79,7 @@ export function AutomationPage() {
 
         {jobs.length > 0 ? (
           <div className="table-wrap" role="region" aria-label="Automation jobs table" tabIndex={0}>
-            <table>
+            <table aria-label="Automation jobs">
               <thead>
                 <tr>
                   <th scope="col">Job</th>
