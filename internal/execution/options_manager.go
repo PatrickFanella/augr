@@ -2,6 +2,7 @@ package execution
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -286,6 +287,93 @@ func (m *OptionsOrderManager) persistImmediateFill(ctx context.Context, order *d
 	}
 	if err := m.tradeRepo.Create(ctx, trade); err != nil {
 		return fmt.Errorf("options_manager: persist filled trade: %w", err)
+	}
+	return nil
+}
+
+// CloseOptionPosition closes an entire persisted option position at an explicit
+// executable price. Partial closes and rolls require a separate atomic plan.
+func (m *OptionsOrderManager) CloseOptionPosition(ctx context.Context, position *domain.Position, executablePrice float64, runID uuid.UUID, reason string) error {
+	if m == nil || position == nil {
+		return errors.New("options_manager: position is required")
+	}
+	if position.ClosedAt != nil || position.Quantity <= 0 {
+		return errors.New("options_manager: position is not open")
+	}
+	if position.AssetClass != domain.AssetClassOption || position.OptionType == nil || position.Strike == nil || position.Expiry == nil || position.StrategyID == nil {
+		return errors.New("options_manager: complete persisted option contract metadata is required")
+	}
+	if executablePrice <= 0 {
+		return errors.New("options_manager: executable close price must be greater than zero")
+	}
+	if m.broker == nil || m.orderRepo == nil || m.positionRepo == nil || m.tradeRepo == nil {
+		return errors.New("options_manager: broker and lifecycle repositories are required")
+	}
+	side, intent := domain.OrderSideSell, domain.PositionIntentSellToClose
+	if position.Side == domain.PositionSideShort {
+		side, intent = domain.OrderSideBuy, domain.PositionIntentBuyToClose
+	}
+	now := time.Now().UTC()
+	order := &domain.Order{
+		ID: uuid.New(), StrategyID: position.StrategyID, PipelineRunID: &runID,
+		Ticker: position.Ticker, MarketType: domain.MarketTypeOptions, Side: side,
+		OrderType: domain.OrderTypeLimit, Quantity: position.Quantity,
+		LimitPrice: &executablePrice, Status: domain.OrderStatusPending,
+		AssetClass: domain.AssetClassOption, UnderlyingTicker: position.UnderlyingTicker,
+		OptionType: position.OptionType, Strike: position.Strike, Expiry: position.Expiry,
+		ContractMultiplier: position.ContractMultiplier, PositionIntent: &intent,
+		LegGroupID: position.LegGroupID, CreatedAt: now,
+	}
+	if err := m.orderRepo.Create(ctx, order); err != nil {
+		return fmt.Errorf("options_manager: create close order: %w", err)
+	}
+	externalID, err := m.broker.SubmitOptionOrder(ctx, order)
+	if err != nil {
+		order.Status = domain.OrderStatusRejected
+		_ = m.orderRepo.Update(ctx, order)
+		return fmt.Errorf("options_manager: submit close order: %w", err)
+	}
+	order.ExternalID = externalID
+	if order.Status == domain.OrderStatusPending {
+		order.Status = domain.OrderStatusSubmitted
+	}
+	if order.SubmittedAt == nil {
+		order.SubmittedAt = &now
+	}
+	if err := m.orderRepo.Update(ctx, order); err != nil {
+		return fmt.Errorf("options_manager: update close order: %w", err)
+	}
+	if order.Status != domain.OrderStatusFilled {
+		return nil
+	}
+	reporter, ok := m.broker.(OptionFillReporter)
+	if !ok || order.FilledAvgPrice == nil || order.FilledAt == nil {
+		return fmt.Errorf("options_manager: filled close order %s lacks accounting details", order.ID)
+	}
+	report, err := reporter.OptionFillReport(ctx, order)
+	if err != nil {
+		return fmt.Errorf("options_manager: close fill accounting: %w", err)
+	}
+	multiplier := position.ContractMultiplier
+	if multiplier <= 0 {
+		multiplier = 100
+	}
+	realized := (*order.FilledAvgPrice - position.AvgEntry) * position.Quantity * multiplier
+	if position.Side == domain.PositionSideShort {
+		realized = (position.AvgEntry - *order.FilledAvgPrice) * position.Quantity * multiplier
+	}
+	realized -= report.Fee
+	position.RealizedPnL += realized
+	position.Quantity = 0
+	position.CurrentPrice = order.FilledAvgPrice
+	position.ClosedAt = order.FilledAt
+	if err := m.positionRepo.Update(ctx, position); err != nil {
+		return fmt.Errorf("options_manager: persist closed position: %w", err)
+	}
+	orderID, positionID := order.ID, position.ID
+	trade := &domain.Trade{ID: uuid.New(), OrderID: &orderID, PositionID: &positionID, ExternalID: externalID, Ticker: order.Ticker, Side: side, Quantity: order.FilledQuantity, Price: *order.FilledAvgPrice, Fee: report.Fee, ExecutedAt: *order.FilledAt, AssetClass: domain.AssetClassOption, OpenClose: "close", ContractMultiplier: multiplier, Premium: report.Premium, ExitReason: strings.TrimSpace(reason)}
+	if err := m.tradeRepo.Create(ctx, trade); err != nil {
+		return fmt.Errorf("options_manager: persist closing trade: %w", err)
 	}
 	return nil
 }

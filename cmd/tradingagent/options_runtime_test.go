@@ -58,3 +58,18 @@ func TestBuildPaperSingleLegPlanFailsClosed(t *testing.T) {
 		})
 	}
 }
+
+func TestExecutableOptionClosePriceUsesBidForLongAndAskForShort(t *testing.T) {
+	expiry := time.Date(2026, 12, 18, 0, 0, 0, 0, time.UTC)
+	chain := []domain.OptionSnapshot{runtimeOptionSnapshot("AAPL261218C00160000", domain.OptionTypeCall, 0.4, 3.1, 3.3, expiry)}
+	position := &domain.Position{Ticker: "AAPL261218C00160000", Side: domain.PositionSideLong}
+	price, err := executableOptionClosePrice(position, chain)
+	if err != nil || price != 3.1 {
+		t.Fatalf("long close price = %v, err=%v", price, err)
+	}
+	position.Side = domain.PositionSideShort
+	price, err = executableOptionClosePrice(position, chain)
+	if err != nil || price != 3.3 {
+		t.Fatalf("short close price = %v, err=%v", price, err)
+	}
+}

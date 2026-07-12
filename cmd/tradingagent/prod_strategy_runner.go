@@ -338,11 +338,44 @@ func (r *realStrategyRunner) executeOptionsSignal(ctx context.Context, strategy 
 	if !strategy.IsPaper {
 		return errors.New("options runtime: live options execution is disabled")
 	}
-	if signal.Signal != domain.PipelineSignalBuy {
-		return errors.New("options runtime: entry signals must be buy; closes require the position lifecycle path")
-	}
 	if r.optionsProvider == nil {
 		return errors.New("options runtime: options data provider is required")
+	}
+	manager := execution.NewOptionsOrderManager(r.localPaperBroker, r.orderRepo, r.positionRepo, r.tradeRepo, r.riskEngine, r.logger).
+		WithBrokerName("paper").WithLiveTrading(false)
+	if signal.Signal == domain.PipelineSignalSell {
+		positions, err := r.positionRepo.GetByStrategy(ctx, strategy.ID, repository.PositionFilter{}, 100, 0)
+		if err != nil {
+			return fmt.Errorf("options runtime: load positions for close: %w", err)
+		}
+		var open []*domain.Position
+		for index := range positions {
+			if positions[index].AssetClass == domain.AssetClassOption && positions[index].ClosedAt == nil && positions[index].Quantity > 0 {
+				open = append(open, &positions[index])
+			}
+		}
+		if len(open) == 0 {
+			return nil
+		}
+		if len(open) != 1 {
+			return fmt.Errorf("options runtime: expected one open option position, found %d; atomic multi-position close is required", len(open))
+		}
+		position := open[0]
+		if position.OptionType == nil || position.Expiry == nil {
+			return errors.New("options runtime: persisted position lacks contract metadata")
+		}
+		chain, err := r.optionsProvider.GetOptionsChain(ctx, position.UnderlyingTicker, *position.Expiry, *position.OptionType)
+		if err != nil {
+			return fmt.Errorf("options runtime: load close quote: %w", err)
+		}
+		closePrice, err := executableOptionClosePrice(position, chain)
+		if err != nil {
+			return err
+		}
+		return manager.CloseOptionPosition(ctx, position, closePrice, runID, "strategy sell signal")
+	}
+	if signal.Signal != domain.PipelineSignalBuy {
+		return fmt.Errorf("options runtime: unsupported signal %q", signal.Signal)
 	}
 	var sections map[string]json.RawMessage
 	if err := json.Unmarshal(strategy.Config, &sections); err != nil {
@@ -363,9 +396,27 @@ func (r *realStrategyRunner) executeOptionsSignal(ctx context.Context, strategy 
 	if err != nil {
 		return err
 	}
-	manager := execution.NewOptionsOrderManager(r.localPaperBroker, r.orderRepo, r.positionRepo, r.tradeRepo, r.riskEngine, r.logger).
-		WithBrokerName("paper").WithLiveTrading(false)
 	return manager.ProcessOptionSignal(ctx, signal, plan, strategy.ID, runID)
+}
+
+func executableOptionClosePrice(position *domain.Position, chain []domain.OptionSnapshot) (float64, error) {
+	if position == nil {
+		return 0, errors.New("options runtime: position is required")
+	}
+	for _, snapshot := range chain {
+		if snapshot.Contract.OCCSymbol != position.Ticker {
+			continue
+		}
+		price := snapshot.Bid
+		if position.Side == domain.PositionSideShort {
+			price = snapshot.Ask
+		}
+		if price <= 0 || snapshot.Ask <= 0 || snapshot.Bid <= 0 || snapshot.Ask < snapshot.Bid {
+			return 0, errors.New("options runtime: valid executable close bid/ask is required")
+		}
+		return price, nil
+	}
+	return 0, fmt.Errorf("options runtime: close quote for %s not found", position.Ticker)
 }
 
 func buildPaperSingleLegPlan(cfg *rules.OptionsRulesConfig, chain []domain.OptionSnapshot, now time.Time) (execution.TradingPlan, error) {

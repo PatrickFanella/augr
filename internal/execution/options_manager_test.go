@@ -3,6 +3,7 @@ package execution_test
 import (
 	"context"
 	"log/slog"
+	"math"
 	"testing"
 	"time"
 
@@ -174,5 +175,44 @@ func TestProcessOptionSignal_PreservesImmediatePaperFill(t *testing.T) {
 	}
 	if len(tradeRepo.trades) != 1 || tradeRepo.trades[0].Premium != 250 || tradeRepo.trades[0].Fee != 0.65 || tradeRepo.trades[0].OpenClose != "open" {
 		t.Fatalf("filled option trade not persisted: %+v", tradeRepo.trades)
+	}
+}
+
+func TestCloseOptionPositionPersistsLifecycle(t *testing.T) {
+	orderRepo := &mockOrderRepo{}
+	positionRepo := &mockPositionRepo{}
+	tradeRepo := &mockTradeRepo{}
+	broker := &mockOptionsBroker{submitOptionOrderFn: func(_ context.Context, order *domain.Order) (string, error) {
+		price := *order.LimitPrice
+		filledAt := time.Now().UTC()
+		order.Status, order.FilledQuantity, order.FilledAvgPrice, order.FilledAt = domain.OrderStatusFilled, order.Quantity, &price, &filledAt
+		return "paper-close-1", nil
+	}, optionFillReportFn: func(_ context.Context, order *domain.Order) (execution.OptionFillReport, error) {
+		return execution.OptionFillReport{Premium: *order.FilledAvgPrice * order.FilledQuantity * 100, Fee: 0.65}, nil
+	}}
+	strategyID, runID := uuid.New(), uuid.New()
+	optionType, strike := domain.OptionTypeCall, 150.0
+	expiry := time.Date(2027, 12, 17, 0, 0, 0, 0, time.UTC)
+	position := &domain.Position{ID: uuid.New(), StrategyID: &strategyID, MarketType: domain.MarketTypeOptions, Ticker: "AAPL271217C00150000", Side: domain.PositionSideLong, Quantity: 2, AvgEntry: 2.5, AssetClass: domain.AssetClassOption, UnderlyingTicker: "AAPL", OptionType: &optionType, Strike: &strike, Expiry: &expiry, ContractMultiplier: 100}
+	mgr := newTestOptionsManager(broker, orderRepo, positionRepo, tradeRepo, &mockRiskEngine{})
+	if err := mgr.CloseOptionPosition(context.Background(), position, 3.5, runID, "profit target"); err != nil {
+		t.Fatalf("CloseOptionPosition() error = %v", err)
+	}
+	if len(orderRepo.orders) != 1 || orderRepo.orders[0].PositionIntent == nil || *orderRepo.orders[0].PositionIntent != domain.PositionIntentSellToClose {
+		t.Fatalf("close order missing sell-to-close intent: %+v", orderRepo.orders)
+	}
+	if len(positionRepo.updates) != 1 || positionRepo.updates[0].ClosedAt == nil || positionRepo.updates[0].Quantity != 0 || math.Abs(positionRepo.updates[0].RealizedPnL-199.35) > 1e-9 {
+		t.Fatalf("position not closed correctly: %+v", positionRepo.updates)
+	}
+	if len(tradeRepo.trades) != 1 || tradeRepo.trades[0].OpenClose != "close" || tradeRepo.trades[0].ExitReason != "profit target" || tradeRepo.trades[0].Premium != 700 {
+		t.Fatalf("closing trade not persisted: %+v", tradeRepo.trades)
+	}
+}
+
+func TestCloseOptionPositionRejectsIncompletePersistence(t *testing.T) {
+	mgr := newTestOptionsManager(&mockOptionsBroker{}, &mockOrderRepo{}, &mockPositionRepo{}, &mockTradeRepo{}, &mockRiskEngine{})
+	err := mgr.CloseOptionPosition(context.Background(), &domain.Position{AssetClass: domain.AssetClassOption, Quantity: 1}, 2, uuid.New(), "")
+	if err == nil {
+		t.Fatal("expected incomplete persisted contract to fail closed")
 	}
 }
