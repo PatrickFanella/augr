@@ -45,7 +45,7 @@ func NewOptionsProvider(token string, sandbox bool, logger *slog.Logger) *Option
 	}
 	return &OptionsProvider{
 		baseURL: base,
-		token:   token,
+		token:   strings.TrimSpace(token),
 		client:  &http.Client{Timeout: defaultTimeout},
 		logger:  logger,
 	}
@@ -62,6 +62,9 @@ func (p *OptionsProvider) GetOptionsChain(
 ) ([]domain.OptionSnapshot, error) {
 	if p == nil {
 		return nil, errors.New("tradier/options: provider is nil")
+	}
+	if p.token == "" {
+		return nil, errors.New("tradier/options: bearer token is required")
 	}
 	underlying = strings.TrimSpace(strings.ToUpper(underlying))
 	if underlying == "" {
@@ -148,7 +151,10 @@ func (p *OptionsProvider) nearestExpiry(ctx context.Context, underlying string) 
 
 	// Fallback: return the last available.
 	last := resp.Expirations.Date[len(resp.Expirations.Date)-1]
-	t, _ := time.Parse("2006-01-02", last)
+	t, err := time.Parse("2006-01-02", last)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("tradier/options: invalid expiration %q: %w", last, err)
+	}
 	return t, nil
 }
 
