@@ -15,20 +15,29 @@ const (
 	minNativeConfidence             = 0.60
 	microstructureMinLiquidity      = 1000.0
 	microstructureMaxAbsoluteSpread = 0.08
+	minimumNativeEdge               = 0.02
 )
 
 // NativeEvaluation is the deterministic evaluation result used by the native
 // Polymarket executor to decide whether a strategy should enter or hold.
 type NativeEvaluation struct {
-	Signal        domain.PipelineSignal
-	Action        string
-	Side          string
-	EntryPrice    float64
-	Confidence    float64
-	TimeHorizon   string
-	MaxEntryPrice float64
-	Template      string
-	Reason        string
+	Signal          domain.PipelineSignal
+	Action          string
+	Side            string
+	EntryPrice      float64
+	Confidence      float64
+	TimeHorizon     string
+	MaxEntryPrice   float64
+	Template        string
+	Reason          string
+	FairProbability float64
+	Spread          float64
+	Depth           float64
+	GrossEdge       float64
+	NetEdge         float64
+	EvidenceSources []string
+	Calibration     string
+	GateResults     []string
 }
 
 // NativeEvaluator evaluates a strategy and snapshot into a deterministic native
@@ -90,6 +99,10 @@ func (DeterministicNativeEvaluator) Evaluate(ctx context.Context, strategy domai
 	if !snapshotHasFutureEndDate(snapshot) {
 		return holdEvaluation(meta, "polymarket native evaluator: market end date must be in the future"), nil
 	}
+	spread, _ := snapshot.SpreadForSide(side)
+	if confidence-entryPrice-spread < minimumNativeEdge {
+		return holdEvaluation(meta, "polymarket native evaluator: net probability edge below entry threshold"), nil
+	}
 
 	switch template {
 	case "microstructure":
@@ -116,15 +129,23 @@ func (DeterministicNativeEvaluator) Evaluate(ctx context.Context, strategy domai
 	}
 
 	return NativeEvaluation{
-		Signal:        domain.PipelineSignalBuy,
-		Action:        "enter",
-		Side:          side,
-		EntryPrice:    entryPrice,
-		Confidence:    confidence,
-		TimeHorizon:   normalizedTimeHorizon(meta.TimeHorizon),
-		MaxEntryPrice: meta.EntryPriceMax,
-		Template:      template,
-		Reason:        "polymarket native evaluator: template passed deterministic gates",
+		Signal:          domain.PipelineSignalBuy,
+		Action:          "enter",
+		Side:            side,
+		EntryPrice:      entryPrice,
+		Confidence:      confidence,
+		TimeHorizon:     normalizedTimeHorizon(meta.TimeHorizon),
+		MaxEntryPrice:   meta.EntryPriceMax,
+		Template:        template,
+		Reason:          "polymarket native evaluator: template passed deterministic gates",
+		FairProbability: confidence,
+		Spread:          spread,
+		Depth:           snapshot.Liquidity,
+		GrossEdge:       confidence - entryPrice,
+		NetEdge:         confidence - entryPrice - spread,
+		EvidenceSources: append([]string(nil), meta.SourceReferences...),
+		Calibration:     "discovery_conviction_proxy_uncalibrated",
+		GateResults:     []string{"side_valid", "template_supported", "market_open", "quote_executable", "confidence_threshold", "net_edge_threshold", "template_evidence"},
 	}, nil
 }
 
@@ -140,12 +161,13 @@ func snapshotHasFutureEndDate(snapshot Snapshot) bool {
 }
 
 type discoveryMeta struct {
-	Template      string  `json:"template"`
-	Direction     string  `json:"direction"`
-	Conviction    float64 `json:"conviction"`
-	TimeHorizon   string  `json:"time_horizon"`
-	EntryPriceMax float64 `json:"entry_price_max"`
-	Summary       string  `json:"summary"`
+	Template         string   `json:"template"`
+	Direction        string   `json:"direction"`
+	Conviction       float64  `json:"conviction"`
+	TimeHorizon      string   `json:"time_horizon"`
+	EntryPriceMax    float64  `json:"entry_price_max"`
+	Summary          string   `json:"summary"`
+	SourceReferences []string `json:"source_references"`
 }
 
 func parseDiscoveryMeta(raw json.RawMessage) discoveryMeta {
@@ -160,13 +182,17 @@ func parseDiscoveryMeta(raw json.RawMessage) discoveryMeta {
 
 func holdEvaluation(meta discoveryMeta, reason string) NativeEvaluation {
 	return NativeEvaluation{
-		Signal:        domain.PipelineSignalHold,
-		Action:        "hold",
-		Confidence:    meta.Conviction,
-		TimeHorizon:   normalizedTimeHorizon(meta.TimeHorizon),
-		MaxEntryPrice: meta.EntryPriceMax,
-		Template:      normalizeTemplate(meta.Template),
-		Reason:        reason,
+		Signal:          domain.PipelineSignalHold,
+		Action:          "hold",
+		Confidence:      meta.Conviction,
+		TimeHorizon:     normalizedTimeHorizon(meta.TimeHorizon),
+		MaxEntryPrice:   meta.EntryPriceMax,
+		Template:        normalizeTemplate(meta.Template),
+		Reason:          reason,
+		FairProbability: meta.Conviction,
+		EvidenceSources: append([]string(nil), meta.SourceReferences...),
+		Calibration:     "discovery_conviction_proxy_uncalibrated",
+		GateResults:     []string{"deterministic_hold"},
 	}
 }
 

@@ -686,18 +686,24 @@ func (r *realStrategyRunner) runPolymarketNative(ctx context.Context, strategy d
 	}
 	finalSignal := execution.FinalSignal{Signal: signal, Confidence: decision.Confidence}
 	tradingPlan := execution.TradingPlan{
-		Action:      signal,
-		MarketType:  domain.MarketTypePolymarket,
-		Ticker:      strategy.Ticker,
-		EntryType:   decision.EntryType,
-		EntryPrice:  decision.EntryPrice,
-		StopLoss:    decision.StopLoss,
-		TakeProfit:  decision.TakeProfit,
-		TimeHorizon: decision.TimeHorizon,
-		Confidence:  decision.Confidence,
-		Rationale:   decision.Rationale,
-		RiskReward:  decision.RiskReward,
-		Side:        decision.Side,
+		Action:           signal,
+		MarketType:       domain.MarketTypePolymarket,
+		Ticker:           strategy.Ticker,
+		EntryType:        decision.EntryType,
+		EntryPrice:       decision.EntryPrice,
+		StopLoss:         decision.StopLoss,
+		TakeProfit:       decision.TakeProfit,
+		TimeHorizon:      decision.TimeHorizon,
+		Confidence:       decision.Confidence,
+		Rationale:        decision.Rationale,
+		RiskReward:       decision.RiskReward,
+		Side:             decision.Side,
+		ExternalMarketID: snapshot.ConditionID,
+		FairValue:        decision.FairProbability, Spread: decision.Spread, Depth: decision.Depth,
+		GrossEV: decision.GrossEdge, NetEV: decision.NetEdge,
+		Evidence:   predictionNativeEvidence("polymarket", snapshot, decision),
+		Features:   predictionNativeFeatures(decision),
+		RegimeTags: []string{"event_market", "deterministic_execution", decision.Template},
 	}
 	r.recordPortfolioOpportunity(ctx, strategy, &run.ID, finalSignal, tradingPlan)
 	if !r.portfolioAllocatorOwnsPaperExecution(strategy, signal) {
@@ -808,16 +814,22 @@ func (r *realStrategyRunner) runKalshiNative(ctx context.Context, strategy domai
 	}
 	finalSignal := execution.FinalSignal{Signal: signal, Confidence: decision.Confidence}
 	tradingPlan := execution.TradingPlan{
-		Action:      signal,
-		MarketType:  domain.MarketTypeKalshi,
-		Ticker:      strategy.Ticker,
-		EntryType:   decision.EntryType,
-		EntryPrice:  decision.EntryPrice,
-		Confidence:  decision.Confidence,
-		Rationale:   decision.Rationale,
-		RiskReward:  decision.RiskReward,
-		Side:        decision.Side,
-		TimeHorizon: decision.TimeHorizon,
+		Action:           signal,
+		MarketType:       domain.MarketTypeKalshi,
+		Ticker:           strategy.Ticker,
+		EntryType:        decision.EntryType,
+		EntryPrice:       decision.EntryPrice,
+		Confidence:       decision.Confidence,
+		Rationale:        decision.Rationale,
+		RiskReward:       decision.RiskReward,
+		Side:             decision.Side,
+		TimeHorizon:      decision.TimeHorizon,
+		ExternalMarketID: snapshot.Ticker,
+		FairValue:        decision.FairProbability, Spread: decision.Spread, Depth: decision.Depth,
+		GrossEV: decision.GrossEdge, NetEV: decision.NetEdge,
+		Evidence:   predictionNativeEvidence("kalshi", snapshot, decision),
+		Features:   predictionNativeFeatures(decision),
+		RegimeTags: []string{"event_market", "deterministic_execution", decision.Template},
 	}
 	r.recordPortfolioOpportunity(ctx, strategy, &run.ID, finalSignal, tradingPlan)
 	if !r.portfolioAllocatorOwnsPaperExecution(strategy, signal) {
@@ -846,6 +858,25 @@ func (r *realStrategyRunner) runKalshiNative(ctx context.Context, strategy domai
 	}
 
 	return &api.StrategyRunResult{Run: run, Signal: signal, Orders: orders, Positions: positions}, nil
+}
+
+func predictionNativeEvidence(provider string, snapshot, decision any) json.RawMessage {
+	raw, err := json.Marshal(map[string]any{
+		"provider": provider, "snapshot": snapshot, "decision": decision,
+		"llm_role": "advisory_discovery_only", "execution_authority": "deterministic_native_gates",
+	})
+	if err != nil {
+		return json.RawMessage(`{"error":"prediction evidence serialization failed"}`)
+	}
+	return raw
+}
+
+func predictionNativeFeatures(decision any) json.RawMessage {
+	raw, err := json.Marshal(decision)
+	if err != nil {
+		return json.RawMessage(`{}`)
+	}
+	return raw
 }
 
 func (r *realStrategyRunner) persistPolymarketNativeSnapshot(ctx context.Context, runID uuid.UUID, snapshot polymarketexecution.Snapshot) error {

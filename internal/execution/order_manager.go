@@ -48,6 +48,15 @@ type TradingPlan struct {
 	Side             string                `json:"side,omitempty"`
 	DecisionMetadata *DecisionMetadata     `json:"decision_metadata,omitempty"`
 	OptionGreeks     *domain.OptionGreeks  `json:"option_greeks,omitempty"`
+	ExternalMarketID string                `json:"external_market_id,omitempty"`
+	FairValue        float64               `json:"fair_value,omitempty"`
+	Spread           float64               `json:"spread,omitempty"`
+	Depth            float64               `json:"depth,omitempty"`
+	GrossEV          float64               `json:"gross_ev,omitempty"`
+	NetEV            float64               `json:"net_ev,omitempty"`
+	Evidence         json.RawMessage       `json:"evidence,omitempty"`
+	Features         json.RawMessage       `json:"features,omitempty"`
+	RegimeTags       []string              `json:"regime_tags,omitempty"`
 }
 
 // DecisionMetadata captures prompt and LLM usage details for a trading decision.
@@ -637,20 +646,30 @@ func (m *OrderManager) newTradeDecision(
 	status domain.TradeDecisionStatus,
 ) *domain.TradeDecision {
 	decision := &domain.TradeDecision{
-		ID:              uuid.New(),
-		StrategyID:      &strategyID,
-		PipelineRunID:   &runID,
-		MarketType:      marketType.Normalize(),
-		InstrumentKey:   strings.TrimSpace(plan.Ticker),
-		Side:            domain.OrderSide(strings.ToLower(strings.TrimSpace(side))),
-		ExecutablePrice: plan.EntryPrice,
-		ProposedSize:    proposedSize,
-		ApprovedSize:    approvedSize,
-		RiskStatus:      riskStatus,
-		RiskReasons:     append([]string(nil), riskReasons...),
-		Status:          status,
-		CreatedAt:       m.currentTime(),
-		UpdatedAt:       m.currentTime(),
+		ID:               uuid.New(),
+		StrategyID:       &strategyID,
+		PipelineRunID:    &runID,
+		MarketType:       marketType.Normalize(),
+		InstrumentKey:    strings.TrimSpace(plan.Ticker),
+		Side:             domain.OrderSide(strings.ToLower(strings.TrimSpace(side))),
+		ExecutablePrice:  plan.EntryPrice,
+		ExternalMarketID: strings.TrimSpace(plan.ExternalMarketID),
+		Outcome:          strings.ToUpper(strings.TrimSpace(plan.Side)),
+		FairValue:        plan.FairValue,
+		Spread:           plan.Spread,
+		Depth:            plan.Depth,
+		GrossEV:          plan.GrossEV,
+		NetEV:            plan.NetEV,
+		Evidence:         append(json.RawMessage(nil), plan.Evidence...),
+		Features:         append(json.RawMessage(nil), plan.Features...),
+		RegimeTags:       append([]string(nil), plan.RegimeTags...),
+		ProposedSize:     proposedSize,
+		ApprovedSize:     approvedSize,
+		RiskStatus:       riskStatus,
+		RiskReasons:      append([]string(nil), riskReasons...),
+		Status:           status,
+		CreatedAt:        m.currentTime(),
+		UpdatedAt:        m.currentTime(),
 	}
 	if plan.DecisionMetadata != nil {
 		decision.PromptText = plan.DecisionMetadata.PromptText

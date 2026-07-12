@@ -57,15 +57,20 @@ func (e DeterministicNativeExecutor) Execute(ctx context.Context, strategy domai
 	}
 	if decision.Signal != domain.PipelineSignalBuy {
 		return NativeDecision{
-			Signal:        domain.PipelineSignalHold,
-			Action:        decision.Action,
-			Side:          decision.Side,
-			EntryPrice:    decision.EntryPrice,
-			Confidence:    decision.Confidence,
-			TimeHorizon:   decision.TimeHorizon,
-			Reason:        decision.Reason,
-			Rationale:     decision.Reason,
-			MaxEntryPrice: decision.MaxEntryPrice,
+			Signal:          domain.PipelineSignalHold,
+			Action:          decision.Action,
+			Side:            decision.Side,
+			EntryPrice:      decision.EntryPrice,
+			Confidence:      decision.Confidence,
+			TimeHorizon:     decision.TimeHorizon,
+			Reason:          decision.Reason,
+			Rationale:       decision.Reason,
+			MaxEntryPrice:   decision.MaxEntryPrice,
+			FairProbability: decision.FairProbability,
+			Spread:          decision.Spread, Depth: decision.Depth,
+			GrossEdge: decision.GrossEdge, NetEdge: decision.NetEdge,
+			Template: decision.Template, EvidenceSources: decision.EvidenceSources,
+			Calibration: decision.Calibration, GateResults: decision.GateResults,
 		}, nil
 	}
 
@@ -93,18 +98,23 @@ func (e DeterministicNativeExecutor) Execute(ctx context.Context, strategy domai
 	}
 
 	return NativeDecision{
-		Signal:        domain.PipelineSignalBuy,
-		Action:        "enter",
-		Side:          decision.Side,
-		EntryType:     "limit",
-		EntryPrice:    entryPrice,
-		StopLoss:      stopLoss,
-		TakeProfit:    takeProfit,
-		Confidence:    decision.Confidence,
-		TimeHorizon:   decision.TimeHorizon,
-		Reason:        decision.Reason,
-		Rationale:     decision.Reason,
-		RiskReward:    1,
-		MaxEntryPrice: decision.MaxEntryPrice,
+		Signal:          domain.PipelineSignalBuy,
+		Action:          "enter",
+		Side:            decision.Side,
+		EntryType:       "limit",
+		EntryPrice:      entryPrice,
+		StopLoss:        stopLoss,
+		TakeProfit:      takeProfit,
+		Confidence:      decision.Confidence,
+		TimeHorizon:     decision.TimeHorizon,
+		Reason:          decision.Reason,
+		Rationale:       decision.Reason,
+		RiskReward:      1,
+		MaxEntryPrice:   decision.MaxEntryPrice,
+		FairProbability: decision.FairProbability,
+		Spread:          decision.Spread, Depth: decision.Depth,
+		GrossEdge: decision.GrossEdge, NetEdge: decision.NetEdge,
+		Template: decision.Template, EvidenceSources: decision.EvidenceSources,
+		Calibration: decision.Calibration, GateResults: decision.GateResults,
 	}, nil
 }

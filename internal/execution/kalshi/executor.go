@@ -15,6 +15,7 @@ const (
 	minNativeLiquidity  = 1000.0
 	defaultTimeHorizon  = "days"
 	defaultEntryType    = "limit"
+	minimumNativeEdge   = 0.02
 )
 
 var supportedNativeTemplates = map[string]struct{}{
@@ -81,31 +82,45 @@ func (DeterministicNativeExecutor) Execute(ctx context.Context, strategy domain.
 	if maxEntryPrice > 0 && entryPrice > maxEntryPrice {
 		return holdDecisionWithMeta(meta, "kalshi native executor: quote is above configured entry ceiling"), nil
 	}
+	spread, _ := snapshot.SpreadForSide(side)
+	if confidence-entryPrice-spread < minimumNativeEdge {
+		return holdDecisionWithMeta(meta, "kalshi native executor: net probability edge below entry threshold"), nil
+	}
 
 	return NativeDecision{
-		Signal:        domain.PipelineSignalBuy,
-		Action:        "enter",
-		Side:          side,
-		EntryType:     defaultEntryType,
-		EntryPrice:    entryPrice,
-		Confidence:    confidence,
-		TimeHorizon:   normalizedTimeHorizon(meta.TimeHorizon),
-		Reason:        "kalshi native executor: template passed deterministic gates",
-		Rationale:     "kalshi native executor: template passed deterministic gates",
-		RiskReward:    1,
-		MaxEntryPrice: maxEntryPrice,
+		Signal:          domain.PipelineSignalBuy,
+		Action:          "enter",
+		Side:            side,
+		EntryType:       defaultEntryType,
+		EntryPrice:      entryPrice,
+		Confidence:      confidence,
+		TimeHorizon:     normalizedTimeHorizon(meta.TimeHorizon),
+		Reason:          "kalshi native executor: template passed deterministic gates",
+		Rationale:       "kalshi native executor: template passed deterministic gates",
+		RiskReward:      1,
+		MaxEntryPrice:   maxEntryPrice,
+		FairProbability: confidence,
+		Spread:          spread,
+		Depth:           snapshot.liquidityScore(),
+		GrossEdge:       confidence - entryPrice,
+		NetEdge:         confidence - entryPrice - spread,
+		Template:        template,
+		EvidenceSources: append([]string(nil), meta.SourceReferences...),
+		Calibration:     "discovery_conviction_proxy_uncalibrated",
+		GateResults:     []string{"side_valid", "template_supported", "market_active", "quote_executable", "confidence_threshold", "net_edge_threshold"},
 	}, nil
 }
 
 type discoveryMeta struct {
-	Template      string  `json:"template"`
-	Direction     string  `json:"direction"`
-	Confidence    float64 `json:"confidence"`
-	Conviction    float64 `json:"conviction"`
-	TimeHorizon   string  `json:"time_horizon"`
-	EntryPriceMax float64 `json:"entry_price_max"`
-	PriceCeiling  float64 `json:"price_ceiling"`
-	Summary       string  `json:"summary"`
+	Template         string   `json:"template"`
+	Direction        string   `json:"direction"`
+	Confidence       float64  `json:"confidence"`
+	Conviction       float64  `json:"conviction"`
+	TimeHorizon      string   `json:"time_horizon"`
+	EntryPriceMax    float64  `json:"entry_price_max"`
+	PriceCeiling     float64  `json:"price_ceiling"`
+	Summary          string   `json:"summary"`
+	SourceReferences []string `json:"source_references"`
 }
 
 func parseDiscoveryMeta(raw json.RawMessage) (discoveryMeta, bool) {
@@ -147,14 +162,19 @@ func holdDecision(reason string) NativeDecision {
 
 func holdDecisionWithMeta(meta discoveryMeta, reason string) NativeDecision {
 	return NativeDecision{
-		Signal:        domain.PipelineSignalHold,
-		Action:        "hold",
-		Side:          prediction.NormalizeOutcomeSide(meta.Direction),
-		Confidence:    meta.confidence(),
-		TimeHorizon:   normalizedTimeHorizon(meta.TimeHorizon),
-		Reason:        reason,
-		Rationale:     reason,
-		MaxEntryPrice: meta.priceCeiling(),
+		Signal:          domain.PipelineSignalHold,
+		Action:          "hold",
+		Side:            prediction.NormalizeOutcomeSide(meta.Direction),
+		Confidence:      meta.confidence(),
+		TimeHorizon:     normalizedTimeHorizon(meta.TimeHorizon),
+		Reason:          reason,
+		Rationale:       reason,
+		MaxEntryPrice:   meta.priceCeiling(),
+		FairProbability: meta.confidence(),
+		Template:        normalizeTemplate(meta.Template),
+		EvidenceSources: append([]string(nil), meta.SourceReferences...),
+		Calibration:     "discovery_conviction_proxy_uncalibrated",
+		GateResults:     []string{"deterministic_hold"},
 	}
 }
 

@@ -41,6 +41,9 @@ func TestDeterministicNativeExecutor_KalshiBuyYesWhenMetadataValid(t *testing.T)
 	if decision.Side != "YES" || decision.EntryPrice != 0.47 || decision.EntryType != "limit" {
 		t.Fatalf("decision = %+v", decision)
 	}
+	if decision.FairProbability != 0.72 || decision.NetEdge <= 0 || decision.Calibration == "" || len(decision.GateResults) == 0 {
+		t.Fatalf("decision lacks replayable probability evidence: %+v", decision)
+	}
 }
 
 func TestDeterministicNativeExecutor_KalshiHoldWhenMarketClosed(t *testing.T) {
@@ -62,6 +65,22 @@ func TestDeterministicNativeExecutor_KalshiHoldWhenMarketClosed(t *testing.T) {
 	}
 	if decision.Signal != domain.PipelineSignalHold || decision.Action != "hold" {
 		t.Fatalf("decision = %+v", decision)
+	}
+}
+
+func TestDeterministicNativeExecutor_KalshiHoldWithoutNetProbabilityEdge(t *testing.T) {
+	t.Parallel()
+	strategy := kalshiStrategyWithMeta(t, discoveryMeta{Template: "microstructure", Direction: "YES", Confidence: 0.72, EntryPriceMax: 0.80})
+	decision, err := DeterministicNativeExecutor{}.Execute(context.Background(), strategy, Snapshot{
+		Ticker: strategy.Ticker, Title: "Will test happen?", Status: "active",
+		BestBidYes: 0.69, BestAskYes: 0.70, BestBidNo: 0.29, BestAskNo: 0.30,
+		Volume: 1500, CloseTime: time.Now().UTC().Add(48 * time.Hour), FetchedAt: time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if decision.Signal != domain.PipelineSignalHold || decision.Action != "hold" {
+		t.Fatalf("decision = %+v, want deterministic hold", decision)
 	}
 }
 

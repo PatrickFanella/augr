@@ -44,6 +44,12 @@ func TestDeterministicNativeEvaluator_GatesKnownTemplates(t *testing.T) {
 			wantBuy:  false,
 		},
 		{
+			name:     "microstructure hold without net probability edge",
+			strategy: polymarketStrategyWithMeta(t, discoveryMeta{Template: "microstructure", Direction: "YES", Conviction: 0.72, EntryPriceMax: 0.80}),
+			snapshot: func() Snapshot { s := base; s.BestBidYes = 0.69; s.BestAskYes = 0.70; return s }(),
+			wantBuy:  false,
+		},
+		{
 			name:     "resolution edge enter",
 			strategy: polymarketStrategyWithMeta(t, discoveryMeta{Template: "resolution_edge", Direction: "NO", Conviction: 0.7, EntryPriceMax: 0.60}),
 			snapshot: func() Snapshot {
@@ -130,6 +136,9 @@ func TestDeterministicNativeEvaluator_GatesKnownTemplates(t *testing.T) {
 				}
 				if decision.EntryPrice <= 0 {
 					t.Fatalf("decision entry price = %v, want executable quote", decision.EntryPrice)
+				}
+				if decision.FairProbability <= 0 || decision.NetEdge <= 0 || decision.Calibration == "" || len(decision.GateResults) == 0 {
+					t.Fatalf("decision lacks replayable probability evidence: %+v", decision)
 				}
 			} else {
 				if decision.Signal != domain.PipelineSignalHold || decision.Action != "hold" {
