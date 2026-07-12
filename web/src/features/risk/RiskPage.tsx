@@ -32,21 +32,19 @@ function displayEnum(value: string) {
   return value.replaceAll('_', ' ')
 }
 
-function statusTone(value: string, mapping: Record<string, string>) {
-  return mapping[value] ?? 'unknown'
-}
-
 function StatusPill({ value, known }: { value: string; known: string[] }) {
   const normalized = displayEnum(value)
   return <span className={`status-pill ${known.includes(value) ? value : 'unknown'}`}>{known.includes(value) ? normalized : `Unknown: ${normalized}`}</span>
 }
 
 function RiskStatusPanel({ status }: { status: RiskEngineStatus }) {
+  const knownRiskStatuses = ['normal', 'warning', 'breached']
+  const knownBreakerStates = ['open', 'tripped', 'cooldown']
   return (
     <div className="reports-stack">
       <div className="metrics-grid">
-        <div><span className="muted">Risk status</span><strong><span className={`status-pill ${statusTone(status.risk_status, { normal: 'active', warning: 'warning', breached: 'breached' })}`}>{displayEnum(status.risk_status)}</span></strong></div>
-        <div><span className="muted">Circuit breaker</span><strong><span className={`status-pill ${statusTone(status.circuit_breaker.state, { open: 'active', tripped: 'warning', cooldown: 'degraded' })}`}>{displayEnum(status.circuit_breaker.state)}</span></strong></div>
+        <div><span className="muted">Risk status</span><strong><StatusPill value={status.risk_status} known={knownRiskStatuses} /></strong></div>
+        <div><span className="muted">Circuit breaker</span><strong><StatusPill value={status.circuit_breaker.state} known={knownBreakerStates} /></strong></div>
         <div><span className="muted">Kill switch</span><strong><span className={`status-pill ${status.kill_switch.active ? 'breached' : 'active'}`}>{status.kill_switch.active ? 'Active' : 'Inactive'}</span></strong></div>
         <div><span className="muted">Open positions</span><strong>{status.position_limits.current_open_positions ?? '—'} / {status.position_limits.max_concurrent}</strong></div>
       </div>

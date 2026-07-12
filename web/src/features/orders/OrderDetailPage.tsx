@@ -33,7 +33,7 @@ function displayEnum(value?: string) {
 
 function DetailPill({ value, known }: { value: string; known: string[] }) {
   const isKnown = known.includes(value)
-  return <StatusBadge status={isKnown ? normalizeStatus(value) : 'unknown'} label={isKnown ? value : `Unknown: ${value}`} />
+  return <StatusBadge status={isKnown ? normalizeStatus(value) : 'unknown'} label={isKnown ? displayEnum(value) : `Unknown: ${displayEnum(value)}`} />
 }
 
 function OrderSummary({ order }: { order: Order }) {

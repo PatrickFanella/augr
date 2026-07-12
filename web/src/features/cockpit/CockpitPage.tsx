@@ -236,7 +236,9 @@ export function CockpitPage() {
       <StaleBanner show={realtime.status !== 'connected'} message={`Realtime is ${realtime.status}; cockpit data may be stale.`} />
 
       <QueryPanel title="System health" query={health}>{(data) => (
-        <div className="metrics-grid">
+        automation.isError ? (
+          <ErrorState error={automation.error} onRetry={() => void automation.refetch()} />
+        ) : <div className="metrics-grid">
           <dl className="kv-grid">
             <dt>Status</dt><dd><span className={`status-pill ${statusClass(data.status)}`}>{data.status}</span></dd>
             <dt>Database</dt><dd>{data.db}</dd>

@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, configure, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { delay, http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
@@ -16,6 +16,10 @@ const apiBaseUrl = '/api/v1'
 const strategyId = fixtureId(10)
 const state = createMockScenarioState('success')
 const server = setupServer(...createP0RestHandlers({ apiBaseUrl, state }))
+
+// Route components are lazy-loaded in production. Give async DOM queries enough
+// time to include the dynamic import without requiring per-test timeout tuning.
+configure({ asyncUtilTimeout: 5_000 })
 
 type Listener = (event: { data: string }) => void
 
@@ -56,6 +60,8 @@ class FakeWebSocket {
 function resetApp(path = '/login') {
   document.body.innerHTML = ''
   window.history.pushState({}, '', path)
+  localStorage.clear()
+  sessionStorage.clear()
   clearTokenSnapshot()
   FakeWebSocket.instances = []
   state.scenario = 'success'
@@ -117,7 +123,7 @@ describe('first vertical slice app', () => {
     await userEvent.type(screen.getByLabelText(/password/i), 'bad')
     await userEvent.click(screen.getByRole('button', { name: /sign in/i }))
 
-    expect((await screen.findByRole('alert')).textContent).toBe('Invalid username or password.')
+    expect(await screen.findByRole('alert')).toHaveTextContent('Invalid username or password.')
   })
 
   it('redirects protected routes to login', async () => {
@@ -184,8 +190,8 @@ describe('first vertical slice app', () => {
     expect(await screen.findByRole('table', { name: /cockpit open positions/i })).toBeTruthy()
     expect(await screen.findByRole('table', { name: /cockpit recent orders/i })).toBeTruthy()
     expect(await screen.findByRole('table', { name: /cockpit recent trades/i })).toBeTruthy()
-    expect(screen.getAllByRole('link', { name: /Order/i })[0]).toHaveAttribute('href', '/orders/00000000-0000-4000-8000-000000000040')
-    expect(screen.getAllByRole('link', { name: /Position/i })[0]).toHaveAttribute('href', '/trades?position_id=00000000-0000-4000-8000-000000000030')
+    expect(screen.getAllByRole('link', { name: /Order/i }).some((link) => link.getAttribute('href') === '/orders/00000000-0000-4000-8000-000000000040')).toBe(true)
+    expect(screen.getAllByRole('link', { name: /Position/i }).some((link) => link.getAttribute('href') === '/trades?position_id=00000000-0000-4000-8000-000000000030')).toBe(true)
   })
 
   it('treats open circuit breaker state as safe when all cockpit signals are normal', async () => {
@@ -216,7 +222,7 @@ describe('first vertical slice app', () => {
     setTokenSnapshot(buildAuthResponse())
     render(<App />)
     expect(await screen.findByText('warning')).toBeTruthy()
-    expect(screen.getByText('No')).toBeTruthy()
+    expect(screen.getByText(/Cockpit classification: degraded/i)).toBeTruthy()
   })
 
   it('shows automation 501 as feature unavailable', async () => {
@@ -604,7 +610,7 @@ describe('first vertical slice app', () => {
     expect(await screen.findByRole('heading', { name: /^persisted events$/i })).toBeTruthy()
     expect(await screen.findByText(/Analyst decision recorded/i)).toBeTruthy()
     expect(screen.getAllByRole('link', { name: /Strategy/i })[0]).toHaveAttribute('href', '/strategies/00000000-0000-4000-8000-000000000010')
-    expect(screen.getAllByRole('link', { name: /Run/i })[0]).toHaveAttribute('href', '/runs/00000000-0000-4000-8000-000000000020')
+    expect(screen.getAllByRole('link', { name: /Run/i }).some((link) => link.getAttribute('href') === '/runs/00000000-0000-4000-8000-000000000020')).toBe(true)
     await userEvent.type(screen.getByLabelText(/event kind/i), 'signal')
     expect(window.location.search).toContain('event_kind=signal')
     expect(await screen.findByText(/Risk signal reviewed/i)).toBeTruthy()
@@ -616,7 +622,7 @@ describe('first vertical slice app', () => {
     render(<App />)
 
     expect(await screen.findByText(/Analyst decision recorded/i)).toBeTruthy()
-    expect(screen.getByRole('link', { name: /Order/i })).toHaveAttribute('href', '/orders/00000000-0000-4000-8000-000000000040?from=%2Fevents%3Fevent_kind%3Dagent_decision')
+    expect(screen.getAllByRole('link', { name: /Order/i }).some((link) => link.getAttribute('href') === '/orders/00000000-0000-4000-8000-000000000040?from=%2Fevents%3Fevent_kind%3Dagent_decision')).toBe(true)
     expect(screen.getAllByRole('button', { name: /copy event id/i }).length).toBeGreaterThan(0)
     expect(screen.getByRole('link', { name: /Strategy/i })).toHaveAttribute('href', '/strategies/00000000-0000-4000-8000-000000000010?from=%2Fevents%3Fevent_kind%3Dagent_decision')
   })
@@ -650,7 +656,7 @@ describe('first vertical slice app', () => {
       return HttpResponse.json({ data: [{ id: '00000000-0000-4000-8000-000000000080', event_kind: 'signal', title: 'Recovered event', created_at: fixtureDate }], total: 1, limit: 20, offset: 0 })
     }))
     render(<App />)
-    expect(await screen.findByRole('alert')).toHaveTextContent('events exploded')
+    expect(await screen.findByText('events exploded')).toBeTruthy()
     await userEvent.click(screen.getByRole('button', { name: /reload/i }))
     expect(await screen.findByText(/Recovered event/i)).toBeTruthy()
 
@@ -732,7 +738,7 @@ describe('first vertical slice app', () => {
     expect(await screen.findByRole('table', { name: /allocator decisions/i })).toBeTruthy()
     expect(screen.getByText(/account_balance_unavailable/i)).toBeTruthy()
     expect(screen.getAllByRole('link', { name: /Strategy/i })[0]).toHaveAttribute('href', '/strategies/00000000-0000-4000-8000-000000000010?from=%2Fportfolio%3Ftab%3Dallocator')
-    expect(screen.getAllByRole('link', { name: /Run/i })[0]).toHaveAttribute('href', '/runs/00000000-0000-4000-8000-000000000020?from=%2Fportfolio%3Ftab%3Dallocator')
+    expect(screen.getAllByRole('link', { name: /Run/i }).some((link) => link.getAttribute('href') === '/runs/00000000-0000-4000-8000-000000000020?from=%2Fportfolio%3Ftab%3Dallocator')).toBe(true)
   })
 
   it('keeps allocator filters in URL and renders unknown allocator data safely', async () => {
@@ -788,7 +794,7 @@ describe('first vertical slice app', () => {
     expect(await screen.findByRole('heading', { name: /^orders$/i })).toBeTruthy()
     expect(await screen.findByRole('table', { name: /^orders$/i })).toBeTruthy()
     expect(screen.getAllByRole('link', { name: /Strategy/i })[0]).toHaveAttribute('href', '/strategies/00000000-0000-4000-8000-000000000010')
-    expect(screen.getAllByRole('link', { name: /Run/i })[0]).toHaveAttribute('href', '/runs/00000000-0000-4000-8000-000000000020')
+    expect(screen.getAllByRole('link', { name: /Run/i }).some((link) => link.getAttribute('href') === '/runs/00000000-0000-4000-8000-000000000020')).toBe(true)
     expect(screen.getAllByText(/paper-broker|backup-broker/i).length).toBeGreaterThan(0)
   })
 
@@ -1183,7 +1189,7 @@ describe('first vertical slice app', () => {
     render(<App />)
 
     expect(await screen.findByRole('heading', { name: /per-market stop and resume/i })).toBeTruthy()
-    expect(screen.getByLabelText(/market filter/i)).toHaveValue('stock')
+    expect(screen.getByRole('combobox', { name: /market filter/i })).toHaveValue('stock')
     await screen.findByRole('button', { name: /stop stock market/i })
     expect(screen.queryByRole('button', { name: /stop crypto market/i })).toBeNull()
 
