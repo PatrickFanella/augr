@@ -41,9 +41,10 @@ func (r *OrderRepo) Create(ctx context.Context, order *domain.Order) error {
 		`INSERT INTO orders (
 			strategy_id, pipeline_run_id, external_id, ticker, market_type, side, order_type,
 			quantity, limit_price, stop_price, filled_quantity, filled_avg_price,
-			status, broker, submitted_at, filled_at
+			status, broker, submitted_at, filled_at, asset_class, underlying_ticker,
+			option_type, strike, expiry, contract_multiplier, position_intent, leg_group_id
 		)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
 		 RETURNING id, created_at`,
 		order.StrategyID,
 		order.PipelineRunID,
@@ -61,6 +62,14 @@ func (r *OrderRepo) Create(ctx context.Context, order *domain.Order) error {
 		nullString(order.Broker),
 		order.SubmittedAt,
 		order.FilledAt,
+		order.AssetClass,
+		nullString(order.UnderlyingTicker),
+		order.OptionType,
+		order.Strike,
+		order.Expiry,
+		order.ContractMultiplier,
+		order.PositionIntent,
+		order.LegGroupID,
 	)
 
 	if err := row.Scan(&order.ID, &order.CreatedAt); err != nil {
@@ -118,7 +127,15 @@ func (r *OrderRepo) Update(ctx context.Context, order *domain.Order) error {
 		     broker = $14,
 		     submitted_at = $15,
 		     filled_at = $16
-		 WHERE id = $17
+		     , asset_class = $17
+		     , underlying_ticker = $18
+		     , option_type = $19
+		     , strike = $20
+		     , expiry = $21
+		     , contract_multiplier = $22
+		     , position_intent = $23
+		     , leg_group_id = $24
+		 WHERE id = $25
 		 RETURNING id`,
 		order.StrategyID,
 		order.PipelineRunID,
@@ -136,6 +153,14 @@ func (r *OrderRepo) Update(ctx context.Context, order *domain.Order) error {
 		nullString(order.Broker),
 		order.SubmittedAt,
 		order.FilledAt,
+		order.AssetClass,
+		nullString(order.UnderlyingTicker),
+		order.OptionType,
+		order.Strike,
+		order.Expiry,
+		order.ContractMultiplier,
+		order.PositionIntent,
+		order.LegGroupID,
 		order.ID,
 	)
 
@@ -182,7 +207,9 @@ const orderSelectSQL = `SELECT id, strategy_id, pipeline_run_id, external_id, ti
 		order_type, quantity::double precision, limit_price::double precision,
 		stop_price::double precision, filled_quantity::double precision,
 		filled_avg_price::double precision, status, broker, submitted_at,
-		filled_at, created_at
+		filled_at, created_at, asset_class, underlying_ticker, option_type,
+		strike::double precision, expiry, contract_multiplier::double precision,
+		position_intent, leg_group_id
 	 FROM orders`
 
 func (r *OrderRepo) list(ctx context.Context, query string, args []any, op string) ([]domain.Order, error) {
@@ -222,6 +249,7 @@ func scanOrder(sc scanner) (*domain.Order, error) {
 		stopPrice      *float64
 		filledAvgPrice *float64
 		broker         *string
+		underlying     *string
 		submittedAt    *time.Time
 		filledAt       *time.Time
 	)
@@ -245,6 +273,14 @@ func scanOrder(sc scanner) (*domain.Order, error) {
 		&submittedAt,
 		&filledAt,
 		&order.CreatedAt,
+		&order.AssetClass,
+		&underlying,
+		&order.OptionType,
+		&order.Strike,
+		&order.Expiry,
+		&order.ContractMultiplier,
+		&order.PositionIntent,
+		&order.LegGroupID,
 	)
 	if err != nil {
 		return nil, err
@@ -268,6 +304,9 @@ func scanOrder(sc scanner) (*domain.Order, error) {
 	}
 	if broker != nil {
 		order.Broker = *broker
+	}
+	if underlying != nil {
+		order.UnderlyingTicker = *underlying
 	}
 
 	return &order, nil

@@ -35,9 +35,11 @@ func (r *PositionRepo) Create(ctx context.Context, position *domain.Position) er
 		`INSERT INTO positions (
 			strategy_id, ticker, side, quantity, avg_entry,
 			current_price, unrealized_pnl, realized_pnl,
-			stop_loss, take_profit, closed_at
+			stop_loss, take_profit, closed_at, asset_class, underlying_ticker,
+			option_type, strike, expiry, contract_multiplier, leg_group_id,
+			delta, gamma, theta, vega
 		)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
 		 RETURNING id, opened_at`,
 		position.StrategyID,
 		position.Ticker,
@@ -50,6 +52,9 @@ func (r *PositionRepo) Create(ctx context.Context, position *domain.Position) er
 		position.StopLoss,
 		position.TakeProfit,
 		position.ClosedAt,
+		position.AssetClass, nullString(position.UnderlyingTicker), position.OptionType,
+		position.Strike, position.Expiry, position.ContractMultiplier, position.LegGroupID,
+		position.Delta, position.Gamma, position.Theta, position.Vega,
 	)
 
 	if err := row.Scan(&position.ID, &position.OpenedAt); err != nil {
@@ -96,7 +101,10 @@ func (r *PositionRepo) Update(ctx context.Context, position *domain.Position) er
 		     stop_loss = $9,
 		     take_profit = $10,
 		     closed_at = $11
-		 WHERE id = $12
+		     , asset_class = $12, underlying_ticker = $13, option_type = $14
+		     , strike = $15, expiry = $16, contract_multiplier = $17, leg_group_id = $18
+		     , delta = $19, gamma = $20, theta = $21, vega = $22
+		 WHERE id = $23
 		 RETURNING id`,
 		position.StrategyID,
 		position.Ticker,
@@ -109,6 +117,9 @@ func (r *PositionRepo) Update(ctx context.Context, position *domain.Position) er
 		position.StopLoss,
 		position.TakeProfit,
 		position.ClosedAt,
+		position.AssetClass, nullString(position.UnderlyingTicker), position.OptionType,
+		position.Strike, position.Expiry, position.ContractMultiplier, position.LegGroupID,
+		position.Delta, position.Gamma, position.Theta, position.Vega,
 		position.ID,
 	)
 
@@ -155,7 +166,11 @@ const positionSelectSQL = `SELECT p.id, p.strategy_id, s.market_type, p.ticker, 
 		p.quantity::double precision, p.avg_entry::double precision,
 		p.current_price::double precision, p.unrealized_pnl::double precision,
 		p.realized_pnl::double precision, p.stop_loss::double precision,
-		p.take_profit::double precision, p.opened_at, p.closed_at
+		p.take_profit::double precision, p.opened_at, p.closed_at,
+		p.asset_class, p.underlying_ticker, p.option_type, p.strike::double precision,
+		p.expiry, p.contract_multiplier::double precision, p.leg_group_id,
+		p.delta::double precision, p.gamma::double precision, p.theta::double precision,
+		p.vega::double precision
 	 FROM positions p
 	 LEFT JOIN strategies s ON s.id = p.strategy_id`
 
@@ -195,6 +210,7 @@ func scanPosition(sc scanner) (*domain.Position, error) {
 		stopLoss      *float64
 		takeProfit    *float64
 		closedAt      *time.Time
+		underlying    *string
 	)
 
 	err := sc.Scan(
@@ -212,6 +228,10 @@ func scanPosition(sc scanner) (*domain.Position, error) {
 		&takeProfit,
 		&position.OpenedAt,
 		&closedAt,
+		&position.AssetClass, &underlying, &position.OptionType,
+		&position.Strike, &position.Expiry, &position.ContractMultiplier,
+		&position.LegGroupID, &position.Delta, &position.Gamma, &position.Theta,
+		&position.Vega,
 	)
 	if err != nil {
 		return nil, err
@@ -226,6 +246,9 @@ func scanPosition(sc scanner) (*domain.Position, error) {
 	position.StopLoss = stopLoss
 	position.TakeProfit = takeProfit
 	position.ClosedAt = closedAt
+	if underlying != nil {
+		position.UnderlyingTicker = *underlying
+	}
 
 	return &position, nil
 }

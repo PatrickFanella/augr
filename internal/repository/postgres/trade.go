@@ -30,9 +30,10 @@ func NewTradeRepo(pool *pgxpool.Pool) *TradeRepo {
 func (r *TradeRepo) Create(ctx context.Context, trade *domain.Trade) error {
 	row := r.pool.QueryRow(ctx,
 		`INSERT INTO trades (
-			external_id, order_id, position_id, ticker, side, quantity, price, fee, executed_at
+			external_id, order_id, position_id, ticker, side, quantity, price, fee, executed_at,
+			asset_class, open_close, contract_multiplier, premium
 		)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		 RETURNING id, created_at`,
 		nullString(trade.ExternalID),
 		trade.OrderID,
@@ -43,6 +44,10 @@ func (r *TradeRepo) Create(ctx context.Context, trade *domain.Trade) error {
 		trade.Price,
 		trade.Fee,
 		trade.ExecutedAt,
+		trade.AssetClass,
+		nullString(trade.OpenClose),
+		trade.ContractMultiplier,
+		trade.Premium,
 	)
 
 	if err := row.Scan(&trade.ID, &trade.CreatedAt); err != nil {
@@ -74,7 +79,8 @@ func (r *TradeRepo) GetByPosition(ctx context.Context, positionID uuid.UUID, fil
 
 const tradeSelectSQL = `SELECT id, external_id, order_id, position_id, ticker, side,
 		quantity::double precision, price::double precision, fee::double precision,
-		executed_at, created_at
+		executed_at, created_at, asset_class, open_close,
+		contract_multiplier::double precision, premium::double precision
 	 FROM trades`
 
 func (r *TradeRepo) list(ctx context.Context, query string, args []any, op string) ([]domain.Trade, error) {
@@ -109,6 +115,7 @@ func scanTrade(sc scanner) (*domain.Trade, error) {
 		externalID *string
 		orderID    *uuid.UUID
 		positionID *uuid.UUID
+		openClose  *string
 	)
 
 	err := sc.Scan(
@@ -123,6 +130,10 @@ func scanTrade(sc scanner) (*domain.Trade, error) {
 		&trade.Fee,
 		&trade.ExecutedAt,
 		&trade.CreatedAt,
+		&trade.AssetClass,
+		&openClose,
+		&trade.ContractMultiplier,
+		&trade.Premium,
 	)
 	if err != nil {
 		return nil, err
@@ -132,6 +143,9 @@ func scanTrade(sc scanner) (*domain.Trade, error) {
 	trade.PositionID = positionID
 	if externalID != nil {
 		trade.ExternalID = *externalID
+	}
+	if openClose != nil {
+		trade.OpenClose = *openClose
 	}
 
 	return &trade, nil
