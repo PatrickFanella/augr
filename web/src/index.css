@@ -1025,10 +1025,29 @@ tbody tr:hover {
 
 .dialog-backdrop,
 .sidebar-backdrop {
+  appearance: none;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
   position: fixed;
   inset: 0;
   z-index: 35;
   background: rgb(0 0 0 / 0.6);
+}
+
+.activity-toggle {
+  display: none;
+}
+
+.activity-backdrop {
+  appearance: none;
+  background: rgb(0 0 0 / 48%);
+  border: 0;
+  border-radius: 0;
+  inset: 0;
+  padding: 0;
+  position: fixed;
+  z-index: 35;
 }
 
 .dialog-backdrop {
@@ -1132,7 +1151,25 @@ tbody tr:hover {
   }
 
   .activity-drawer {
-    display: none;
+    display: block;
+    height: 100dvh;
+    max-width: min(88vw, 22rem);
+    overflow-y: auto;
+    position: fixed;
+    right: 0;
+    top: 0;
+    transform: translateX(105%);
+    transition: transform var(--transition-normal);
+    width: 22rem;
+    z-index: 40;
+  }
+
+  .activity-drawer.open {
+    transform: translateX(0);
+  }
+
+  .activity-toggle {
+    display: inline-flex;
   }
 
   .detail-grid {

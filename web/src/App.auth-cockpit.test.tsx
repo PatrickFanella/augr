@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 
 import App from '@/App'
 import { setTokenSnapshot } from '@/shared/auth/tokenStore'
-import { buildAuthResponse, buildRiskBreakers, buildRiskStatus, fixtureDate, mockRefreshToken } from '@/test/fixtures'
+import { buildAuthResponse, buildRiskBreakers, buildRiskStatus, buildSettings, fixtureDate, mockRefreshToken } from '@/test/fixtures'
 import { apiBaseUrl, FakeWebSocket, installAppTestHarness, resetApp, server, state } from '@/test/app-harness'
 
 describe('authentication and cockpit', () => {
@@ -57,6 +57,16 @@ describe('authentication and cockpit', () => {
     resetApp('/cockpit')
     render(<App />)
     expect(await screen.findByRole('heading', { name: /sign in/i })).toBeTruthy()
+  })
+
+  it('renders an authenticated 404 without hiding the bad route', async () => {
+    resetApp('/does-not-exist')
+    setTokenSnapshot(buildAuthResponse())
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: /page not found/i })).toBeTruthy()
+    expect(window.location.pathname).toBe('/does-not-exist')
+    expect(screen.getByRole('link', { name: /return to cockpit/i })).toHaveAttribute('href', '/cockpit')
   })
 
   it('handles failed refresh by cleaning up the session', async () => {
@@ -117,8 +127,26 @@ describe('authentication and cockpit', () => {
     expect(await screen.findByRole('table', { name: /cockpit open positions/i })).toBeTruthy()
     expect(await screen.findByRole('table', { name: /cockpit recent orders/i })).toBeTruthy()
     expect(await screen.findByRole('table', { name: /cockpit recent trades/i })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: /open notional exposure/i })).toBeTruthy()
+    expect(screen.getByText(/no historical equity series is available/i)).toBeTruthy()
     expect(screen.getAllByRole('link', { name: /Order/i }).some((link) => link.getAttribute('href') === '/orders/00000000-0000-4000-8000-000000000040')).toBe(true)
     expect(screen.getAllByRole('link', { name: /Position/i }).some((link) => link.getAttribute('href') === '/trades?position_id=00000000-0000-4000-8000-000000000030')).toBe(true)
+  })
+
+  it('reports mixed broker mode and keeps realtime activity reachable', async () => {
+    resetApp('/cockpit')
+    setTokenSnapshot(buildAuthResponse())
+    const settings = buildSettings()
+    server.use(http.get(`${apiBaseUrl}/settings`, () => HttpResponse.json(buildSettings({ system: { ...settings.system, connected_brokers: [{ name: 'paper-broker', paper_mode: true, configured: true }, { name: 'live-broker', paper_mode: false, configured: true }] } }))))
+    render(<App />)
+
+    expect(await screen.findByText(/mixed paper\/live command center/i)).toHaveAttribute('title', 'paper-broker: paper, live-broker: live')
+    const toggle = screen.getByRole('button', { name: /open realtime activity/i })
+    await userEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('complementary', { name: /global realtime activity/i })).toHaveClass('open')
+    await userEvent.keyboard('{Escape}')
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
   })
 
   it('treats open circuit breaker state as safe when all cockpit signals are normal', async () => {

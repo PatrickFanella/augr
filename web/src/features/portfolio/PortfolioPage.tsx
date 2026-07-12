@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Area, AreaChart, ResponsiveContainer, Tooltip } from 'recharts'
 import { RefreshCw } from 'lucide-react'
 
 import { Alert } from '@/components/ui/alert'
@@ -9,9 +8,8 @@ import { PageHeader } from '@/components/ui/page-header'
 import { getAllocationDecisions, getAllocatorDiagnostics, getAllocatorOpportunities, getAllocatorSummary, getOpenPortfolioPositions, getPortfolioSummary } from '@/shared/api/endpoints'
 import { Breadcrumbs, EntityId, EntityLink } from '@/shared/components/EntityLinks'
 import { EmptyState, ErrorState, LastUpdated, LoadingState, StaleBanner } from '@/shared/components/QueryStates'
-import { getChartColors } from '@/lib/chart-theme'
 import { queryKeys } from '@/shared/query/keys'
-import type { AllocationDecision, AllocatorDiagnostics, AllocatorOpportunity, Position } from '@/shared/types/domain'
+import { marketTypes, type AllocationDecision, type AllocatorDiagnostics, type AllocatorOpportunity, type Position } from '@/shared/types/domain'
 import { useRealtime } from '@/shared/websocket/RealtimeProvider'
 
 const pageSize = 20
@@ -234,8 +232,8 @@ function AllocatorPanel({ searchParams, setSearchParams }: { searchParams: URLSe
         <div className="panel-header"><div><h2 id="opportunities-heading">Allocator opportunities</h2><p className="muted">Backend-supported filters: ticker, market type, status, strategy.</p></div>{opportunitiesQuery.data ? <LastUpdated date={opportunitiesQuery.dataUpdatedAt} /> : null}</div>
         <form className="filter-bar" aria-label="Allocator opportunity filters" onSubmit={(event) => event.preventDefault()}>
           <label>Ticker<input value={searchParams.get('ticker') ?? ''} onChange={(event) => updateAllocatorFilters({ ticker: event.target.value.toUpperCase() })} placeholder="AUGR" /></label>
-          <label>Status<input value={searchParams.get('status') ?? ''} onChange={(event) => updateAllocatorFilters({ status: event.target.value })} placeholder="queued" /></label>
-          <label>Market type<input value={searchParams.get('market_type') ?? ''} onChange={(event) => updateAllocatorFilters({ market_type: event.target.value })} placeholder="stock" /></label>
+          <label>Status<select value={searchParams.get('status') ?? ''} onChange={(event) => updateAllocatorFilters({ status: event.target.value })}><option value="">All statuses</option>{['queued', 'selected', 'rejected', 'expired', 'executed'].map((status) => <option key={status} value={status}>{status}</option>)}</select></label>
+          <label>Market type<select value={searchParams.get('market_type') ?? ''} onChange={(event) => updateAllocatorFilters({ market_type: event.target.value })}><option value="">All markets</option>{marketTypes.map((market) => <option key={market} value={market}>{market}</option>)}</select></label>
           <button type="button" onClick={() => updateAllocatorFilters({ ticker: '', status: '', market_type: '' })}>Clear filters</button>
         </form>
         {opportunitiesQuery.isLoading ? <LoadingState label="Loading allocator opportunities…" /> : null}
@@ -248,8 +246,8 @@ function AllocatorPanel({ searchParams, setSearchParams }: { searchParams: URLSe
       <section className="panel" aria-labelledby="decisions-heading">
         <div className="panel-header"><div><h2 id="decisions-heading">Allocation decisions</h2><p className="muted">Recent allocator decisions are read-only diagnostics. Created orders are linked in later slices.</p></div>{decisionsQuery.data ? <LastUpdated date={decisionsQuery.dataUpdatedAt} /> : null}</div>
         <form className="filter-bar" aria-label="Allocation decision filters" onSubmit={(event) => event.preventDefault()}>
-          <label>Mode<input value={searchParams.get('mode') ?? ''} onChange={(event) => updateAllocatorFilters({ mode: event.target.value })} placeholder="shadow" /></label>
-          <label>Action<input value={searchParams.get('action') ?? ''} onChange={(event) => updateAllocatorFilters({ action: event.target.value })} placeholder="select" /></label>
+          <label>Mode<select value={searchParams.get('mode') ?? ''} onChange={(event) => updateAllocatorFilters({ mode: event.target.value })}><option value="">All modes</option><option value="shadow">shadow</option><option value="paper">paper</option></select></label>
+          <label>Action<select value={searchParams.get('action') ?? ''} onChange={(event) => updateAllocatorFilters({ action: event.target.value })}><option value="">All actions</option>{['shadow_selected', 'shadow_rejected', 'paper_order_intent', 'execution_rejected', 'executed'].map((action) => <option key={action} value={action}>{action}</option>)}</select></label>
           <button type="button" onClick={() => updateAllocatorFilters({ mode: '', action: '' })}>Clear filters</button>
         </form>
         {decisionsQuery.isLoading ? <LoadingState label="Loading allocation decisions…" /> : null}
@@ -280,11 +278,6 @@ export function PortfolioPage() {
   const total = positionsQuery.data?.total
   const currentOffset = filters.offset ?? 0
   const hasNext = total === undefined ? positions.length === pageSize : currentOffset + pageSize < total
-  const portfolioPnl = (summaryQuery.data?.unrealized_pnl ?? 0) + (summaryQuery.data?.realized_pnl ?? 0)
-  const pnlSparklineData = summaryQuery.data ? [
-    { name: 'Unrealized', value: summaryQuery.data.unrealized_pnl },
-    { name: 'Realized', value: summaryQuery.data.realized_pnl },
-  ] : []
 
   useEffect(() => {
     const latest = realtime.events[0]
@@ -346,21 +339,15 @@ export function PortfolioPage() {
       {summaryQuery.error ? <ErrorState error={summaryQuery.error} onRetry={() => void summaryQuery.refetch()} /> : null}
 
       {summaryQuery.data ? (
-        <div className="chart-container" aria-label="Portfolio P/L chart">
-          <div className="chart-title">Portfolio P/L</div>
-          <ResponsiveContainer width="100%" height={88}>
-            <AreaChart data={pnlSparklineData}>
-              <defs>
-                <linearGradient id="portfolioPnlGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={portfolioPnl >= 0 ? getChartColors().success : getChartColors().danger} stopOpacity={0.4} />
-                  <stop offset="95%" stopColor={portfolioPnl >= 0 ? getChartColors().success : getChartColors().danger} stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <Tooltip formatter={(value) => money(Number(value ?? 0))} />
-              <Area type="monotone" dataKey="value" stroke={portfolioPnl >= 0 ? getChartColors().success : getChartColors().danger} fill="url(#portfolioPnlGradient)" dot={false} strokeWidth={2} />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
+        <section className="panel" aria-labelledby="portfolio-pnl-composition">
+          <h2 id="portfolio-pnl-composition">Current P/L composition</h2>
+          <p className="muted">This API provides a current snapshot, not a historical equity curve. Values below are not presented as a time series.</p>
+          <dl className="kv-grid">
+            <dt>Unrealized</dt><dd>{money(summaryQuery.data.unrealized_pnl)}</dd>
+            <dt>Realized</dt><dd>{money(summaryQuery.data.realized_pnl)}</dd>
+            <dt>Total</dt><dd>{money(summaryQuery.data.unrealized_pnl + summaryQuery.data.realized_pnl)}</dd>
+          </dl>
+        </section>
       ) : null}
 
       <section className="panel" aria-labelledby="open-positions-heading">

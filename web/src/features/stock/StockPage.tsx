@@ -72,7 +72,7 @@ export function StockPage() {
   return (
     <div className="detail-stack">
       <Breadcrumbs items={[{ label: 'Cockpit', to: '/cockpit' }, { label: ticker }]} />
-      <PageHeader eyebrow="Ticker detail" title={ticker} description="Aggregated position, trade, run, and strategy activity for this symbol." actions={<span className="status-pill active">Live</span>} />
+      <PageHeader eyebrow="Ticker detail" title={ticker} description="Aggregated position, trade, run, and strategy activity for this symbol." actions={<span className="status-pill unknown">Read-only snapshot</span>} />
 
       <section className="metrics-grid" aria-label={`${ticker} summary`}>
         <article className="panel"><p className="eyebrow">Open positions</p><strong>{positionsQuery.data ? positions.length : '—'}</strong></article>

@@ -3,6 +3,7 @@ import { createBrowserRouter, Navigate } from 'react-router-dom'
 
 import { AppShell } from '@/app/layout/AppShell'
 import { ProtectedRoute } from '@/app/router/ProtectedRoute'
+import { NotFoundPage, RouteErrorPage } from '@/app/router/RouteStatePages'
 import { LoadingState } from '@/shared/components/QueryStates'
 import { LoginPage } from '@/features/auth-login/LoginPage'
 
@@ -71,6 +72,7 @@ export function createAppRouter() {
       children: [
         {
           element: <AppShell />,
+          errorElement: <RouteErrorPage />,
           children: [
             { path: '/', element: <Navigate to="/cockpit" replace /> },
             { path: '/automation', element: withSuspense(<AutomationPage />) },
@@ -89,10 +91,10 @@ export function createAppRouter() {
             { path: '/strategies/:id/edit', element: withSuspense(<StrategyEditPage />) },
             { path: '/strategies/:id', element: withSuspense(<StrategyDetailPage />) },
             { path: '/trades', element: withSuspense(<TradesListPage />) },
+            { path: '*', element: <NotFoundPage /> },
           ],
         },
       ],
     },
-    { path: '*', element: <Navigate to="/cockpit" replace /> },
   ])
 }

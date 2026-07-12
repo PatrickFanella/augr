@@ -14,6 +14,7 @@ import {
   Sun,
   Moon,
   ChevronRight,
+  Activity,
 } from 'lucide-react';
 
 import { useTheme } from '@/app/providers/theme-context';
@@ -64,16 +65,28 @@ export function AppShell() {
     queryFn: ({ signal }) => getSettings(signal),
     enabled: auth.status === 'authenticated',
   });
-  const broker = settings.data?.system.connected_brokers.find((item) => item.configured);
-  const mode = broker?.paper_mode === false ? 'Live' : 'Paper';
+  const configuredBrokers = settings.data?.system.connected_brokers.filter((item) => item.configured) ?? [];
+  const brokerModes = new Set(configuredBrokers.map((broker) => broker.paper_mode === false ? 'live' : 'paper'));
+  const mode = configuredBrokers.length === 0 ? 'Mode unknown' : brokerModes.size > 1 ? 'Mixed paper/live' : brokerModes.has('live') ? 'Live' : 'Paper';
 
   const [isCollapsed, setIsCollapsed] = useState(getInitialCollapsedState);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(getInitialMobileState);
+  const [isActivityOpen, setIsActivityOpen] = useState(false);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, String(isCollapsed));
   }, [isCollapsed]);
+
+  useEffect(() => {
+    const closeOverlays = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setIsMobileOpen(false);
+      setIsActivityOpen(false);
+    };
+    window.addEventListener('keydown', closeOverlays);
+    return () => window.removeEventListener('keydown', closeOverlays);
+  }, []);
 
   useEffect(() => {
     if (typeof window.matchMedia !== 'function') {
@@ -130,7 +143,7 @@ export function AppShell() {
 
       {/* Mobile backdrop */}
       {isMobile && isMobileOpen && (
-        <div className="sidebar-backdrop" onClick={handleSidebarClose} />
+        <button type="button" className="sidebar-backdrop" onClick={handleSidebarClose} aria-label="Close navigation" />
       )}
 
       <aside
@@ -185,11 +198,21 @@ export function AppShell() {
               <p className="eyebrow">
                 ~/augr/{settings.data?.system.environment ?? 'environment-unknown'}
               </p>
-              <strong>{mode} command center</strong>
+              <strong title={configuredBrokers.map((broker) => `${broker.name}: ${broker.paper_mode === false ? 'live' : 'paper'}`).join(', ')}>{mode} command center</strong>
             </div>
           </div>
           <div className="header-cluster">
             <span className={`status-pill ${realtime.status}`}>Realtime {realtime.status}</span>
+            <button
+              type="button"
+              className="sidebar-toggle activity-toggle"
+              onClick={() => setIsActivityOpen((open) => !open)}
+              aria-label={isActivityOpen ? 'Close realtime activity' : 'Open realtime activity'}
+              aria-expanded={isActivityOpen}
+              aria-controls="global-activity-drawer"
+            >
+              <Activity size={18} />
+            </button>
             <button
               type="button"
               className="sidebar-toggle"
@@ -208,7 +231,8 @@ export function AppShell() {
         <main className="content" id="main-content" tabIndex={-1}>
           <Outlet />
         </main>
-        <aside className="activity-drawer" aria-label="Global realtime activity">
+        {isActivityOpen ? <button type="button" className="activity-backdrop" onClick={() => setIsActivityOpen(false)} aria-label="Close realtime activity" /> : null}
+        <aside id="global-activity-drawer" className={`activity-drawer ${isActivityOpen ? 'open' : ''}`} aria-label="Global realtime activity">
           <h2>Activity</h2>
           {realtime.events.length === 0 ? <p>No realtime events yet.</p> : null}
           <ul aria-live="polite">

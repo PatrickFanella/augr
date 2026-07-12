@@ -1,14 +1,12 @@
 import { useEffect, useId, type ReactNode } from 'react'
 import { useQuery, type UseQueryResult } from '@tanstack/react-query'
 import { RefreshCw } from 'lucide-react'
-import { AreaChart, Area, ResponsiveContainer, Tooltip, PieChart, Pie, Cell } from 'recharts'
 
 import { PageHeader } from '@/components/ui/page-header'
 import { getAutomationHealth, getHealth, getOpenPortfolioPositions, getOrders, getPortfolioSummary, getRiskBreakers, getRiskCockpit, getRiskStatus, getRunningRuns, getTrades } from '@/shared/api/endpoints'
 import { isApiClientError } from '@/shared/api/errors'
 import { Breadcrumbs, EntityLink } from '@/shared/components/EntityLinks'
 import { ErrorState, LastUpdated, LoadingState, StaleBanner } from '@/shared/components/QueryStates'
-import { getChartColors } from '@/lib/chart-theme'
 import { queryKeys } from '@/shared/query/keys'
 import type { HealthStatusResponse, Order, PipelineRun, Position, RiskBreakersResponse, RiskCockpitSummary, RiskEngineStatus, Trade } from '@/shared/types/domain'
 import { useRealtime } from '@/shared/websocket/RealtimeProvider'
@@ -168,8 +166,11 @@ export function CockpitPage() {
   const hasWidgetError = [health, portfolio, openPositions, runs, orders, trades, automation].some((query) => query.isError && !(isApiClientError(query.error) && query.error.kind === 'not_implemented'))
   const classification = classifyCockpit({ risk: risk.data, cockpit: riskCockpit.data, breakers: breakers.data, health: health.data, automationHealthy: automation.data?.healthy, realtimeStatus: realtime.status, hasWidgetError })
   const portfolioPnl = portfolio.data ? portfolio.data.unrealized_pnl + portfolio.data.realized_pnl : 0
-  const pnlSparklineData = portfolio.data ? [{ name: 'P/L', unrealized: portfolio.data.unrealized_pnl, realized: portfolio.data.realized_pnl }] : []
-  const portfolioDistribution = openPositions.data?.data?.slice(0, 6).map((position, index) => ({ name: position.ticker, value: Math.max(Math.abs(position.unrealized_pnl ?? 0), 1), fill: getChartColors().distribution[index % 6] })) ?? []
+  const positionNotional = Array.from((openPositions.data?.data?.slice(0, 6) ?? []).reduce((totals, position) => {
+    const notional = Math.abs(position.quantity * (position.current_price ?? position.avg_entry) * (position.contract_multiplier ?? 1))
+    totals.set(position.ticker, (totals.get(position.ticker) ?? 0) + notional)
+    return totals
+  }, new Map<string, number>()), ([ticker, notional]) => ({ ticker, notional }))
 
   useEffect(() => {
     send({ action: 'subscribe_all' })
@@ -197,38 +198,13 @@ export function CockpitPage() {
           </dl>
         </div>
         <div className="metrics-grid">
-          <div style={{ minHeight: 120 }}>
-            <ResponsiveContainer width="100%" height={120}>
-              <AreaChart data={pnlSparklineData}>
-                <defs>
-                  <linearGradient id="unrealizedPnlGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={getChartColors().accent} stopOpacity={0.45} />
-                    <stop offset="95%" stopColor={getChartColors().accent} stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="realizedPnlGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={getChartColors().accentSecondary} stopOpacity={0.45} />
-                    <stop offset="95%" stopColor={getChartColors().accentSecondary} stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <Tooltip formatter={(value) => formatCurrency(Number(value ?? 0))} />
-                <Area type="monotone" dataKey="unrealized" stroke={getChartColors().accent} fill="url(#unrealizedPnlGradient)" strokeWidth={2} dot={false} />
-                <Area type="monotone" dataKey="realized" stroke={getChartColors().accentSecondary} fill="url(#realizedPnlGradient)" strokeWidth={2} dot={false} />
-              </AreaChart>
-            </ResponsiveContainer>
+          <div>
+            <h2>Current P&amp;L snapshot</h2>
+            <p className="muted">Current totals only. No historical equity series is available from this endpoint.</p>
           </div>
-          <div style={{ minHeight: 120 }}>
-            {portfolioDistribution.length > 0 ? (
-              <ResponsiveContainer width="100%" height={120}>
-                <PieChart>
-                  <Pie data={portfolioDistribution} dataKey="value" nameKey="name" innerRadius={26} outerRadius={48} paddingAngle={2}>
-                    {portfolioDistribution.map((entry) => <Cell key={entry.name} fill={entry.fill} />)}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className={`status-pill ${pnlClass(portfolioPnl)}`}>P/L {formatCurrency(portfolioPnl)}</div>
-            )}
+          <div>
+            <h2>Open notional exposure</h2>
+            {positionNotional.length > 0 ? <dl className="kv-grid">{positionNotional.map((position) => <div key={position.ticker}><dt>{position.ticker}</dt><dd>{formatCurrency(position.notional)}</dd></div>)}</dl> : <p>No open position exposure.</p>}
           </div>
         </div>
       </section>
@@ -273,27 +249,12 @@ export function CockpitPage() {
       )}</QueryPanel>
 
       <QueryPanel title="Portfolio summary" query={portfolio}>{(data) => (
-        <div className="metrics-grid">
-          <dl className="kv-grid">
+        <dl className="kv-grid">
             <dt>Open positions</dt><dd>{data.open_positions}</dd>
             <dt>Unrealized P&amp;L</dt><dd><span className={`status-pill ${pnlClass(data.unrealized_pnl)}`}>{formatCurrency(data.unrealized_pnl)}</span></dd>
             <dt>Realized P&amp;L</dt><dd><span className={`status-pill ${pnlClass(data.realized_pnl)}`}>{formatCurrency(data.realized_pnl)}</span></dd>
-          </dl>
-          <div style={{ minHeight: 72 }}>
-            <ResponsiveContainer width="100%" height={72}>
-              <AreaChart data={[{ name: 'P/L', unrealized: data.unrealized_pnl, realized: data.realized_pnl }]}>
-                <defs>
-                  <linearGradient id="portfolioMiniGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={data.unrealized_pnl + data.realized_pnl >= 0 ? getChartColors().success : getChartColors().danger} stopOpacity={0.45} />
-                    <stop offset="95%" stopColor={data.unrealized_pnl + data.realized_pnl >= 0 ? getChartColors().success : getChartColors().danger} stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <Tooltip formatter={(value) => formatCurrency(Number(value ?? 0))} />
-                <Area type="monotone" dataKey="unrealized" stroke={data.unrealized_pnl >= 0 ? getChartColors().success : getChartColors().danger} fill="url(#portfolioMiniGradient)" dot={false} strokeWidth={2} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
+            <dt>Total P&amp;L</dt><dd><span className={`status-pill ${pnlClass(data.unrealized_pnl + data.realized_pnl)}`}>{formatCurrency(data.unrealized_pnl + data.realized_pnl)}</span></dd>
+        </dl>
       )}</QueryPanel>
 
       <QueryPanel title="Open positions" query={openPositions} wide>{(data) => <OpenPositions positions={data.data} />}</QueryPanel>
