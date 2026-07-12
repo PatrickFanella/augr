@@ -158,6 +158,16 @@ settler; live activation remains independently gated and disabled by default.
 Exit gate: backtests are reproducible, assumptions are explicit, and divergence
 and calibration are measurable.
 
+Status: complete. Rules simulations now consume persisted fill assumptions,
+support configurable trailing stops, reject ambiguous bar order, and execute
+close-derived signals no earlier than the next bar. Options simulations apply
+their dedicated spread-slippage and per-contract fee model. Every run stores a
+versioned hash over exact bars and assumptions. Deterministic runs exclude LLM
+review and random options variants, in-sample rules runs cannot auto-promote a
+strategy, the divergence API reads persisted backtest/paper evidence, and
+calibration reports segment by strategy, market, provider, regime, and
+confidence decile.
+
 ## Phase 8 — Operations and release readiness
 
 - Implement capability-level readiness, actionable metrics/alerts, correlated

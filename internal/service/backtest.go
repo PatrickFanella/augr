@@ -127,13 +127,9 @@ func (svc *BacktestService) runRulesEngineBacktest(
 		FillConfig:      fillConfig,
 		TrailingStopPct: config.Simulation.TrailingStopPct,
 	}
-	if svc.llmProvider != nil {
-		reviewer := rules.NewSignalReviewer(svc.llmProvider, "", svc.logger)
-		orchConfig.EntryReviewFunc = func(ctx context.Context, plan *agent.TradingPlan, state *agent.PipelineState, bar domain.OHLCV, cash float64) (bool, string) {
-			return reviewer.Review(ctx, plan, state, bar, cash)
-		}
-		orchConfig.ExitReviewFunc = reviewer.ReviewExit
-	}
+	// Rules backtests stay deterministic. LLM review belongs in separately
+	// captured experiments; allowing it here would make identical input hashes
+	// produce different trades.
 	orch, err := backtest.NewOrchestrator(orchConfig, allBars, pipeline, svc.logger)
 	if err != nil {
 		return nil, &ServiceError{Status: 500, Message: "failed to create backtest orchestrator: " + err.Error()}
@@ -162,22 +158,6 @@ func (svc *BacktestService) runRulesEngineBacktest(
 	run, svcErr := svc.persistBacktestRun(ctx, actor, config.ID, strategy.Ticker, metricsJSON, tradeLogJSON, equityCurveJSON, start, duration, result.PromptVersion, result.PromptVersionHash, result.SimulationVersion, result.InputHash)
 	if svcErr != nil {
 		return nil, svcErr
-	}
-
-	if strategy.Status == domain.StrategyStatusInactive &&
-		result.Metrics.SharpeRatio > 0 &&
-		len(result.Trades) > 0 {
-		strategy.Status = domain.StrategyStatusActive
-		if err := svc.strategies.Update(ctx, strategy); err != nil {
-			svc.logger.Warn("backtest: failed to auto-activate strategy",
-				"strategy_id", strategy.ID, "error", err)
-		} else {
-			svc.logger.Info("backtest: auto-activated strategy after passing backtest",
-				"strategy_id", strategy.ID,
-				"sharpe_ratio", result.Metrics.SharpeRatio,
-				"total_trades", len(result.Trades),
-			)
-		}
 	}
 
 	return &run, nil

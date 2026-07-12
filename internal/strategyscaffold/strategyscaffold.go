@@ -241,6 +241,7 @@ func runOptionsPaperBacktest(ctx context.Context, strategy domain.Strategy, opti
 		// Use an explicit positive value so paper backtests do not trigger
 		// RunOptionsSweep's Variations <= 0 fallback behavior.
 		Variations: 1,
+		BaseOnly:   true,
 		FillConfig: fillConfig,
 	}
 	results, err := optionsdiscovery.RunOptionsSweep(ctx, optionsCfg, sweepCfg, discoverypkg.DefaultScoringConfig(), logger)

@@ -26,6 +26,8 @@ type OptionsSweepConfig struct {
 	InitialCash float64
 	Variations  int
 	FillConfig  backtest.OptionsFillConfig
+	BaseOnly    bool
+	RandomSeed  int64
 }
 
 // OptionsBacktestArtifacts captures the full outputs of a single synthetic options backtest.
@@ -63,12 +65,18 @@ func RunOptionsSweep(
 		cfg.InitialCash = 100_000
 	}
 
-	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	seed := cfg.RandomSeed
+	if seed == 0 {
+		seed = time.Now().UnixNano()
+	}
+	rng := rand.New(rand.NewSource(seed))
 
 	variants := make([]rules.OptionsRulesConfig, 0, cfg.Variations+1)
 	variants = append(variants, baseConfig)
-	for i := 0; i < cfg.Variations; i++ {
-		variants = append(variants, mutateOptionsConfig(baseConfig, rng))
+	if !cfg.BaseOnly {
+		for i := 0; i < cfg.Variations; i++ {
+			variants = append(variants, mutateOptionsConfig(baseConfig, rng))
+		}
 	}
 
 	var bars []domain.OHLCV

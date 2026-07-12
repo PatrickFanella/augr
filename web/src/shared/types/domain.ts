@@ -523,6 +523,8 @@ export type BacktestRun = {
   duration: number
   prompt_version: string
   prompt_version_hash: string
+  simulation_version?: string
+  input_hash?: string
   created_at: ISODate
   updated_at: ISODate
 }

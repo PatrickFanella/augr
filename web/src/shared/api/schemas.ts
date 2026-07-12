@@ -599,7 +599,7 @@ export const backtestConfigSchema = z.object({
 }).passthrough()
 
 export const backtestRunSchema = z.object({
-  id: uuidSchema, backtest_config_id: uuidSchema, metrics: rawJsonSchema, trade_log: rawJsonSchema, equity_curve: rawJsonSchema, run_timestamp: isoDateSchema, duration: z.number(), prompt_version: z.string(), prompt_version_hash: z.string(), created_at: isoDateSchema, updated_at: isoDateSchema,
+  id: uuidSchema, backtest_config_id: uuidSchema, metrics: rawJsonSchema, trade_log: rawJsonSchema, equity_curve: rawJsonSchema, run_timestamp: isoDateSchema, duration: z.number(), prompt_version: z.string(), prompt_version_hash: z.string(), simulation_version: z.string().optional(), input_hash: z.string().optional(), created_at: isoDateSchema, updated_at: isoDateSchema,
 }).passthrough()
 
 export const tradeDecisionSchema = z.object({
