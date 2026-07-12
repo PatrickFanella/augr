@@ -143,10 +143,11 @@ export function AppShell() {
 
       {/* Mobile backdrop */}
       {isMobile && isMobileOpen && (
-        <button type="button" className="sidebar-backdrop" onClick={handleSidebarClose} aria-label="Close navigation" />
+        <button type="button" className="sidebar-backdrop" onClick={handleSidebarClose} aria-label="Dismiss navigation overlay" />
       )}
 
       <aside
+        id="primary-navigation"
         className={`sidebar ${isMobile ? 'mobile' : ''} ${isMobileOpen ? 'open' : ''}`}
         aria-label="Primary navigation"
       >
@@ -174,13 +175,14 @@ export function AppShell() {
               className="sidebar-toggle"
               onClick={toggleSidebar}
               aria-label={
-                isMobileOpen
-                  ? 'Close sidebar'
+                isMobile
+                  ? isMobileOpen ? 'Close navigation' : 'Open navigation'
                   : sidebarCollapsed
                     ? 'Expand sidebar'
                     : 'Collapse sidebar'
               }
-              aria-expanded={!sidebarCollapsed}
+              aria-expanded={isMobile ? isMobileOpen : !sidebarCollapsed}
+              aria-controls="primary-navigation"
             >
               {isMobile ? (
                 isMobileOpen ? (

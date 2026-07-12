@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { delay, http, HttpResponse } from 'msw'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import App from '@/App'
 import { setTokenSnapshot } from '@/shared/auth/tokenStore'
@@ -147,6 +147,34 @@ describe('authentication and cockpit', () => {
     expect(screen.getByRole('complementary', { name: /global realtime activity/i })).toHaveClass('open')
     await userEvent.keyboard('{Escape}')
     expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('exposes truthful mobile navigation state and dismisses its overlay', async () => {
+    const listeners = new Set<(event: MediaQueryListEvent) => void>()
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query === '(max-width: 840px)',
+      media: query,
+      onchange: null,
+      addEventListener: (_type: string, listener: (event: MediaQueryListEvent) => void) => listeners.add(listener),
+      removeEventListener: (_type: string, listener: (event: MediaQueryListEvent) => void) => listeners.delete(listener),
+      addListener: () => undefined,
+      removeListener: () => undefined,
+      dispatchEvent: () => true,
+    }))
+    resetApp('/cockpit')
+    setTokenSnapshot(buildAuthResponse())
+    render(<App />)
+
+    const open = await screen.findByRole('button', { name: /open navigation/i })
+    expect(open).toHaveAttribute('aria-expanded', 'false')
+    expect(open).toHaveAttribute('aria-controls', 'primary-navigation')
+    await userEvent.click(open)
+    const close = screen.getByRole('button', { name: /close navigation/i })
+    expect(close).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByLabelText(/primary navigation/i)).toHaveClass('open')
+    await userEvent.keyboard('{Escape}')
+    expect(await screen.findByRole('button', { name: /open navigation/i })).toHaveAttribute('aria-expanded', 'false')
+    vi.stubGlobal('matchMedia', undefined)
   })
 
   it('treats open circuit breaker state as safe when all cockpit signals are normal', async () => {
