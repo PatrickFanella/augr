@@ -104,6 +104,20 @@ func (m *OptionsOrderManager) ProcessOptionSignal(
 		return nil
 	}
 
+	contract, err := domain.ParseOCC(plan.Ticker)
+	if err != nil {
+		return fmt.Errorf("options_manager: explicit OCC contract is required: %w", err)
+	}
+	if plan.PositionSize <= 0 {
+		return fmt.Errorf("options_manager: contract quantity must be greater than zero")
+	}
+	if m.riskEngine == nil {
+		return fmt.Errorf("options_manager: risk engine is required")
+	}
+	if m.orderRepo == nil {
+		return fmt.Errorf("options_manager: order repository is required")
+	}
+
 	// 1. Kill switch check.
 	active, err := m.riskEngine.IsKillSwitchActive(ctx)
 	if err != nil {
@@ -112,6 +126,13 @@ func (m *OptionsOrderManager) ProcessOptionSignal(
 	if active {
 		m.logger.WarnContext(ctx, "options: kill switch active", "ticker", plan.Ticker)
 		return fmt.Errorf("options_manager: kill switch active, order blocked for %s", plan.Ticker)
+	}
+	marketActive, err := m.riskEngine.IsMarketKillSwitchActive(ctx, domain.MarketTypeOptions)
+	if err != nil {
+		return fmt.Errorf("options_manager: options kill switch check: %w", err)
+	}
+	if marketActive {
+		return fmt.Errorf("options_manager: options kill switch active, order blocked for %s", plan.Ticker)
 	}
 
 	if m.liveTrading {
@@ -128,17 +149,23 @@ func (m *OptionsOrderManager) ProcessOptionSignal(
 	intent := inferPositionIntent(side, true) // opening trade
 
 	order := &domain.Order{
-		ID:             uuid.New(),
-		StrategyID:     &strategyID,
-		PipelineRunID:  &runID,
-		Ticker:         plan.Ticker,
-		Side:           side,
-		OrderType:      entryTypeToOrderType(plan.EntryType),
-		Quantity:       plan.PositionSize,
-		Status:         domain.OrderStatusPending,
-		AssetClass:     domain.AssetClassOption,
-		PositionIntent: &intent,
-		CreatedAt:      now,
+		ID:                 uuid.New(),
+		StrategyID:         &strategyID,
+		PipelineRunID:      &runID,
+		Ticker:             plan.Ticker,
+		MarketType:         domain.MarketTypeOptions,
+		Side:               side,
+		OrderType:          entryTypeToOrderType(plan.EntryType),
+		Quantity:           plan.PositionSize,
+		Status:             domain.OrderStatusPending,
+		AssetClass:         domain.AssetClassOption,
+		UnderlyingTicker:   contract.Underlying,
+		OptionType:         &contract.OptionType,
+		Strike:             &contract.Strike,
+		Expiry:             &contract.Expiry,
+		ContractMultiplier: contract.Multiplier,
+		PositionIntent:     &intent,
+		CreatedAt:          now,
 	}
 
 	if plan.EntryPrice > 0 {
@@ -148,9 +175,24 @@ func (m *OptionsOrderManager) ProcessOptionSignal(
 		order.StopPrice = &plan.StopLoss
 	}
 
+	approved, reason, err := m.riskEngine.CheckPreTrade(ctx, order, risk.Portfolio{})
+	if err != nil {
+		return fmt.Errorf("options_manager: pre-trade risk check: %w", err)
+	}
+	if !approved {
+		return fmt.Errorf("options_manager: pre-trade risk rejected %s: %s", plan.Ticker, reason)
+	}
+
 	// 3. Persist the pending order.
 	if err := m.orderRepo.Create(ctx, order); err != nil {
 		return fmt.Errorf("options_manager: create order: %w", err)
+	}
+	if m.broker == nil {
+		order.Status = domain.OrderStatusRejected
+		if updateErr := m.orderRepo.Update(ctx, order); updateErr != nil {
+			m.logger.ErrorContext(ctx, "options: failed to persist unavailable broker rejection", "error", updateErr)
+		}
+		return fmt.Errorf("options_manager: options broker is required")
 	}
 
 	// 4. Submit to broker.

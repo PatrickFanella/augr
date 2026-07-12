@@ -9,6 +9,7 @@ import (
 
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution"
+	"github.com/PatrickFanella/get-rich-quick/internal/risk"
 )
 
 type mockOptionsBroker struct {
@@ -34,7 +35,7 @@ func newTestOptionsManager(broker *mockOptionsBroker, orderRepo *mockOrderRepo, 
 	return execution.NewOptionsOrderManager(broker, orderRepo, positionRepo, tradeRepo, riskEng, slog.Default())
 }
 
-func TestProcessOptionSignal_PaperPathStillSubmits(t *testing.T) {
+func TestProcessOptionSignal_PersistsExplicitContractMetadata(t *testing.T) {
 	broker := &mockOptionsBroker{}
 	orderRepo := &mockOrderRepo{}
 	positionRepo := &mockPositionRepo{}
@@ -42,7 +43,7 @@ func TestProcessOptionSignal_PaperPathStillSubmits(t *testing.T) {
 	riskEng := &mockRiskEngine{}
 
 	mgr := newTestOptionsManager(broker, orderRepo, positionRepo, tradeRepo, riskEng)
-	plan := execution.TradingPlan{Ticker: "AAPL", EntryType: "market", EntryPrice: 2.5, PositionSize: 1}
+	plan := execution.TradingPlan{Ticker: "AAPL271217C00150000", EntryType: "market", EntryPrice: 2.5, PositionSize: 1}
 	err := mgr.ProcessOptionSignal(context.Background(), execution.FinalSignal{Signal: domain.PipelineSignalBuy}, plan, uuid.New(), uuid.New())
 	if err != nil {
 		t.Fatalf("ProcessOptionSignal() unexpected error: %v", err)
@@ -55,6 +56,13 @@ func TestProcessOptionSignal_PaperPathStillSubmits(t *testing.T) {
 	}
 	if got := orderRepo.updates[0].Status; got != domain.OrderStatusSubmitted {
 		t.Fatalf("order update status = %s, want %s", got, domain.OrderStatusSubmitted)
+	}
+	created := orderRepo.orders[0]
+	if created.MarketType != domain.MarketTypeOptions || created.AssetClass != domain.AssetClassOption {
+		t.Fatalf("order classification = %s/%s, want options/option", created.MarketType, created.AssetClass)
+	}
+	if created.UnderlyingTicker != "AAPL" || created.OptionType == nil || *created.OptionType != domain.OptionTypeCall || created.Strike == nil || *created.Strike != 150 || created.Expiry == nil || created.ContractMultiplier != 100 {
+		t.Fatalf("option contract metadata not persisted: %+v", created)
 	}
 }
 
@@ -75,7 +83,7 @@ func TestProcessOptionSignal_LiveGateAllowsConfiguredBrokerName(t *testing.T) {
 			AllowedBrokers:    map[string]bool{"alpaca": true},
 		})
 
-	err := mgr.ProcessOptionSignal(context.Background(), execution.FinalSignal{Signal: domain.PipelineSignalBuy}, execution.TradingPlan{Ticker: "AAPL", EntryType: "market", EntryPrice: 2.5, PositionSize: 1}, strategyID, uuid.New())
+	err := mgr.ProcessOptionSignal(context.Background(), execution.FinalSignal{Signal: domain.PipelineSignalBuy}, execution.TradingPlan{Ticker: "AAPL271217C00150000", EntryType: "market", EntryPrice: 2.5, PositionSize: 1}, strategyID, uuid.New())
 	if err != nil {
 		t.Fatalf("ProcessOptionSignal() unexpected error: %v", err)
 	}
@@ -101,11 +109,32 @@ func TestProcessOptionSignal_LiveGateDenies(t *testing.T) {
 		WithLiveTrading(true).
 		WithLiveGate(execution.LiveGateConfig{EnableLiveTrading: true, AllowedBrokers: map[string]bool{"alpaca": true}})
 
-	err := mgr.ProcessOptionSignal(context.Background(), execution.FinalSignal{Signal: domain.PipelineSignalBuy}, execution.TradingPlan{Ticker: "AAPL", EntryType: "market", EntryPrice: 2.5, PositionSize: 1}, uuid.New(), uuid.New())
+	err := mgr.ProcessOptionSignal(context.Background(), execution.FinalSignal{Signal: domain.PipelineSignalBuy}, execution.TradingPlan{Ticker: "AAPL271217C00150000", EntryType: "market", EntryPrice: 2.5, PositionSize: 1}, uuid.New(), uuid.New())
 	if err == nil {
 		t.Fatal("expected live gate error")
 	}
 	if len(orderRepo.orders) != 0 {
 		t.Fatalf("expected 0 orders, got %d", len(orderRepo.orders))
+	}
+}
+
+func TestProcessOptionSignal_RejectsGenericTickerBeforePersistence(t *testing.T) {
+	orderRepo := &mockOrderRepo{}
+	mgr := newTestOptionsManager(&mockOptionsBroker{}, orderRepo, &mockPositionRepo{}, &mockTradeRepo{}, &mockRiskEngine{})
+	err := mgr.ProcessOptionSignal(context.Background(), execution.FinalSignal{Signal: domain.PipelineSignalBuy}, execution.TradingPlan{Ticker: "AAPL", EntryPrice: 2.5, PositionSize: 1}, uuid.New(), uuid.New())
+	if err == nil || len(orderRepo.orders) != 0 {
+		t.Fatalf("generic ticker should fail before persistence: err=%v orders=%d", err, len(orderRepo.orders))
+	}
+}
+
+func TestProcessOptionSignal_PreTradeRiskRejection(t *testing.T) {
+	orderRepo := &mockOrderRepo{}
+	riskEng := &mockRiskEngine{checkPreTradeFn: func(context.Context, *domain.Order, risk.Portfolio) (bool, string, error) {
+		return false, "options exposure limit", nil
+	}}
+	mgr := newTestOptionsManager(&mockOptionsBroker{}, orderRepo, &mockPositionRepo{}, &mockTradeRepo{}, riskEng)
+	err := mgr.ProcessOptionSignal(context.Background(), execution.FinalSignal{Signal: domain.PipelineSignalBuy}, execution.TradingPlan{Ticker: "AAPL271217C00150000", EntryPrice: 2.5, PositionSize: 1}, uuid.New(), uuid.New())
+	if err == nil || len(orderRepo.orders) != 0 {
+		t.Fatalf("risk rejection should fail before persistence: err=%v orders=%d", err, len(orderRepo.orders))
 	}
 }
