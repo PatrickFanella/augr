@@ -22,8 +22,9 @@ type NowFuncSetter interface {
 
 // RunnerConfig holds the parameters for a single backtest run.
 type RunnerConfig struct {
-	StrategyID uuid.UUID
-	Ticker     string
+	StrategyID      uuid.UUID
+	Ticker          string
+	TrailingStopPct float64
 }
 
 // BarResult captures the outcome of processing a single bar through the
@@ -332,7 +333,7 @@ func (r *Runner) processEntry(ctx context.Context, state *agent.PipelineState, p
 		HardStopLoss:    plan.StopLoss,
 		TakeProfit:      plan.TakeProfit,
 		HoldingStrategy: holdingStrategy,
-		TrailingStopPct: 0, // TODO: configurable
+		TrailingStopPct: r.config.TrailingStopPct,
 	})
 
 	// Log entry in journal

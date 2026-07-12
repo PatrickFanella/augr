@@ -113,16 +113,19 @@ func (svc *BacktestService) runRulesEngineBacktest(
 	}
 
 	pipeline := rules.NewRulesPipeline(*rulesConfig, allBars, config.StartDate, config.Simulation.InitialCapital, agent.NoopPersister{}, nil, svc.logger)
+	fillConfig, err := backtest.FillConfigFromSimulation(config.Simulation)
+	if err != nil {
+		return nil, &ServiceError{Status: 400, Message: err.Error()}
+	}
 
 	orchConfig := backtest.OrchestratorConfig{
-		StrategyID:  strategy.ID,
-		Ticker:      strategy.Ticker,
-		StartDate:   config.StartDate,
-		EndDate:     config.EndDate,
-		InitialCash: config.Simulation.InitialCapital,
-		FillConfig: backtest.FillConfig{
-			Slippage: backtest.ProportionalSlippage{BasisPoints: 5},
-		},
+		StrategyID:      strategy.ID,
+		Ticker:          strategy.Ticker,
+		StartDate:       config.StartDate,
+		EndDate:         config.EndDate,
+		InitialCash:     config.Simulation.InitialCapital,
+		FillConfig:      fillConfig,
+		TrailingStopPct: config.Simulation.TrailingStopPct,
 	}
 	if svc.llmProvider != nil {
 		reviewer := rules.NewSignalReviewer(svc.llmProvider, "", svc.logger)
@@ -156,7 +159,7 @@ func (svc *BacktestService) runRulesEngineBacktest(
 		return nil, &ServiceError{Status: 500, Message: "failed to serialize equity curve"}
 	}
 
-	run, svcErr := svc.persistBacktestRun(ctx, actor, config.ID, strategy.Ticker, metricsJSON, tradeLogJSON, equityCurveJSON, start, duration, result.PromptVersion, result.PromptVersionHash)
+	run, svcErr := svc.persistBacktestRun(ctx, actor, config.ID, strategy.Ticker, metricsJSON, tradeLogJSON, equityCurveJSON, start, duration, result.PromptVersion, result.PromptVersionHash, result.SimulationVersion, result.InputHash)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -232,7 +235,11 @@ func (svc *BacktestService) runOptionsRulesBacktest(
 		return nil, &ServiceError{Status: 500, Message: "failed to serialize equity curve"}
 	}
 
-	run, svcErr := svc.persistBacktestRun(ctx, actor, config.ID, underlying, metricsJSON, tradeLogJSON, equityCurveJSON, start, duration, "options-rules-v1", analysts.CurrentPromptVersionHash())
+	inputHash, hashErr := backtest.HashInputs(map[string]any{"version": backtest.SimulationInputVersion, "config": config, "strategy": strategy.Config, "bars": allBars})
+	if hashErr != nil {
+		return nil, &ServiceError{Status: 500, Message: "failed to hash simulation inputs"}
+	}
+	run, svcErr := svc.persistBacktestRun(ctx, actor, config.ID, underlying, metricsJSON, tradeLogJSON, equityCurveJSON, start, duration, "options-rules-v1", analysts.CurrentPromptVersionHash(), backtest.SimulationInputVersion, inputHash)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -299,6 +306,8 @@ func (svc *BacktestService) persistBacktestRun(
 	duration time.Duration,
 	promptVersion string,
 	promptVersionHash string,
+	simulationVersion string,
+	inputHash string,
 ) (domain.BacktestRun, *ServiceError) {
 	run := domain.BacktestRun{
 		ID:                uuid.New(),
@@ -310,6 +319,8 @@ func (svc *BacktestService) persistBacktestRun(
 		Duration:          duration,
 		PromptVersion:     promptVersion,
 		PromptVersionHash: promptVersionHash,
+		SimulationVersion: simulationVersion,
+		InputHash:         inputHash,
 	}
 
 	if run.PromptVersionHash == "" {

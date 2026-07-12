@@ -19,6 +19,8 @@ type BacktestRun struct {
 	Duration          time.Duration   `json:"duration"`
 	PromptVersion     string          `json:"prompt_version"`
 	PromptVersionHash string          `json:"prompt_version_hash"`
+	SimulationVersion string          `json:"simulation_version,omitempty"`
+	InputHash         string          `json:"input_hash,omitempty"`
 	CreatedAt         time.Time       `json:"created_at"`
 	UpdatedAt         time.Time       `json:"updated_at"`
 }

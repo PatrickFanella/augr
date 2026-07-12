@@ -41,9 +41,9 @@ func (r *BacktestRunRepo) Create(ctx context.Context, run *domain.BacktestRun) e
 
 	row := r.pool.QueryRow(ctx,
 		`INSERT INTO backtest_runs (
-			backtest_config_id, metrics, trade_log, equity_curve, run_timestamp, duration_ns, prompt_version, prompt_version_hash
+			backtest_config_id, metrics, trade_log, equity_curve, run_timestamp, duration_ns, prompt_version, prompt_version_hash, simulation_version, input_hash
 		)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		 RETURNING id, created_at, updated_at`,
 		run.BacktestConfigID,
 		metricsJSON,
@@ -53,6 +53,8 @@ func (r *BacktestRunRepo) Create(ctx context.Context, run *domain.BacktestRun) e
 		run.Duration.Nanoseconds(),
 		run.PromptVersion,
 		run.PromptVersionHash,
+		run.SimulationVersion,
+		run.InputHash,
 	)
 
 	if err := row.Scan(&run.ID, &run.CreatedAt, &run.UpdatedAt); err != nil {
@@ -103,7 +105,7 @@ func (r *BacktestRunRepo) List(ctx context.Context, filter repository.BacktestRu
 	return runs, nil
 }
 
-const backtestRunSelectSQL = `SELECT id, backtest_config_id, metrics, trade_log, equity_curve, run_timestamp, duration_ns, prompt_version, prompt_version_hash, created_at, updated_at
+const backtestRunSelectSQL = `SELECT id, backtest_config_id, metrics, trade_log, equity_curve, run_timestamp, duration_ns, prompt_version, prompt_version_hash, simulation_version, input_hash, created_at, updated_at
 	 FROM backtest_runs`
 
 // scanBacktestRun scans a single row (pgx.Row or pgx.Rows) into a BacktestRun.
@@ -126,6 +128,8 @@ func scanBacktestRun(sc scanner) (*domain.BacktestRun, error) {
 		&durationNs,
 		&run.PromptVersion,
 		&run.PromptVersionHash,
+		&run.SimulationVersion,
+		&run.InputHash,
 		&run.CreatedAt,
 		&run.UpdatedAt,
 	)

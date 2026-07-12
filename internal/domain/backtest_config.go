@@ -27,6 +27,7 @@ type BacktestSimulationParameters struct {
 	TransactionCosts BacktestModelConfig `json:"transaction_costs,omitempty"`
 	SpreadModel      BacktestModelConfig `json:"spread_model,omitempty"`
 	MaxVolumePct     float64             `json:"max_volume_pct,omitempty"` // 0 means no volume limit
+	TrailingStopPct  float64             `json:"trailing_stop_pct,omitempty"`
 }
 
 // BacktestConfig represents a reusable backtest definition.
@@ -69,6 +70,9 @@ func (c *BacktestConfig) Validate() error {
 	}
 	if c.Simulation.MaxVolumePct < 0 || c.Simulation.MaxVolumePct > 1 {
 		return fmt.Errorf("max_volume_pct must be between 0 and 1, got %v", c.Simulation.MaxVolumePct)
+	}
+	if c.Simulation.TrailingStopPct < 0 || c.Simulation.TrailingStopPct >= 100 {
+		return fmt.Errorf("trailing_stop_pct must be between 0 (inclusive) and 100 (exclusive), got %v", c.Simulation.TrailingStopPct)
 	}
 	return nil
 }

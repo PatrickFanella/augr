@@ -32,6 +32,7 @@ type OrchestratorConfig struct {
 	FillConfig        FillConfig
 	PromptVersion     string
 	PromptVersionHash string
+	TrailingStopPct   float64
 
 	// EntryReviewFunc, when set, is called on buy signals before order submission.
 	EntryReviewFunc EntryReviewFunc
@@ -53,6 +54,8 @@ type OrchestratorResult struct {
 	Journal           *rules.TradeJournal
 	PromptVersion     string
 	PromptVersionHash string
+	SimulationVersion string
+	InputHash         string
 }
 
 // Orchestrator coordinates all backtest subsystems (data loading, pipeline
@@ -130,8 +133,9 @@ func (o *Orchestrator) Run(ctx context.Context) (*OrchestratorResult, error) {
 	}
 
 	runnerCfg := RunnerConfig{
-		StrategyID: o.config.StrategyID,
-		Ticker:     o.config.Ticker,
+		StrategyID:      o.config.StrategyID,
+		Ticker:          o.config.Ticker,
+		TrailingStopPct: o.config.TrailingStopPct,
 	}
 
 	runner, err := NewRunner(
@@ -173,6 +177,8 @@ func (o *Orchestrator) Run(ctx context.Context) (*OrchestratorResult, error) {
 	equityCurve := runResult.EquityCurve
 	metrics := ComputeMetrics(equityCurve, filtered)
 	tradeAnalytics := ComputeTradeAnalytics(trades, o.config.StartDate, o.config.EndDate)
+	inputHash, err := simulationInputHash(o.config, filtered)
+	if err != nil { return nil, fmt.Errorf("backtest: hash simulation inputs: %w", err) }
 
 	o.logger.Info("backtest: orchestrated run complete",
 		slog.Int("bars_processed", len(runResult.BarResults)),
@@ -194,6 +200,8 @@ func (o *Orchestrator) Run(ctx context.Context) (*OrchestratorResult, error) {
 		Journal:           runner.Journal(),
 		PromptVersion:     o.config.PromptVersion,
 		PromptVersionHash: o.config.PromptVersionHash,
+		SimulationVersion: SimulationInputVersion,
+		InputHash:         inputHash,
 	}, nil
 }
 
@@ -226,6 +234,9 @@ func validateOrchestratorConfig(cfg OrchestratorConfig) error {
 	}
 	if cfg.InitialCash < 0 {
 		return fmt.Errorf("backtest: initial cash must be non-negative")
+	}
+	if cfg.TrailingStopPct < 0 || cfg.TrailingStopPct >= 100 {
+		return fmt.Errorf("backtest: trailing stop pct must be between 0 (inclusive) and 100 (exclusive)")
 	}
 	return nil
 }

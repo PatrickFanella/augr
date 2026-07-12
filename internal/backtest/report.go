@@ -39,6 +39,9 @@ type ReportStrategyConfiguration struct {
 	FillConfiguration ReportFillConfiguration `json:"fill_configuration"`
 	PromptVersion     string                  `json:"prompt_version,omitempty"`
 	PromptVersionHash string                  `json:"prompt_version_hash,omitempty"`
+	TrailingStopPct   float64                 `json:"trailing_stop_pct,omitempty"`
+	SimulationVersion string                  `json:"simulation_version"`
+	InputHash         string                  `json:"input_hash"`
 }
 
 // ReportFillConfiguration is a JSON-friendly snapshot of fill-engine settings.
@@ -146,6 +149,9 @@ func reportStrategyConfiguration(cfg OrchestratorConfig, result *OrchestratorRes
 		FillConfiguration: reportFillConfiguration(cfg.FillConfig),
 		PromptVersion:     promptVersion,
 		PromptVersionHash: promptVersionHash,
+		TrailingStopPct:   cfg.TrailingStopPct,
+		SimulationVersion: result.SimulationVersion,
+		InputHash:         result.InputHash,
 	}
 }
 
