@@ -177,7 +177,7 @@ export function CockpitPage() {
 
   return (
     <div className="cockpit-grid">
-      <PageHeader eyebrow="Operator cockpit" title="System overview" actions={<Breadcrumbs items={[{ label: 'Cockpit' }]} />} />
+      <PageHeader eyebrow="Operator cockpit" title="System overview" actions={<Breadcrumbs items={[{ label: 'HUD' }]} />} />
       <section className="panel">
         <div className="metrics-grid">
           <div>

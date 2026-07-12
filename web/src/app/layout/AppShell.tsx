@@ -1,17 +1,31 @@
-import { useEffect, useState } from 'react'
-import { NavLink, Outlet } from 'react-router-dom'
-import { Menu, ChevronLeft, LayoutDashboard, Bot, Lightbulb, Play, Clock, ShoppingCart, ArrowLeftRight, PieChart, ShieldAlert, Sun, Moon } from 'lucide-react'
+import { useEffect, useState } from 'react';
+import { NavLink, Outlet } from 'react-router-dom';
+import {
+  ChevronLeft,
+  LayoutDashboard,
+  Bot,
+  Lightbulb,
+  Play,
+  Clock,
+  ShoppingCart,
+  ArrowLeftRight,
+  PieChart,
+  ShieldAlert,
+  Sun,
+  Moon,
+  ChevronRight,
+} from 'lucide-react';
 
-import { useTheme } from '@/app/providers/ThemeProvider'
-import { CommandPalette } from '@/components/CommandPalette'
-import { getSettings } from '@/shared/api/endpoints'
-import { useAuth } from '@/shared/auth/AuthProvider'
-import { EntityLink } from '@/shared/components/EntityLinks'
-import { queryKeys } from '@/shared/query/keys'
-import { useRealtime } from '@/shared/websocket/RealtimeProvider'
-import { useQuery } from '@tanstack/react-query'
+import { useTheme } from '@/app/providers/ThemeProvider';
+import { CommandPalette } from '@/components/CommandPalette';
+import { getSettings } from '@/shared/api/endpoints';
+import { useAuth } from '@/shared/auth/AuthProvider';
+import { EntityLink } from '@/shared/components/EntityLinks';
+import { queryKeys } from '@/shared/query/keys';
+import { useRealtime } from '@/shared/websocket/RealtimeProvider';
+import { useQuery } from '@tanstack/react-query';
 
-const STORAGE_KEY = 'augr-sidebar-collapsed'
+const STORAGE_KEY = 'augr-sidebar-collapsed';
 
 const navItems = [
   { to: '/cockpit', label: 'Cockpit', icon: LayoutDashboard },
@@ -23,110 +37,122 @@ const navItems = [
   { to: '/trades', label: 'Trades', icon: ArrowLeftRight },
   { to: '/portfolio', label: 'Portfolio', icon: PieChart },
   { to: '/risk', label: 'Risk', icon: ShieldAlert },
-]
+];
 
-const MOBILE_QUERY = '(max-width: 840px)'
+const MOBILE_QUERY = '(max-width: 840px)';
 
 function getInitialCollapsedState(): boolean {
-  if (typeof window === 'undefined') return false
-  const stored = localStorage.getItem(STORAGE_KEY)
-  if (stored !== null) return stored === 'true'
+  if (typeof window === 'undefined') return false;
+  const stored = localStorage.getItem(STORAGE_KEY);
+  if (stored !== null) return stored === 'true';
   // Auto-collapse on mobile by default
-  return window.innerWidth <= 840
+  return window.innerWidth <= 840;
 }
 
 function getInitialMobileState(): boolean {
-  if (typeof window === 'undefined') return false
-  if (typeof window.matchMedia !== 'function') return window.innerWidth <= 840
-  return window.matchMedia(MOBILE_QUERY).matches
+  if (typeof window === 'undefined') return false;
+  if (typeof window.matchMedia !== 'function') return window.innerWidth <= 840;
+  return window.matchMedia(MOBILE_QUERY).matches;
 }
 
 export function AppShell() {
-  const auth = useAuth()
-  const realtime = useRealtime()
-  const { theme, toggleTheme } = useTheme()
-  const settings = useQuery({ queryKey: queryKeys.settings, queryFn: ({ signal }) => getSettings(signal), enabled: auth.status === 'authenticated' })
-  const broker = settings.data?.system.connected_brokers.find((item) => item.configured)
-  const mode = broker?.paper_mode === false ? 'Live' : 'Paper'
+  const auth = useAuth();
+  const realtime = useRealtime();
+  const { theme, toggleTheme } = useTheme();
+  const settings = useQuery({
+    queryKey: queryKeys.settings,
+    queryFn: ({ signal }) => getSettings(signal),
+    enabled: auth.status === 'authenticated',
+  });
+  const broker = settings.data?.system.connected_brokers.find((item) => item.configured);
+  const mode = broker?.paper_mode === false ? 'Live' : 'Paper';
 
-  const [isCollapsed, setIsCollapsed] = useState(getInitialCollapsedState)
-  const [isMobileOpen, setIsMobileOpen] = useState(false)
-  const [isMobile, setIsMobile] = useState(getInitialMobileState)
+  const [isCollapsed, setIsCollapsed] = useState(getInitialCollapsedState);
+  const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(getInitialMobileState);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, String(isCollapsed))
-  }, [isCollapsed])
+    localStorage.setItem(STORAGE_KEY, String(isCollapsed));
+  }, [isCollapsed]);
 
   useEffect(() => {
     if (typeof window.matchMedia !== 'function') {
       const handleResize = () => {
-        const nextIsMobile = window.innerWidth <= 840
-        setIsMobile(nextIsMobile)
+        const nextIsMobile = window.innerWidth <= 840;
+        setIsMobile(nextIsMobile);
         if (nextIsMobile && !isCollapsed) {
-          setIsCollapsed(true)
+          setIsCollapsed(true);
         }
         if (!nextIsMobile) {
-          setIsMobileOpen(false)
+          setIsMobileOpen(false);
         }
-      }
-      handleResize()
-      window.addEventListener('resize', handleResize)
-      return () => window.removeEventListener('resize', handleResize)
+      };
+      handleResize();
+      window.addEventListener('resize', handleResize);
+      return () => window.removeEventListener('resize', handleResize);
     }
 
-    const media = window.matchMedia(MOBILE_QUERY)
+    const media = window.matchMedia(MOBILE_QUERY);
     const handleResize = () => {
-      setIsMobile(media.matches)
+      setIsMobile(media.matches);
       if (media.matches && !isCollapsed) {
-        setIsCollapsed(true)
+        setIsCollapsed(true);
       }
       if (!media.matches) {
-        setIsMobileOpen(false)
+        setIsMobileOpen(false);
       }
-    }
-    handleResize()
-    media.addEventListener('change', handleResize)
-    return () => media.removeEventListener('change', handleResize)
-  }, [isCollapsed])
+    };
+    handleResize();
+    media.addEventListener('change', handleResize);
+    return () => media.removeEventListener('change', handleResize);
+  }, [isCollapsed]);
 
   const toggleSidebar = () => {
     if (isMobile) {
-      setIsMobileOpen(!isMobileOpen)
+      setIsMobileOpen(!isMobileOpen);
     } else {
-      setIsCollapsed(!isCollapsed)
+      setIsCollapsed(!isCollapsed);
     }
-  }
+  };
 
   const handleSidebarClose = () => {
-    setIsMobileOpen(false)
-  }
+    setIsMobileOpen(false);
+  };
 
-  const sidebarCollapsed = isMobile ? false : isCollapsed
+  const sidebarCollapsed = isMobile ? false : isCollapsed;
 
   return (
     <div className="app-layout" data-sidebar-collapsed={String(sidebarCollapsed)}>
-      <a className="skip-link" href="#main-content">Skip to main content</a>
+      <a className="skip-link" href="#main-content">
+        Skip to main content
+      </a>
       <CommandPalette />
-      
+
       {/* Mobile backdrop */}
       {isMobile && isMobileOpen && (
         <div className="sidebar-backdrop" onClick={handleSidebarClose} />
       )}
-      
-      <aside className={`sidebar ${isMobile ? 'mobile' : ''} ${isMobileOpen ? 'open' : ''}`} aria-label="Primary navigation">
-        <div className="brand">
-          {sidebarCollapsed ? 'A' : 'Augr'}
-        </div>
+
+      <aside
+        className={`sidebar ${isMobile ? 'mobile' : ''} ${isMobileOpen ? 'open' : ''}`}
+        aria-label="Primary navigation"
+      >
+        <div className="brand">{sidebarCollapsed ? '' : 'Augr'}</div>
         <nav aria-label="Primary">
           {navItems.map(({ to, label, icon: Icon }) => (
-            <NavLink key={to} to={to} data-label={label} onClick={isMobile ? handleSidebarClose : undefined}>
+            <NavLink
+              key={to}
+              to={to}
+              data-label={label}
+              onClick={isMobile ? handleSidebarClose : undefined}
+            >
               <Icon size={18} />
               <span className="nav-label">{label}</span>
             </NavLink>
           ))}
         </nav>
       </aside>
-      
+
       <div className="workspace">
         <header className="topbar">
           <div className="topbar-left">
@@ -134,13 +160,31 @@ export function AppShell() {
               type="button"
               className="sidebar-toggle"
               onClick={toggleSidebar}
-              aria-label={isMobileOpen ? 'Close sidebar' : (sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar')}
+              aria-label={
+                isMobileOpen
+                  ? 'Close sidebar'
+                  : sidebarCollapsed
+                    ? 'Expand sidebar'
+                    : 'Collapse sidebar'
+              }
               aria-expanded={!sidebarCollapsed}
             >
-              {isMobile ? (isMobileOpen ? <ChevronLeft size={20} /> : <Menu size={20} />) : (sidebarCollapsed ? <Menu size={20} /> : <ChevronLeft size={20} />)}
+              {isMobile ? (
+                isMobileOpen ? (
+                  <ChevronLeft size={15} />
+                ) : (
+                  <ChevronRight size={15} />
+                )
+              ) : sidebarCollapsed ? (
+                <ChevronRight size={15} />
+              ) : (
+                <ChevronLeft size={15} />
+              )}
             </button>
             <div className="topbar-info">
-              <p className="eyebrow">~/augr/{settings.data?.system.environment ?? 'environment-unknown'}</p>
+              <p className="eyebrow">
+                ~/augr/{settings.data?.system.environment ?? 'environment-unknown'}
+              </p>
               <strong>{mode} command center</strong>
             </div>
           </div>
@@ -156,7 +200,9 @@ export function AppShell() {
               {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
             </button>
             <span>{auth.session?.user.username}</span>
-            <button type="button" onClick={auth.logout}>Logout</button>
+            <button type="button" onClick={auth.logout}>
+              Logout
+            </button>
           </div>
         </header>
         <main className="content" id="main-content" tabIndex={-1}>
@@ -171,7 +217,9 @@ export function AppShell() {
                 <strong>{event.type}</strong>
                 <time>{new Date(event.timestamp).toLocaleTimeString()}</time>
                 <div className="header-cluster">
-                  {event.strategy_id ? <EntityLink kind="strategy" id={event.strategy_id} copy={false} /> : null}
+                  {event.strategy_id ? (
+                    <EntityLink kind="strategy" id={event.strategy_id} copy={false} />
+                  ) : null}
                   {event.run_id ? <EntityLink kind="run" id={event.run_id} copy={false} /> : null}
                 </div>
               </li>
@@ -180,5 +228,5 @@ export function AppShell() {
         </aside>
       </div>
     </div>
-  )
+  );
 }
