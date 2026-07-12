@@ -31,6 +31,14 @@ func TestOptionsPersistenceSelectsContractFields(t *testing.T) {
 			}
 		}
 	}
+	for _, nullablePredictionColumn := range []string{
+		"COALESCE(prediction_side, '')",
+		"COALESCE(polymarket_intent, '')",
+	} {
+		if !strings.Contains(orderSelectSQL, nullablePredictionColumn) {
+			t.Fatalf("orders select does not normalize legacy NULL: %s", nullablePredictionColumn)
+		}
+	}
 }
 
 func TestScanOrderRestoresOptionContract(t *testing.T) {

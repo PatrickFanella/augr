@@ -44,6 +44,11 @@ func (o *JobOrchestrator) registerPreMarketJobs() {
 
 // gapScanner detects overnight gaps and unusual volume in the top 500 tickers.
 func (o *JobOrchestrator) gapScanner(ctx context.Context) error {
+	if o.deps.Universe == nil {
+		o.logger.Info("gap_scanner: skipped — Universe not configured")
+		return nil
+	}
+
 	tickers, err := o.deps.Universe.GetWatchlist(ctx, 500)
 	if err != nil {
 		return fmt.Errorf("gap_scanner: get watchlist: %w", err)

@@ -216,7 +216,8 @@ const orderSelectSQL = `SELECT id, strategy_id, pipeline_run_id, external_id, ti
 		filled_avg_price::double precision, status, broker, submitted_at,
 		filled_at, created_at, asset_class, underlying_ticker, option_type,
 		strike::double precision, expiry, contract_multiplier::double precision,
-		position_intent, leg_group_id, prediction_side, polymarket_intent
+		position_intent, leg_group_id, COALESCE(prediction_side, ''),
+		COALESCE(polymarket_intent, '')
 	 FROM orders`
 
 func (r *OrderRepo) list(ctx context.Context, query string, args []any, op string) ([]domain.Order, error) {
