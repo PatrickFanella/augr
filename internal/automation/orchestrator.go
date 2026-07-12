@@ -61,6 +61,7 @@ type OrchestratorDeps struct {
 	EventsProvider              data.EventsProvider
 	StrategyRepo                repository.StrategyRepository
 	PositionRepo                repository.PositionRepository
+	OrderRepo                   repository.OrderRepository
 	TradeRepo                   repository.TradeRepository
 	OpportunityRepo             repository.OpportunityRepository
 	AllocationDecisionRepo      repository.AllocationDecisionRepository
