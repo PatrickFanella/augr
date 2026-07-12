@@ -208,8 +208,12 @@ func (m *OptionsOrderManager) ProcessOptionSignal(
 	// 5. Update order status.
 	submittedAt := time.Now().UTC()
 	order.ExternalID = externalID
-	order.Status = domain.OrderStatusSubmitted
-	order.SubmittedAt = &submittedAt
+	if order.Status == domain.OrderStatusPending {
+		order.Status = domain.OrderStatusSubmitted
+	}
+	if order.SubmittedAt == nil {
+		order.SubmittedAt = &submittedAt
+	}
 
 	if err := m.orderRepo.Update(ctx, order); err != nil {
 		return fmt.Errorf("options_manager: update submitted order: %w", err)

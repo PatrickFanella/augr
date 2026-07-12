@@ -1,6 +1,7 @@
 package paper
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -31,10 +32,10 @@ func SimulateOptionFill(order *domain.Order) (*OptionsFillResult, error) {
 		return nil, errors.New("paper: order quantity must be greater than zero")
 	}
 
-	fillPrice := 1.0
-	if order.LimitPrice != nil && *order.LimitPrice > 0 {
-		fillPrice = *order.LimitPrice
+	if order.LimitPrice == nil || *order.LimitPrice <= 0 {
+		return nil, errors.New("paper: executable option price is required")
 	}
+	fillPrice := *order.LimitPrice
 
 	multiplier := order.ContractMultiplier
 	if multiplier <= 0 {
@@ -51,6 +52,59 @@ func SimulateOptionFill(order *domain.Order) (*OptionsFillResult, error) {
 		Fee:       fee,
 	}, nil
 }
+
+// SubmitOptionOrder fills an explicitly priced option order in the paper book.
+// It never calls an external broker and never invents a price for missing quote data.
+func (b *PaperBroker) SubmitOptionOrder(ctx context.Context, order *domain.Order) (string, error) {
+	if b == nil {
+		return "", errors.New("paper: broker is required")
+	}
+	if err := ctx.Err(); err != nil {
+		return "", fmt.Errorf("paper: submit option order: %w", err)
+	}
+	if order == nil || order.AssetClass != domain.AssetClassOption {
+		return "", errors.New("paper: explicit option order is required")
+	}
+	result, err := SimulateOptionFill(order)
+	if err != nil {
+		return "", err
+	}
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	now := b.currentTime().UTC()
+	externalID := b.nextExternalIDLocked()
+	totalDebit := result.Premium + result.Fee
+	if order.Side == domain.OrderSideBuy && b.balance.Cash < totalDebit {
+		return "", fmt.Errorf("paper: insufficient balance: need %.2f, have %.2f", totalDebit, b.balance.Cash)
+	}
+	if order.Side == domain.OrderSideBuy {
+		b.balance.Cash -= totalDebit
+	} else {
+		b.balance.Cash += result.Premium - result.Fee
+	}
+	if err := ApplyOptionFill(order, result); err != nil {
+		return "", err
+	}
+	order.ExternalID = externalID
+	order.SubmittedAt = timePtr(now)
+	order.FilledAt = timePtr(now)
+	b.balance.BuyingPower = b.balance.Cash
+	b.balance.Equity = b.markToMarketEquityLocked()
+	b.orders[externalID] = cloneOrder(order)
+	return externalID, nil
+}
+
+// SubmitSpreadOrder remains disabled until atomic per-leg persistence and
+// rollback semantics are available. Partial paper spreads would be misleading.
+func (b *PaperBroker) SubmitSpreadOrder(context.Context, *domain.OptionSpread, float64) ([]string, error) {
+	return nil, errors.New("paper: spread submission requires atomic leg lifecycle support")
+}
+
+var _ interface {
+	SubmitOptionOrder(context.Context, *domain.Order) (string, error)
+	SubmitSpreadOrder(context.Context, *domain.OptionSpread, float64) ([]string, error)
+} = (*PaperBroker)(nil)
 
 // IsExpired checks if an options position has expired at the given time.
 // A position is expired when the current time is after the contract expiry date.

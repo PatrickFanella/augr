@@ -138,3 +138,22 @@ func TestProcessOptionSignal_PreTradeRiskRejection(t *testing.T) {
 		t.Fatalf("risk rejection should fail before persistence: err=%v orders=%d", err, len(orderRepo.orders))
 	}
 }
+
+func TestProcessOptionSignal_PreservesImmediatePaperFill(t *testing.T) {
+	orderRepo := &mockOrderRepo{}
+	broker := &mockOptionsBroker{submitOptionOrderFn: func(_ context.Context, order *domain.Order) (string, error) {
+		price := 2.5
+		order.Status = domain.OrderStatusFilled
+		order.FilledQuantity = order.Quantity
+		order.FilledAvgPrice = &price
+		return "paper-option-1", nil
+	}}
+	mgr := newTestOptionsManager(broker, orderRepo, &mockPositionRepo{}, &mockTradeRepo{}, &mockRiskEngine{})
+	err := mgr.ProcessOptionSignal(context.Background(), execution.FinalSignal{Signal: domain.PipelineSignalBuy}, execution.TradingPlan{Ticker: "AAPL271217C00150000", EntryPrice: 2.5, PositionSize: 1}, uuid.New(), uuid.New())
+	if err != nil {
+		t.Fatalf("ProcessOptionSignal() error = %v", err)
+	}
+	if got := orderRepo.updates[0].Status; got != domain.OrderStatusFilled {
+		t.Fatalf("paper fill status = %s, want filled", got)
+	}
+}
