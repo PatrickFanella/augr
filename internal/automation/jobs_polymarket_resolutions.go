@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/scheduler"
 )
 
@@ -74,13 +75,21 @@ func (o *JobOrchestrator) polymarketResolutions(ctx context.Context) error {
 		if err != nil || processed {
 			continue
 		}
+		resolvedAt := time.Now().UTC()
+		if parsed, parseErr := time.Parse(time.RFC3339, m.EndDate); parseErr == nil {
+			resolvedAt = parsed
+		}
+		if o.deps.PredictionSettler != nil {
+			if _, err := o.deps.PredictionSettler.SettleMarket(ctx, domain.MarketTypePolymarket, m.Slug, winningSide, resolvedAt); err != nil {
+				return fmt.Errorf("polymarket_resolutions: settle paper market %s: %w", m.Slug, err)
+			}
+		}
 		trades, err := o.deps.PolymarketAccountRepo.ListAllTradesBySlug(ctx, m.Slug, 10000)
 		if err != nil {
 			continue
 		}
 		if len(trades) == 0 {
 			skippedNoTrades++
-			continue
 		}
 		counts := map[string]struct{ won, lost int }{}
 		for _, t := range trades {
@@ -104,9 +113,7 @@ func (o *JobOrchestrator) polymarketResolutions(ctx context.Context) error {
 				updatedAccounts++
 			}
 		}
-		if parsed, err := time.Parse(time.RFC3339, m.EndDate); err == nil {
-			_ = o.deps.PolymarketResolvedRepo.MarkProcessed(ctx, m.Slug, winningSide, parsed)
-		}
+		_ = o.deps.PolymarketResolvedRepo.MarkProcessed(ctx, m.Slug, winningSide, resolvedAt)
 		processedMarkets++
 	}
 	if _, err := o.deps.PolymarketAccountRepo.MarkTracked(ctx, 0.70, 20); err == nil {

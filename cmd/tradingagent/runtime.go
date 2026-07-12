@@ -41,6 +41,7 @@ import (
 	alpacaexecution "github.com/PatrickFanella/get-rich-quick/internal/execution/alpaca"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution/paper"
 	polymarketexecution "github.com/PatrickFanella/get-rich-quick/internal/execution/polymarket"
+	predictionexecution "github.com/PatrickFanella/get-rich-quick/internal/execution/prediction"
 	"github.com/PatrickFanella/get-rich-quick/internal/integration/redditlimit"
 	kalshidiscovery "github.com/PatrickFanella/get-rich-quick/internal/kalshidiscovery"
 	"github.com/PatrickFanella/get-rich-quick/internal/llm"
@@ -241,6 +242,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 	allocationDecisionRepo := pgrepo.NewAllocationDecisionRepo(db.Pool)
 	replayEventRepo := pgrepo.NewReplayEventRepo(db.Pool)
 	tradeDecisionRecorder := execution.NewTradeDecisionJournalRecorder(tradeDecisionRepo, replayEventRepo)
+	predictionSettler := predictionexecution.NewSettler(tradeDecisionRepo, positionRepo, tradeRepo, replayEventRepo)
 	memoryRepo := pgrepo.NewMemoryRepo(db.Pool)
 	apiKeyRepo := pgrepo.NewAPIKeyRepo(db.Pool)
 	auditLogRepo := pgrepo.NewAuditLogRepo(db.Pool)
@@ -622,6 +624,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 					NewsFeedRepo:                newsFeedRepo,
 					PolymarketAccountRepo:       polymarketAccountRepo,
 					PolymarketReconciler:        polymarketExecutionReconciler,
+					PredictionSettler:           predictionSettler,
 					PolymarketResolvedRepo:      polymarketResolvedRepo,
 					PolymarketWatchedRepo:       polymarketWatchedRepo,
 					PolymarketDiscoveryRuns:     polymarketDiscoveryRunRepo,

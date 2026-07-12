@@ -29,6 +29,7 @@ type MarketCandidate struct {
 	Title        string          `json:"title,omitempty"`
 	Category     string          `json:"category,omitempty"`
 	Status       string          `json:"status,omitempty"`
+	Result       string          `json:"result,omitempty"`
 	YesBid       float64         `json:"yes_bid"`
 	YesAsk       float64         `json:"yes_ask"`
 	NoBid        float64         `json:"no_bid"`
@@ -239,6 +240,9 @@ func decodeMarketCandidate(raw json.RawMessage) (MarketCandidate, error) {
 		return MarketCandidate{}, err
 	}
 	if candidate.Status, err = lookupString(fields, "status"); err != nil {
+		return MarketCandidate{}, err
+	}
+	if candidate.Result, err = lookupString(fields, "result"); err != nil {
 		return MarketCandidate{}, err
 	}
 	if candidate.YesBid, err = lookupProbability(fields, []string{"yes_bid_dollars", "yesBidDollars"}, []string{"yes_bid", "yesBid"}); err != nil {

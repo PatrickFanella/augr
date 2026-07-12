@@ -143,6 +143,21 @@ func (r *TradeDecisionJournalRepo) AttachLiveOrder(ctx context.Context, decision
 	return r.attachOrder(ctx, decisionID, orderID, "live_order_id", domain.TradeDecisionStatusLive)
 }
 
+// ResolvePredictionOutcome marks a paper event-market decision closed after
+// its provider outcome has been durably settled.
+func (r *TradeDecisionJournalRepo) ResolvePredictionOutcome(ctx context.Context, decisionID uuid.UUID) error {
+	var updatedID uuid.UUID
+	err := r.pool.QueryRow(ctx, `UPDATE trade_decisions SET status = $2, updated_at = NOW()
+		WHERE id = $1 AND status = $3 RETURNING id`, decisionID, domain.TradeDecisionStatusClosed, domain.TradeDecisionStatusPaper).Scan(&updatedID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("postgres: resolve prediction decision %s: %w", decisionID, ErrNotFound)
+		}
+		return fmt.Errorf("postgres: resolve prediction decision: %w", err)
+	}
+	return nil
+}
+
 func (r *TradeDecisionJournalRepo) attachOrder(ctx context.Context, decisionID, orderID uuid.UUID, column string, status domain.TradeDecisionStatus) error {
 	query, args := buildTradeDecisionAttachQuery(column, decisionID, orderID, status)
 	var updatedID uuid.UUID

@@ -874,13 +874,14 @@ func (m *OrderManager) handleFill(
 		}
 
 		positionTicker := order.Ticker
-		if marketType == domain.MarketTypePolymarket {
+		if marketType == domain.MarketTypePolymarket || marketType == domain.MarketTypeKalshi {
 			positionTicker = polymarketPositionTicker(order.Ticker, order.PredictionSide)
 		}
 
 		position = &domain.Position{
 			ID:         uuid.New(),
 			StrategyID: &strategyID,
+			MarketType: marketType,
 			Ticker:     positionTicker,
 			Side:       positionSide,
 			Quantity:   order.FilledQuantity,

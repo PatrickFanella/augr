@@ -157,10 +157,10 @@ func TestBrokerGetPositions_UsesLiveClient(t *testing.T) {
 	if len(positions) != 2 {
 		t.Fatalf("GetPositions() len = %d, want 2", len(positions))
 	}
-	if positions[0].Ticker != "KX-YES" || positions[0].Side != domain.PositionSideLong || positions[0].Quantity != 2 || math.Abs(positions[0].AvgEntry-0.75) > 1e-9 {
+	if positions[0].Ticker != "KX-YES:YES" || positions[0].MarketType != domain.MarketTypeKalshi || positions[0].Side != domain.PositionSideLong || positions[0].Quantity != 2 || math.Abs(positions[0].AvgEntry-0.75) > 1e-9 {
 		t.Fatalf("GetPositions()[0] = %#v", positions[0])
 	}
-	if positions[1].Ticker != "KX-NO" || positions[1].Side != domain.PositionSideShort || positions[1].Quantity != 1 || math.Abs(positions[1].AvgEntry-0.75) > 1e-9 {
+	if positions[1].Ticker != "KX-NO:NO" || positions[1].MarketType != domain.MarketTypeKalshi || positions[1].Side != domain.PositionSideLong || positions[1].Quantity != 1 || math.Abs(positions[1].AvgEntry-0.75) > 1e-9 {
 		t.Fatalf("GetPositions()[1] = %#v", positions[1])
 	}
 }

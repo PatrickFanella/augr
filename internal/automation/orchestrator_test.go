@@ -13,6 +13,7 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/eventmarkets"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution"
 	polymarketexecution "github.com/PatrickFanella/get-rich-quick/internal/execution/polymarket"
+	predictionexecution "github.com/PatrickFanella/get-rich-quick/internal/execution/prediction"
 	kalshidiscovery "github.com/PatrickFanella/get-rich-quick/internal/kalshidiscovery"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 	"github.com/google/uuid"
@@ -314,6 +315,19 @@ func TestJobOrchestratorRegisterAllAddsKalshiDiscovery(t *testing.T) {
 	}
 	if gotDeps.Logger == nil {
 		t.Fatal("Kalshi discovery logger = nil")
+	}
+}
+
+func TestJobOrchestratorRegisterAllAddsKalshiSettlement(t *testing.T) {
+	t.Parallel()
+	orch := NewJobOrchestrator(OrchestratorDeps{
+		KalshiCatalog:     kalshiCatalogStub{},
+		PredictionSettler: predictionexecution.NewSettler(nil, nil, nil, nil),
+	})
+	orch.RegisterAll()
+	status := singleJobStatus(t, orch, "kalshi_settlement")
+	if status.Schedule == "" || status.Schedule == "Manual only" {
+		t.Fatalf("kalshi settlement schedule = %q", status.Schedule)
 	}
 }
 

@@ -219,7 +219,7 @@ func TestClientListMarkets_DecodesCurrentDollarFields(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"markets":[{"ticker":"KAL-DOLLAR","event_ticker":"EVT-DOLLAR","title":"Dollar fields?","status":"open","yes_bid_dollars":"0.12","yes_ask_dollars":"0.14","no_bid_dollars":"0.86","no_ask_dollars":"0.88","volume_fp":"123.45","open_interest_fp":"678.9","close_time":"2026-06-18T12:30:00Z"}]}`))
+		_, _ = w.Write([]byte(`{"markets":[{"ticker":"KAL-DOLLAR","event_ticker":"EVT-DOLLAR","title":"Dollar fields?","status":"settled","result":"yes","yes_bid_dollars":"0.12","yes_ask_dollars":"0.14","no_bid_dollars":"0.86","no_ask_dollars":"0.88","volume_fp":"123.45","open_interest_fp":"678.9","close_time":"2026-06-18T12:30:00Z"}]}`))
 	}))
 	defer server.Close()
 
@@ -238,6 +238,9 @@ func TestClientListMarkets_DecodesCurrentDollarFields(t *testing.T) {
 		t.Fatalf("len(markets) = %d, want 1", len(markets))
 	}
 	market := markets[0]
+	if market.Result != "yes" {
+		t.Fatalf("market result = %q, want yes", market.Result)
+	}
 	if market.YesBid != 0.12 || market.YesAsk != 0.14 || market.NoBid != 0.86 || market.NoAsk != 0.88 {
 		t.Fatalf("market quotes = %#v, want dollar fields parsed as probabilities", market)
 	}

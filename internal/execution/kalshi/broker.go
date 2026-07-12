@@ -131,13 +131,10 @@ func (b *Broker) GetAccountBalance(ctx context.Context) (execution.Balance, erro
 
 func mapPosition(resp PositionResponse) domain.Position {
 	position := domain.Position{
-		Ticker:   strings.TrimSpace(resp.Ticker),
-		Quantity: float64(resp.Count),
-	}
-	if strings.EqualFold(strings.TrimSpace(resp.Side), "no") {
-		position.Side = domain.PositionSideShort
-	} else {
-		position.Side = domain.PositionSideLong
+		Ticker:     strings.TrimSpace(resp.Ticker) + ":" + strings.ToUpper(strings.TrimSpace(resp.Side)),
+		MarketType: domain.MarketTypeKalshi,
+		Side:       domain.PositionSideLong,
+		Quantity:   float64(resp.Count),
 	}
 	if resp.Count > 0 {
 		avg := centsToDollars(resp.ValueCents) / float64(resp.Count)
