@@ -229,6 +229,31 @@ export function createP0RestHandlers(options: P0MockHandlersOptions = {}) {
       return HttpResponse.json({ data, total: data.length, limit: 20, offset: 0 })
     }),
 
+    http.get(endpoint(apiBaseUrl, '/journal/decisions'), async ({ request }) => {
+      await applyScenarioDelay(state)
+      const authError = authGuard(request, state)
+      if (authError) return authError
+      const error = scenarioError(state)
+      if (error) return error
+      const decision = { id: fixtureId(93), strategy_id: fixtureId(), pipeline_run_id: fixtureId(10), market_type: 'stock', instrument_key: 'AAPL', side: 'buy', fair_value: 190, executable_price: 188, spread: 0.02, depth: 5000, gross_ev: 2, net_ev: 1.75, kelly_fraction: 0.05, proposed_size: 10, approved_size: 5, risk_status: 'approved', risk_reasons: ['paper limit'], evidence: { quote_at: fixtureDate }, features: { momentum: 0.2 }, regime_tags: ['risk_on'], prompt_text: 'Analyze without placing an order.', llm_provider: 'fixture-provider', llm_model: 'fixture-model', prompt_tokens: 120, completion_tokens: 40, latency_ms: 250, cost_usd: 0.001, paper_order_id: fixtureId(40), status: 'paper_ordered', created_at: fixtureDate, updated_at: fixtureDate }
+      const url = new URL(request.url)
+      const matches = (!url.searchParams.get('market_type') || url.searchParams.get('market_type') === decision.market_type) && (!url.searchParams.get('status') || url.searchParams.get('status') === decision.status)
+      const data = state.scenario === 'empty-data' || !matches ? [] : [decision]
+      return HttpResponse.json({ data, total: data.length, limit: 50, offset: 0 })
+    }),
+
+    http.get(endpoint(apiBaseUrl, '/replay/decisions/:id'), async ({ request, params }) => {
+      await applyScenarioDelay(state)
+      const authError = authGuard(request, state)
+      if (authError) return authError
+      const error = scenarioError(state)
+      if (error) return error
+      const id = String(params.id)
+      const source = { id, strategy_id: fixtureId(), market_type: 'stock', instrument_key: 'AAPL', side: 'buy', fair_value: 190, executable_price: 188, spread: 0.02, depth: 5000, gross_ev: 2, net_ev: 1.75, kelly_fraction: 0.05, proposed_size: 10, approved_size: 5, risk_status: 'approved', risk_reasons: ['paper limit'], regime_tags: ['risk_on'], status: 'paper_ordered', created_at: fixtureDate, updated_at: fixtureDate }
+      const events = state.scenario === 'empty-data' ? [] : [{ id: fixtureId(94), trade_decision_id: id, event_type: 'decision_created', source: 'journal', payload: { mode: 'paper' }, occurred_at: fixtureDate, created_at: fixtureDate }]
+      return HttpResponse.json({ source, events, summary: { event_count: events.length, first_event_at: events.length ? fixtureDate : undefined, last_event_at: events.length ? fixtureDate : undefined, has_paper_order: true, has_live_order: false, has_fill: false, has_outcome: false, latest_status: 'paper_ordered', total_approved_size: 5, total_net_ev: 1.75, rejection_count: 0 } })
+    }),
+
     http.get(endpoint(apiBaseUrl, '/events'), async ({ request }) => {
       await applyScenarioDelay(state)
       const authError = authGuard(request, state)

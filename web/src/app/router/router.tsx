@@ -69,6 +69,12 @@ const OptionsPage = lazy(() =>
 const BacktestsPage = lazy(() =>
   import('@/features/backtests/BacktestsPage').then((m) => ({ default: m.BacktestsPage })),
 )
+const JournalPage = lazy(() =>
+  import('@/features/journal/JournalPage').then((m) => ({ default: m.JournalPage })),
+)
+const ReplayPage = lazy(() =>
+  import('@/features/journal/ReplayPage').then((m) => ({ default: m.ReplayPage })),
+)
 
 const routeFallback = <LoadingState />
 
@@ -107,6 +113,8 @@ export function createAppRouter() {
             { path: '/event-markets', element: withSuspense(<EventMarketsPage />) },
             { path: '/options', element: withSuspense(<OptionsPage />) },
             { path: '/backtests', element: withSuspense(<BacktestsPage />) },
+            { path: '/journal', element: withSuspense(<JournalPage />) },
+            { path: '/replay/decisions/:id', element: withSuspense(<ReplayPage />) },
             { path: '*', element: <NotFoundPage /> },
           ],
         },

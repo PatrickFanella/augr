@@ -599,6 +599,18 @@ export const backtestRunSchema = z.object({
   id: uuidSchema, backtest_config_id: uuidSchema, metrics: rawJsonSchema, trade_log: rawJsonSchema, equity_curve: rawJsonSchema, run_timestamp: isoDateSchema, duration: z.number(), prompt_version: z.string(), prompt_version_hash: z.string(), created_at: isoDateSchema, updated_at: isoDateSchema,
 }).passthrough()
 
+export const tradeDecisionSchema = z.object({
+  id: uuidSchema, strategy_id: uuidSchema.optional(), pipeline_run_id: uuidSchema.optional(), market_type: z.string(), instrument_key: z.string(), external_market_id: z.string().optional(), side: z.string(), outcome: z.string().optional(),
+  fair_value: z.number(), executable_price: z.number(), spread: z.number(), depth: z.number(), gross_ev: z.number(), net_ev: z.number(), kelly_fraction: z.number(), proposed_size: z.number(), approved_size: z.number(),
+  risk_status: z.string(), risk_reasons: z.array(z.string()), evidence: rawJsonSchema.optional(), features: rawJsonSchema.optional(), regime_tags: z.array(z.string()), prompt_text: z.string().optional(), llm_provider: z.string().optional(), llm_model: z.string().optional(), prompt_tokens: z.number().optional(), completion_tokens: z.number().optional(), latency_ms: z.number().optional(), cost_usd: z.number().optional(), paper_order_id: uuidSchema.optional(), live_order_id: uuidSchema.optional(), status: z.string(), created_at: isoDateSchema, updated_at: isoDateSchema,
+}).passthrough()
+
+export const replayDecisionSchema = z.object({
+  source: tradeDecisionSchema,
+  events: z.array(z.object({ id: uuidSchema, trade_decision_id: uuidSchema, event_type: z.string(), source: z.string(), payload: rawJsonSchema, occurred_at: isoDateSchema, created_at: isoDateSchema }).passthrough()),
+  summary: z.object({ event_count: z.number(), first_event_at: isoDateSchema.optional(), last_event_at: isoDateSchema.optional(), has_paper_order: z.boolean(), has_live_order: z.boolean(), has_fill: z.boolean(), has_outcome: z.boolean(), latest_status: z.string(), total_approved_size: z.number(), total_net_ev: z.number(), rejection_count: z.number(), rejection_reasons: z.array(z.string()).optional() }).passthrough(),
+}).passthrough()
+
 export const websocketCommandSchema = z
   .discriminatedUnion('action', [
     z.object({ action: z.literal('subscribe'), strategy_ids: z.array(uuidSchema).optional(), run_ids: z.array(uuidSchema).optional() }).passthrough(),

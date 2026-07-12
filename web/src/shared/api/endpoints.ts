@@ -41,10 +41,12 @@ import {
   optionSnapshotSchema,
   backtestConfigSchema,
   backtestRunSchema,
+  tradeDecisionSchema,
+  replayDecisionSchema,
 } from '@/shared/api/schemas'
 import type { ListResponse, PortfolioSummary } from '@/shared/types/api'
 import type { AuthResponse, LoginRequest } from '@/shared/types/auth'
-import type { AgentDecision, AgentEvent, AllocationDecision, AllocatorDiagnostics, AllocatorOpportunity, AllocatorSummary, AutomationHealthResponse, AutomationJobRun, AutomationJobStatus, BacktestConfig, BacktestRun, BreakerResetRequest, BreakerResetResponse, EventMarketsSummaryResponse, HealthStatusResponse, KillSwitchToggleRequest, KillSwitchToggleResponse, MarketKillSwitchRequest, MarketKillSwitchResponse, OptionSnapshot, Order, OrderDetailResponse, PipelineRun, PolymarketDataStatus, Position, ReportArtifact, ReportLatestResponse, RiskBreakersResponse, RiskCockpitSummary, RiskEngineStatus, RunSnapshot, Strategy, StrategyCreateRequest, StrategyRunAcceptedResponse, StrategyUpdateRequest, Trade, User } from '@/shared/types/domain'
+import type { AgentDecision, AgentEvent, AllocationDecision, AllocatorDiagnostics, AllocatorOpportunity, AllocatorSummary, AutomationHealthResponse, AutomationJobRun, AutomationJobStatus, BacktestConfig, BacktestRun, BreakerResetRequest, BreakerResetResponse, EventMarketsSummaryResponse, HealthStatusResponse, KillSwitchToggleRequest, KillSwitchToggleResponse, MarketKillSwitchRequest, MarketKillSwitchResponse, OptionSnapshot, Order, OrderDetailResponse, PipelineRun, PolymarketDataStatus, Position, ReplayDecision, ReportArtifact, ReportLatestResponse, RiskBreakersResponse, RiskCockpitSummary, RiskEngineStatus, RunSnapshot, Strategy, StrategyCreateRequest, StrategyRunAcceptedResponse, StrategyUpdateRequest, Trade, TradeDecision, User } from '@/shared/types/domain'
 import type { SettingsResponse } from '@/shared/types/settings'
 
 export type StrategyListParams = {
@@ -187,6 +189,14 @@ export function getBacktestConfigs(params: { strategy_id?: string; limit?: numbe
 
 export function getBacktestRuns(params: { backtest_config_id?: string; limit?: number; offset?: number } = {}, signal?: AbortSignal): Promise<ListResponse<BacktestRun>> {
   return api.get<ListResponse<BacktestRun>>(`/backtests/runs${buildQuery(params)}`, { schema: listResponseSchema(backtestRunSchema) as never, signal })
+}
+
+export function getTradeDecisions(params: { strategy_id?: string; market_type?: string; status?: string; limit?: number; offset?: number } = {}, signal?: AbortSignal): Promise<ListResponse<TradeDecision>> {
+  return api.get<ListResponse<TradeDecision>>(`/journal/decisions${buildQuery(params)}`, { schema: listResponseSchema(tradeDecisionSchema) as never, signal })
+}
+
+export function getDecisionReplay(id: string, signal?: AbortSignal): Promise<ReplayDecision> {
+  return api.get<ReplayDecision>(`/replay/decisions/${encodeURIComponent(id)}`, { schema: replayDecisionSchema as never, signal })
 }
 
 export function getRiskStatus(signal?: AbortSignal): Promise<RiskEngineStatus> {

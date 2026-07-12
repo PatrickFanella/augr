@@ -17,6 +17,7 @@ import {
   Landmark,
   ChartCandlestick,
   FlaskConical,
+  BookOpenText,
 } from 'lucide-react'
 import { useTheme } from '@/app/providers/theme-context'
 
@@ -61,6 +62,7 @@ export function CommandPalette() {
     { to: '/event-markets', label: 'Event markets', icon: <Landmark size={16} /> },
     { to: '/options', label: 'Options', icon: <ChartCandlestick size={16} /> },
     { to: '/backtests', label: 'Backtests', icon: <FlaskConical size={16} /> },
+    { to: '/journal', label: 'Decision journal', icon: <BookOpenText size={16} /> },
     { to: '/risk', label: 'Risk', icon: <ShieldAlert size={16} /> },
     { to: '/settings', label: 'Settings', icon: <Settings size={16} /> },
   ]

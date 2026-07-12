@@ -107,4 +107,40 @@ describe('recovered product surfaces', () => {
     expect(await screen.findByText('AAPL walk-forward')).toBeTruthy()
     expect(await screen.findByText(/feature unavailable/i)).toBeTruthy()
   })
+
+  it('renders journal provenance and links decisions to replay', async () => {
+    resetApp('/journal')
+    setTokenSnapshot(buildAuthResponse())
+    render(<App />)
+
+    expect(await screen.findByRole('table', { name: /trade decision journal/i })).toBeTruthy()
+    expect(screen.getByText('fixture-provider / fixture-model')).toBeTruthy()
+    expect(screen.getByRole('link', { name: /open replay/i })).toHaveAttribute('href', `/replay/decisions/00000000-0000-4000-8000-000000000093`)
+  })
+
+  it('distinguishes an empty journal from an unavailable journal', async () => {
+    resetApp('/journal')
+    state.scenario = 'empty-data'
+    setTokenSnapshot(buildAuthResponse())
+    render(<App />)
+    expect(await screen.findByText(/no decisions recorded/i)).toBeTruthy()
+  })
+
+  it('renders a decision replay timeline and its persisted payload', async () => {
+    resetApp('/replay/decisions/00000000-0000-4000-8000-000000000093')
+    setTokenSnapshot(buildAuthResponse())
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: /replay workbench/i })).toBeTruthy()
+    expect(await screen.findByText('decision_created')).toBeTruthy()
+    expect(screen.getByText(/"mode": "paper"/i)).toBeTruthy()
+  })
+
+  it('shows replay dependency unavailability explicitly', async () => {
+    resetApp('/replay/decisions/00000000-0000-4000-8000-000000000093')
+    setTokenSnapshot(buildAuthResponse())
+    server.use(http.get(`${apiBaseUrl}/replay/decisions/:id`, () => HttpResponse.json({ error: 'replay not configured', code: 'ERR_NOT_IMPLEMENTED' }, { status: 501 })))
+    render(<App />)
+    expect(await screen.findByText(/feature unavailable/i)).toBeTruthy()
+  })
 })

@@ -526,3 +526,69 @@ export type BacktestRun = {
   created_at: ISODate
   updated_at: ISODate
 }
+
+export type TradeDecision = {
+  id: UUID
+  strategy_id?: UUID
+  pipeline_run_id?: UUID
+  market_type: string
+  instrument_key: string
+  external_market_id?: string
+  side: string
+  outcome?: string
+  fair_value: number
+  executable_price: number
+  spread: number
+  depth: number
+  gross_ev: number
+  net_ev: number
+  kelly_fraction: number
+  proposed_size: number
+  approved_size: number
+  risk_status: string
+  risk_reasons: string[]
+  evidence?: RawJson
+  features?: RawJson
+  regime_tags: string[]
+  prompt_text?: string
+  llm_provider?: string
+  llm_model?: string
+  prompt_tokens?: number
+  completion_tokens?: number
+  latency_ms?: number
+  cost_usd?: number
+  paper_order_id?: UUID
+  live_order_id?: UUID
+  status: string
+  created_at: ISODate
+  updated_at: ISODate
+}
+
+export type ReplayEvent = {
+  id: UUID
+  trade_decision_id: UUID
+  event_type: string
+  source: string
+  payload: RawJson
+  occurred_at: ISODate
+  created_at: ISODate
+}
+
+export type ReplayDecision = {
+  source: TradeDecision
+  events: ReplayEvent[]
+  summary: {
+    event_count: number
+    first_event_at?: ISODate
+    last_event_at?: ISODate
+    has_paper_order: boolean
+    has_live_order: boolean
+    has_fill: boolean
+    has_outcome: boolean
+    latest_status: string
+    total_approved_size: number
+    total_net_ev: number
+    rejection_count: number
+    rejection_reasons?: string[]
+  }
+}
