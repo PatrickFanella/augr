@@ -58,15 +58,17 @@ type ExitReviewFunc func(ctx context.Context, pos *rules.OpenPosition, state *ag
 // advances the simulated clock, feeds each bar to the BrokerAdapter, executes
 // the full analysis pipeline, and records equity snapshots.
 type Runner struct {
-	config      RunnerConfig
-	pipeline    *agent.Pipeline
-	broker      *BrokerAdapter
-	tracker     *PositionTracker
-	replay      *ReplayIterator
-	entryReview EntryReviewFunc
-	exitReview  ExitReviewFunc
-	journal     *rules.TradeJournal
-	logger      *slog.Logger
+	config           RunnerConfig
+	pipeline         *agent.Pipeline
+	broker           *BrokerAdapter
+	tracker          *PositionTracker
+	replay           *ReplayIterator
+	entryReview      EntryReviewFunc
+	exitReview       ExitReviewFunc
+	journal          *rules.TradeJournal
+	logger           *slog.Logger
+	pendingState     *agent.PipelineState
+	pendingSignalBar domain.OHLCV
 }
 
 // NewRunner constructs a Runner from the given configuration, historical bars,
@@ -162,14 +164,18 @@ func (r *Runner) Run(ctx context.Context) (*RunResult, error) {
 
 		// Check hard stops and trailing stops BEFORE the pipeline runs.
 		r.checkMechanicalStops(ctx, bar)
+		if r.pendingState != nil {
+			r.processSignal(ctx, r.pendingState, r.pendingSignalBar, bar)
+			r.pendingState = nil
+		}
 
 		// Execute the full analysis pipeline for this bar.
 		state, pipeErr := r.pipeline.Execute(ctx, r.config.StrategyID, r.config.Ticker)
 
-		// If the pipeline produced a buy/sell signal, process it through
-		// the journal-aware order flow.
+		// A close-derived signal is executable no earlier than the next bar.
 		if pipeErr == nil && state != nil {
-			r.processSignal(ctx, state, bar)
+			r.pendingState = state
+			r.pendingSignalBar = bar
 		}
 
 		// Update position tracker marks to the latest bar close before
@@ -248,28 +254,28 @@ func (r *Runner) checkMechanicalStops(ctx context.Context, bar domain.OHLCV) {
 }
 
 // processSignal handles the rules engine output through the journal-aware flow.
-func (r *Runner) processSignal(ctx context.Context, state *agent.PipelineState, bar domain.OHLCV) {
+func (r *Runner) processSignal(ctx context.Context, state *agent.PipelineState, signalBar, executionBar domain.OHLCV) {
 	plan := state.TradingPlan
 	ticker := r.config.Ticker
 
 	if plan.Action == domain.PipelineSignalBuy && !r.journal.IsHolding(ticker) {
-		r.processEntry(ctx, state, plan, bar)
+		r.processEntry(ctx, state, plan, signalBar, executionBar)
 	} else if plan.Action == domain.PipelineSignalSell && r.journal.IsHolding(ticker) {
-		r.processExit(ctx, state, bar)
+		r.processExit(ctx, state, signalBar, executionBar)
 	}
 }
 
-func (r *Runner) processEntry(ctx context.Context, state *agent.PipelineState, plan agent.TradingPlan, bar domain.OHLCV) {
+func (r *Runner) processEntry(ctx context.Context, state *agent.PipelineState, plan agent.TradingPlan, signalBar, executionBar domain.OHLCV) {
 	bal, _ := r.broker.GetAccountBalance(context.Background())
 	holdingStrategy := ""
 
 	// Entry LLM review
 	if r.entryReview != nil {
-		confirmed, strategy := r.entryReview(ctx, &plan, state, bar, bal.Cash)
+		confirmed, strategy := r.entryReview(ctx, &plan, state, signalBar, bal.Cash)
 		if !confirmed {
 			r.logger.Info("backtest: entry vetoed by reviewer",
 				slog.String("ticker", r.config.Ticker),
-				slog.Time("bar", bar.Timestamp),
+				slog.Time("bar", signalBar.Timestamp),
 			)
 			return
 		}
@@ -311,7 +317,7 @@ func (r *Runner) processEntry(ctx context.Context, state *agent.PipelineState, p
 	trade := domain.Trade{
 		ID: uuid.New(), Ticker: r.config.Ticker, Side: domain.OrderSideBuy,
 		Quantity: order.FilledQuantity, Price: fillPrice,
-		ExecutedAt: bar.Timestamp, CreatedAt: bar.Timestamp,
+		ExecutedAt: executionBar.Timestamp, CreatedAt: executionBar.Timestamp,
 	}
 	_ = r.tracker.ApplyTrade(trade)
 
@@ -328,7 +334,7 @@ func (r *Runner) processEntry(ctx context.Context, state *agent.PipelineState, p
 		Ticker:          r.config.Ticker,
 		Side:            domain.PositionSideLong,
 		EntryPrice:      fillPrice,
-		EntryDate:       bar.Timestamp,
+		EntryDate:       executionBar.Timestamp,
 		Quantity:        order.FilledQuantity,
 		HardStopLoss:    plan.StopLoss,
 		TakeProfit:      plan.TakeProfit,
@@ -338,14 +344,14 @@ func (r *Runner) processEntry(ctx context.Context, state *agent.PipelineState, p
 
 	// Log entry in journal
 	r.journal.GetOpen(r.config.Ticker).AddEntry(rules.JournalEntry{
-		Type: rules.EventEntry, Timestamp: bar.Timestamp,
+		Type: rules.EventEntry, Timestamp: executionBar.Timestamp,
 		Signal: domain.PipelineSignalBuy, Verdict: "confirm",
 		Confidence: plan.Confidence, Reasoning: plan.Rationale,
 		Indicators: indSnap, Price: fillPrice,
 	})
 }
 
-func (r *Runner) processExit(ctx context.Context, state *agent.PipelineState, bar domain.OHLCV) {
+func (r *Runner) processExit(ctx context.Context, state *agent.PipelineState, signalBar, executionBar domain.OHLCV) {
 	pos := r.journal.GetOpen(r.config.Ticker)
 	if pos == nil {
 		return
@@ -362,12 +368,12 @@ func (r *Runner) processExit(ctx context.Context, state *agent.PipelineState, ba
 	// Exit LLM review
 	if r.exitReview != nil {
 		bal, _ := r.broker.GetAccountBalance(context.Background())
-		confirmed, reasoning := r.exitReview(ctx, pos, state, bar, bal.Cash)
+		confirmed, reasoning := r.exitReview(ctx, pos, state, signalBar, bal.Cash)
 		if !confirmed {
 			pos.AddEntry(rules.JournalEntry{
-				Type: rules.EventSignalReview, Timestamp: bar.Timestamp,
+				Type: rules.EventSignalReview, Timestamp: signalBar.Timestamp,
 				Signal: domain.PipelineSignalSell, Verdict: "veto",
-				Reasoning: reasoning, Indicators: indSnap, Price: bar.Close,
+				Reasoning: reasoning, Indicators: indSnap, Price: signalBar.Close,
 			})
 			r.logger.Info("backtest: exit vetoed by reviewer",
 				slog.String("ticker", r.config.Ticker),
@@ -376,13 +382,13 @@ func (r *Runner) processExit(ctx context.Context, state *agent.PipelineState, ba
 			return
 		}
 		pos.AddEntry(rules.JournalEntry{
-			Type: rules.EventSignalReview, Timestamp: bar.Timestamp,
+			Type: rules.EventSignalReview, Timestamp: signalBar.Timestamp,
 			Signal: domain.PipelineSignalSell, Verdict: "confirm",
-			Reasoning: reasoning, Indicators: indSnap, Price: bar.Close,
+			Reasoning: reasoning, Indicators: indSnap, Price: signalBar.Close,
 		})
 	}
 
-	r.executeClose(ctx, bar.Close, bar, "signal_confirmed")
+	r.executeClose(ctx, executionBar.Close, executionBar, "signal_confirmed")
 }
 
 func (r *Runner) executeClose(ctx context.Context, exitPrice float64, bar domain.OHLCV, exitReason string) {

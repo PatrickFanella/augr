@@ -291,6 +291,9 @@ func (svc *BacktestService) loadHistoricalBars(
 	if len(allBars) == 0 {
 		return nil, &ServiceError{Status: 400, Message: "no historical bars available for ticker " + ticker}
 	}
+	if err := backtest.ValidateChronologicalBars(allBars); err != nil {
+		return nil, &ServiceError{Status: 400, Message: "invalid historical bars: " + err.Error()}
+	}
 	return allBars, nil
 }
 

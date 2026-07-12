@@ -209,7 +209,7 @@ func TestOrchestratorFiltersBarsToDateRange(t *testing.T) {
 	}
 }
 
-func TestOrchestratorBenchmarkUsesExecutionOrderWhenInputBarsUnsorted(t *testing.T) {
+func TestOrchestratorRejectsUnsortedInputBars(t *testing.T) {
 	t.Parallel()
 
 	base := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
@@ -231,19 +231,8 @@ func TestOrchestratorBenchmarkUsesExecutionOrderWhenInputBarsUnsorted(t *testing
 	}
 
 	pipeline := makePipeline()
-	orch, err := NewOrchestrator(cfg, bars, pipeline, nil)
-	if err != nil {
-		t.Fatalf("NewOrchestrator() error = %v", err)
-	}
-
-	result, err := orch.Run(context.Background())
-	if err != nil {
-		t.Fatalf("Run() error = %v", err)
-	}
-
-	wantBuyAndHold := (102.0 - 100.0) / 100.0
-	if result.Metrics.BuyAndHoldReturn != wantBuyAndHold {
-		t.Errorf("Metrics.BuyAndHoldReturn = %f, want %f", result.Metrics.BuyAndHoldReturn, wantBuyAndHold)
+	if _, err := NewOrchestrator(cfg, bars, pipeline, nil); err == nil {
+		t.Fatal("NewOrchestrator() error = nil, want ambiguous input order rejection")
 	}
 }
 

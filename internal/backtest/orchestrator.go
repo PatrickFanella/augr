@@ -85,6 +85,9 @@ func NewOrchestrator(
 	if len(bars) == 0 {
 		return nil, fmt.Errorf("backtest: at least one OHLCV bar is required")
 	}
+	if err := ValidateChronologicalBars(bars); err != nil {
+		return nil, err
+	}
 	if pipeline == nil {
 		return nil, fmt.Errorf("backtest: pipeline is required")
 	}
@@ -178,7 +181,9 @@ func (o *Orchestrator) Run(ctx context.Context) (*OrchestratorResult, error) {
 	metrics := ComputeMetrics(equityCurve, filtered)
 	tradeAnalytics := ComputeTradeAnalytics(trades, o.config.StartDate, o.config.EndDate)
 	inputHash, err := simulationInputHash(o.config, filtered)
-	if err != nil { return nil, fmt.Errorf("backtest: hash simulation inputs: %w", err) }
+	if err != nil {
+		return nil, fmt.Errorf("backtest: hash simulation inputs: %w", err)
+	}
 
 	o.logger.Info("backtest: orchestrated run complete",
 		slog.Int("bars_processed", len(runResult.BarResults)),
