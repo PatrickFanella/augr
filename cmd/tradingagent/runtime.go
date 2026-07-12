@@ -510,6 +510,9 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 		portfolioAllocatorMode := portfolioAllocatorModeFromEnv()
 		strategyRunner.opportunityRepo = opportunityRepo
 		strategyRunner.optionsProvider = deps.OptionsProvider
+		if err := bootstrapPaperOptionsAccount(ctx, strategyRunner.localPaperBroker, positionRepo, tradeRepo); err != nil {
+			logger.Warn("paper options account bootstrap failed; using conservative fresh paper balance until reconciliation", slog.Any("error", err))
+		}
 		strategyRunner.portfolioAllocatorMode = portfolioAllocatorMode
 		deps.Runner = strategyRunner
 		if err := bootstrapPolymarketStopGuards(ctx, strategyRunner, positionRepo, logger); err != nil {

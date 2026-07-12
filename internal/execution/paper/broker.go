@@ -72,6 +72,21 @@ func (b *PaperBroker) SetNowFunc(now func() time.Time) {
 	b.now = now
 }
 
+// RestoreAccount replaces the in-memory paper account snapshot after durable
+// orders, trades, and positions have been reconciled during startup.
+func (b *PaperBroker) RestoreAccount(balance execution.Balance) error {
+	if b == nil {
+		return errors.New("paper: broker is required")
+	}
+	if balance.Cash < 0 || balance.BuyingPower < 0 || balance.Equity < 0 {
+		return errors.New("paper: restored account values must be non-negative")
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.balance = balance
+	return nil
+}
+
 // SubmitOrder simulates an immediate paper-trading fill when the order is marketable.
 func (b *PaperBroker) SubmitOrder(ctx context.Context, order *domain.Order) (string, error) {
 	if b == nil {
