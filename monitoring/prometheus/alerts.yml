@@ -2,7 +2,7 @@ groups:
   - name: augr-release-safety
     rules:
       - alert: AugrRuntimeDown
-        expr: up{job="tradingagent"} == 0
+        expr: up{job=~"tradingagent|augr-api"} == 0
         for: 2m
         labels: { severity: critical }
         annotations:

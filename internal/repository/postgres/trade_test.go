@@ -49,6 +49,8 @@ func TestBuildTradeListQuery_EmptyFilter(t *testing.T) {
 	assertNotContains(t, query, " WHERE ")
 	assertContains(t, query, "ORDER BY executed_at DESC, created_at DESC, id DESC")
 	assertContains(t, query, "LIMIT $1 OFFSET $2")
+	assertContains(t, query, "COALESCE(contract_multiplier, 100)")
+	assertContains(t, query, "COALESCE(premium, 0)")
 }
 
 func TestBuildTradeScopedListQuery_UnsupportedScopePanics(t *testing.T) {

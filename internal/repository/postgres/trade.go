@@ -80,7 +80,8 @@ func (r *TradeRepo) GetByPosition(ctx context.Context, positionID uuid.UUID, fil
 const tradeSelectSQL = `SELECT id, external_id, order_id, position_id, ticker, side,
 		quantity::double precision, price::double precision, fee::double precision,
 		executed_at, created_at, asset_class, open_close,
-		contract_multiplier::double precision, premium::double precision
+		COALESCE(contract_multiplier, 100)::double precision,
+		COALESCE(premium, 0)::double precision
 	 FROM trades`
 
 func (r *TradeRepo) list(ctx context.Context, query string, args []any, op string) ([]domain.Trade, error) {
