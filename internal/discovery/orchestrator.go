@@ -31,11 +31,12 @@ type DiscoveryConfig struct {
 
 // DiscoveryDeps bundles external dependencies required by the discovery pipeline.
 type DiscoveryDeps struct {
-	DataService     *data.DataService
-	LLMProvider     llm.Provider
-	Strategies      repository.StrategyRepository
-	BacktestConfigs repository.BacktestConfigRepository // optional; auto-creates BacktestConfig on deploy
-	Logger          *slog.Logger
+	DataService      *data.DataService
+	LLMProvider      llm.Provider
+	Strategies       repository.StrategyRepository
+	BacktestConfigs  repository.BacktestConfigRepository // optional; auto-creates BacktestConfig on deploy
+	GeneratorMetrics GeneratorMetrics
+	Logger           *slog.Logger
 }
 
 // DeployedStrategy records a strategy that was created in the repository.
@@ -97,6 +98,9 @@ func RunDiscovery(ctx context.Context, cfg DiscoveryConfig, deps DiscoveryDeps) 
 	generatorCfg := cfg.Generator
 	if generatorCfg.Provider == nil {
 		generatorCfg.Provider = deps.LLMProvider
+	}
+	if generatorCfg.Metrics == nil {
+		generatorCfg.Metrics = deps.GeneratorMetrics
 	}
 
 	for _, candidate := range candidates {

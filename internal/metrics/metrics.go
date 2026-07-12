@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -20,6 +21,9 @@ type Metrics struct {
 	LLMCacheMissesTotal                prometheus.Counter
 	OrdersTotal                        *prometheus.CounterVec
 	SignalParseFailuresTotal           prometheus.Counter
+	GeneratorOutcomesTotal             *prometheus.CounterVec
+	DataSourceLastSuccess              *prometheus.GaugeVec
+	DataSourceCooldownUntil            *prometheus.GaugeVec
 	SchedulerTickTotal                 *prometheus.CounterVec
 	AutomationJobErrorsTotal           *prometheus.CounterVec
 	AlpacaReconcileRunsTotal           *prometheus.CounterVec
@@ -102,6 +106,21 @@ func New() *Metrics {
 			Name: "tradingagent_signal_parse_failures_total",
 			Help: "Total signal parse failures.",
 		}),
+
+		GeneratorOutcomesTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "tradingagent_generator_outcomes_total",
+			Help: "Terminal structured strategy generator outcomes by asset class.",
+		}, []string{"asset", "outcome"}),
+
+		DataSourceLastSuccess: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "tradingagent_data_source_last_success_unixtime",
+			Help: "Unix timestamp of the last successful fetch by external data source.",
+		}, []string{"source"}),
+
+		DataSourceCooldownUntil: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "tradingagent_data_source_cooldown_until_unixtime",
+			Help: "Unix timestamp until which an external data source is cooling down; zero when inactive.",
+		}, []string{"source"}),
 
 		SchedulerTickTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "tradingagent_scheduler_tick_total",
@@ -207,6 +226,9 @@ func New() *Metrics {
 		m.LLMCacheMissesTotal,
 		m.OrdersTotal,
 		m.SignalParseFailuresTotal,
+		m.GeneratorOutcomesTotal,
+		m.DataSourceLastSuccess,
+		m.DataSourceCooldownUntil,
 		m.SchedulerTickTotal,
 		m.AutomationJobErrorsTotal,
 		m.AlpacaReconcileRunsTotal,
@@ -275,6 +297,31 @@ func (m *Metrics) RecordOrder(broker, side, status string) {
 
 func (m *Metrics) RecordSignalParseFailure() {
 	m.SignalParseFailuresTotal.Inc()
+}
+
+func (m *Metrics) RecordGeneratorOutcome(asset, outcome string) {
+	if m == nil {
+		return
+	}
+	m.GeneratorOutcomesTotal.WithLabelValues(asset, outcome).Inc()
+}
+
+func (m *Metrics) RecordDataSourceSuccess(source string, at time.Time) {
+	if m == nil || at.IsZero() {
+		return
+	}
+	m.DataSourceLastSuccess.WithLabelValues(source).Set(float64(at.Unix()))
+}
+
+func (m *Metrics) SetDataSourceCooldown(source string, until time.Time) {
+	if m == nil {
+		return
+	}
+	value := float64(0)
+	if !until.IsZero() {
+		value = float64(until.Unix())
+	}
+	m.DataSourceCooldownUntil.WithLabelValues(source).Set(value)
 }
 
 func (m *Metrics) RecordSchedulerTick(tickType string) {

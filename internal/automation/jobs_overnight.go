@@ -320,7 +320,7 @@ func (o *JobOrchestrator) optionsDiscovery(ctx context.Context) error {
 			Tickers: tickers,
 		},
 		Scoring:     optdiscovery.DefaultOptionsScoringConfig(),
-		Generator:   discovery.GeneratorConfig{Provider: o.deps.LLMProvider},
+		Generator:   discovery.GeneratorConfig{Provider: o.deps.LLMProvider, Metrics: o.deps.GeneratorMetrics},
 		BacktestCfg: discovery.DefaultScoringConfig(),
 		MaxWinners:  3,
 	}

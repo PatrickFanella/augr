@@ -17,10 +17,12 @@ func TestGenerateStrategy_RetriesAfterEmptyResponse(t *testing.T) {
 		{Content: ""},
 		{Content: validStrategyJSON},
 	}}
+	metric := &stubGeneratorMetrics{}
 
 	got, err := GenerateStrategy(context.Background(), GeneratorConfig{
 		Provider:   provider,
 		MaxRetries: 1,
+		Metrics:    metric,
 	}, ScreenResult{Ticker: "MIMI"}, nil)
 	if err != nil {
 		t.Fatalf("GenerateStrategy() error = %v, want nil", err)
@@ -33,6 +35,9 @@ func TestGenerateStrategy_RetriesAfterEmptyResponse(t *testing.T) {
 	}
 	if provider.calls != 2 {
 		t.Fatalf("provider calls = %d, want 2", provider.calls)
+	}
+	if got := metric.outcomes["stock/success_after_retry"]; got != 1 {
+		t.Fatalf("success-after-retry metric = %d, want 1", got)
 	}
 	if len(provider.requests) != 2 {
 		t.Fatalf("requests = %d, want 2", len(provider.requests))
@@ -75,10 +80,12 @@ func TestGenerateStrategy_ReturnsErrorAfterRepeatedEmptyResponses(t *testing.T) 
 		{Content: ""},
 		{Content: ""},
 	}}
+	metric := &stubGeneratorMetrics{}
 
 	got, err := GenerateStrategy(context.Background(), GeneratorConfig{
 		Provider:   provider,
 		MaxRetries: 1,
+		Metrics:    metric,
 	}, ScreenResult{Ticker: "MIMI"}, nil)
 	if err == nil {
 		t.Fatal("GenerateStrategy() error = nil, want non-nil")
@@ -92,6 +99,18 @@ func TestGenerateStrategy_ReturnsErrorAfterRepeatedEmptyResponses(t *testing.T) 
 	if provider.calls != 2 {
 		t.Fatalf("provider calls = %d, want 2", provider.calls)
 	}
+	if got := metric.outcomes["stock/validation_exhausted"]; got != 1 {
+		t.Fatalf("validation-exhausted metric = %d, want 1", got)
+	}
+}
+
+type stubGeneratorMetrics struct{ outcomes map[string]int }
+
+func (s *stubGeneratorMetrics) RecordGeneratorOutcome(asset, outcome string) {
+	if s.outcomes == nil {
+		s.outcomes = make(map[string]int)
+	}
+	s.outcomes[asset+"/"+outcome]++
 }
 
 func TestGenerateStrategy_OnlyLogsRetryWhenAnotherAttemptRemains(t *testing.T) {

@@ -16,10 +16,12 @@ func TestGenerateOptionsStrategy_RetriesAfterEmptyResponse(t *testing.T) {
 		{Content: ""},
 		{Content: validOptionsStrategyJSON},
 	}}
+	metric := &optionsGeneratorMetricsStub{}
 
 	got, err := GenerateOptionsStrategy(context.Background(), discovery.GeneratorConfig{
 		Provider:   provider,
 		MaxRetries: 1,
+		Metrics:    metric,
 	}, OptionsScoredCandidate{OptionsScreenResult: OptionsScreenResult{Ticker: "NVDA"}}, nil)
 	if err != nil {
 		t.Fatalf("GenerateOptionsStrategy() error = %v, want nil", err)
@@ -32,6 +34,9 @@ func TestGenerateOptionsStrategy_RetriesAfterEmptyResponse(t *testing.T) {
 	}
 	if provider.calls != 2 {
 		t.Fatalf("provider calls = %d, want 2", provider.calls)
+	}
+	if metric.asset != "options" || metric.outcome != "success_after_retry" || metric.calls != 1 {
+		t.Fatalf("generator metric = %#v, want one options success_after_retry", metric)
 	}
 	if len(provider.requests) != 2 {
 		t.Fatalf("requests = %d, want 2", len(provider.requests))
@@ -96,6 +101,16 @@ type stubOptionsCompletionProvider struct {
 	responses []*llm.CompletionResponse
 	requests  []llm.CompletionRequest
 	calls     int
+}
+
+type optionsGeneratorMetricsStub struct {
+	asset, outcome string
+	calls          int
+}
+
+func (s *optionsGeneratorMetricsStub) RecordGeneratorOutcome(asset, outcome string) {
+	s.asset, s.outcome = asset, outcome
+	s.calls++
 }
 
 func (s *stubOptionsCompletionProvider) Complete(_ context.Context, request llm.CompletionRequest) (*llm.CompletionResponse, error) {

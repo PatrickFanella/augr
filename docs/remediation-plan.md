@@ -33,6 +33,16 @@ Exit gate: malformed prose-wrapped JSON is recovered safely, invalid output is
 rejected, generator outcomes are measurable, and ingestion no longer loops on
 rate limits.
 
+Completed evidence (2026-07-12): stock and options generators use the shared
+balanced-object extractor, reject empty/invalid results, hash rather than log
+response bodies, and publish terminal outcomes through
+`tradingagent_generator_outcomes_total`. All in-process Reddit consumers share
+one Retry-After-aware cooldown with jitter and stop fan-out after a 429. Source
+freshness and cooldown state are exported as
+`tradingagent_data_source_last_success_unixtime` and
+`tradingagent_data_source_cooldown_until_unixtime`. Regression coverage and the
+full Go test/vet gates pass.
+
 ## Phase 2 — Engineering quality gates
 
 - Restore warning-free frontend lint and deterministic frontend tests.

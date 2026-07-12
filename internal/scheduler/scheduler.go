@@ -725,6 +725,7 @@ func (s *Scheduler) runTickerDiscovery() {
 		Generator: discovery.GeneratorConfig{
 			Provider:   td.discoveryDeps.LLMProvider,
 			MaxRetries: 3,
+			Metrics:    td.discoveryDeps.GeneratorMetrics,
 		},
 		Sweep: discovery.SweepConfig{
 			InitialCash: 100000,

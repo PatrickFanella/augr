@@ -151,7 +151,7 @@ func (c overnightBacktestChunker) runGenerateChunk(ctx context.Context, run *dom
 		candidate := run.Candidates[i]
 		screen := discovery.ScreenResultsFromCheckpointCandidates([]domain.OvernightBacktestCandidate{candidate})[0]
 		generateCtx, cancel := c.generationContext(ctx)
-		generated, err := discovery.GenerateStrategy(generateCtx, discovery.GeneratorConfig{Provider: c.deps.LLMProvider, MaxRetries: overnightBacktestGenerationMaxRetries}, screen, c.logger)
+		generated, err := discovery.GenerateStrategy(generateCtx, discovery.GeneratorConfig{Provider: c.deps.LLMProvider, MaxRetries: overnightBacktestGenerationMaxRetries, Metrics: c.deps.GeneratorMetrics}, screen, c.logger)
 		cancel()
 		if err != nil {
 			run.Errors = append(run.Errors, err.Error())

@@ -110,6 +110,9 @@ func GenerateOptionsStrategy(ctx context.Context, cfg discovery.GeneratorConfig,
 			ResponseFormat: &llm.ResponseFormat{Type: llm.ResponseFormatJSONObject},
 		})
 		if err != nil {
+			if cfg.Metrics != nil {
+				cfg.Metrics.RecordGeneratorOutcome("options", "provider_error")
+			}
 			return nil, fmt.Errorf("options/generator: LLM call failed: %w", err)
 		}
 
@@ -137,6 +140,13 @@ func GenerateOptionsStrategy(ctx context.Context, cfg discovery.GeneratorConfig,
 			parseErr = errors.New("rules: empty JSON response")
 		}
 		if parseErr == nil && parsed != nil {
+			outcome := "success_first_attempt"
+			if attempt > 0 {
+				outcome = "success_after_retry"
+			}
+			if cfg.Metrics != nil {
+				cfg.Metrics.RecordGeneratorOutcome("options", outcome)
+			}
 			logger.Info("options/generator: strategy generated",
 				slog.String("ticker", candidate.Ticker),
 				slog.String("type", string(parsed.StrategyType)),
@@ -159,6 +169,9 @@ func GenerateOptionsStrategy(ctx context.Context, cfg discovery.GeneratorConfig,
 		}
 	}
 
+	if cfg.Metrics != nil {
+		cfg.Metrics.RecordGeneratorOutcome("options", "validation_exhausted")
+	}
 	return nil, fmt.Errorf("options/generator: failed after %d retries: %w", maxRetries+1, lastErr)
 }
 

@@ -41,6 +41,7 @@ import (
 	alpacaexecution "github.com/PatrickFanella/get-rich-quick/internal/execution/alpaca"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution/paper"
 	polymarketexecution "github.com/PatrickFanella/get-rich-quick/internal/execution/polymarket"
+	"github.com/PatrickFanella/get-rich-quick/internal/integration/redditlimit"
 	kalshidiscovery "github.com/PatrickFanella/get-rich-quick/internal/kalshidiscovery"
 	"github.com/PatrickFanella/get-rich-quick/internal/llm"
 	"github.com/PatrickFanella/get-rich-quick/internal/llm/anthropic"
@@ -286,6 +287,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 	settingsSvc := api.NewMemorySettingsServiceFromConfig(cfg, currentSchemaVersion, requiredSchemaVersion, schemaStatus).
 		WithPersister(ctx, pgrepo.NewSettingsPersister(db.Pool), logger)
 	promptSettingsSvc := api.NewPromptSettingsService().WithPersister(ctx, pgrepo.NewSettingsPersister(db.Pool))
+	redditlimit.Default.SetObserver(appMetrics)
 
 	deps := api.Deps{
 		Strategies:             strategyRepo,
@@ -478,10 +480,11 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 			deps.EventsProvider = finnhub.NewProvider(eventsClient)
 		}
 		deps.DiscoveryDeps = &discovery.DiscoveryDeps{
-			DataService: dataService,
-			LLMProvider: deps.LLMProvider,
-			Strategies:  strategyRepo,
-			Logger:      logger,
+			DataService:      dataService,
+			LLMProvider:      deps.LLMProvider,
+			Strategies:       strategyRepo,
+			GeneratorMetrics: appMetrics,
+			Logger:           logger,
 		}
 		strategyRunner = newRealStrategyRunner(
 			cfg,
@@ -598,6 +601,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 					AlpacaReconciler:            alpacaReconciler,
 					OptionsProvider:             deps.OptionsProvider,
 					LLMProvider:                 deps.LLMProvider,
+					GeneratorMetrics:            appMetrics,
 					EmbeddingProvider:           embeddingProvider,
 					EventsProvider:              deps.EventsProvider,
 					StrategyRepo:                strategyRepo,

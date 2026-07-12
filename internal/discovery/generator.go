@@ -19,6 +19,13 @@ type GeneratorConfig struct {
 	Provider   llm.Provider
 	Model      string
 	MaxRetries int // default 3
+	Metrics    GeneratorMetrics
+}
+
+// GeneratorMetrics records terminal generator outcomes. Implementations must
+// keep asset and outcome labels bounded; *metrics.Metrics satisfies it.
+type GeneratorMetrics interface {
+	RecordGeneratorOutcome(asset, outcome string)
 }
 
 const generatorSystemPrompt = `You are a quantitative trading strategy designer. Given recent market data and technical indicators for a ticker, generate a complete RulesEngineConfig as JSON.
@@ -113,6 +120,7 @@ func GenerateStrategy(ctx context.Context, cfg GeneratorConfig, candidate Screen
 			ResponseFormat: &llm.ResponseFormat{Type: llm.ResponseFormatJSONObject},
 		})
 		if err != nil {
+			recordGeneratorOutcome(cfg.Metrics, "stock", "provider_error")
 			return nil, fmt.Errorf("discovery/generator: LLM call failed: %w", err)
 		}
 
@@ -140,6 +148,11 @@ func GenerateStrategy(ctx context.Context, cfg GeneratorConfig, candidate Screen
 			parseErr = errors.New("rules: empty JSON response")
 		}
 		if parseErr == nil && parsed != nil {
+			outcome := "success_first_attempt"
+			if attempt > 0 {
+				outcome = "success_after_retry"
+			}
+			recordGeneratorOutcome(cfg.Metrics, "stock", outcome)
 			logger.Info("discovery/generator: strategy generated",
 				slog.String("ticker", candidate.Ticker),
 				slog.String("name", parsed.Name),
@@ -167,7 +180,14 @@ func GenerateStrategy(ctx context.Context, cfg GeneratorConfig, candidate Screen
 		}
 	}
 
+	recordGeneratorOutcome(cfg.Metrics, "stock", "validation_exhausted")
 	return nil, fmt.Errorf("discovery/generator: failed after %d retries: %w", maxRetries+1, lastErr)
+}
+
+func recordGeneratorOutcome(metrics GeneratorMetrics, asset, outcome string) {
+	if metrics != nil {
+		metrics.RecordGeneratorOutcome(asset, outcome)
+	}
 }
 
 func buildGeneratorUserPrompt(c ScreenResult) string {

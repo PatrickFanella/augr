@@ -7,7 +7,6 @@ tags: [kanban, tracking]
 
 ## Backlog
 
-- [ ] Phase 2: engineering quality gates
 - [ ] Phase 3: frontend correctness and visual integrity
 - [ ] Phase 4: recover abandoned product surfaces
 - [ ] Phase 5: complete options product path
@@ -18,8 +17,7 @@ tags: [kanban, tracking]
 
 ## In Progress
 
-- [ ] Phase 0: baseline and safeguards
-- [ ] Phase 1: structured LLM output and provider throttling
+- [ ] Phase 2: engineering quality gates
 
 ## Blocked
 
@@ -29,6 +27,8 @@ tags: [kanban, tracking]
 
 - [x] Reconcile kvant main with local backend commits
 - [x] Preserve user-owned production Compose change
+- [x] Phase 0: baseline and safeguards
+- [x] Phase 1: structured LLM recovery, redacted response logging, terminal generator metrics, coordinated Reddit cooldowns, and freshness metrics
 
 - [ ] Domain types
 - [ ] Repository interfaces

@@ -179,6 +179,7 @@ func (o *JobOrchestrator) discoveryRun(ctx context.Context) error {
 		},
 		Generator: discovery.GeneratorConfig{
 			Provider: o.deps.LLMProvider,
+			Metrics:  o.deps.GeneratorMetrics,
 		},
 		Scoring:    discovery.DefaultScoringConfig(),
 		MaxWinners: 3,

@@ -13,6 +13,7 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/data"
 	"github.com/PatrickFanella/get-rich-quick/internal/data/polygon"
 	"github.com/PatrickFanella/get-rich-quick/internal/data/rss"
+	"github.com/PatrickFanella/get-rich-quick/internal/discovery"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	polymarketexecution "github.com/PatrickFanella/get-rich-quick/internal/execution/polymarket"
 	kalshidiscovery "github.com/PatrickFanella/get-rich-quick/internal/kalshidiscovery"
@@ -55,6 +56,7 @@ type OrchestratorDeps struct {
 	AlpacaReconciler            *AlpacaReconciler
 	OptionsProvider             data.OptionsDataProvider
 	LLMProvider                 llm.Provider
+	GeneratorMetrics            discovery.GeneratorMetrics
 	EmbeddingProvider           embedding.Provider // optional; nil = skip embedding during triage
 	EventsProvider              data.EventsProvider
 	StrategyRepo                repository.StrategyRepository

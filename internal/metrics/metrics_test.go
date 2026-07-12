@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/metrics"
 	"github.com/prometheus/client_golang/prometheus"
@@ -109,6 +110,9 @@ func TestConvenienceMethods(t *testing.T) {
 	m.ObserveLLMLatency("openai", "gpt-4", 0.8)
 	m.RecordOrder("alpaca", "buy", "filled")
 	m.RecordSignalParseFailure()
+	m.RecordGeneratorOutcome("stock", "success_first_attempt")
+	m.RecordDataSourceSuccess("reddit", time.Unix(1_700_000_000, 0))
+	m.SetDataSourceCooldown("reddit", time.Unix(1_700_000_300, 0))
 	m.RecordSchedulerTick("strategy")
 	m.RecordAutomationJobError("sync_positions")
 	m.RecordStaleRunReconciled()
@@ -143,6 +147,9 @@ func TestHandler(t *testing.T) {
 	m.ObserveLLMLatency("openai", "gpt-4", 0.8)
 	m.RecordOrder("alpaca", "buy", "filled")
 	m.RecordSignalParseFailure()
+	m.RecordGeneratorOutcome("stock", "success_first_attempt")
+	m.RecordDataSourceSuccess("reddit", time.Unix(1_700_000_000, 0))
+	m.SetDataSourceCooldown("reddit", time.Unix(1_700_000_300, 0))
 	m.RecordSchedulerTick("strategy")
 	m.RecordAutomationJobError("sync_positions")
 	m.RecordStaleRunReconciled()
@@ -181,6 +188,9 @@ func TestHandler(t *testing.T) {
 		"tradingagent_llm_latency_seconds",
 		"tradingagent_orders_total",
 		"tradingagent_signal_parse_failures_total",
+		"tradingagent_generator_outcomes_total",
+		"tradingagent_data_source_last_success_unixtime",
+		"tradingagent_data_source_cooldown_until_unixtime",
 		"tradingagent_scheduler_tick_total",
 		"tradingagent_automation_job_errors_total",
 		"tradingagent_polymarket_reconciliation_drift_total",
@@ -226,6 +236,21 @@ func TestNewCounters(t *testing.T) {
 # TYPE tradingagent_llm_fallback_total counter
 tradingagent_llm_fallback_total{reason="deadline_exceeded"} 1
 tradingagent_llm_fallback_total{reason="provider_error"} 1
+`,
+		},
+		{
+			name:      "generator outcomes",
+			collector: func(m *metrics.Metrics) prometheus.Collector { return m.GeneratorOutcomesTotal },
+			add: func(m *metrics.Metrics) {
+				m.RecordGeneratorOutcome("stock", "success_first_attempt")
+				m.RecordGeneratorOutcome("stock", "success_after_retry")
+				m.RecordGeneratorOutcome("options", "validation_exhausted")
+			},
+			want: `# HELP tradingagent_generator_outcomes_total Terminal structured strategy generator outcomes by asset class.
+# TYPE tradingagent_generator_outcomes_total counter
+tradingagent_generator_outcomes_total{asset="options",outcome="validation_exhausted"} 1
+tradingagent_generator_outcomes_total{asset="stock",outcome="success_after_retry"} 1
+tradingagent_generator_outcomes_total{asset="stock",outcome="success_first_attempt"} 1
 `,
 		},
 		{
