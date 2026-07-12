@@ -69,6 +69,7 @@ type SpreadLeg struct {
 	Ratio           int            `json:"ratio"`
 	Quantity        float64        `json:"quantity"`
 	ExecutablePrice float64        `json:"executable_price"`
+	Greeks          OptionGreeks   `json:"greeks"`
 }
 
 // OptionStrategyType identifies a named options strategy.

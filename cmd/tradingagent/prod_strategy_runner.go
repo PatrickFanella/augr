@@ -398,13 +398,44 @@ func (r *realStrategyRunner) executeOptionsSignal(ctx context.Context, strategy 
 		if err != nil {
 			return err
 		}
+		legs := make([]risk.OptionLegExposure, 0, len(spread.Legs))
+		for _, leg := range spread.Legs {
+			legs = append(legs, risk.OptionLegExposure{Greeks: leg.Greeks, Side: leg.Side, Quantity: quantity * float64(leg.Ratio), Multiplier: leg.Contract.Multiplier})
+		}
+		if err := r.enforceOptionsGreekRisk(ctx, cfg.Underlying, legs); err != nil {
+			return err
+		}
 		return manager.ProcessSpreadSignal(ctx, spread, quantity, strategy.ID, runID)
 	}
 	plan, err := buildPaperSingleLegPlan(cfg, chain, time.Now().UTC())
 	if err != nil {
 		return err
 	}
+	if err := r.enforceOptionsGreekRisk(ctx, cfg.Underlying, []risk.OptionLegExposure{{Greeks: *plan.OptionGreeks, Side: domain.OrderSideBuy, Quantity: plan.PositionSize, Multiplier: 100}}); err != nil {
+		return err
+	}
 	return manager.ProcessOptionSignal(ctx, signal, plan, strategy.ID, runID)
+}
+
+func (r *realStrategyRunner) enforceOptionsGreekRisk(ctx context.Context, underlying string, proposed []risk.OptionLegExposure) error {
+	to := time.Now().UTC()
+	bars, err := r.dataService.GetOHLCV(ctx, domain.MarketTypeStock, underlying, data.Timeframe1d, to.Add(-7*24*time.Hour), to)
+	if err != nil || len(bars) == 0 || bars[len(bars)-1].Close <= 0 {
+		return fmt.Errorf("options runtime: underlying price required for Greek risk: %w", err)
+	}
+	balance, err := r.localPaperBroker.GetAccountBalance(ctx)
+	if err != nil {
+		return fmt.Errorf("options runtime: paper balance for Greek risk: %w", err)
+	}
+	positions, err := r.positionRepo.GetOpen(ctx, repository.PositionFilter{}, 1000, 0)
+	if err != nil {
+		return fmt.Errorf("options runtime: open positions for Greek risk: %w", err)
+	}
+	_, allowed, reason := risk.CheckOptionsExposure(risk.DefaultOptionsLimits(), balance.Equity, bars[len(bars)-1].Close, positions, proposed)
+	if !allowed {
+		return errors.New(reason)
+	}
+	return nil
 }
 
 func buildPaperDebitSpreadPlan(cfg *rules.OptionsRulesConfig, chain []domain.OptionSnapshot, now time.Time) (*domain.OptionSpread, float64, error) {
@@ -434,6 +465,7 @@ func buildPaperDebitSpreadPlan(cfg *rules.OptionsRulesConfig, chain []domain.Opt
 			leg.ExecutablePrice = snapshot.Bid
 			netDebit -= snapshot.Bid * float64(leg.Ratio)
 		}
+		leg.Greeks = snapshot.Greeks
 		minStrike = math.Min(minStrike, leg.Contract.Strike)
 		maxStrike = math.Max(maxStrike, leg.Contract.Strike)
 	}
@@ -520,7 +552,8 @@ func buildPaperSingleLegPlan(cfg *rules.OptionsRulesConfig, chain []domain.Optio
 	if quantity < 1 {
 		return execution.TradingPlan{}, errors.New("options runtime: sizing budget cannot purchase one contract")
 	}
-	return execution.TradingPlan{Action: domain.PipelineSignalBuy, MarketType: domain.MarketTypeOptions, Ticker: snapshot.Contract.OCCSymbol, EntryType: "limit", EntryPrice: snapshot.Ask, PositionSize: quantity}, nil
+	greeks := snapshot.Greeks
+	return execution.TradingPlan{Action: domain.PipelineSignalBuy, MarketType: domain.MarketTypeOptions, Ticker: snapshot.Contract.OCCSymbol, EntryType: "limit", EntryPrice: snapshot.Ask, PositionSize: quantity, OptionGreeks: &greeks}, nil
 }
 
 func (r *realStrategyRunner) runPolymarketNative(ctx context.Context, strategy domain.Strategy) (*api.StrategyRunResult, error) {

@@ -47,6 +47,7 @@ type TradingPlan struct {
 	RiskReward       float64               `json:"risk_reward,omitempty"`
 	Side             string                `json:"side,omitempty"`
 	DecisionMetadata *DecisionMetadata     `json:"decision_metadata,omitempty"`
+	OptionGreeks     *domain.OptionGreeks  `json:"option_greeks,omitempty"`
 }
 
 // DecisionMetadata captures prompt and LLM usage details for a trading decision.

@@ -185,6 +185,7 @@ func (m *OptionsOrderManager) ProcessOptionSignal(
 		Strike:             &contract.Strike,
 		Expiry:             &contract.Expiry,
 		ContractMultiplier: contract.Multiplier,
+		OptionGreeks:       plan.OptionGreeks,
 		PositionIntent:     &intent,
 		CreatedAt:          now,
 	}
@@ -309,6 +310,9 @@ func (m *OptionsOrderManager) persistImmediateFill(ctx context.Context, order *d
 		AssetClass: order.AssetClass, UnderlyingTicker: order.UnderlyingTicker,
 		OptionType: order.OptionType, Strike: order.Strike, Expiry: order.Expiry,
 		ContractMultiplier: order.ContractMultiplier, LegGroupID: order.LegGroupID,
+	}
+	if order.OptionGreeks != nil {
+		position.Delta, position.Gamma, position.Theta, position.Vega = &order.OptionGreeks.Delta, &order.OptionGreeks.Gamma, &order.OptionGreeks.Theta, &order.OptionGreeks.Vega
 	}
 	if err := m.positionRepo.Create(ctx, position); err != nil {
 		return fmt.Errorf("options_manager: persist filled position: %w", err)
@@ -521,6 +525,7 @@ func (m *OptionsOrderManager) ProcessSpreadSignal(
 			Strike:             &leg.Contract.Strike,
 			Expiry:             &leg.Contract.Expiry,
 			ContractMultiplier: leg.Contract.Multiplier,
+			OptionGreeks:       &leg.Greeks,
 			PositionIntent:     &intent,
 			LegGroupID:         &legGroupID,
 			CreatedAt:          now,

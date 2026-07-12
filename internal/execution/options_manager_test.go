@@ -152,7 +152,8 @@ func TestProcessOptionSignal_PreTradeRiskRejection(t *testing.T) {
 		return false, "options exposure limit", nil
 	}}
 	mgr := newTestOptionsManager(&mockOptionsBroker{}, orderRepo, &mockPositionRepo{}, &mockTradeRepo{}, riskEng)
-	err := mgr.ProcessOptionSignal(context.Background(), execution.FinalSignal{Signal: domain.PipelineSignalBuy}, execution.TradingPlan{Ticker: "AAPL271217C00150000", EntryPrice: 2.5, PositionSize: 1}, uuid.New(), uuid.New())
+	greeks := &domain.OptionGreeks{Delta: 0.4, Gamma: 0.02, Theta: -0.1, Vega: 0.2}
+	err := mgr.ProcessOptionSignal(context.Background(), execution.FinalSignal{Signal: domain.PipelineSignalBuy}, execution.TradingPlan{Ticker: "AAPL271217C00150000", EntryPrice: 2.5, PositionSize: 1, OptionGreeks: greeks}, uuid.New(), uuid.New())
 	if err == nil || len(orderRepo.orders) != 0 {
 		t.Fatalf("risk rejection should fail before persistence: err=%v orders=%d", err, len(orderRepo.orders))
 	}
@@ -188,14 +189,15 @@ func TestProcessOptionSignal_PreservesImmediatePaperFill(t *testing.T) {
 		return "paper-option-1", nil
 	}}
 	mgr := newTestOptionsManager(broker, orderRepo, positionRepo, tradeRepo, &mockRiskEngine{})
-	err := mgr.ProcessOptionSignal(context.Background(), execution.FinalSignal{Signal: domain.PipelineSignalBuy}, execution.TradingPlan{Ticker: "AAPL271217C00150000", EntryPrice: 2.5, PositionSize: 1}, uuid.New(), uuid.New())
+	greeks := &domain.OptionGreeks{Delta: 0.4, Gamma: 0.02, Theta: -0.1, Vega: 0.2}
+	err := mgr.ProcessOptionSignal(context.Background(), execution.FinalSignal{Signal: domain.PipelineSignalBuy}, execution.TradingPlan{Ticker: "AAPL271217C00150000", EntryPrice: 2.5, PositionSize: 1, OptionGreeks: greeks}, uuid.New(), uuid.New())
 	if err != nil {
 		t.Fatalf("ProcessOptionSignal() error = %v", err)
 	}
 	if got := orderRepo.updates[0].Status; got != domain.OrderStatusFilled {
 		t.Fatalf("paper fill status = %s, want filled", got)
 	}
-	if len(positionRepo.positions) != 1 || positionRepo.positions[0].UnderlyingTicker != "AAPL" {
+	if len(positionRepo.positions) != 1 || positionRepo.positions[0].UnderlyingTicker != "AAPL" || positionRepo.positions[0].Delta == nil || *positionRepo.positions[0].Delta != 0.4 {
 		t.Fatalf("filled option position not persisted: %+v", positionRepo.positions)
 	}
 	if len(tradeRepo.trades) != 1 || tradeRepo.trades[0].Premium != 250 || tradeRepo.trades[0].Fee != 0.65 || tradeRepo.trades[0].OpenClose != "open" {
