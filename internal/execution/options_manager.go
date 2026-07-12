@@ -33,6 +33,10 @@ type OptionFillReporter interface {
 	OptionFillReport(ctx context.Context, order *domain.Order) (OptionFillReport, error)
 }
 
+type optionsBalanceProvider interface {
+	GetAccountBalance(ctx context.Context) (Balance, error)
+}
+
 // OptionsOrderManager handles options order submission for both single-leg
 // and multi-leg strategies.
 type OptionsOrderManager struct {
@@ -187,8 +191,36 @@ func (m *OptionsOrderManager) ProcessOptionSignal(
 	if plan.StopLoss > 0 {
 		order.StopPrice = &plan.StopLoss
 	}
+	balanceProvider, ok := m.broker.(optionsBalanceProvider)
+	if !ok {
+		return fmt.Errorf("options_manager: broker account balance is required for multiplier-aware risk")
+	}
+	balance, err := balanceProvider.GetAccountBalance(ctx)
+	if err != nil {
+		return fmt.Errorf("options_manager: get account balance: %w", err)
+	}
+	if balance.Equity <= 0 {
+		return fmt.Errorf("options_manager: account equity must be positive")
+	}
+	portfolio, err := BuildRiskPortfolioSnapshotFromBalance(ctx, balance, m.positionRepo)
+	if err != nil {
+		return fmt.Errorf("options_manager: build risk portfolio: %w", err)
+	}
+	notional := order.Quantity * plan.EntryPrice * order.ContractMultiplier
+	additionalExposure := notional / balance.Equity
+	if portfolio.MarketExposurePct == nil {
+		portfolio.MarketExposurePct = make(map[domain.MarketType]float64)
+	}
+	portfolio.MarketExposurePct[domain.MarketTypeOptions] += additionalExposure
+	approved, reason, err := m.riskEngine.CheckPositionLimits(ctx, order.Ticker, additionalExposure, portfolio)
+	if err != nil {
+		return fmt.Errorf("options_manager: check position limits: %w", err)
+	}
+	if !approved {
+		return fmt.Errorf("options_manager: position limits rejected %s: %s", plan.Ticker, reason)
+	}
 
-	approved, reason, err := m.riskEngine.CheckPreTrade(ctx, order, risk.Portfolio{})
+	approved, reason, err = m.riskEngine.CheckPreTrade(ctx, order, portfolio)
 	if err != nil {
 		return fmt.Errorf("options_manager: pre-trade risk check: %w", err)
 	}

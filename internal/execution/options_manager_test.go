@@ -20,6 +20,10 @@ type mockOptionsBroker struct {
 	optionFillReportFn  func(ctx context.Context, order *domain.Order) (execution.OptionFillReport, error)
 }
 
+func (b *mockOptionsBroker) GetAccountBalance(context.Context) (execution.Balance, error) {
+	return execution.Balance{Cash: 100000, BuyingPower: 100000, Equity: 100000, Currency: "USD"}, nil
+}
+
 func (b *mockOptionsBroker) OptionFillReport(ctx context.Context, order *domain.Order) (execution.OptionFillReport, error) {
 	if b.optionFillReportFn != nil {
 		return b.optionFillReportFn(ctx, order)
@@ -146,6 +150,22 @@ func TestProcessOptionSignal_PreTradeRiskRejection(t *testing.T) {
 	err := mgr.ProcessOptionSignal(context.Background(), execution.FinalSignal{Signal: domain.PipelineSignalBuy}, execution.TradingPlan{Ticker: "AAPL271217C00150000", EntryPrice: 2.5, PositionSize: 1}, uuid.New(), uuid.New())
 	if err == nil || len(orderRepo.orders) != 0 {
 		t.Fatalf("risk rejection should fail before persistence: err=%v orders=%d", err, len(orderRepo.orders))
+	}
+}
+
+func TestProcessOptionSignal_PositionLimitUsesContractMultiplier(t *testing.T) {
+	var exposure float64
+	riskEng := &mockRiskEngine{checkPositionLimitsFn: func(_ context.Context, _ string, quantity float64, _ risk.Portfolio) (bool, string, error) {
+		exposure = quantity
+		return true, "", nil
+	}}
+	mgr := newTestOptionsManager(&mockOptionsBroker{}, &mockOrderRepo{}, &mockPositionRepo{}, &mockTradeRepo{}, riskEng)
+	err := mgr.ProcessOptionSignal(context.Background(), execution.FinalSignal{Signal: domain.PipelineSignalBuy}, execution.TradingPlan{Ticker: "AAPL271217C00150000", EntryPrice: 2.5, PositionSize: 2}, uuid.New(), uuid.New())
+	if err != nil {
+		t.Fatalf("ProcessOptionSignal() error = %v", err)
+	}
+	if math.Abs(exposure-0.005) > 1e-12 {
+		t.Fatalf("exposure = %f, want 0.005 including 100x multiplier", exposure)
 	}
 }
 
