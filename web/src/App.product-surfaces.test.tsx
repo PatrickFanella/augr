@@ -75,4 +75,36 @@ describe('recovered product surfaces', () => {
     render(<App />)
     expect(await screen.findByText(/feature unavailable/i)).toBeTruthy()
   })
+
+  it('renders persisted backtest definitions and reproducibility evidence', async () => {
+    resetApp('/backtests')
+    setTokenSnapshot(buildAuthResponse())
+    render(<App />)
+
+    expect(await screen.findByRole('table', { name: /backtest configurations/i })).toBeTruthy()
+    expect(await screen.findByRole('table', { name: /backtest runs/i })).toBeTruthy()
+    expect(screen.getByText('AAPL walk-forward')).toBeTruthy()
+    expect(screen.getByText('research-v1')).toBeTruthy()
+    expect(screen.getByText(/evidence only/i)).toBeTruthy()
+  })
+
+  it('renders empty backtest definitions and runs independently', async () => {
+    resetApp('/backtests')
+    state.scenario = 'empty-data'
+    setTokenSnapshot(buildAuthResponse())
+    render(<App />)
+
+    expect(await screen.findByText(/no backtest configurations/i)).toBeTruthy()
+    expect(await screen.findByText(/no backtest runs/i)).toBeTruthy()
+  })
+
+  it('keeps backtest configurations visible when run history is unavailable', async () => {
+    resetApp('/backtests')
+    setTokenSnapshot(buildAuthResponse())
+    server.use(http.get(`${apiBaseUrl}/backtests/runs`, () => HttpResponse.json({ error: 'backtest storage unavailable', code: 'ERR_NOT_IMPLEMENTED' }, { status: 501 })))
+    render(<App />)
+
+    expect(await screen.findByText('AAPL walk-forward')).toBeTruthy()
+    expect(await screen.findByText(/feature unavailable/i)).toBeTruthy()
+  })
 })

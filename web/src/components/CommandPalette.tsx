@@ -16,6 +16,7 @@ import {
   Settings,
   Landmark,
   ChartCandlestick,
+  FlaskConical,
 } from 'lucide-react'
 import { useTheme } from '@/app/providers/theme-context'
 
@@ -59,6 +60,7 @@ export function CommandPalette() {
     { to: '/portfolio', label: 'Portfolio', icon: <PieChart size={16} /> },
     { to: '/event-markets', label: 'Event markets', icon: <Landmark size={16} /> },
     { to: '/options', label: 'Options', icon: <ChartCandlestick size={16} /> },
+    { to: '/backtests', label: 'Backtests', icon: <FlaskConical size={16} /> },
     { to: '/risk', label: 'Risk', icon: <ShieldAlert size={16} /> },
     { to: '/settings', label: 'Settings', icon: <Settings size={16} /> },
   ]

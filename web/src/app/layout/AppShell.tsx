@@ -18,6 +18,7 @@ import {
   Settings,
   Landmark,
   ChartCandlestick,
+  FlaskConical,
 } from 'lucide-react';
 
 import { useTheme } from '@/app/providers/theme-context';
@@ -42,6 +43,7 @@ const navItems = [
   { to: '/portfolio', label: 'Portfolio', icon: PieChart },
   { to: '/event-markets', label: 'Event markets', icon: Landmark },
   { to: '/options', label: 'Options', icon: ChartCandlestick },
+  { to: '/backtests', label: 'Backtests', icon: FlaskConical },
   { to: '/risk', label: 'Risk', icon: ShieldAlert },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];

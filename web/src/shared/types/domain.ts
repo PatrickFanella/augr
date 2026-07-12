@@ -498,3 +498,31 @@ export type OptionSnapshot = {
   volume: number
   open_interest: number
 }
+
+export type BacktestConfig = {
+  id: UUID
+  strategy_id: UUID
+  name: string
+  description?: string
+  schedule_cron?: string
+  start_date: ISODate
+  end_date: ISODate
+  simulation: { initial_capital: number; max_volume_pct?: number; slippage_model?: RawJson; transaction_costs?: RawJson; spread_model?: RawJson }
+  created_at: ISODate
+  updated_at: ISODate
+  latest_run_summary?: { id: UUID; backtest_config_id: UUID; metrics: RawJson; run_timestamp: ISODate }
+}
+
+export type BacktestRun = {
+  id: UUID
+  backtest_config_id: UUID
+  metrics: RawJson
+  trade_log: RawJson
+  equity_curve: RawJson
+  run_timestamp: ISODate
+  duration: number
+  prompt_version: string
+  prompt_version_hash: string
+  created_at: ISODate
+  updated_at: ISODate
+}

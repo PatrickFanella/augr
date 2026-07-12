@@ -186,6 +186,49 @@ export function createP0RestHandlers(options: P0MockHandlersOptions = {}) {
       return HttpResponse.json(contracts)
     }),
 
+    http.get(endpoint(apiBaseUrl, '/backtests/configs'), async ({ request }) => {
+      await applyScenarioDelay(state)
+      const authError = authGuard(request, state)
+      if (authError) return authError
+      const error = scenarioError(state)
+      if (error) return error
+      const data = state.scenario === 'empty-data' ? [] : [{
+        id: '00000000-0000-4000-8000-000000000091',
+        strategy_id: fixtureId(),
+        name: 'AAPL walk-forward',
+        description: 'Paper research fixture',
+        start_date: '2025-01-01T00:00:00Z',
+        end_date: '2025-12-31T00:00:00Z',
+        simulation: { initial_capital: 100000, max_volume_pct: 0.02 },
+        created_at: fixtureDate,
+        updated_at: fixtureDate,
+        latest_run_summary: { id: '00000000-0000-4000-8000-000000000092', backtest_config_id: '00000000-0000-4000-8000-000000000091', metrics: { sharpe: 1.1 }, run_timestamp: fixtureDate },
+      }]
+      return HttpResponse.json({ data, total: data.length, limit: 20, offset: 0 })
+    }),
+
+    http.get(endpoint(apiBaseUrl, '/backtests/runs'), async ({ request }) => {
+      await applyScenarioDelay(state)
+      const authError = authGuard(request, state)
+      if (authError) return authError
+      const error = scenarioError(state)
+      if (error) return error
+      const data = state.scenario === 'empty-data' ? [] : [{
+        id: '00000000-0000-4000-8000-000000000092',
+        backtest_config_id: '00000000-0000-4000-8000-000000000091',
+        metrics: { sharpe: 1.1 },
+        trade_log: [],
+        equity_curve: [{ timestamp: fixtureDate, equity: 100000 }],
+        run_timestamp: fixtureDate,
+        duration: 125000000,
+        prompt_version: 'research-v1',
+        prompt_version_hash: '0123456789abcdef0123456789abcdef',
+        created_at: fixtureDate,
+        updated_at: fixtureDate,
+      }]
+      return HttpResponse.json({ data, total: data.length, limit: 20, offset: 0 })
+    }),
+
     http.get(endpoint(apiBaseUrl, '/events'), async ({ request }) => {
       await applyScenarioDelay(state)
       const authError = authGuard(request, state)

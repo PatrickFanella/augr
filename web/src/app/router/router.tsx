@@ -66,6 +66,9 @@ const EventMarketsPage = lazy(() =>
 const OptionsPage = lazy(() =>
   import('@/features/options/OptionsPage').then((m) => ({ default: m.OptionsPage })),
 )
+const BacktestsPage = lazy(() =>
+  import('@/features/backtests/BacktestsPage').then((m) => ({ default: m.BacktestsPage })),
+)
 
 const routeFallback = <LoadingState />
 
@@ -103,6 +106,7 @@ export function createAppRouter() {
             { path: '/settings', element: withSuspense(<SettingsPage />) },
             { path: '/event-markets', element: withSuspense(<EventMarketsPage />) },
             { path: '/options', element: withSuspense(<OptionsPage />) },
+            { path: '/backtests', element: withSuspense(<BacktestsPage />) },
             { path: '*', element: <NotFoundPage /> },
           ],
         },

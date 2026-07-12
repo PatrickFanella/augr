@@ -588,6 +588,17 @@ export const optionSnapshotSchema = z.object({
   bid: z.number(), ask: z.number(), mid: z.number(), last: z.number(), volume: z.number(), open_interest: z.number(),
 }).passthrough()
 
+export const backtestConfigSchema = z.object({
+  id: uuidSchema, strategy_id: uuidSchema, name: z.string(), description: z.string().optional(), schedule_cron: z.string().optional(), start_date: isoDateSchema, end_date: isoDateSchema,
+  simulation: z.object({ initial_capital: z.number(), max_volume_pct: z.number().optional(), slippage_model: rawJsonSchema.optional(), transaction_costs: rawJsonSchema.optional(), spread_model: rawJsonSchema.optional() }).passthrough(),
+  created_at: isoDateSchema, updated_at: isoDateSchema,
+  latest_run_summary: z.object({ id: uuidSchema, backtest_config_id: uuidSchema, metrics: rawJsonSchema, run_timestamp: isoDateSchema }).passthrough().optional(),
+}).passthrough()
+
+export const backtestRunSchema = z.object({
+  id: uuidSchema, backtest_config_id: uuidSchema, metrics: rawJsonSchema, trade_log: rawJsonSchema, equity_curve: rawJsonSchema, run_timestamp: isoDateSchema, duration: z.number(), prompt_version: z.string(), prompt_version_hash: z.string(), created_at: isoDateSchema, updated_at: isoDateSchema,
+}).passthrough()
+
 export const websocketCommandSchema = z
   .discriminatedUnion('action', [
     z.object({ action: z.literal('subscribe'), strategy_ids: z.array(uuidSchema).optional(), run_ids: z.array(uuidSchema).optional() }).passthrough(),
