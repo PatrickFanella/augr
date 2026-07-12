@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/kalshidiscovery"
 	"github.com/PatrickFanella/get-rich-quick/internal/scheduler"
@@ -42,6 +43,14 @@ func (o *JobOrchestrator) kalshiDiscovery(ctx context.Context) error {
 		Logger:        o.logger,
 	})
 	if err != nil {
+		// Kalshi's public catalog is shared by multiple jobs and installations.
+		// A provider throttle should preserve the last good catalog and allow the
+		// next hourly run to retry, rather than tripping the orchestrator's
+		// permanent auto-disable threshold.
+		if isKalshiRateLimit(err) {
+			o.logger.Warn("kalshi_discovery: provider rate limited; retaining current catalog")
+			return nil
+		}
 		return err
 	}
 
@@ -56,4 +65,12 @@ func (o *JobOrchestrator) kalshiDiscovery(ctx context.Context) error {
 		)
 	}
 	return nil
+}
+
+func isKalshiRateLimit(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "status=429") || strings.Contains(message, "too_many_requests")
 }
