@@ -37,6 +37,10 @@ type optionsBalanceProvider interface {
 	GetAccountBalance(ctx context.Context) (Balance, error)
 }
 
+type spreadPreflightBroker interface {
+	PreflightSpread(ctx context.Context, spread *domain.OptionSpread, quantity float64) error
+}
+
 // OptionsOrderManager handles options order submission for both single-leg
 // and multi-leg strategies.
 type OptionsOrderManager struct {
@@ -428,6 +432,13 @@ func (m *OptionsOrderManager) ProcessSpreadSignal(
 	}
 	if quantity <= 0 {
 		return fmt.Errorf("options_manager: spread quantity must be greater than zero")
+	}
+	preflight, ok := m.broker.(spreadPreflightBroker)
+	if !ok {
+		return errors.New("options_manager: spread broker preflight is required before persistence")
+	}
+	if err := preflight.PreflightSpread(ctx, spread, quantity); err != nil {
+		return fmt.Errorf("options_manager: spread preflight: %w", err)
 	}
 
 	// 1. Kill switch check.

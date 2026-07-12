@@ -102,6 +102,12 @@ func (b *PaperBroker) SubmitSpreadOrder(context.Context, *domain.OptionSpread, f
 	return nil, errors.New("paper: spread submission requires atomic leg lifecycle support")
 }
 
+// PreflightSpread fails before any leg orders are persisted. Atomic paper
+// spread accounting is required before this broker can accept the plan.
+func (b *PaperBroker) PreflightSpread(context.Context, *domain.OptionSpread, float64) error {
+	return errors.New("paper: spread submission requires atomic leg lifecycle support")
+}
+
 // OptionFillReport returns deterministic accounting for a synchronous paper fill.
 func (b *PaperBroker) OptionFillReport(_ context.Context, order *domain.Order) (execution.OptionFillReport, error) {
 	result, err := SimulateOptionFill(order)

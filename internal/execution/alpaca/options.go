@@ -145,44 +145,17 @@ func (b *OptionsBroker) SubmitOptionOrder(ctx context.Context, order *domain.Ord
 // SubmitSpreadOrder submits a multi-leg options order.
 // Uses POST /v2/orders with order_class "mleg" and a legs array.
 func (b *OptionsBroker) SubmitSpreadOrder(ctx context.Context, spread *domain.OptionSpread, quantity float64) ([]string, error) {
-	if b == nil || b.client == nil {
-		return nil, errors.New("alpaca: options broker client is required")
-	}
-	if spread == nil {
-		return nil, errors.New("alpaca: spread is required")
-	}
-	if len(spread.Legs) == 0 {
-		return nil, errors.New("alpaca: spread must have at least one leg")
-	}
-	if quantity <= 0 {
-		return nil, errors.New("alpaca: spread quantity must be greater than zero")
+	if err := b.PreflightSpread(ctx, spread, quantity); err != nil {
+		return nil, err
 	}
 
 	legs := make([]mlegLeg, 0, len(spread.Legs))
 	for _, leg := range spread.Legs {
-		symbol := domain.AlpacaSymbol(strings.TrimSpace(leg.Contract.OCCSymbol))
-		if symbol == "" {
-			return nil, errors.New("alpaca: spread leg symbol is required")
-		}
-
-		side := strings.ToLower(leg.Side.String())
-		switch domain.OrderSide(side) {
-		case domain.OrderSideBuy, domain.OrderSideSell:
-		default:
-			return nil, fmt.Errorf("alpaca: unsupported spread leg side %q", leg.Side)
-		}
-
 		ratio := leg.Ratio
 		if ratio <= 0 {
 			ratio = 1
 		}
-
-		legs = append(legs, mlegLeg{
-			Symbol:         symbol,
-			Side:           side,
-			PositionIntent: string(leg.PositionIntent),
-			RatioQty:       strconv.Itoa(ratio),
-		})
+		legs = append(legs, mlegLeg{Symbol: domain.AlpacaSymbol(strings.TrimSpace(leg.Contract.OCCSymbol)), Side: strings.ToLower(leg.Side.String()), PositionIntent: string(leg.PositionIntent), RatioQty: strconv.Itoa(ratio)})
 	}
 
 	req := mlegOrderRequest{
@@ -217,6 +190,36 @@ func (b *OptionsBroker) SubmitSpreadOrder(ctx context.Context, spread *domain.Op
 	}
 
 	return ids, nil
+}
+
+// PreflightSpread validates a multi-leg order without creating broker state.
+func (b *OptionsBroker) PreflightSpread(_ context.Context, spread *domain.OptionSpread, quantity float64) error {
+	if b == nil || b.client == nil {
+		return errors.New("alpaca: options broker client is required")
+	}
+	if spread == nil {
+		return errors.New("alpaca: spread is required")
+	}
+	if len(spread.Legs) == 0 {
+		return errors.New("alpaca: spread must have at least one leg")
+	}
+	if quantity <= 0 {
+		return errors.New("alpaca: spread quantity must be greater than zero")
+	}
+	for _, leg := range spread.Legs {
+		symbol := domain.AlpacaSymbol(strings.TrimSpace(leg.Contract.OCCSymbol))
+		if symbol == "" {
+			return errors.New("alpaca: spread leg symbol is required")
+		}
+
+		side := strings.ToLower(leg.Side.String())
+		switch domain.OrderSide(side) {
+		case domain.OrderSideBuy, domain.OrderSideSell:
+		default:
+			return fmt.Errorf("alpaca: unsupported spread leg side %q", leg.Side)
+		}
+	}
+	return nil
 }
 
 // GetOptionsContracts fetches available option contracts for an underlying symbol.

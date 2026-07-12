@@ -11,6 +11,7 @@ import (
 
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution"
+	"github.com/PatrickFanella/get-rich-quick/internal/execution/paper"
 	"github.com/PatrickFanella/get-rich-quick/internal/risk"
 )
 
@@ -43,6 +44,10 @@ func (b *mockOptionsBroker) SubmitSpreadOrder(ctx context.Context, spread *domai
 		return b.submitSpreadOrderFn(ctx, spread, quantity)
 	}
 	return []string{"leg-1"}, nil
+}
+
+func (b *mockOptionsBroker) PreflightSpread(context.Context, *domain.OptionSpread, float64) error {
+	return nil
 }
 
 func newTestOptionsManager(broker *mockOptionsBroker, orderRepo *mockOrderRepo, positionRepo *mockPositionRepo, tradeRepo *mockTradeRepo, riskEng *mockRiskEngine) *execution.OptionsOrderManager {
@@ -234,5 +239,18 @@ func TestCloseOptionPositionRejectsIncompletePersistence(t *testing.T) {
 	err := mgr.CloseOptionPosition(context.Background(), &domain.Position{AssetClass: domain.AssetClassOption, Quantity: 1}, 2, uuid.New(), "")
 	if err == nil {
 		t.Fatal("expected incomplete persisted contract to fail closed")
+	}
+}
+
+func TestProcessSpreadSignalPreflightPreventsOrphanOrders(t *testing.T) {
+	orderRepo := &mockOrderRepo{}
+	mgr := execution.NewOptionsOrderManager(paper.NewPaperBroker(100000, 0, 0), orderRepo, &mockPositionRepo{}, &mockTradeRepo{}, &mockRiskEngine{}, slog.Default())
+	spread := &domain.OptionSpread{Underlying: "AAPL", MaxRisk: 500, Legs: []domain.SpreadLeg{{Contract: domain.OptionContract{OCCSymbol: "AAPL271217C00150000", Underlying: "AAPL", OptionType: domain.OptionTypeCall, Strike: 150, Expiry: time.Date(2027, 12, 17, 0, 0, 0, 0, time.UTC), Multiplier: 100}, Side: domain.OrderSideBuy, PositionIntent: domain.PositionIntentBuyToOpen, Ratio: 1}}}
+	err := mgr.ProcessSpreadSignal(context.Background(), spread, 1, uuid.New(), uuid.New())
+	if err == nil {
+		t.Fatal("expected unsupported paper spread to fail preflight")
+	}
+	if len(orderRepo.orders) != 0 {
+		t.Fatalf("preflight failure persisted %d orphan leg orders", len(orderRepo.orders))
 	}
 }
