@@ -1,21 +1,12 @@
 import {
-  createContext,
-  useContext,
+  useCallback,
   useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from 'react'
 
-export type Theme = 'dark' | 'light'
-
-type ThemeContextValue = {
-  theme: Theme
-  setTheme: (theme: Theme) => void
-  toggleTheme: () => void
-}
-
-const ThemeContext = createContext<ThemeContextValue | null>(null)
+import { ThemeContext, type Theme } from '@/app/providers/theme-context'
 
 const STORAGE_KEY = 'augr-theme'
 
@@ -29,14 +20,18 @@ function getInitialTheme(): Theme {
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(getInitialTheme)
 
-  const setTheme = (nextTheme: Theme) => {
+  const setTheme = useCallback((nextTheme: Theme) => {
     setThemeState(nextTheme)
     localStorage.setItem(STORAGE_KEY, nextTheme)
-  }
+  }, [])
 
-  const toggleTheme = () => {
-    setTheme(theme === 'dark' ? 'light' : 'dark')
-  }
+  const toggleTheme = useCallback(() => {
+    setThemeState((current) => {
+      const next = current === 'dark' ? 'light' : 'dark'
+      localStorage.setItem(STORAGE_KEY, next)
+      return next
+    })
+  }, [])
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -44,16 +39,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(
     () => ({ theme, setTheme, toggleTheme }),
-    [theme],
+    [setTheme, theme, toggleTheme],
   )
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>
-}
-
-export function useTheme() {
-  const context = useContext(ThemeContext)
-  if (!context) {
-    throw new Error('useTheme must be used inside ThemeProvider')
-  }
-  return context
 }

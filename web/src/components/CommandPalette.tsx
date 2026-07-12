@@ -14,7 +14,7 @@ import {
   Sun,
   Moon,
 } from 'lucide-react'
-import { useTheme } from '@/app/providers/ThemeProvider'
+import { useTheme } from '@/app/providers/theme-context'
 
 type CommandItem = {
   id: string

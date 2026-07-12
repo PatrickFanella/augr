@@ -16,7 +16,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 
-import { useTheme } from '@/app/providers/ThemeProvider';
+import { useTheme } from '@/app/providers/theme-context';
 import { CommandPalette } from '@/components/CommandPalette';
 import { getSettings } from '@/shared/api/endpoints';
 import { useAuth } from '@/shared/auth/AuthProvider';
