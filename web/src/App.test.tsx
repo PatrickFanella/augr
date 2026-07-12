@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 
 import App from '@/App'
 import { setTokenSnapshot } from '@/shared/auth/tokenStore'
-import { buildAuthResponse, buildRiskStatus, buildRun, buildStrategy, fixtureDate } from '@/test/fixtures'
+import { buildAuthResponse, buildOrder, buildPosition, buildRiskStatus, buildRun, buildStrategy, fixtureDate } from '@/test/fixtures'
 import { apiBaseUrl, FakeWebSocket, installAppTestHarness, resetApp, server, state, strategyId } from '@/test/app-harness'
 
 describe('first vertical slice app', () => {
@@ -454,6 +454,16 @@ describe('first vertical slice app', () => {
     expect(screen.getAllByRole('link', { name: /Strategy/i })[0]).toHaveAttribute('href', '/strategies/00000000-0000-4000-8000-000000000010')
   })
 
+  it('renders persisted option contract and Greek position metadata', async () => {
+    resetApp('/portfolio')
+    setTokenSnapshot(buildAuthResponse())
+    server.use(http.get(`${apiBaseUrl}/portfolio/positions/open`, () => HttpResponse.json({ data: [buildPosition({ market_type: 'options', ticker: 'AAPL271217C00150000', asset_class: 'option', underlying_ticker: 'AAPL', option_type: 'call', strike: 150, expiry: '2027-12-17T00:00:00Z', contract_multiplier: 100, delta: 0.4 })], total: 1, limit: 20, offset: 0 })))
+    render(<App />)
+
+    expect((await screen.findAllByText('AAPL271217C00150000')).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/AAPL · call \$150.00 · .* · 100×/i).length).toBeGreaterThan(0)
+  })
+
   it('keeps portfolio filters in URL and handles unknown sides and missing totals', async () => {
     resetApp('/portfolio')
     state.scenario = 'partial-service-failure'
@@ -559,6 +569,16 @@ describe('first vertical slice app', () => {
     expect(screen.getAllByRole('link', { name: /Strategy/i })[0]).toHaveAttribute('href', '/strategies/00000000-0000-4000-8000-000000000010')
     expect(screen.getAllByRole('link', { name: /Run/i }).some((link) => link.getAttribute('href') === '/runs/00000000-0000-4000-8000-000000000020')).toBe(true)
     expect(screen.getAllByText(/paper-broker|backup-broker/i).length).toBeGreaterThan(0)
+  })
+
+  it('renders persisted option intent and leg grouping on orders', async () => {
+    resetApp('/orders')
+    setTokenSnapshot(buildAuthResponse())
+    server.use(http.get(`${apiBaseUrl}/orders`, () => HttpResponse.json({ data: [buildOrder({ market_type: 'options', ticker: 'AAPL271217C00150000', asset_class: 'option', underlying_ticker: 'AAPL', option_type: 'call', strike: 150, expiry: '2027-12-17T00:00:00Z', contract_multiplier: 100, position_intent: 'buy_to_open', leg_group_id: '00000000-0000-4000-8000-000000000099' })], total: 1, limit: 20, offset: 0 })))
+    render(<App />)
+
+    expect((await screen.findAllByText('AAPL271217C00150000')).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/100× · buy_to_open · leg 00000000/i).length).toBeGreaterThan(0)
   })
 
   it('keeps order filters in URL and renders unknown order states safely', async () => {

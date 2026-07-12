@@ -26,6 +26,11 @@ function OrderPill({ value, known }: { value: string; known: string[] }) {
   return <span className={`status-pill ${known.includes(value) ? value : 'unknown'}`}>{known.includes(value) ? normalized : `Unknown: ${normalized}`}</span>
 }
 
+function OrderInstrument({ order }: { order: Order }) {
+  if (order.asset_class !== 'option') return <>{order.ticker}</>
+  return <>{order.ticker}<br /><span className="muted">{order.underlying_ticker ?? 'Unknown underlying'} · {order.option_type ?? 'unknown type'} {order.strike === undefined ? 'unknown strike' : money(order.strike)} · {order.expiry ? new Date(order.expiry).toLocaleDateString() : 'unknown expiry'} · {order.contract_multiplier ?? 'unknown'}× · {order.position_intent ?? 'unknown intent'}{order.leg_group_id ? ` · leg ${order.leg_group_id.slice(0, 8)}` : ''}</span></>
+}
+
 function OrdersRows({ orders }: { orders: Order[] }) {
   return (
     <>
@@ -35,7 +40,7 @@ function OrdersRows({ orders }: { orders: Order[] }) {
           <tbody>{orders.map((order) => (
             <tr key={order.id}>
               <td><EntityLink kind="order" id={order.id} />{order.strategy_id ? <><br /><EntityLink kind="strategy" id={order.strategy_id} copy={false} /></> : null}{order.pipeline_run_id ? <><br /><EntityLink kind="run" id={order.pipeline_run_id} copy={false} /></> : null}</td>
-              <td>{order.ticker}</td>
+              <td><OrderInstrument order={order} /></td>
               <td><OrderPill value={order.side} known={['buy', 'sell']} /></td>
               <td><OrderPill value={order.order_type} known={['market', 'limit', 'stop', 'stop_limit', 'trailing_stop']} /></td>
               <td><OrderPill value={order.status} known={['pending', 'submitted', 'partial', 'filled', 'cancelled', 'rejected']} /></td>
@@ -51,7 +56,7 @@ function OrdersRows({ orders }: { orders: Order[] }) {
       <div className="card-list" aria-label="Order cards">
         {orders.map((order) => (
           <article className="strategy-card" key={order.id}>
-            <h3>{order.ticker}</h3>
+            <h3><OrderInstrument order={order} /></h3>
             <p><OrderPill value={order.status} known={['pending', 'submitted', 'partial', 'filled', 'cancelled', 'rejected']} /> · {order.side} · {order.order_type}</p>
             <p>{numberValue(order.filled_quantity)} / {numberValue(order.quantity)} filled · {order.broker}</p>
             <EntityLink kind="order" id={order.id} label="Open order" copy={false} />

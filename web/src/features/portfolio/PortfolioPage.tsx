@@ -57,6 +57,11 @@ function SidePill({ value }: { value: string }) {
   return <span className={`status-pill ${known ? 'active' : 'unknown'}`}>{known ? value : `Unknown: ${value}`}</span>
 }
 
+function PositionInstrument({ position }: { position: Position }) {
+  if (position.asset_class !== 'option') return <>{position.ticker}</>
+  return <>{position.ticker}<br /><span className="muted">{position.underlying_ticker ?? 'Unknown underlying'} · {position.option_type ?? 'unknown type'} {position.strike === undefined ? 'unknown strike' : money(position.strike)} · {position.expiry ? new Date(position.expiry).toLocaleDateString() : 'unknown expiry'} · {position.contract_multiplier ?? 'unknown'}×{position.leg_group_id ? ` · leg ${position.leg_group_id.slice(0, 8)}` : ''}</span></>
+}
+
 function PositionRows({ positions }: { positions: Position[] }) {
   return (
     <>
@@ -67,7 +72,7 @@ function PositionRows({ positions }: { positions: Position[] }) {
             {positions.map((position) => (
               <tr key={position.id}>
                 <td><EntityLink kind="position" id={position.id} />{position.strategy_id ? <><br /><EntityLink kind="strategy" id={position.strategy_id} copy={false} /></> : null}</td>
-                <td>{position.ticker}</td>
+                <td><PositionInstrument position={position} /></td>
                 <td><SidePill value={position.side} /></td>
                 <td>{numberValue(position.quantity)}</td>
                 <td>{money(position.avg_entry)}</td>
@@ -83,7 +88,7 @@ function PositionRows({ positions }: { positions: Position[] }) {
       <div className="card-list" aria-label="Open position cards">
         {positions.map((position) => (
           <article className="strategy-card" key={position.id}>
-            <h3>{position.ticker}</h3>
+            <h3><PositionInstrument position={position} /></h3>
             <p><SidePill value={position.side} /> · {numberValue(position.quantity)} units</p>
             <p>Unrealized {money(position.unrealized_pnl)} · Realized {money(position.realized_pnl)}</p>
             {position.strategy_id ? <EntityLink kind="strategy" id={position.strategy_id} label="Open strategy" copy={false} /> : null}

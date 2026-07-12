@@ -269,6 +269,7 @@ export const positionSchema = z
     take_profit: z.number().optional(),
     opened_at: isoDateSchema,
     closed_at: optionalNullable(isoDateSchema).optional(),
+    asset_class: z.string().optional(), underlying_ticker: z.string().optional(), option_type: z.string().optional(), strike: z.number().optional(), expiry: isoDateSchema.optional(), contract_multiplier: z.number().optional(), leg_group_id: uuidSchema.optional(), delta: z.number().optional(), gamma: z.number().optional(), theta: z.number().optional(), vega: z.number().optional(),
   })
   .passthrough()
 
@@ -292,6 +293,7 @@ export const orderSchema = z
     submitted_at: optionalNullable(isoDateSchema).optional(),
     filled_at: optionalNullable(isoDateSchema).optional(),
     created_at: isoDateSchema,
+    asset_class: z.string().optional(), underlying_ticker: z.string().optional(), option_type: z.string().optional(), strike: z.number().optional(), expiry: isoDateSchema.optional(), contract_multiplier: z.number().optional(), position_intent: z.string().optional(), leg_group_id: uuidSchema.optional(), prediction_side: z.string().optional(), polymarket_intent: z.string().optional(),
   })
   .passthrough()
 
@@ -308,6 +310,7 @@ export const tradeSchema = z
     fee: z.number(),
     executed_at: isoDateSchema,
     created_at: isoDateSchema,
+    asset_class: z.string().optional(), open_close: z.string().optional(), contract_multiplier: z.number().optional(), premium: z.number().optional(), exit_reason: z.string().optional(),
   })
   .passthrough()
 
