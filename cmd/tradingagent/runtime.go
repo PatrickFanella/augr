@@ -607,6 +607,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 					EventsProvider:              deps.EventsProvider,
 					StrategyRepo:                strategyRepo,
 					PositionRepo:                positionRepo,
+					TradeRepo:                   tradeRepo,
 					RunRepo:                     runRepo,
 					OpportunityRepo:             opportunityRepo,
 					AllocationDecisionRepo:      allocationDecisionRepo,

@@ -61,6 +61,7 @@ type OrchestratorDeps struct {
 	EventsProvider              data.EventsProvider
 	StrategyRepo                repository.StrategyRepository
 	PositionRepo                repository.PositionRepository
+	TradeRepo                   repository.TradeRepository
 	OpportunityRepo             repository.OpportunityRepository
 	AllocationDecisionRepo      repository.AllocationDecisionRepository
 	RunRepo                     repository.PipelineRunRepository
@@ -216,6 +217,7 @@ func (o *JobOrchestrator) RegisterAll() {
 	o.registerMarketJobs()
 	o.registerPreMarketJobs()
 	o.registerPostMarketJobs()
+	o.registerOptionsLifecycleJobs()
 	o.registerEventJobs()
 	o.registerOvernightJobs()
 	o.registerWeeklyJobs()
