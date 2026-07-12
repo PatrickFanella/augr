@@ -14,12 +14,6 @@ type DivergenceSource interface {
 
 type divergenceHandlers struct{ src DivergenceSource }
 
-type divergenceSourceStub struct{}
-
-func (divergenceSourceStub) DivergenceFor(_ context.Context, strategyID string) (backtest.Divergence, error) {
-	return backtest.Divergence{StrategyID: strategyID}, nil
-}
-
 func (h *divergenceHandlers) get(w http.ResponseWriter, r *http.Request) {
 	if h == nil || h.src == nil {
 		respondError(w, http.StatusServiceUnavailable, "divergence source unavailable", ErrCodeInternal)

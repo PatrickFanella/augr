@@ -126,11 +126,13 @@ func RunOptionsSweep(
 }
 
 type optionsPosition struct {
-	spread    *domain.OptionSpread
-	entryBar  domain.OHLCV
-	entryMid  float64
-	maxProfit float64
-	maxRisk   float64
+	spread     *domain.OptionSpread
+	entryBar   domain.OHLCV
+	entryMid   float64
+	maxProfit  float64
+	maxRisk    float64
+	entryFees  float64
+	entryFills map[string]float64
 }
 
 func runOptionsBacktest(
@@ -143,6 +145,10 @@ func runOptionsBacktest(
 	cash := cfg.InitialCash
 	var position *optionsPosition
 	chainCfg := backtest.DefaultSyntheticChainConfig()
+	fillCfg := cfg.FillConfig
+	if fillCfg == (backtest.OptionsFillConfig{}) {
+		fillCfg = backtest.DefaultOptionsFillConfig()
+	}
 
 	equityCurve := make([]backtest.EquityPoint, 0, len(bars))
 	trades := make([]domain.Trade, 0, 16)
@@ -175,18 +181,20 @@ func runOptionsBacktest(
 
 		if position == nil {
 			if rules.EvaluateGroup(config.Entry, optSnap.Snapshot, prevSnap) {
-				spread, entryMid := buildSyntheticSpread(config, chain, bar)
+				spread, entryMid, entryFees, entryFills := buildSyntheticSpread(config, chain, bar, fillCfg)
 				if spread != nil {
 					maxProfit, maxRisk := spreadRiskReward(spread, entryMid)
 					position = &optionsPosition{
-						spread:    spread,
-						entryBar:  bar,
-						entryMid:  entryMid,
-						maxProfit: maxProfit,
-						maxRisk:   maxRisk,
+						spread:     spread,
+						entryBar:   bar,
+						entryMid:   entryMid,
+						maxProfit:  maxProfit,
+						maxRisk:    maxRisk,
+						entryFees:  entryFees,
+						entryFills: entryFills,
 					}
-					cash -= maxRisk
-					trades = append(trades, buildOptionsTrades(position, bar, true)...)
+					cash -= maxRisk + entryFees
+					trades = append(trades, buildOptionsTrades(position, bar, true, fillCfg)...)
 				}
 			}
 		} else {
@@ -197,9 +205,9 @@ func runOptionsBacktest(
 			}
 
 			if shouldClose {
-				closeValue, pnl := closePosition(position, bar, realizedVol, chainCfg)
+				closeValue, pnl := closePosition(position, bar, realizedVol, chainCfg, fillCfg)
 				cash += position.maxRisk + pnl
-				trades = append(trades, buildOptionsCloseTrades(position, bar, closeValue, reason)...)
+				trades = append(trades, buildOptionsCloseTrades(position, bar, closeValue, reason, fillCfg)...)
 				position = nil
 			}
 		}
@@ -210,9 +218,9 @@ func runOptionsBacktest(
 
 	if position != nil && len(bars) > 0 {
 		lastBar := bars[len(bars)-1]
-		closeValue, pnl := closePosition(position, lastBar, realizedVol, chainCfg)
+		closeValue, pnl := closePosition(position, lastBar, realizedVol, chainCfg, fillCfg)
 		cash += position.maxRisk + pnl
-		trades = append(trades, buildOptionsCloseTrades(position, lastBar, closeValue, "final_bar")...)
+		trades = append(trades, buildOptionsCloseTrades(position, lastBar, closeValue, "final_bar", fillCfg)...)
 		position = nil
 		equityCurve[len(equityCurve)-1] = backtest.EquityPoint{
 			Timestamp:     lastBar.Timestamp,
@@ -233,29 +241,38 @@ func runOptionsBacktest(
 	}
 }
 
-func buildSyntheticSpread(config rules.OptionsRulesConfig, chain []domain.OptionSnapshot, bar domain.OHLCV) (*domain.OptionSpread, float64) {
+func buildSyntheticSpread(config rules.OptionsRulesConfig, chain []domain.OptionSnapshot, bar domain.OHLCV, fillCfg backtest.OptionsFillConfig) (*domain.OptionSpread, float64, float64, map[string]float64) {
 	now := bar.Timestamp
 	selectedLegs, err := rules.SelectSpreadLegs(chain, config.LegSelection, now)
 	if err != nil {
-		return nil, 0
+		return nil, 0, 0, nil
 	}
 
 	spread, err := rules.BuildSpread(config.StrategyType, config.Underlying, selectedLegs, config.LegSelection)
 	if err != nil {
-		return nil, 0
+		return nil, 0, 0, nil
 	}
 
 	var netPremium float64
+	var fees float64
+	fills := make(map[string]float64)
 	for legName, snap := range selectedLegs {
 		sel := config.LegSelection[legName]
+		order := &domain.Order{Side: domain.OrderSide(sel.Side), Quantity: 1}
+		fill, err := backtest.SimulateOptionsFill(order, domain.OHLCV{Close: snap.Mid}, fillCfg)
+		if err != nil {
+			return nil, 0, 0, nil
+		}
+		fills[snap.Contract.OCCSymbol] = fill.FillPrice
+		fees += fill.Fee
 		if sel.Side == "sell" {
-			netPremium += snap.Mid * snap.Contract.Multiplier
+			netPremium += fill.FillPrice * snap.Contract.Multiplier
 		} else {
-			netPremium -= snap.Mid * snap.Contract.Multiplier
+			netPremium -= fill.FillPrice * snap.Contract.Multiplier
 		}
 	}
 
-	return spread, netPremium
+	return spread, netPremium, fees, fills
 }
 
 func spreadRiskReward(spread *domain.OptionSpread, netPremium float64) (maxProfit, maxRisk float64) {
@@ -356,18 +373,66 @@ func estimateSpreadValue(pos *optionsPosition, underlying, vol float64, now time
 	return value
 }
 
-func closePosition(pos *optionsPosition, bar domain.OHLCV, vol float64, chainCfg backtest.SyntheticChainConfig) (float64, float64) {
-	currentValue := estimateSpreadValue(pos, bar.Close, vol, bar.Timestamp, chainCfg)
-	return currentValue, pos.entryMid + currentValue
+func estimateSpreadExecutionValue(pos *optionsPosition, underlying, vol float64, now time.Time, chainCfg backtest.SyntheticChainConfig, fillCfg backtest.OptionsFillConfig) (float64, float64) {
+	if pos == nil || pos.spread == nil {
+		return 0, 0
+	}
+	var value, fees float64
+	for _, leg := range pos.spread.Legs {
+		dte := int(leg.Contract.Expiry.Sub(now).Hours() / 24)
+		if dte < 1 {
+			dte = 1
+		}
+		chain := backtest.SynthesizeChain(underlying, vol, dte, now, chainCfg)
+		bestDist, mid := math.Inf(1), 0.0
+		for _, snap := range chain {
+			if snap.Contract.OptionType != leg.Contract.OptionType {
+				continue
+			}
+			if dist := math.Abs(snap.Contract.Strike - leg.Contract.Strike); dist < bestDist {
+				bestDist, mid = dist, snap.Mid
+			}
+		}
+		closeSide := domain.OrderSideBuy
+		if leg.Side == domain.OrderSideBuy {
+			closeSide = domain.OrderSideSell
+		}
+		order := &domain.Order{Side: closeSide, Quantity: leg.Quantity}
+		fill, err := backtest.SimulateOptionsFill(order, domain.OHLCV{Close: mid}, fillCfg)
+		if err != nil {
+			continue
+		}
+		legValue := fill.FillPrice * leg.Contract.Multiplier * leg.Quantity
+		fees += fill.Fee
+		if leg.Side == domain.OrderSideSell {
+			value -= legValue
+		} else {
+			value += legValue
+		}
+	}
+	return value, fees
 }
 
-func buildOptionsTrades(pos *optionsPosition, bar domain.OHLCV, opening bool) []domain.Trade {
+func optionAdjustedPrice(price float64, side domain.OrderSide, cfg backtest.OptionsFillConfig) float64 {
+	fill, err := backtest.SimulateOptionsFill(&domain.Order{Side: side, Quantity: 1}, domain.OHLCV{Close: price}, cfg)
+	if err != nil {
+		return price
+	}
+	return fill.FillPrice
+}
+
+func closePosition(pos *optionsPosition, bar domain.OHLCV, vol float64, chainCfg backtest.SyntheticChainConfig, fillCfg backtest.OptionsFillConfig) (float64, float64) {
+	currentValue, fees := estimateSpreadExecutionValue(pos, bar.Close, vol, bar.Timestamp, chainCfg, fillCfg)
+	return currentValue, pos.entryMid + currentValue - fees
+}
+
+func buildOptionsTrades(pos *optionsPosition, bar domain.OHLCV, opening bool, fillCfg backtest.OptionsFillConfig) []domain.Trade {
 	if pos == nil || pos.spread == nil {
 		return nil
 	}
 	trades := make([]domain.Trade, 0, len(pos.spread.Legs))
 	for _, leg := range pos.spread.Legs {
-		premium := legMarkPremium(leg, pos.entryBar.Close, bar.Close, pos.entryMid, len(pos.spread.Legs), opening)
+		premium := pos.entryFills[leg.Contract.OCCSymbol]
 		trades = append(trades, domain.Trade{
 			ID:                 uuid.New(),
 			Ticker:             leg.Contract.OCCSymbol,
@@ -380,13 +445,13 @@ func buildOptionsTrades(pos *optionsPosition, bar domain.OHLCV, opening bool) []
 			OpenClose:          openCloseValue(opening),
 			ContractMultiplier: leg.Contract.Multiplier,
 			Premium:            premium,
-			Fee:                0,
+			Fee:                fillCfg.FeePerContract * leg.Quantity,
 		})
 	}
 	return trades
 }
 
-func buildOptionsCloseTrades(pos *optionsPosition, bar domain.OHLCV, closeValue float64, reason string) []domain.Trade {
+func buildOptionsCloseTrades(pos *optionsPosition, bar domain.OHLCV, closeValue float64, reason string, fillCfg backtest.OptionsFillConfig) []domain.Trade {
 	if pos == nil || pos.spread == nil {
 		return nil
 	}
@@ -397,6 +462,7 @@ func buildOptionsCloseTrades(pos *optionsPosition, bar domain.OHLCV, closeValue 
 			closeSide = domain.OrderSideSell
 		}
 		premium := legMarkPremium(leg, pos.entryBar.Close, bar.Close, closeValue, len(pos.spread.Legs), false)
+		premium = optionAdjustedPrice(premium, closeSide, fillCfg)
 		trades = append(trades, domain.Trade{
 			ID:                 uuid.New(),
 			Ticker:             leg.Contract.OCCSymbol,
@@ -410,7 +476,7 @@ func buildOptionsCloseTrades(pos *optionsPosition, bar domain.OHLCV, closeValue 
 			ContractMultiplier: leg.Contract.Multiplier,
 			Premium:            premium,
 			ExitReason:         reason,
-			Fee:                0,
+			Fee:                fillCfg.FeePerContract * leg.Quantity,
 		})
 	}
 	return trades

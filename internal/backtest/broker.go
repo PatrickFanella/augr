@@ -302,6 +302,20 @@ func (b *BrokerAdapter) FilledTrades() []domain.Trade {
 	return trades
 }
 
+// OrderCounts returns deterministic submitted/fill counts for realism and
+// paper/live divergence reporting.
+func (b *BrokerAdapter) OrderCounts() (attempts, fills int) {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	attempts = len(b.orders)
+	for _, order := range b.orders {
+		if order.Status == domain.OrderStatusFilled || order.Status == domain.OrderStatusPartial {
+			fills++
+		}
+	}
+	return attempts, fills
+}
+
 func (b *BrokerAdapter) processRestingOrdersLocked(ticker string, bar domain.OHLCV) {
 	orderIDs := make([]string, 0, len(b.orders))
 	for externalID, order := range b.orders {

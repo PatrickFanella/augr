@@ -17,6 +17,9 @@ const (
 
 // Metrics holds computed performance statistics derived from an equity curve.
 type Metrics struct {
+	OrderAttempts    int       `json:"order_attempts"`
+	OrderFills       int       `json:"order_fills"`
+	FillRate         float64   `json:"fill_rate"`
 	TotalReturn      float64   `json:"total_return"`        // (final equity − initial equity) / initial equity
 	BuyAndHoldReturn float64   `json:"buy_and_hold_return"` // passive return from first to last benchmark close
 	MaxDrawdown      float64   `json:"max_drawdown"`        // worst peak-to-trough drawdown (positive value)
@@ -44,6 +47,9 @@ type Metrics struct {
 // mathematically infinite.
 func (m Metrics) MarshalJSON() ([]byte, error) {
 	type metricsJSON struct {
+		OrderAttempts    int       `json:"order_attempts"`
+		OrderFills       int       `json:"order_fills"`
+		FillRate         any       `json:"fill_rate"`
 		TotalReturn      any       `json:"total_return"`
 		BuyAndHoldReturn any       `json:"buy_and_hold_return"`
 		MaxDrawdown      any       `json:"max_drawdown"`
@@ -67,6 +73,9 @@ func (m Metrics) MarshalJSON() ([]byte, error) {
 	}
 
 	return json.Marshal(metricsJSON{
+		OrderAttempts:    m.OrderAttempts,
+		OrderFills:       m.OrderFills,
+		FillRate:         jsonFloatValue(m.FillRate),
 		TotalReturn:      jsonFloatValue(m.TotalReturn),
 		BuyAndHoldReturn: jsonFloatValue(m.BuyAndHoldReturn),
 		MaxDrawdown:      jsonFloatValue(m.MaxDrawdown),

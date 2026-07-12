@@ -82,6 +82,9 @@ func TestRunOptionsSweepReturnsTradesAndEquityCurve(t *testing.T) {
 	if best.Trades[0].AssetClass != domain.AssetClassOption {
 		t.Fatalf("first trade asset_class = %q, want %q", best.Trades[0].AssetClass, domain.AssetClassOption)
 	}
+	if best.Trades[0].Fee <= 0 {
+		t.Fatalf("first trade fee = %v, want options-specific per-contract cost", best.Trades[0].Fee)
+	}
 	if best.EquityCurve[0].Timestamp.IsZero() || best.EquityCurve[len(best.EquityCurve)-1].Timestamp.IsZero() {
 		t.Fatal("equity curve timestamps must be populated")
 	}
@@ -103,7 +106,7 @@ func TestRunOptionsSweepForceClosesOpenPositionOnFinalBar(t *testing.T) {
 			},
 		},
 		Exit: rules.ConditionGroup{
-			Operator: "AND",
+			Operator:   "AND",
 			Conditions: []rules.Condition{{Field: "pnl_pct", Op: "gt", Value: fp(5000)}},
 		},
 		LegSelection: map[string]rules.LegSelector{

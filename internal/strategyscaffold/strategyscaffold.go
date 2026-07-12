@@ -193,10 +193,14 @@ func RunOptionsPaperBacktest(ctx context.Context, ticker string, bars []domain.O
 		return nil, fmt.Errorf("options scaffold: options_rules config missing")
 	}
 
-	return runOptionsPaperBacktest(ctx, strategy, *optCfg, bars, startDate, endDate, initialCash, logger)
+	return runOptionsPaperBacktest(ctx, strategy, *optCfg, bars, startDate, endDate, initialCash, backtest.DefaultOptionsFillConfig(), logger)
 }
 
 func RunOptionsPaperBacktestWithConfig(ctx context.Context, optionsCfg rules.OptionsRulesConfig, bars []domain.OHLCV, startDate, endDate time.Time, initialCash float64, logger *slog.Logger) (*OptionsBacktestSummary, error) {
+	return RunOptionsPaperBacktestWithSimulation(ctx, optionsCfg, bars, startDate, endDate, initialCash, backtest.DefaultOptionsFillConfig(), logger)
+}
+
+func RunOptionsPaperBacktestWithSimulation(ctx context.Context, optionsCfg rules.OptionsRulesConfig, bars []domain.OHLCV, startDate, endDate time.Time, initialCash float64, fillConfig backtest.OptionsFillConfig, logger *slog.Logger) (*OptionsBacktestSummary, error) {
 	if err := rules.ValidateOptions(&optionsCfg); err != nil {
 		return nil, fmt.Errorf("options scaffold: %w", err)
 	}
@@ -211,10 +215,10 @@ func RunOptionsPaperBacktestWithConfig(ctx context.Context, optionsCfg rules.Opt
 	strategy.Config = config
 	strategy.Ticker = normalizeTicker(optionsCfg.Underlying)
 	strategy.Name = fmt.Sprintf("paper options: %s %s", strategy.Ticker, strings.ReplaceAll(string(optionsCfg.StrategyType), "_", " "))
-	return runOptionsPaperBacktest(ctx, strategy, optionsCfg, bars, startDate, endDate, initialCash, logger)
+	return runOptionsPaperBacktest(ctx, strategy, optionsCfg, bars, startDate, endDate, initialCash, fillConfig, logger)
 }
 
-func runOptionsPaperBacktest(ctx context.Context, strategy domain.Strategy, optionsCfg rules.OptionsRulesConfig, bars []domain.OHLCV, startDate, endDate time.Time, initialCash float64, logger *slog.Logger) (*OptionsBacktestSummary, error) {
+func runOptionsPaperBacktest(ctx context.Context, strategy domain.Strategy, optionsCfg rules.OptionsRulesConfig, bars []domain.OHLCV, startDate, endDate time.Time, initialCash float64, fillConfig backtest.OptionsFillConfig, logger *slog.Logger) (*OptionsBacktestSummary, error) {
 	if len(bars) == 0 {
 		return nil, fmt.Errorf("options scaffold: bars are required")
 	}
@@ -237,6 +241,7 @@ func runOptionsPaperBacktest(ctx context.Context, strategy domain.Strategy, opti
 		// Use an explicit positive value so paper backtests do not trigger
 		// RunOptionsSweep's Variations <= 0 fallback behavior.
 		Variations: 1,
+		FillConfig: fillConfig,
 	}
 	results, err := optionsdiscovery.RunOptionsSweep(ctx, optionsCfg, sweepCfg, discoverypkg.DefaultScoringConfig(), logger)
 	if err != nil {

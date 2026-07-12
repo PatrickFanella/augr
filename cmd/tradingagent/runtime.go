@@ -19,6 +19,7 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/agent"
 	"github.com/PatrickFanella/get-rich-quick/internal/api"
 	"github.com/PatrickFanella/get-rich-quick/internal/automation"
+	"github.com/PatrickFanella/get-rich-quick/internal/backtest"
 	"github.com/PatrickFanella/get-rich-quick/internal/cli"
 	"github.com/PatrickFanella/get-rich-quick/internal/config"
 	"github.com/PatrickFanella/get-rich-quick/internal/data"
@@ -321,6 +322,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 		LLMProvider:            runtimeLLMComposer.BuildProvider(cfg.LLM, appMetrics, logger, sharedLLMBudget),
 		BacktestConfigs:        backtestConfigRepo,
 		BacktestRuns:           backtestRunRepo,
+		DivergenceSrc:          backtest.NewRepositoryDivergenceSource(backtestConfigRepo, backtestRunRepo, tradeDecisionRepo, positionRepo),
 		NewsFeedRepo:           newsFeedRepo,
 		MarketDataHistory:      marketDataCacheRepo,
 		DiscoveryRunRepo:       pgrepo.NewDiscoveryRunRepo(db.Pool),

@@ -26,6 +26,7 @@ type BacktestSimulationParameters struct {
 	SlippageModel    BacktestModelConfig `json:"slippage_model,omitempty"`
 	TransactionCosts BacktestModelConfig `json:"transaction_costs,omitempty"`
 	SpreadModel      BacktestModelConfig `json:"spread_model,omitempty"`
+	OptionsFillModel BacktestModelConfig `json:"options_fill_model,omitempty"`
 	MaxVolumePct     float64             `json:"max_volume_pct,omitempty"` // 0 means no volume limit
 	TrailingStopPct  float64             `json:"trailing_stop_pct,omitempty"`
 }

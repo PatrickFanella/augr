@@ -179,6 +179,10 @@ func (o *Orchestrator) Run(ctx context.Context) (*OrchestratorResult, error) {
 	positions := tracker.Positions()
 	equityCurve := runResult.EquityCurve
 	metrics := ComputeMetrics(equityCurve, filtered)
+	metrics.OrderAttempts, metrics.OrderFills = broker.OrderCounts()
+	if metrics.OrderAttempts > 0 {
+		metrics.FillRate = float64(metrics.OrderFills) / float64(metrics.OrderAttempts)
+	}
 	tradeAnalytics := ComputeTradeAnalytics(trades, o.config.StartDate, o.config.EndDate)
 	inputHash, err := simulationInputHash(o.config, filtered)
 	if err != nil {

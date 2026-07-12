@@ -1,7 +1,9 @@
 package calibration
 
 import (
+	"fmt"
 	"math"
+	"sort"
 	"strings"
 	"time"
 
@@ -22,16 +24,21 @@ type StrategyCalibrationSample struct {
 	Accepted        bool      `json:"accepted"`
 	RejectionReason string    `json:"rejection_reason,omitempty"`
 	Timestamp       time.Time `json:"timestamp,omitempty"`
+	Provider        string    `json:"provider,omitempty"`
+	Regime          string    `json:"regime,omitempty"`
 }
 
 // StrategyCalibrationInput controls report construction.
 type StrategyCalibrationInput struct {
-	StrategyID  *uuid.UUID                  `json:"strategy_id,omitempty"`
-	StrategyKey string                      `json:"strategy_key,omitempty"`
-	MarketType  domain.MarketType           `json:"market_type,omitempty"`
-	Samples     []StrategyCalibrationSample `json:"samples"`
-	BucketCount int                         `json:"bucket_count,omitempty"`
-	GeneratedAt time.Time                   `json:"generated_at,omitempty"`
+	StrategyID       *uuid.UUID                  `json:"strategy_id,omitempty"`
+	StrategyKey      string                      `json:"strategy_key,omitempty"`
+	MarketType       domain.MarketType           `json:"market_type,omitempty"`
+	Samples          []StrategyCalibrationSample `json:"samples"`
+	BucketCount      int                         `json:"bucket_count,omitempty"`
+	GeneratedAt      time.Time                   `json:"generated_at,omitempty"`
+	Provider         string                      `json:"provider,omitempty"`
+	Regime           string                      `json:"regime,omitempty"`
+	ConfidenceBucket string                      `json:"confidence_bucket,omitempty"`
 }
 
 // TimeRange captures the observed time span for samples that provide timestamps.
@@ -65,6 +72,9 @@ type StrategyCalibrationReport struct {
 	RejectionReasonCounts map[string]int           `json:"rejection_reason_counts,omitempty"`
 	TimeRange             *TimeRange               `json:"time_range,omitempty"`
 	GeneratedAt           time.Time                `json:"generated_at"`
+	Provider              string                   `json:"provider,omitempty"`
+	Regime                string                   `json:"regime,omitempty"`
+	ConfidenceBucket      string                   `json:"confidence_bucket,omitempty"`
 }
 
 // BuildStrategyCalibrationReport converts compact sample input into a stable report.
@@ -75,10 +85,13 @@ func BuildStrategyCalibrationReport(input StrategyCalibrationInput) StrategyCali
 	}
 
 	report := StrategyCalibrationReport{
-		StrategyID:  cloneUUIDPtr(input.StrategyID),
-		StrategyKey: strings.TrimSpace(input.StrategyKey),
-		MarketType:  input.MarketType.Normalize(),
-		GeneratedAt: input.GeneratedAt,
+		StrategyID:       cloneUUIDPtr(input.StrategyID),
+		StrategyKey:      strings.TrimSpace(input.StrategyKey),
+		MarketType:       input.MarketType.Normalize(),
+		GeneratedAt:      input.GeneratedAt,
+		Provider:         strings.TrimSpace(input.Provider),
+		Regime:           strings.TrimSpace(input.Regime),
+		ConfidenceBucket: strings.TrimSpace(input.ConfidenceBucket),
 	}
 
 	probabilityOutcomes := make([]edge.ProbabilityOutcome, 0, len(input.Samples))
@@ -133,6 +146,47 @@ func BuildStrategyCalibrationReport(input StrategyCalibrationInput) StrategyCali
 	}
 
 	return report
+}
+
+// BuildSegmentedStrategyCalibrationReports groups one strategy/market sample
+// set by provider, regime, and decile so decision quality is measurable across
+// every required operating dimension.
+func BuildSegmentedStrategyCalibrationReports(input StrategyCalibrationInput) []StrategyCalibrationReport {
+	type key struct{ provider, regime, bucket string }
+	groups := make(map[key][]StrategyCalibrationSample)
+	for _, sample := range input.Samples {
+		p, ok := sanitizeProbability(sample.Probability)
+		if !ok {
+			continue
+		}
+		lower := int(p*10) * 10
+		if lower == 100 {
+			lower = 90
+		}
+		k := key{strings.TrimSpace(sample.Provider), strings.TrimSpace(sample.Regime), fmt.Sprintf("%d-%d%%", lower, lower+10)}
+		groups[k] = append(groups[k], sample)
+	}
+	keys := make([]key, 0, len(groups))
+	for k := range groups {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if keys[i].provider != keys[j].provider {
+			return keys[i].provider < keys[j].provider
+		}
+		if keys[i].regime != keys[j].regime {
+			return keys[i].regime < keys[j].regime
+		}
+		return keys[i].bucket < keys[j].bucket
+	})
+	reports := make([]StrategyCalibrationReport, 0, len(keys))
+	for _, k := range keys {
+		segment := input
+		segment.Samples = groups[k]
+		segment.Provider, segment.Regime, segment.ConfidenceBucket = k.provider, k.regime, k.bucket
+		reports = append(reports, BuildStrategyCalibrationReport(segment))
+	}
+	return reports
 }
 
 func summarizePnL(values []float64) RealizedPnLSummary {

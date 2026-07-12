@@ -371,11 +371,6 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 		reportArtifacts:       deps.ReportArtifacts,
 		reportMetrics:         deps.ReportMetrics,
 	}
-	if s.divergenceSrc == nil {
-		// Phase H will wire a real data source; this keeps the route live and harmless for now.
-		s.divergenceSrc = divergenceSourceStub{}
-	}
-
 	// Construct services from the assembled deps.
 	s.backtestSvc = service.NewBacktestService(
 		deps.BacktestConfigs, deps.BacktestRuns, deps.Strategies, deps.AuditLog,

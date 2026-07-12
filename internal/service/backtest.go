@@ -208,13 +208,30 @@ func (svc *BacktestService) runOptionsRulesBacktest(
 	}
 
 	start := time.Now()
-	summary, err := strategyscaffold.RunOptionsPaperBacktestWithConfig(
+	optionsFill := backtest.DefaultOptionsFillConfig()
+	if len(config.Simulation.OptionsFillModel) > 0 {
+		var model struct {
+			SpreadSlippageBps float64 `json:"spread_slippage_bps"`
+			FeePerContract    float64 `json:"fee_per_contract"`
+		}
+		if err := json.Unmarshal(config.Simulation.OptionsFillModel, &model); err != nil {
+			return nil, &ServiceError{Status: 400, Message: "invalid options fill configuration"}
+		}
+		if model.SpreadSlippageBps != 0 {
+			optionsFill.SpreadSlippageBps = model.SpreadSlippageBps
+		}
+		if model.FeePerContract != 0 {
+			optionsFill.FeePerContract = model.FeePerContract
+		}
+	}
+	summary, err := strategyscaffold.RunOptionsPaperBacktestWithSimulation(
 		ctx,
 		*optionsConfig,
 		allBars,
 		config.StartDate,
 		config.EndDate,
 		config.Simulation.InitialCapital,
+		optionsFill,
 		svc.logger,
 	)
 	if err != nil {

@@ -44,6 +44,26 @@ func TestBuildStrategyCalibrationReport_EmptyInput(t *testing.T) {
 	assertFiniteReport(t, report)
 }
 
+func TestBuildSegmentedStrategyCalibrationReportsGroupsRequiredDimensions(t *testing.T) {
+	reports := BuildSegmentedStrategyCalibrationReports(StrategyCalibrationInput{
+		StrategyKey: "s", MarketType: domain.MarketTypePolymarket,
+		Samples: []StrategyCalibrationSample{
+			{Probability: .64, Outcome: true, Provider: "openai", Regime: "risk_on"},
+			{Probability: .68, Outcome: false, Provider: "openai", Regime: "risk_on"},
+			{Probability: .82, Outcome: true, Provider: "rules", Regime: "risk_off"},
+		},
+	})
+	if len(reports) != 2 {
+		t.Fatalf("reports = %d, want 2", len(reports))
+	}
+	if reports[0].Provider != "openai" || reports[0].Regime != "risk_on" || reports[0].ConfidenceBucket != "60-70%" || reports[0].SampleCount != 2 {
+		t.Fatalf("first segment = %+v", reports[0])
+	}
+	if reports[1].Provider != "rules" || reports[1].Regime != "risk_off" || reports[1].ConfidenceBucket != "80-90%" {
+		t.Fatalf("second segment = %+v", reports[1])
+	}
+}
+
 func TestBuildStrategyCalibrationReport_BasicData(t *testing.T) {
 	t.Parallel()
 
