@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/PatrickFanella/get-rich-quick/internal/agent/rules"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 )
@@ -88,5 +90,17 @@ func TestBuildPaperDebitSpreadPlanUsesExecutableSides(t *testing.T) {
 	}
 	if quantity != 3 || spread.MaxRisk != 300 || spread.MaxReward != 200 {
 		t.Fatalf("unexpected spread sizing: quantity=%v spread=%+v", quantity, spread)
+	}
+}
+
+func TestBuildPaperSpreadClosePlanReversesPersistedLegs(t *testing.T) {
+	expiry := time.Date(2027, 12, 17, 0, 0, 0, 0, time.UTC)
+	groupID := uuid.New()
+	optionType, strikeOne, strikeTwo := domain.OptionTypeCall, 150.0, 155.0
+	positions := []*domain.Position{{Ticker: "AAPL271217C00150000", Side: domain.PositionSideLong, Quantity: 1, AssetClass: domain.AssetClassOption, UnderlyingTicker: "AAPL", OptionType: &optionType, Strike: &strikeOne, Expiry: &expiry, ContractMultiplier: 100, LegGroupID: &groupID}, {Ticker: "AAPL271217C00155000", Side: domain.PositionSideShort, Quantity: 1, AssetClass: domain.AssetClassOption, UnderlyingTicker: "AAPL", OptionType: &optionType, Strike: &strikeTwo, Expiry: &expiry, ContractMultiplier: 100, LegGroupID: &groupID}}
+	chain := []domain.OptionSnapshot{runtimeOptionSnapshot(positions[0].Ticker, optionType, .6, 3, 3.2, expiry), runtimeOptionSnapshot(positions[1].Ticker, optionType, .3, 1, 1.2, expiry)}
+	spread, quantity, err := buildPaperSpreadClosePlan(positions, chain)
+	if err != nil || quantity != 1 || spread.Legs[0].PositionIntent != domain.PositionIntentSellToClose || spread.Legs[1].PositionIntent != domain.PositionIntentBuyToClose {
+		t.Fatalf("unexpected close plan: spread=%+v quantity=%v err=%v", spread, quantity, err)
 	}
 }

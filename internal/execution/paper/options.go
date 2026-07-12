@@ -142,11 +142,11 @@ func (b *PaperBroker) PreflightSpread(ctx context.Context, spread *domain.Option
 	if spread.StrategyType != domain.StrategyBullCallSpread && spread.StrategyType != domain.StrategyBearPutSpread {
 		return errors.New("paper: only debit vertical spreads are enabled")
 	}
-	if len(spread.Legs) != 2 || spread.MaxRisk <= 0 || spread.MaxReward <= 0 {
-		return errors.New("paper: debit vertical requires two legs and finite max risk/reward")
+	if len(spread.Legs) != 2 {
+		return errors.New("paper: debit vertical requires two legs")
 	}
 	first := spread.Legs[0]
-	var buys, sells int
+	var openBuys, openSells, closeBuys, closeSells int
 	var netDebit float64
 	for _, leg := range spread.Legs {
 		if strings.TrimSpace(leg.Contract.OCCSymbol) == "" || leg.Contract.Expiry.IsZero() || leg.Contract.Multiplier <= 0 || leg.Ratio != 1 || !isFinitePositiveOptionPrice(leg.ExecutablePrice) {
@@ -156,16 +156,31 @@ func (b *PaperBroker) PreflightSpread(ctx context.Context, spread *domain.Option
 			return errors.New("paper: debit vertical legs must share type, expiry, and multiplier")
 		}
 		if leg.Side == domain.OrderSideBuy && leg.PositionIntent == domain.PositionIntentBuyToOpen {
-			buys++
+			openBuys++
 			netDebit += leg.ExecutablePrice
 		} else if leg.Side == domain.OrderSideSell && leg.PositionIntent == domain.PositionIntentSellToOpen {
-			sells++
+			openSells++
+			netDebit -= leg.ExecutablePrice
+		} else if leg.Side == domain.OrderSideBuy && leg.PositionIntent == domain.PositionIntentBuyToClose {
+			closeBuys++
+			netDebit += leg.ExecutablePrice
+		} else if leg.Side == domain.OrderSideSell && leg.PositionIntent == domain.PositionIntentSellToClose {
+			closeSells++
 			netDebit -= leg.ExecutablePrice
 		} else {
-			return errors.New("paper: debit vertical requires buy-to-open and sell-to-open legs")
+			return errors.New("paper: debit vertical requires consistent open or close intents")
 		}
 	}
-	if buys != 1 || sells != 1 || netDebit <= 0 || !isFinitePositiveOptionPrice(netDebit) {
+	if openBuys == 1 && openSells == 1 {
+		if spread.MaxRisk <= 0 || spread.MaxReward <= 0 {
+			return errors.New("paper: opening debit vertical requires finite max risk/reward")
+		}
+		if netDebit <= 0 || !isFinitePositiveOptionPrice(netDebit) {
+			return errors.New("paper: spread must be a net debit with one bought and one sold leg")
+		}
+		return nil
+	}
+	if closeBuys != 1 || closeSells != 1 || math.IsNaN(netDebit) || math.IsInf(netDebit, 0) {
 		return errors.New("paper: spread must be a net debit with one bought and one sold leg")
 	}
 	return nil

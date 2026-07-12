@@ -358,9 +358,6 @@ func (r *realStrategyRunner) executeOptionsSignal(ctx context.Context, strategy 
 		if len(open) == 0 {
 			return nil
 		}
-		if len(open) != 1 {
-			return fmt.Errorf("options runtime: expected one open option position, found %d; atomic multi-position close is required", len(open))
-		}
 		position := open[0]
 		if position.OptionType == nil || position.Expiry == nil {
 			return errors.New("options runtime: persisted position lacks contract metadata")
@@ -368,6 +365,13 @@ func (r *realStrategyRunner) executeOptionsSignal(ctx context.Context, strategy 
 		chain, err := r.optionsProvider.GetOptionsChain(ctx, position.UnderlyingTicker, *position.Expiry, *position.OptionType)
 		if err != nil {
 			return fmt.Errorf("options runtime: load close quote: %w", err)
+		}
+		if len(open) > 1 {
+			spread, quantity, err := buildPaperSpreadClosePlan(open, chain)
+			if err != nil {
+				return err
+			}
+			return manager.ProcessSpreadSignal(ctx, spread, quantity, strategy.ID, runID)
 		}
 		closePrice, err := executableOptionClosePrice(position, chain)
 		if err != nil {
@@ -415,6 +419,51 @@ func (r *realStrategyRunner) executeOptionsSignal(ctx context.Context, strategy 
 		return err
 	}
 	return manager.ProcessOptionSignal(ctx, signal, plan, strategy.ID, runID)
+}
+
+func buildPaperSpreadClosePlan(positions []*domain.Position, chain []domain.OptionSnapshot) (*domain.OptionSpread, float64, error) {
+	if len(positions) != 2 || positions[0] == nil || positions[0].LegGroupID == nil {
+		return nil, 0, errors.New("options runtime: exactly one persisted two-leg group is required for atomic close")
+	}
+	first, quantity := positions[0], positions[0].Quantity
+	if first.OptionType == nil || first.Expiry == nil || quantity <= 0 {
+		return nil, 0, errors.New("options runtime: spread position metadata is incomplete")
+	}
+	strategyType := domain.StrategyBullCallSpread
+	if *first.OptionType == domain.OptionTypePut {
+		strategyType = domain.StrategyBearPutSpread
+	}
+	spread := &domain.OptionSpread{StrategyType: strategyType, Underlying: first.UnderlyingTicker}
+	for _, position := range positions {
+		if position == nil || position.LegGroupID == nil || *position.LegGroupID != *first.LegGroupID || position.Quantity != quantity || position.UnderlyingTicker != first.UnderlyingTicker || position.OptionType == nil || *position.OptionType != *first.OptionType || position.Expiry == nil || !position.Expiry.Equal(*first.Expiry) || position.Strike == nil {
+			return nil, 0, errors.New("options runtime: spread legs do not share durable group and contract semantics")
+		}
+		price, err := executableOptionClosePrice(position, chain)
+		if err != nil {
+			return nil, 0, err
+		}
+		contract := domain.OptionContract{OCCSymbol: position.Ticker, Underlying: position.UnderlyingTicker, OptionType: *position.OptionType, Strike: *position.Strike, Expiry: *position.Expiry, Multiplier: position.ContractMultiplier}
+		leg := domain.SpreadLeg{Contract: contract, Ratio: 1, Quantity: quantity, ExecutablePrice: price}
+		if position.Side == domain.PositionSideLong {
+			leg.Side, leg.PositionIntent = domain.OrderSideSell, domain.PositionIntentSellToClose
+		} else {
+			leg.Side, leg.PositionIntent = domain.OrderSideBuy, domain.PositionIntentBuyToClose
+		}
+		if position.Delta != nil {
+			leg.Greeks.Delta = *position.Delta
+		}
+		if position.Gamma != nil {
+			leg.Greeks.Gamma = *position.Gamma
+		}
+		if position.Theta != nil {
+			leg.Greeks.Theta = *position.Theta
+		}
+		if position.Vega != nil {
+			leg.Greeks.Vega = *position.Vega
+		}
+		spread.Legs = append(spread.Legs, leg)
+	}
+	return spread, quantity, nil
 }
 
 func (r *realStrategyRunner) enforceOptionsGreekRisk(ctx context.Context, underlying string, proposed []risk.OptionLegExposure) error {

@@ -12,6 +12,7 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution/paper"
+	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 	"github.com/PatrickFanella/get-rich-quick/internal/risk"
 )
 
@@ -274,5 +275,35 @@ func TestProcessSpreadSignalPersistsAtomicPaperLegs(t *testing.T) {
 	}
 	if orderRepo.updates[0].LegGroupID == nil || orderRepo.updates[1].LegGroupID == nil || *orderRepo.updates[0].LegGroupID != *orderRepo.updates[1].LegGroupID || orderRepo.updates[0].Status != domain.OrderStatusFilled || orderRepo.updates[1].Status != domain.OrderStatusFilled {
 		t.Fatalf("spread legs not atomically grouped and filled: %+v", orderRepo.updates)
+	}
+}
+
+func TestProcessSpreadSignalAtomicallyClosesPersistedLegGroup(t *testing.T) {
+	orderRepo, positionRepo, tradeRepo := &mockOrderRepo{}, &mockPositionRepo{}, &mockTradeRepo{}
+	strategyID, groupID := uuid.New(), uuid.New()
+	expiry := time.Date(2027, 12, 17, 0, 0, 0, 0, time.UTC)
+	optionType, longStrike, shortStrike := domain.OptionTypeCall, 150.0, 155.0
+	positions := []domain.Position{
+		{ID: uuid.New(), StrategyID: &strategyID, Ticker: "AAPL271217C00150000", Side: domain.PositionSideLong, Quantity: 1, AvgEntry: 2.5, AssetClass: domain.AssetClassOption, UnderlyingTicker: "AAPL", OptionType: &optionType, Strike: &longStrike, Expiry: &expiry, ContractMultiplier: 100, LegGroupID: &groupID},
+		{ID: uuid.New(), StrategyID: &strategyID, Ticker: "AAPL271217C00155000", Side: domain.PositionSideShort, Quantity: 1, AvgEntry: 1, AssetClass: domain.AssetClassOption, UnderlyingTicker: "AAPL", OptionType: &optionType, Strike: &shortStrike, Expiry: &expiry, ContractMultiplier: 100, LegGroupID: &groupID},
+	}
+	positionRepo.getByStrategyFn = func(context.Context, uuid.UUID, repository.PositionFilter, int, int) ([]domain.Position, error) {
+		return positions, nil
+	}
+	spread := &domain.OptionSpread{StrategyType: domain.StrategyBullCallSpread, Underlying: "AAPL", Legs: []domain.SpreadLeg{
+		{Contract: domain.OptionContract{OCCSymbol: positions[0].Ticker, Underlying: "AAPL", OptionType: optionType, Strike: longStrike, Expiry: expiry, Multiplier: 100}, Side: domain.OrderSideSell, PositionIntent: domain.PositionIntentSellToClose, Ratio: 1, ExecutablePrice: 3},
+		{Contract: domain.OptionContract{OCCSymbol: positions[1].Ticker, Underlying: "AAPL", OptionType: optionType, Strike: shortStrike, Expiry: expiry, Multiplier: 100}, Side: domain.OrderSideBuy, PositionIntent: domain.PositionIntentBuyToClose, Ratio: 1, ExecutablePrice: 1.2},
+	}}
+	mgr := execution.NewOptionsOrderManager(paper.NewPaperBroker(100000, 0, 0), orderRepo, positionRepo, tradeRepo, &mockRiskEngine{}, slog.Default()).WithBrokerName("paper")
+	if err := mgr.ProcessSpreadSignal(context.Background(), spread, 1, strategyID, uuid.New()); err != nil {
+		t.Fatalf("ProcessSpreadSignal(close) error = %v", err)
+	}
+	if len(positionRepo.updates) != 2 || len(tradeRepo.trades) != 2 {
+		t.Fatalf("close lifecycle updates=%d trades=%d", len(positionRepo.updates), len(tradeRepo.trades))
+	}
+	for index := range positionRepo.updates {
+		if positionRepo.updates[index].ClosedAt == nil || tradeRepo.trades[index].OpenClose != "close" {
+			t.Fatalf("spread leg %d not closed: position=%+v trade=%+v", index, positionRepo.updates[index], tradeRepo.trades[index])
+		}
 	}
 }

@@ -386,6 +386,10 @@ func (m *OptionsOrderManager) CloseOptionPosition(ctx context.Context, position 
 	if order.Status != domain.OrderStatusFilled {
 		return nil
 	}
+	return m.persistClosingFill(ctx, position, order, reason)
+}
+
+func (m *OptionsOrderManager) persistClosingFill(ctx context.Context, position *domain.Position, order *domain.Order, reason string) error {
 	reporter, ok := m.broker.(OptionFillReporter)
 	if !ok || order.FilledAvgPrice == nil || order.FilledAt == nil {
 		return fmt.Errorf("options_manager: filled close order %s lacks accounting details", order.ID)
@@ -411,7 +415,7 @@ func (m *OptionsOrderManager) CloseOptionPosition(ctx context.Context, position 
 		return fmt.Errorf("options_manager: persist closed position: %w", err)
 	}
 	orderID, positionID := order.ID, position.ID
-	trade := &domain.Trade{ID: uuid.New(), OrderID: &orderID, PositionID: &positionID, ExternalID: externalID, Ticker: order.Ticker, Side: side, Quantity: order.FilledQuantity, Price: *order.FilledAvgPrice, Fee: report.Fee, ExecutedAt: *order.FilledAt, AssetClass: domain.AssetClassOption, OpenClose: "close", ContractMultiplier: multiplier, Premium: report.Premium, ExitReason: strings.TrimSpace(reason)}
+	trade := &domain.Trade{ID: uuid.New(), OrderID: &orderID, PositionID: &positionID, ExternalID: order.ExternalID, Ticker: order.Ticker, Side: order.Side, Quantity: order.FilledQuantity, Price: *order.FilledAvgPrice, Fee: report.Fee, ExecutedAt: *order.FilledAt, AssetClass: domain.AssetClassOption, OpenClose: "close", ContractMultiplier: multiplier, Premium: report.Premium, ExitReason: strings.TrimSpace(reason)}
 	if err := m.tradeRepo.Create(ctx, trade); err != nil {
 		return fmt.Errorf("options_manager: persist closing trade: %w", err)
 	}
@@ -437,6 +441,43 @@ func (m *OptionsOrderManager) ProcessSpreadSignal(
 	if quantity <= 0 {
 		return fmt.Errorf("options_manager: spread quantity must be greater than zero")
 	}
+	opening, closing := 0, 0
+	for _, leg := range spread.Legs {
+		switch leg.PositionIntent {
+		case domain.PositionIntentBuyToOpen, domain.PositionIntentSellToOpen:
+			opening++
+		case domain.PositionIntentBuyToClose, domain.PositionIntentSellToClose:
+			closing++
+		}
+	}
+	if (opening > 0 && closing > 0) || (opening == 0 && closing == 0) {
+		return errors.New("options_manager: spread legs must be consistently opening or closing")
+	}
+	isClosing := closing == len(spread.Legs)
+	closePositions := make(map[string]*domain.Position)
+	var existingGroupID *uuid.UUID
+	if isClosing {
+		positions, err := m.positionRepo.GetByStrategy(ctx, strategyID, repository.PositionFilter{}, 100, 0)
+		if err != nil {
+			return fmt.Errorf("options_manager: load spread positions for close: %w", err)
+		}
+		for index := range positions {
+			if positions[index].AssetClass == domain.AssetClassOption && positions[index].ClosedAt == nil {
+				closePositions[positions[index].Ticker] = &positions[index]
+			}
+		}
+		for _, leg := range spread.Legs {
+			position := closePositions[leg.Contract.OCCSymbol]
+			if position == nil || position.Quantity != quantity*float64(leg.Ratio) || position.LegGroupID == nil {
+				return fmt.Errorf("options_manager: matching open spread position required for %s", leg.Contract.OCCSymbol)
+			}
+			if existingGroupID == nil {
+				existingGroupID = position.LegGroupID
+			} else if *existingGroupID != *position.LegGroupID {
+				return errors.New("options_manager: close legs do not share one persisted leg group")
+			}
+		}
+	}
 	preflight, ok := m.broker.(spreadPreflightBroker)
 	if !ok {
 		return errors.New("options_manager: spread broker preflight is required before persistence")
@@ -444,29 +485,31 @@ func (m *OptionsOrderManager) ProcessSpreadSignal(
 	if err := preflight.PreflightSpread(ctx, spread, quantity); err != nil {
 		return fmt.Errorf("options_manager: spread preflight: %w", err)
 	}
-	balanceProvider, ok := m.broker.(optionsBalanceProvider)
-	if !ok {
-		return errors.New("options_manager: spread broker account balance is required")
-	}
-	balance, err := balanceProvider.GetAccountBalance(ctx)
-	if err != nil || balance.Equity <= 0 {
-		return fmt.Errorf("options_manager: valid account balance is required for spread risk: %w", err)
-	}
-	portfolio, err := BuildRiskPortfolioSnapshotFromBalance(ctx, balance, m.positionRepo)
-	if err != nil {
-		return fmt.Errorf("options_manager: build spread risk portfolio: %w", err)
-	}
-	additionalExposure := spread.MaxRisk * quantity / balance.Equity
-	if portfolio.MarketExposurePct == nil {
-		portfolio.MarketExposurePct = make(map[domain.MarketType]float64)
-	}
-	portfolio.MarketExposurePct[domain.MarketTypeOptions] += additionalExposure
-	approved, reason, err := m.riskEngine.CheckPositionLimits(ctx, spread.Underlying, additionalExposure, portfolio)
-	if err != nil {
-		return fmt.Errorf("options_manager: check spread position limits: %w", err)
-	}
-	if !approved {
-		return fmt.Errorf("options_manager: spread position limits rejected %s: %s", spread.Underlying, reason)
+	if !isClosing {
+		balanceProvider, ok := m.broker.(optionsBalanceProvider)
+		if !ok {
+			return errors.New("options_manager: spread broker account balance is required")
+		}
+		balance, err := balanceProvider.GetAccountBalance(ctx)
+		if err != nil || balance.Equity <= 0 {
+			return fmt.Errorf("options_manager: valid account balance is required for spread risk: %w", err)
+		}
+		portfolio, err := BuildRiskPortfolioSnapshotFromBalance(ctx, balance, m.positionRepo)
+		if err != nil {
+			return fmt.Errorf("options_manager: build spread risk portfolio: %w", err)
+		}
+		additionalExposure := spread.MaxRisk * quantity / balance.Equity
+		if portfolio.MarketExposurePct == nil {
+			portfolio.MarketExposurePct = make(map[domain.MarketType]float64)
+		}
+		portfolio.MarketExposurePct[domain.MarketTypeOptions] += additionalExposure
+		approved, reason, err := m.riskEngine.CheckPositionLimits(ctx, spread.Underlying, additionalExposure, portfolio)
+		if err != nil {
+			return fmt.Errorf("options_manager: check spread position limits: %w", err)
+		}
+		if !approved {
+			return fmt.Errorf("options_manager: spread position limits rejected %s: %s", spread.Underlying, reason)
+		}
 	}
 
 	// 1. Kill switch check.
@@ -496,6 +539,9 @@ func (m *OptionsOrderManager) ProcessSpreadSignal(
 
 	// 2. Create per-leg orders for tracking.
 	legGroupID := uuid.New()
+	if existingGroupID != nil {
+		legGroupID = *existingGroupID
+	}
 	now := time.Now().UTC()
 	legOrders := make([]*domain.Order, 0, len(spread.Legs))
 
@@ -573,8 +619,14 @@ func (m *OptionsOrderManager) ProcessSpreadSignal(
 			if _, err := reporter.OptionFillReport(ctx, order); err != nil {
 				return fmt.Errorf("options_manager: spread leg accounting: %w", err)
 			}
-			if err := m.persistImmediateFill(ctx, order); err != nil {
-				return fmt.Errorf("options_manager: persist spread leg fill: %w", err)
+			var persistErr error
+			if isClosing {
+				persistErr = m.persistClosingFill(ctx, closePositions[order.Ticker], order, "strategy spread close")
+			} else {
+				persistErr = m.persistImmediateFill(ctx, order)
+			}
+			if persistErr != nil {
+				return fmt.Errorf("options_manager: persist spread leg fill: %w", persistErr)
 			}
 		}
 	}
