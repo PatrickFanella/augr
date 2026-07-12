@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/PatrickFanella/get-rich-quick/internal/integration/redditlimit"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -17,6 +19,7 @@ func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 
 func TestRedditSourceFetchSubredditFallsBackOnRetryableStatus(t *testing.T) {
 	source := NewRedditSource([]string{"polymarket"}, 0, nil)
+	source.limiter = &redditlimit.Coordinator{}
 	var hosts []string
 	source.client = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		hosts = append(hosts, req.URL.Host)
@@ -40,6 +43,7 @@ func TestRedditSourceFetchSubredditFallsBackOnRetryableStatus(t *testing.T) {
 
 func TestRedditSourceFetchAllStartsCooldownOn429(t *testing.T) {
 	source := NewRedditSource([]string{"polymarket"}, 0, nil)
+	source.limiter = &redditlimit.Coordinator{}
 	var calls int
 	source.client = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		calls++
@@ -50,15 +54,15 @@ func TestRedditSourceFetchAllStartsCooldownOn429(t *testing.T) {
 	if len(events) != 0 {
 		t.Fatalf("len(events) = %d, want 0", len(events))
 	}
-	if calls != 2 {
-		t.Fatalf("calls after first fetch = %d, want 2 hosts", calls)
+	if calls != 1 {
+		t.Fatalf("calls after first fetch = %d, want rate limit to stop fallback", calls)
 	}
 	if remaining := source.cooldownRemaining("polymarket"); remaining < 110*time.Second {
 		t.Fatalf("cooldown = %s, want roughly Retry-After", remaining)
 	}
 
 	source.fetchAll(context.Background())
-	if calls != 2 {
+	if calls != 1 {
 		t.Fatalf("calls after cooldown fetch = %d, want unchanged", calls)
 	}
 }

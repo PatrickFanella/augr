@@ -9,8 +9,9 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
+
+	"github.com/PatrickFanella/get-rich-quick/internal/integration/redditlimit"
 )
 
 const (
@@ -48,10 +49,9 @@ type RedditPost struct {
 
 // Client fetches Reddit RSS feeds and returns parsed posts.
 type Client struct {
-	client    *http.Client
-	logger    *slog.Logger
-	cooldowns map[string]time.Time
-	mu        sync.Mutex
+	client  *http.Client
+	logger  *slog.Logger
+	limiter *redditlimit.Coordinator
 }
 
 // NewClient creates a Reddit RSS client.
@@ -60,9 +60,9 @@ func NewClient(logger *slog.Logger) *Client {
 		logger = slog.Default()
 	}
 	return &Client{
-		client:    &http.Client{Timeout: clientTimeout},
-		logger:    logger,
-		cooldowns: make(map[string]time.Time),
+		client:  &http.Client{Timeout: clientTimeout},
+		logger:  logger,
+		limiter: redditlimit.Default,
 	}
 }
 
@@ -73,53 +73,39 @@ func (c *Client) FetchSubreddits(ctx context.Context, subreddits []string) []Red
 		subreddits = subreddits[:maxSubreddits]
 	}
 
-	var (
-		mu    sync.Mutex
-		posts []RedditPost
-		wg    sync.WaitGroup
-	)
+	var posts []RedditPost
 
 	for i, sub := range subreddits {
+		if wait := c.cooldownRemaining(sub); wait > 0 {
+			c.logger.Debug("reddit: provider cooldown active; skipping remaining feeds",
+				slog.Duration("remaining", wait.Round(time.Second)),
+			)
+			break
+		}
 		if i > 0 {
 			select {
 			case <-ctx.Done():
-				break
+				return posts
 			case <-time.After(fetchDelay):
 			}
 		}
 
-		wg.Add(1)
-		go func(sub string) {
-			defer wg.Done()
-			if wait := c.cooldownRemaining(sub); wait > 0 {
-				c.logger.Debug("reddit: fetch skipped during cooldown",
+		got, err := c.fetchSubreddit(ctx, sub)
+		if err != nil {
+			if retryAfter, ok := redditRetryAfter(err); ok {
+				effective := c.startCooldown(sub, retryAfter)
+				c.logger.Info("reddit: rate limited; provider cooldown started",
 					slog.String("subreddit", sub),
-					slog.Duration("remaining", wait),
+					slog.Duration("cooldown", effective.Round(time.Second)),
 				)
-				return
+				break
 			}
-			got, err := c.fetchSubreddit(ctx, sub)
-			if err != nil {
-				if retryAfter, ok := redditRetryAfter(err); ok {
-					c.startCooldown(sub, retryAfter)
-					c.logger.Info("reddit: rate limited; cooling down subreddit",
-						slog.String("subreddit", sub),
-						slog.Duration("cooldown", retryAfter),
-					)
-					return
-				}
-				c.logger.Warn("reddit: fetch failed",
-					slog.String("subreddit", sub),
-					slog.Any("error", err),
-				)
-				return
-			}
-			mu.Lock()
-			posts = append(posts, got...)
-			mu.Unlock()
-		}(sub)
+			c.logger.Warn("reddit: fetch failed", slog.String("subreddit", sub), slog.Any("error", err))
+			continue
+		}
+		c.limiter.MarkSuccess(time.Now().UTC())
+		posts = append(posts, got...)
 	}
-	wg.Wait()
 
 	return posts
 }
@@ -132,6 +118,9 @@ func (c *Client) fetchSubreddit(ctx context.Context, sub string) ([]RedditPost, 
 			return got, nil
 		}
 		lastErr = err
+		if _, limited := redditRetryAfter(err); limited {
+			return nil, err
+		}
 		if !isRetryableStatusError(err) {
 			return nil, err
 		}
@@ -209,30 +198,13 @@ func parseRetryAfter(raw string) time.Duration {
 }
 
 func (c *Client) cooldownRemaining(sub string) time.Duration {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	until := c.cooldowns[sub]
-	if until.IsZero() {
-		return 0
-	}
-	remaining := time.Until(until)
-	if remaining <= 0 {
-		delete(c.cooldowns, sub)
-		return 0
-	}
-	return remaining
+	_ = sub // cooldown is intentionally provider-wide, not subreddit-specific.
+	return c.limiter.Remaining(time.Now())
 }
 
-func (c *Client) startCooldown(sub string, d time.Duration) {
-	if d <= 0 {
-		d = 15 * time.Minute
-	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	until := time.Now().Add(d)
-	if until.After(c.cooldowns[sub]) {
-		c.cooldowns[sub] = until
-	}
+func (c *Client) startCooldown(sub string, d time.Duration) time.Duration {
+	_ = sub
+	return c.limiter.Start(time.Now(), d)
 }
 
 // ── Atom XML types (Reddit serves Atom 1.0) ────────────────────────────

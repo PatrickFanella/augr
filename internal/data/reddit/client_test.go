@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/PatrickFanella/get-rich-quick/internal/integration/redditlimit"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -17,6 +19,7 @@ func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 
 func TestClientFetchSubredditFallsBackOnRetryableStatus(t *testing.T) {
 	client := NewClient(nil)
+	client.limiter = &redditlimit.Coordinator{}
 	var hosts []string
 	client.client = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		hosts = append(hosts, req.URL.Host)
@@ -40,6 +43,7 @@ func TestClientFetchSubredditFallsBackOnRetryableStatus(t *testing.T) {
 
 func TestClientFetchSubredditsStartsCooldownOn429(t *testing.T) {
 	client := NewClient(nil)
+	client.limiter = &redditlimit.Coordinator{}
 	var calls int
 	client.client = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		calls++
@@ -50,15 +54,15 @@ func TestClientFetchSubredditsStartsCooldownOn429(t *testing.T) {
 	if len(posts) != 0 {
 		t.Fatalf("len(posts) = %d, want 0", len(posts))
 	}
-	if calls != 2 {
-		t.Fatalf("calls after first fetch = %d, want 2 hosts", calls)
+	if calls != 1 {
+		t.Fatalf("calls after first fetch = %d, want rate limit to stop fallback", calls)
 	}
 	if remaining := client.cooldownRemaining("stocks"); remaining < 110*time.Second {
 		t.Fatalf("cooldown = %s, want roughly Retry-After", remaining)
 	}
 
 	client.FetchSubreddits(context.Background(), []string{"stocks"})
-	if calls != 2 {
+	if calls != 1 {
 		t.Fatalf("calls after cooldown fetch = %d, want unchanged", calls)
 	}
 }
