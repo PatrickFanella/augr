@@ -2,6 +2,7 @@ package discovery
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/PatrickFanella/get-rich-quick/internal/agent/rules"
 	"github.com/PatrickFanella/get-rich-quick/internal/llm"
+	llmparse "github.com/PatrickFanella/get-rich-quick/internal/llm/parse"
 )
 
 // GeneratorConfig controls how the LLM is called when generating a strategy.
@@ -114,13 +116,26 @@ func GenerateStrategy(ctx context.Context, cfg GeneratorConfig, candidate Screen
 			return nil, fmt.Errorf("discovery/generator: LLM call failed: %w", err)
 		}
 
-		logger.Debug("discovery/generator: LLM response",
+		responseHash := fmt.Sprintf("%x", sha256.Sum256([]byte(resp.Content)))
+		logger.Debug("discovery/generator: LLM response received",
 			slog.String("ticker", candidate.Ticker),
 			slog.Int("attempt", attempt+1),
-			slog.String("content", resp.Content),
+			slog.Int("content_bytes", len(resp.Content)),
+			slog.String("content_sha256", responseHash),
 		)
 
-		parsed, parseErr := rules.Parse(json.RawMessage(resp.Content))
+		var jsonObject string
+		var extractErr error
+		if strings.TrimSpace(resp.Content) == "" {
+			extractErr = errors.New("rules: empty JSON response")
+		} else {
+			jsonObject, extractErr = llmparse.ExtractJSONObject(resp.Content)
+		}
+		var parsed *rules.RulesEngineConfig
+		parseErr := extractErr
+		if extractErr == nil {
+			parsed, parseErr = rules.Parse(json.RawMessage(jsonObject))
+		}
 		if parsed == nil && parseErr == nil {
 			parseErr = errors.New("rules: empty JSON response")
 		}
@@ -144,7 +159,6 @@ func GenerateStrategy(ctx context.Context, cfg GeneratorConfig, candidate Screen
 
 			// Append correction prompt for the next attempt.
 			messages = append(messages,
-				llm.Message{Role: "assistant", Content: resp.Content},
 				llm.Message{Role: "user", Content: fmt.Sprintf(
 					"The JSON you produced failed validation with this error:\n%s\n\nPlease fix the issue and return corrected JSON only.",
 					parseErrText,

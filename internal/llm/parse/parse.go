@@ -2,6 +2,7 @@ package parse
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -76,6 +77,55 @@ func StripCodeFences(s string) string {
 	}
 
 	return strings.TrimSpace(body)
+}
+
+// ExtractJSONObject returns the first complete JSON object in model output.
+// It tolerates prose and markdown before or after the object, while correctly
+// ignoring braces that appear inside JSON strings. Arrays and incomplete
+// objects are rejected because callers use this helper for object schemas.
+func ExtractJSONObject(content string) (string, error) {
+	cleaned := StripCodeFences(StripThinkingTags(content))
+	start := strings.IndexByte(cleaned, '{')
+	if start == -1 {
+		return "", errors.New("failed to extract JSON object: opening brace not found")
+	}
+
+	depth := 0
+	inString := false
+	escaped := false
+	for i := start; i < len(cleaned); i++ {
+		char := cleaned[i]
+		if inString {
+			if escaped {
+				escaped = false
+				continue
+			}
+			switch char {
+			case '\\':
+				escaped = true
+			case '"':
+				inString = false
+			}
+			continue
+		}
+
+		switch char {
+		case '"':
+			inString = true
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return cleaned[start : i+1], nil
+			}
+			if depth < 0 {
+				return "", errors.New("failed to extract JSON object: unexpected closing brace")
+			}
+		}
+	}
+
+	return "", errors.New("failed to extract JSON object: incomplete object")
 }
 
 // Parse strips code fences from content, unmarshals the JSON into T, and

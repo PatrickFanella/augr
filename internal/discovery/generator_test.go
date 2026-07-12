@@ -38,11 +38,33 @@ func TestGenerateStrategy_RetriesAfterEmptyResponse(t *testing.T) {
 		t.Fatalf("requests = %d, want 2", len(provider.requests))
 	}
 	msgs := provider.requests[1].Messages
-	if len(msgs) < 4 {
-		t.Fatalf("retry messages = %d, want at least 4", len(msgs))
+	if len(msgs) != 3 {
+		t.Fatalf("retry messages = %d, want 3", len(msgs))
 	}
 	if !strings.Contains(msgs[len(msgs)-1].Content, "rules: empty JSON response") {
 		t.Fatalf("retry prompt missing empty-response error: %q", msgs[len(msgs)-1].Content)
+	}
+}
+
+func TestGenerateStrategy_RecoversJSONObjectAfterReasoningProse(t *testing.T) {
+	t.Parallel()
+
+	provider := &stubCompletionProvider{responses: []*llm.CompletionResponse{{Content: "**Focusing on valid JSON output**\nThe answer follows.\n" + validStrategyJSON}}}
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	got, err := GenerateStrategy(context.Background(), GeneratorConfig{Provider: provider}, ScreenResult{Ticker: "WY"}, logger)
+	if err != nil {
+		t.Fatalf("GenerateStrategy() error = %v", err)
+	}
+	if got == nil || got.Name != "retry-safe" {
+		t.Fatalf("GenerateStrategy() = %#v, want recovered strategy", got)
+	}
+	if strings.Contains(logs.String(), validStrategyJSON) {
+		t.Fatal("generator logs included full LLM response")
+	}
+	if !strings.Contains(logs.String(), "content_sha256") {
+		t.Fatal("generator logs missing response hash")
 	}
 }
 

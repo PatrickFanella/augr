@@ -2,6 +2,7 @@ package options
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/agent/rules"
 	"github.com/PatrickFanella/get-rich-quick/internal/discovery"
 	"github.com/PatrickFanella/get-rich-quick/internal/llm"
+	llmparse "github.com/PatrickFanella/get-rich-quick/internal/llm/parse"
 )
 
 const optionsGeneratorSystemPrompt = `You are a quantitative options strategy designer. Given recent market data, technical indicators, and options chain metrics for a ticker, generate a complete OptionsRulesConfig as JSON.
@@ -111,13 +113,26 @@ func GenerateOptionsStrategy(ctx context.Context, cfg discovery.GeneratorConfig,
 			return nil, fmt.Errorf("options/generator: LLM call failed: %w", err)
 		}
 
-		logger.Debug("options/generator: LLM response",
+		responseHash := fmt.Sprintf("%x", sha256.Sum256([]byte(resp.Content)))
+		logger.Debug("options/generator: LLM response received",
 			slog.String("ticker", candidate.Ticker),
 			slog.Int("attempt", attempt+1),
-			slog.String("content", resp.Content),
+			slog.Int("content_bytes", len(resp.Content)),
+			slog.String("content_sha256", responseHash),
 		)
 
-		parsed, parseErr := rules.ParseOptions(json.RawMessage(resp.Content))
+		var jsonObject string
+		var extractErr error
+		if strings.TrimSpace(resp.Content) == "" {
+			extractErr = errors.New("rules: empty JSON response")
+		} else {
+			jsonObject, extractErr = llmparse.ExtractJSONObject(resp.Content)
+		}
+		var parsed *rules.OptionsRulesConfig
+		parseErr := extractErr
+		if extractErr == nil {
+			parsed, parseErr = rules.ParseOptions(json.RawMessage(jsonObject))
+		}
 		if parsed == nil && parseErr == nil {
 			parseErr = errors.New("rules: empty JSON response")
 		}
@@ -131,20 +146,17 @@ func GenerateOptionsStrategy(ctx context.Context, cfg discovery.GeneratorConfig,
 		}
 
 		lastErr = parseErr
-		logger.Warn("options/generator: parse/validation failed, retrying",
-			slog.String("ticker", candidate.Ticker),
-			slog.Int("attempt", attempt+1),
-			slog.Any("error", parseErr),
-		)
-		parseErrText := parseErr.Error()
-
-		messages = append(messages,
-			llm.Message{Role: "assistant", Content: resp.Content},
-			llm.Message{Role: "user", Content: fmt.Sprintf(
+		if attempt < maxRetries {
+			logger.Warn("options/generator: parse/validation failed, retrying",
+				slog.String("ticker", candidate.Ticker),
+				slog.Int("attempt", attempt+1),
+				slog.Any("error", parseErr),
+			)
+			messages = append(messages, llm.Message{Role: "user", Content: fmt.Sprintf(
 				"The JSON you produced failed validation with this error:\n%s\n\nPlease fix the issue and return corrected JSON only.",
-				parseErrText,
-			)},
-		)
+				parseErr.Error(),
+			)})
+		}
 	}
 
 	return nil, fmt.Errorf("options/generator: failed after %d retries: %w", maxRetries+1, lastErr)

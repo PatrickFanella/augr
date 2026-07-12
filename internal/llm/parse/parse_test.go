@@ -137,6 +137,44 @@ func TestStripCodeFences(t *testing.T) {
 	}
 }
 
+func TestExtractJSONObject(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		input   string
+		want    string
+		wantErr string
+	}{
+		{name: "plain object", input: `{"ok":true}`, want: `{"ok":true}`},
+		{name: "prose prefixed production shape", input: "**Focusing on JSON**\nI will return it now.\n{\"version\":1,\"name\":\"safe\"}", want: `{"version":1,"name":"safe"}`},
+		{name: "fenced with trailing prose", input: "```json\n{\"nested\":{\"value\":\"} inside string\"}}\n```\nDone", want: `{"nested":{"value":"} inside string"}}`},
+		{name: "escaped quote and brace", input: `prefix {"value":"escaped \" { brace"} suffix`, want: `{"value":"escaped \" { brace"}`},
+		{name: "missing object", input: "no structured response", wantErr: "opening brace not found"},
+		{name: "incomplete object", input: `reasoning {"ok":true`, wantErr: "incomplete object"},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := ExtractJSONObject(tt.input)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("ExtractJSONObject() error = %v, want containing %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ExtractJSONObject() error = %v", err)
+			}
+			if got != tt.want {
+				t.Fatalf("ExtractJSONObject() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 // testPayload is a simple struct used by Parse tests.
 type testPayload struct {
 	Name  string `json:"name"`
