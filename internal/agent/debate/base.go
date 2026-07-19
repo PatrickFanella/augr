@@ -63,12 +63,19 @@ func (b BaseDebater) CallWithContext(
 		return "", "", llm.CompletionUsage{}, fmt.Errorf("%s: nil llm provider", errorPrefix)
 	}
 
-	messages := []llm.Message{
-		{Role: "system", Content: systemPrompt},
-		{
-			Role:    "user",
-			Content: formatContextForPrompt(previousRounds, analystReports),
-		},
+	messages, stats, err := buildBudgetedDebateMessages(systemPrompt, previousRounds, analystReports)
+	if err != nil {
+		return "", "", llm.CompletionUsage{}, fmt.Errorf("%s: prompt preflight failed: %w", errorPrefix, err)
+	}
+	if stats.OriginalBytes != stats.FinalBytes {
+		b.logger.WarnContext(ctx, "debate prompt compacted",
+			"role", b.role,
+			"phase", b.phase,
+			"original_bytes", stats.OriginalBytes,
+			"final_bytes", stats.FinalBytes,
+			"dropped_rounds", stats.DroppedRounds,
+			"truncated_reports", stats.TruncatedReports,
+		)
 	}
 	promptText := agent.PromptTextFromMessages(messages)
 
@@ -85,20 +92,6 @@ func (b BaseDebater) CallWithContext(
 
 	return resp.Content, promptText, resp.Usage, nil
 }
-
-func formatContextForPrompt(
-	previousRounds []agent.DebateRound,
-	analystReports map[agent.AgentRole]string,
-) string {
-	return strings.Join([]string{
-		"Previous debate rounds:",
-		formatRoundsForPrompt(previousRounds),
-		"",
-		"Analyst reports:",
-		formatAnalystReportsForPrompt(analystReports),
-	}, "\n")
-}
-
 func formatRoundsForPrompt(rounds []agent.DebateRound) string {
 	if len(rounds) == 0 {
 		return "No previous debate rounds."
@@ -127,30 +120,6 @@ func formatRoundsForPrompt(rounds []agent.DebateRound) string {
 		for _, role := range roles {
 			_, _ = fmt.Fprintf(&builder, "\n- %s: %s", role, round.Contributions[role])
 		}
-	}
-
-	return builder.String()
-}
-
-func formatAnalystReportsForPrompt(reports map[agent.AgentRole]string) string {
-	if len(reports) == 0 {
-		return "No analyst reports available."
-	}
-
-	roles := make([]agent.AgentRole, 0, len(reports))
-	for role := range reports {
-		roles = append(roles, role)
-	}
-	sort.Slice(roles, func(i, j int) bool {
-		return roles[i] < roles[j]
-	})
-
-	var builder strings.Builder
-	for i, role := range roles {
-		if i > 0 {
-			builder.WriteString("\n\n")
-		}
-		_, _ = fmt.Fprintf(&builder, "%s:\n%s", role, reports[role])
 	}
 
 	return builder.String()

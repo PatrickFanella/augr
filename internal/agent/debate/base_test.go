@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -125,6 +126,41 @@ func TestBaseDebaterCallWithContextSendsCorrectMessages(t *testing.T) {
 	wantPromptText := "You are the bull researcher.\n\n" + wantUser
 	if promptText != wantPromptText {
 		t.Fatalf("prompt text = %q, want %q", promptText, wantPromptText)
+	}
+}
+
+func TestBaseDebaterCallWithContextCompactsBeforeProvider(t *testing.T) {
+	mock := &mockProvider{response: &llm.CompletionResponse{Content: "ok"}}
+	debater := NewBaseDebater(agent.AgentRoleBullResearcher, agent.PhaseResearchDebate, mock, "deep-model", slog.Default())
+	rounds := make([]agent.DebateRound, 20)
+	for i := range rounds {
+		rounds[i] = agent.DebateRound{Number: i + 1, Contributions: map[agent.AgentRole]string{agent.AgentRoleBullResearcher: strings.Repeat("b", 8*1024), agent.AgentRoleBearResearcher: strings.Repeat("b", 8*1024)}}
+	}
+	reports := map[agent.AgentRole]string{agent.AgentRoleMarketAnalyst: strings.Repeat("m", 20*1024), agent.AgentRoleNewsAnalyst: strings.Repeat("n", 20*1024), agent.AgentRoleFundamentalsAnalyst: strings.Repeat("f", 20*1024)}
+	_, _, _, err := debater.CallWithContext(context.Background(), strings.Repeat("s", 32), rounds, reports)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := mock.calls.Load(); got != 1 {
+		t.Fatalf("provider calls = %d, want 1", got)
+	}
+	if got := llm.PromptBytes(mock.lastReq.Messages); got > maxDebatePromptBytes {
+		t.Fatalf("prompt bytes = %d, max = %d", got, maxDebatePromptBytes)
+	}
+}
+
+func TestBaseDebaterCallWithContextRejectsOversizedSystemPrompt(t *testing.T) {
+	mock := &mockProvider{response: &llm.CompletionResponse{Content: "ok"}}
+	debater := NewBaseDebater(agent.AgentRoleBullResearcher, agent.PhaseResearchDebate, mock, "deep-model", slog.Default())
+	_, _, _, err := debater.CallWithContext(context.Background(), strings.Repeat("x", maxDebatePromptBytes+1), nil, nil)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if _, ok := err.(*llm.PromptTooLargeError); ok {
+		t.Fatal("expected wrapped error, got raw")
+	}
+	if got := mock.calls.Load(); got != 0 {
+		t.Fatalf("provider calls = %d, want 0", got)
 	}
 }
 
