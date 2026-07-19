@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -39,6 +40,13 @@ func TestBuildOpportunityQuery(t *testing.T) {
 	assertContains(t, query, "expires_at <= $5")
 	assertContains(t, query, "created_at >= $6")
 	assertContains(t, query, "LIMIT $7 OFFSET $8")
+}
+
+func TestBuildQueuedForAllocationQuery(t *testing.T) {
+	query := opportunitySelectSQL + ` WHERE status = $1 AND expires_at > $2 ORDER BY expires_at ASC, created_at ASC, id ASC`
+	assertContains(t, query, "WHERE status = $1 AND expires_at > $2")
+	assertContains(t, query, "ORDER BY expires_at ASC, created_at ASC, id ASC")
+	_ = fmt.Sprintf
 }
 
 func TestOpportunityRepoIntegration_CRUDAndUpsert(t *testing.T) {
@@ -135,6 +143,9 @@ func TestOpportunityRepoIntegration_CRUDAndUpsert(t *testing.T) {
 	if updated.Score == nil || *updated.Score != newScore {
 		t.Fatalf("expected updated score %.2f, got %+v", newScore, updated.Score)
 	}
+	if updated.Status != domain.OpportunityStatusQueued {
+		t.Fatalf("expected queued status to remain queued, got %s", updated.Status)
+	}
 
 	count, err := repo.Count(ctx, repository.OpportunityFilter{StrategyID: &strategyID})
 	if err != nil {
@@ -175,6 +186,156 @@ func TestOpportunityRepoIntegration_CRUDAndUpsert(t *testing.T) {
 	}
 	if terminal.Status != domain.OpportunityStatusRejected || terminal.Reason == "new same-day signal" || terminal.Confidence == 0.99 {
 		t.Fatalf("terminal opportunity was resurrected or refreshed: %+v", terminal)
+	}
+}
+
+func TestOpportunityRepoIntegration_UpsertQueuedByDedupeKeyDoesNotRequeueSelected(t *testing.T) {
+	ctx := context.Background()
+	pool, cleanup := newOpportunityIntegrationPool(t, ctx)
+	defer cleanup()
+
+	repo := NewOpportunityRepo(pool)
+	strategyID := createTestStrategy(t, ctx, pool)
+	expiresAt := time.Date(2026, 6, 20, 15, 0, 0, 0, time.UTC)
+	score := 1.0
+	opportunity := &domain.Opportunity{
+		StrategyID:     strategyID,
+		MarketType:     domain.MarketTypeStock,
+		Ticker:         "AAPL",
+		Side:           domain.OrderSideBuy,
+		PredictionSide: "YES",
+		Signal:         domain.PipelineSignalBuy,
+		Status:         domain.OpportunityStatusSelected,
+		Score:          &score,
+		Confidence:     0.5,
+		ExpiresAt:      expiresAt,
+		DedupeKey:      "selected-dedupe",
+	}
+	if err := repo.Create(ctx, opportunity); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	originalID := opportunity.ID
+
+	refreshScore := 2.0
+	opportunity.Status = domain.OpportunityStatusQueued
+	opportunity.Score = &refreshScore
+	opportunity.Confidence = 0.9
+	if err := repo.UpsertQueuedByDedupeKey(ctx, opportunity); err != nil {
+		t.Fatalf("UpsertQueuedByDedupeKey() error = %v", err)
+	}
+	selected, err := repo.Get(ctx, originalID)
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if selected.Status != domain.OpportunityStatusSelected || selected.Confidence != 0.5 {
+		t.Fatalf("selected opportunity was overwritten: %+v", selected)
+	}
+	if selected.Score == nil || *selected.Score != score {
+		t.Fatalf("selected opportunity score changed: %+v", selected.Score)
+	}
+
+	queued := &domain.Opportunity{
+		StrategyID:     strategyID,
+		MarketType:     domain.MarketTypeStock,
+		Ticker:         "MSFT",
+		Side:           domain.OrderSideBuy,
+		PredictionSide: "YES",
+		Signal:         domain.PipelineSignalBuy,
+		Status:         domain.OpportunityStatusQueued,
+		Score:          &score,
+		Confidence:     0.1,
+		ExpiresAt:      expiresAt,
+		DedupeKey:      "queued-dedupe",
+	}
+	if err := repo.Create(ctx, queued); err != nil {
+		t.Fatalf("Create() queued error = %v", err)
+	}
+	queued.Confidence = 0.8
+	queued.Reason = "refreshed"
+	if err := repo.UpsertQueuedByDedupeKey(ctx, queued); err != nil {
+		t.Fatalf("UpsertQueuedByDedupeKey() queued error = %v", err)
+	}
+	refreshed, err := repo.Get(ctx, queued.ID)
+	if err != nil {
+		t.Fatalf("Get() refreshed error = %v", err)
+	}
+	if refreshed.Status != domain.OpportunityStatusQueued || refreshed.Confidence != 0.8 || refreshed.Reason != "refreshed" {
+		t.Fatalf("queued opportunity was not refreshed: %+v", refreshed)
+	}
+}
+
+func TestOpportunityRepo_ExpireQueuedBefore(t *testing.T) {
+	ctx := context.Background()
+	pool, cleanup := newOpportunityIntegrationPool(t, ctx)
+	defer cleanup()
+
+	repo := NewOpportunityRepo(pool)
+	strategyID := createTestStrategy(t, ctx, pool)
+	now := time.Date(2026, 6, 21, 12, 0, 0, 0, time.UTC)
+	seedOpportunity := func(status domain.OpportunityStatus, expiresAt time.Time, dedupe string) uuid.UUID {
+		op := &domain.Opportunity{StrategyID: strategyID, MarketType: domain.MarketTypeStock, Ticker: "AAPL", Side: domain.OrderSideBuy, PredictionSide: "YES", Signal: domain.PipelineSignalBuy, Status: status, Confidence: 1, ExpiresAt: expiresAt, DedupeKey: dedupe}
+		if err := repo.Create(ctx, op); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		return op.ID
+	}
+	pastQueuedID := seedOpportunity(domain.OpportunityStatusQueued, now.Add(-time.Hour), "past-queued")
+	_ = seedOpportunity(domain.OpportunityStatusQueued, now.Add(time.Hour), "future-queued")
+	_ = seedOpportunity(domain.OpportunityStatusSelected, now.Add(-time.Hour), "past-selected")
+
+	changed, err := repo.ExpireQueuedBefore(ctx, now)
+	if err != nil {
+		t.Fatalf("ExpireQueuedBefore() error = %v", err)
+	}
+	if changed != 1 {
+		t.Fatalf("changed = %d, want 1", changed)
+	}
+
+	got, err := repo.Get(ctx, pastQueuedID)
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if got.Status != domain.OpportunityStatusExpired || got.RejectReason != "expired_before_allocation" {
+		t.Fatalf("unexpected expired opportunity: %+v", got)
+	}
+}
+
+func TestOpportunityRepo_ListQueuedForAllocation(t *testing.T) {
+	ctx := context.Background()
+	pool, cleanup := newOpportunityIntegrationPool(t, ctx)
+	defer cleanup()
+
+	repo := NewOpportunityRepo(pool)
+	strategyID := createTestStrategy(t, ctx, pool)
+	asOf := time.Date(2026, 6, 21, 12, 0, 0, 0, time.UTC)
+	for i := 0; i < 205; i++ {
+		expires := asOf.Add(time.Duration(i+1) * time.Minute)
+		op := &domain.Opportunity{StrategyID: strategyID, MarketType: domain.MarketTypeStock, Ticker: "AAPL", Side: domain.OrderSideBuy, PredictionSide: "YES", Signal: domain.PipelineSignalBuy, Status: domain.OpportunityStatusQueued, Confidence: 1, ExpiresAt: expires, CreatedAt: asOf.Add(-time.Duration(i) * time.Minute), DedupeKey: fmt.Sprintf("queued-%03d", i)}
+		if err := repo.Create(ctx, op); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+	}
+	for _, status := range []domain.OpportunityStatus{domain.OpportunityStatusQueued, domain.OpportunityStatusExpired} {
+		op := &domain.Opportunity{StrategyID: strategyID, MarketType: domain.MarketTypeStock, Ticker: "MSFT", Side: domain.OrderSideBuy, PredictionSide: "YES", Signal: domain.PipelineSignalBuy, Status: status, Confidence: 1, ExpiresAt: asOf, DedupeKey: fmt.Sprintf("excluded-%s", status)}
+		if err := repo.Create(ctx, op); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+	}
+
+	items, err := repo.ListQueuedForAllocation(ctx, asOf)
+	if err != nil {
+		t.Fatalf("ListQueuedForAllocation() error = %v", err)
+	}
+	if len(items) != 205 {
+		t.Fatalf("len = %d, want 205", len(items))
+	}
+	for i, item := range items {
+		if item.ExpiresAt.Before(asOf) || !item.ExpiresAt.After(asOf) {
+			t.Fatalf("item %d expires_at not after asOf: %v", i, item.ExpiresAt)
+		}
+		if item.DedupeKey != fmt.Sprintf("queued-%03d", i) {
+			t.Fatalf("item %d dedupe=%s", i, item.DedupeKey)
+		}
 	}
 }
 
@@ -248,6 +409,7 @@ func newOpportunityIntegrationPool(t *testing.T, ctx context.Context) (*pgxpool.
 			max_loss_pct NUMERIC NOT NULL DEFAULT 0,
 			entry_price NUMERIC NOT NULL DEFAULT 0,
 			liquidity_usd NUMERIC NOT NULL DEFAULT 0,
+			market_cap_usd NUMERIC NOT NULL DEFAULT 0,
 			spread_pct NUMERIC NOT NULL DEFAULT 0,
 			proposed_notional NUMERIC NOT NULL DEFAULT 0,
 			selected_notional NUMERIC NOT NULL DEFAULT 0,

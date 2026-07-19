@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -55,6 +56,29 @@ func (r *OpportunityRepo) List(ctx context.Context, filter repository.Opportunit
 	return r.list(ctx, query, args, "list opportunities")
 }
 
+// ExpireQueuedBefore promotes due queued opportunities to expired.
+func (r *OpportunityRepo) ExpireQueuedBefore(ctx context.Context, before time.Time) (int64, error) {
+	tag, err := r.pool.Exec(ctx, `
+		UPDATE portfolio_opportunities
+		SET status = $1, reject_reason = $2, updated_at = NOW()
+		WHERE status = $3 AND expires_at <= $4`,
+		domain.OpportunityStatusExpired,
+		"expired_before_allocation",
+		domain.OpportunityStatusQueued,
+		before.UTC(),
+	)
+	if err != nil {
+		return 0, fmt.Errorf("postgres: expire queued opportunities: %w", err)
+	}
+	return tag.RowsAffected(), nil
+}
+
+// ListQueuedForAllocation returns the stable allocation snapshot for queued opportunities.
+func (r *OpportunityRepo) ListQueuedForAllocation(ctx context.Context, asOf time.Time) ([]domain.Opportunity, error) {
+	query := opportunitySelectSQL + ` WHERE status = $1 AND expires_at > $2 ORDER BY expires_at ASC, created_at ASC, id ASC`
+	return r.list(ctx, query, []any{domain.OpportunityStatusQueued, asOf.UTC()}, "list queued opportunities for allocation")
+}
+
 // Count returns the number of opportunities matching the filter.
 func (r *OpportunityRepo) Count(ctx context.Context, filter repository.OpportunityFilter) (int, error) {
 	query, args := buildOpportunityCountQuery(filter)
@@ -101,30 +125,30 @@ func (r *OpportunityRepo) save(ctx context.Context, opportunity *domain.Opportun
 	VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`
 	if upsert {
 		query += ` ON CONFLICT (dedupe_key) DO UPDATE SET
-			strategy_id = CASE WHEN portfolio_opportunities.status IN ('queued', 'selected') THEN EXCLUDED.strategy_id ELSE portfolio_opportunities.strategy_id END,
-			pipeline_run_id = CASE WHEN portfolio_opportunities.status IN ('queued', 'selected') THEN EXCLUDED.pipeline_run_id ELSE portfolio_opportunities.pipeline_run_id END,
-			market_type = CASE WHEN portfolio_opportunities.status IN ('queued', 'selected') THEN EXCLUDED.market_type ELSE portfolio_opportunities.market_type END,
-			ticker = CASE WHEN portfolio_opportunities.status IN ('queued', 'selected') THEN EXCLUDED.ticker ELSE portfolio_opportunities.ticker END,
-			side = CASE WHEN portfolio_opportunities.status IN ('queued', 'selected') THEN EXCLUDED.side ELSE portfolio_opportunities.side END,
-			prediction_side = CASE WHEN portfolio_opportunities.status IN ('queued', 'selected') THEN EXCLUDED.prediction_side ELSE portfolio_opportunities.prediction_side END,
-			signal = CASE WHEN portfolio_opportunities.status IN ('queued', 'selected') THEN EXCLUDED.signal ELSE portfolio_opportunities.signal END,
-			status = CASE WHEN portfolio_opportunities.status IN ('queued', 'selected') THEN EXCLUDED.status ELSE portfolio_opportunities.status END,
-			score = CASE WHEN portfolio_opportunities.status IN ('queued', 'selected') THEN EXCLUDED.score ELSE portfolio_opportunities.score END,
-			confidence = CASE WHEN portfolio_opportunities.status IN ('queued', 'selected') THEN EXCLUDED.confidence ELSE portfolio_opportunities.confidence END,
-			edge_pct = CASE WHEN portfolio_opportunities.status IN ('queued', 'selected') THEN EXCLUDED.edge_pct ELSE portfolio_opportunities.edge_pct END,
-			expected_return_pct = CASE WHEN portfolio_opportunities.status IN ('queued', 'selected') THEN EXCLUDED.expected_return_pct ELSE portfolio_opportunities.expected_return_pct END,
-			max_loss_pct = CASE WHEN portfolio_opportunities.status IN ('queued', 'selected') THEN EXCLUDED.max_loss_pct ELSE portfolio_opportunities.max_loss_pct END,
-			entry_price = CASE WHEN portfolio_opportunities.status IN ('queued', 'selected') THEN EXCLUDED.entry_price ELSE portfolio_opportunities.entry_price END,
-			liquidity_usd = CASE WHEN portfolio_opportunities.status IN ('queued', 'selected') THEN EXCLUDED.liquidity_usd ELSE portfolio_opportunities.liquidity_usd END,
-			market_cap_usd = CASE WHEN portfolio_opportunities.status IN ('queued', 'selected') THEN EXCLUDED.market_cap_usd ELSE portfolio_opportunities.market_cap_usd END,
-			spread_pct = CASE WHEN portfolio_opportunities.status IN ('queued', 'selected') THEN EXCLUDED.spread_pct ELSE portfolio_opportunities.spread_pct END,
-			proposed_notional = CASE WHEN portfolio_opportunities.status IN ('queued', 'selected') THEN EXCLUDED.proposed_notional ELSE portfolio_opportunities.proposed_notional END,
-			selected_notional = CASE WHEN portfolio_opportunities.status IN ('queued', 'selected') THEN EXCLUDED.selected_notional ELSE portfolio_opportunities.selected_notional END,
-			reason = CASE WHEN portfolio_opportunities.status IN ('queued', 'selected') THEN EXCLUDED.reason ELSE portfolio_opportunities.reason END,
-			reject_reason = CASE WHEN portfolio_opportunities.status IN ('queued', 'selected') THEN EXCLUDED.reject_reason ELSE portfolio_opportunities.reject_reason END,
-			evidence = CASE WHEN portfolio_opportunities.status IN ('queued', 'selected') THEN EXCLUDED.evidence ELSE portfolio_opportunities.evidence END,
-			expires_at = CASE WHEN portfolio_opportunities.status IN ('queued', 'selected') THEN EXCLUDED.expires_at ELSE portfolio_opportunities.expires_at END,
-			updated_at = CASE WHEN portfolio_opportunities.status IN ('queued', 'selected') THEN NOW() ELSE portfolio_opportunities.updated_at END`
+			strategy_id = CASE WHEN portfolio_opportunities.status = 'queued' THEN EXCLUDED.strategy_id ELSE portfolio_opportunities.strategy_id END,
+			pipeline_run_id = CASE WHEN portfolio_opportunities.status = 'queued' THEN EXCLUDED.pipeline_run_id ELSE portfolio_opportunities.pipeline_run_id END,
+			market_type = CASE WHEN portfolio_opportunities.status = 'queued' THEN EXCLUDED.market_type ELSE portfolio_opportunities.market_type END,
+			ticker = CASE WHEN portfolio_opportunities.status = 'queued' THEN EXCLUDED.ticker ELSE portfolio_opportunities.ticker END,
+			side = CASE WHEN portfolio_opportunities.status = 'queued' THEN EXCLUDED.side ELSE portfolio_opportunities.side END,
+			prediction_side = CASE WHEN portfolio_opportunities.status = 'queued' THEN EXCLUDED.prediction_side ELSE portfolio_opportunities.prediction_side END,
+			signal = CASE WHEN portfolio_opportunities.status = 'queued' THEN EXCLUDED.signal ELSE portfolio_opportunities.signal END,
+			status = CASE WHEN portfolio_opportunities.status = 'queued' THEN EXCLUDED.status ELSE portfolio_opportunities.status END,
+			score = CASE WHEN portfolio_opportunities.status = 'queued' THEN EXCLUDED.score ELSE portfolio_opportunities.score END,
+			confidence = CASE WHEN portfolio_opportunities.status = 'queued' THEN EXCLUDED.confidence ELSE portfolio_opportunities.confidence END,
+			edge_pct = CASE WHEN portfolio_opportunities.status = 'queued' THEN EXCLUDED.edge_pct ELSE portfolio_opportunities.edge_pct END,
+			expected_return_pct = CASE WHEN portfolio_opportunities.status = 'queued' THEN EXCLUDED.expected_return_pct ELSE portfolio_opportunities.expected_return_pct END,
+			max_loss_pct = CASE WHEN portfolio_opportunities.status = 'queued' THEN EXCLUDED.max_loss_pct ELSE portfolio_opportunities.max_loss_pct END,
+			entry_price = CASE WHEN portfolio_opportunities.status = 'queued' THEN EXCLUDED.entry_price ELSE portfolio_opportunities.entry_price END,
+			liquidity_usd = CASE WHEN portfolio_opportunities.status = 'queued' THEN EXCLUDED.liquidity_usd ELSE portfolio_opportunities.liquidity_usd END,
+			market_cap_usd = CASE WHEN portfolio_opportunities.status = 'queued' THEN EXCLUDED.market_cap_usd ELSE portfolio_opportunities.market_cap_usd END,
+			spread_pct = CASE WHEN portfolio_opportunities.status = 'queued' THEN EXCLUDED.spread_pct ELSE portfolio_opportunities.spread_pct END,
+			proposed_notional = CASE WHEN portfolio_opportunities.status = 'queued' THEN EXCLUDED.proposed_notional ELSE portfolio_opportunities.proposed_notional END,
+			selected_notional = CASE WHEN portfolio_opportunities.status = 'queued' THEN EXCLUDED.selected_notional ELSE portfolio_opportunities.selected_notional END,
+			reason = CASE WHEN portfolio_opportunities.status = 'queued' THEN EXCLUDED.reason ELSE portfolio_opportunities.reason END,
+			reject_reason = CASE WHEN portfolio_opportunities.status = 'queued' THEN EXCLUDED.reject_reason ELSE portfolio_opportunities.reject_reason END,
+			evidence = CASE WHEN portfolio_opportunities.status = 'queued' THEN EXCLUDED.evidence ELSE portfolio_opportunities.evidence END,
+			expires_at = CASE WHEN portfolio_opportunities.status = 'queued' THEN EXCLUDED.expires_at ELSE portfolio_opportunities.expires_at END,
+			updated_at = CASE WHEN portfolio_opportunities.status = 'queued' THEN NOW() ELSE portfolio_opportunities.updated_at END`
 	}
 	query += ` RETURNING id, created_at, updated_at`
 

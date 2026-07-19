@@ -288,6 +288,12 @@ func (s *portfolioAllocatorOpportunityRepo) List(_ context.Context, filter repos
 func (s *portfolioAllocatorOpportunityRepo) Count(_ context.Context, filter repository.OpportunityFilter) (int, error) {
 	return len(filterOpportunities(s.items, filter)), nil
 }
+func (s *portfolioAllocatorOpportunityRepo) ExpireQueuedBefore(context.Context, time.Time) (int64, error) {
+	return 0, nil
+}
+func (s *portfolioAllocatorOpportunityRepo) ListQueuedForAllocation(context.Context, time.Time) ([]domain.Opportunity, error) {
+	return append([]domain.Opportunity(nil), s.items...), nil
+}
 func (s *portfolioAllocatorOpportunityRepo) UpdateStatus(context.Context, uuid.UUID, domain.OpportunityStatus, string) error {
 	return nil
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/portfolio"
@@ -34,10 +35,14 @@ func (o *JobOrchestrator) runPortfolioAllocator(ctx context.Context) error {
 		return fmt.Errorf("portfolio_allocator: repositories not configured")
 	}
 	mode := o.portfolioAllocatorMode()
-
-	opportunities, err := o.deps.OpportunityRepo.List(ctx, repository.OpportunityFilter{Status: domain.OpportunityStatusQueued}, 100, 0)
+	asOf := time.Now().UTC()
+	expired, err := o.deps.OpportunityRepo.ExpireQueuedBefore(ctx, asOf)
 	if err != nil {
-		return fmt.Errorf("portfolio_allocator: list opportunities: %w", err)
+		return fmt.Errorf("portfolio_allocator: expire opportunities: %w", err)
+	}
+	opportunities, err := o.deps.OpportunityRepo.ListQueuedForAllocation(ctx, asOf)
+	if err != nil {
+		return fmt.Errorf("portfolio_allocator: snapshot opportunities: %w", err)
 	}
 
 	state, warnings, err := o.buildPortfolioAllocatorState(ctx)
@@ -58,34 +63,44 @@ func (o *JobOrchestrator) runPortfolioAllocator(ctx context.Context) error {
 		decision.Mode = domain.AllocationDecisionMode(mode)
 
 		if mode == portfolio.AllocatorModePaper && decision.Action == domain.AllocationDecisionActionShadowSelected {
+			if err := o.preclaimPaperOpportunity(ctx, decision); err != nil {
+				return err
+			}
 			decision = o.executePaperAllocatorDecision(ctx, decision, opportunityByID)
 		}
+		result.Decisions[i] = decision
 
 		if err := o.deps.AllocationDecisionRepo.Create(ctx, &decision); err != nil {
 			return fmt.Errorf("portfolio_allocator: persist decision: %w", err)
 		}
-		if mode == portfolio.AllocatorModePaper {
-			if err := o.updatePaperOpportunityStatus(ctx, decision); err != nil {
-				return err
-			}
+		if err := o.updateOpportunityStatus(ctx, decision); err != nil {
+			return err
 		}
 	}
 
 	summary := map[string]int{
+		"expired":             int(expired),
+		"queued_loaded":       len(opportunities),
 		"evaluated":           result.Summary.Evaluated,
 		"eligible":            result.Summary.Eligible,
 		"selected":            result.Summary.Selected,
 		"rejected":            result.Summary.Rejected,
+		"executed":            countDecisionActions(result.Decisions, domain.AllocationDecisionActionExecuted),
+		"execution_rejected":  countDecisionActions(result.Decisions, domain.AllocationDecisionActionExecutionRejected),
 		"persisted_decisions": len(result.Decisions),
 	}
 	o.SetLastSummary("portfolio_allocator", summary)
 
 	fields := []any{
+		slog.Int("expired", int(expired)),
+		slog.Int("queued_loaded", len(opportunities)),
 		slog.Int("queued_opportunities", len(opportunities)),
 		slog.Int("evaluated", result.Summary.Evaluated),
 		slog.Int("eligible", result.Summary.Eligible),
 		slog.Int("selected", result.Summary.Selected),
 		slog.Int("rejected", result.Summary.Rejected),
+		slog.Int("executed", countDecisionActions(result.Decisions, domain.AllocationDecisionActionExecuted)),
+		slog.Int("execution_rejected", countDecisionActions(result.Decisions, domain.AllocationDecisionActionExecutionRejected)),
 		slog.Int("persisted_decisions", len(result.Decisions)),
 	}
 	for _, warning := range warnings {
@@ -95,21 +110,45 @@ func (o *JobOrchestrator) runPortfolioAllocator(ctx context.Context) error {
 	return nil
 }
 
-func (o *JobOrchestrator) updatePaperOpportunityStatus(ctx context.Context, decision domain.AllocationDecision) error {
+func (o *JobOrchestrator) updateOpportunityStatus(ctx context.Context, decision domain.AllocationDecision) error {
 	if o.deps.OpportunityRepo == nil || decision.OpportunityID == nil {
 		return nil
 	}
 	switch decision.Action {
+	case domain.AllocationDecisionActionShadowSelected:
+		if err := o.deps.OpportunityRepo.UpdateStatus(ctx, *decision.OpportunityID, domain.OpportunityStatusSelected, ""); err != nil {
+			return fmt.Errorf("portfolio_allocator: mark opportunity selected: %w", err)
+		}
 	case domain.AllocationDecisionActionExecuted:
 		if err := o.deps.OpportunityRepo.UpdateStatus(ctx, *decision.OpportunityID, domain.OpportunityStatusExecuted, ""); err != nil {
 			return fmt.Errorf("portfolio_allocator: mark opportunity executed: %w", err)
 		}
-	case domain.AllocationDecisionActionExecutionRejected:
+	case domain.AllocationDecisionActionShadowRejected, domain.AllocationDecisionActionExecutionRejected:
 		if err := o.deps.OpportunityRepo.UpdateStatus(ctx, *decision.OpportunityID, domain.OpportunityStatusRejected, strings.Join(decision.Reasons, "; ")); err != nil {
 			return fmt.Errorf("portfolio_allocator: mark opportunity rejected: %w", err)
 		}
 	}
 	return nil
+}
+
+func (o *JobOrchestrator) preclaimPaperOpportunity(ctx context.Context, decision domain.AllocationDecision) error {
+	if o.deps.OpportunityRepo == nil || decision.OpportunityID == nil {
+		return fmt.Errorf("portfolio_allocator: preclaim opportunity selected: missing opportunity repo or opportunity id")
+	}
+	if err := o.deps.OpportunityRepo.UpdateStatus(ctx, *decision.OpportunityID, domain.OpportunityStatusSelected, ""); err != nil {
+		return fmt.Errorf("portfolio_allocator: preclaim opportunity selected: %w", err)
+	}
+	return nil
+}
+
+func countDecisionActions(decisions []domain.AllocationDecision, action domain.AllocationDecisionAction) int {
+	count := 0
+	for _, decision := range decisions {
+		if decision.Action == action {
+			count++
+		}
+	}
+	return count
 }
 
 func (o *JobOrchestrator) portfolioAllocatorMode() portfolio.AllocatorMode {

@@ -387,6 +387,8 @@ type OpportunityRepository interface {
 	UpsertQueuedByDedupeKey(ctx context.Context, opportunity *domain.Opportunity) error
 	Get(ctx context.Context, id uuid.UUID) (*domain.Opportunity, error)
 	List(ctx context.Context, filter OpportunityFilter, limit, offset int) ([]domain.Opportunity, error)
+	ExpireQueuedBefore(ctx context.Context, before time.Time) (int64, error)
+	ListQueuedForAllocation(ctx context.Context, asOf time.Time) ([]domain.Opportunity, error)
 	// Count returns the total number of opportunities matching the filter.
 	Count(ctx context.Context, filter OpportunityFilter) (int, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, status domain.OpportunityStatus, rejectReason string) error
