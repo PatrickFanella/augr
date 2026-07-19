@@ -813,24 +813,7 @@ func (r *realStrategyRunner) runKalshiNative(ctx context.Context, strategy domai
 		return failRun(err)
 	}
 	finalSignal := execution.FinalSignal{Signal: signal, Confidence: decision.Confidence}
-	tradingPlan := execution.TradingPlan{
-		Action:           signal,
-		MarketType:       domain.MarketTypeKalshi,
-		Ticker:           strategy.Ticker,
-		EntryType:        decision.EntryType,
-		EntryPrice:       decision.EntryPrice,
-		Confidence:       decision.Confidence,
-		Rationale:        decision.Rationale,
-		RiskReward:       decision.RiskReward,
-		Side:             decision.Side,
-		TimeHorizon:      decision.TimeHorizon,
-		ExternalMarketID: snapshot.Ticker,
-		FairValue:        decision.FairProbability, Spread: decision.Spread, Depth: decision.Depth,
-		GrossEV: decision.GrossEdge, NetEV: decision.NetEdge,
-		Evidence:   predictionNativeEvidence("kalshi", snapshot, decision),
-		Features:   predictionNativeFeatures(decision),
-		RegimeTags: []string{"event_market", "deterministic_execution", decision.Template},
-	}
+	tradingPlan := kalshiTradingPlan(signal, snapshot, decision, strategy.Ticker)
 	r.recordPortfolioOpportunity(ctx, strategy, &run.ID, finalSignal, tradingPlan)
 	if !r.portfolioAllocatorOwnsPaperExecution(strategy, signal) {
 		if err := orderManager.ProcessSignal(ctx, finalSignal, tradingPlan, strategy.ID, run.ID); err != nil {
@@ -869,6 +852,34 @@ func predictionNativeEvidence(provider string, snapshot, decision any) json.RawM
 		return json.RawMessage(`{"error":"prediction evidence serialization failed"}`)
 	}
 	return raw
+}
+
+func kalshiTradingPlan(signal domain.PipelineSignal, snapshot kalshiexecution.Snapshot, decision kalshiexecution.NativeDecision, ticker string) execution.TradingPlan {
+	tradingPlan := execution.TradingPlan{
+		Action:           signal,
+		MarketType:       domain.MarketTypeKalshi,
+		Ticker:           ticker,
+		EntryType:        decision.EntryType,
+		EntryPrice:       decision.EntryPrice,
+		Confidence:       decision.Confidence,
+		Rationale:        decision.Rationale,
+		RiskReward:       decision.RiskReward,
+		Side:             decision.Side,
+		TimeHorizon:      decision.TimeHorizon,
+		ExternalMarketID: ticker,
+		FairValue:        decision.FairProbability,
+		Spread:           decision.Spread,
+		Depth:            decision.Depth,
+		GrossEV:          decision.GrossEdge,
+		NetEV:            decision.NetEdge,
+		Evidence:         predictionNativeEvidence("kalshi", snapshot, decision),
+		Features:         predictionNativeFeatures(decision),
+		RegimeTags:       []string{"event_market", "deterministic_execution", decision.Template},
+	}
+	if decision.EntryPrice > 0 {
+		tradingPlan.ReferencePrice = decision.EntryPrice
+	}
+	return tradingPlan
 }
 
 func predictionNativeFeatures(decision any) json.RawMessage {

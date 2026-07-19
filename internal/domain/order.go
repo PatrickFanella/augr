@@ -113,6 +113,7 @@ type Order struct {
 	Quantity       float64     `json:"quantity"`
 	LimitPrice     *float64    `json:"limit_price,omitempty"`
 	StopPrice      *float64    `json:"stop_price,omitempty"`
+	ReferencePrice *float64    `json:"-"`
 	FilledQuantity float64     `json:"filled_quantity"`
 	FilledAvgPrice *float64    `json:"filled_avg_price,omitempty"`
 	Status         OrderStatus `json:"status"`

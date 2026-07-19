@@ -148,6 +148,81 @@ func TestPaperBrokerSubmitOrder_LimitOrderWithoutReferenceRemainsSubmitted(t *te
 	}
 }
 
+func TestPaperBrokerSubmitOrder_LimitOrderReferencePrice(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		side       domain.OrderSide
+		limit      float64
+		reference  float64
+		wantStatus domain.OrderStatus
+		wantFill   bool
+	}{
+		{name: "buy fills when reference at limit", side: domain.OrderSideBuy, limit: 0.04, reference: 0.04, wantStatus: domain.OrderStatusFilled, wantFill: true},
+		{name: "buy rests when reference above limit", side: domain.OrderSideBuy, limit: 0.04, reference: 0.05, wantStatus: domain.OrderStatusSubmitted},
+		{name: "missing reference still rests", side: domain.OrderSideBuy, limit: 0.04, reference: 0, wantStatus: domain.OrderStatusSubmitted},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			broker := NewPaperBroker(1000, 0, 0)
+			order := &domain.Order{
+				Ticker:         "KXTEST",
+				Side:           tc.side,
+				OrderType:      domain.OrderTypeLimit,
+				Quantity:       10,
+				LimitPrice:     floatPtr(tc.limit),
+				ReferencePrice: floatPtr(tc.reference),
+			}
+
+			externalID, err := broker.SubmitOrder(context.Background(), order)
+			if err != nil {
+				t.Fatalf("SubmitOrder() error = %v", err)
+			}
+			if order.Status != tc.wantStatus {
+				t.Fatalf("SubmitOrder() status = %q, want %q", order.Status, tc.wantStatus)
+			}
+			if tc.wantFill {
+				if order.FilledAvgPrice == nil || order.FilledAt == nil || order.FilledQuantity != order.Quantity {
+					t.Fatalf("filled order facts = %+v, want full fill", order)
+				}
+				if *order.FilledAvgPrice > *order.LimitPrice+1e-9 {
+					t.Fatalf("FilledAvgPrice = %v, want <= limit %v", *order.FilledAvgPrice, *order.LimitPrice)
+				}
+			}
+			status, err := broker.GetOrderStatus(context.Background(), externalID)
+			if err != nil {
+				t.Fatalf("GetOrderStatus() error = %v", err)
+			}
+			if status != tc.wantStatus {
+				t.Fatalf("GetOrderStatus() = %q, want %q", status, tc.wantStatus)
+			}
+		})
+	}
+}
+
+func TestPaperBrokerCloneOrderCopiesReferencePricePointer(t *testing.T) {
+	t.Parallel()
+
+	reference := 0.04
+	original := &domain.Order{ReferencePrice: &reference}
+	cloned := cloneOrder(original)
+
+	if cloned == nil || cloned.ReferencePrice == nil {
+		t.Fatalf("cloneOrder() ReferencePrice = %v, want non-nil", cloned.ReferencePrice)
+	}
+	if cloned.ReferencePrice == original.ReferencePrice {
+		t.Fatal("cloneOrder() preserved ReferencePrice pointer alias, want deep copy")
+	}
+	if *cloned.ReferencePrice != *original.ReferencePrice {
+		t.Fatalf("cloneOrder() ReferencePrice = %v, want %v", *cloned.ReferencePrice, *original.ReferencePrice)
+	}
+}
+
 func TestPaperBrokerSubmitOrder_NormalizesTickerForPositions(t *testing.T) {
 	t.Parallel()
 

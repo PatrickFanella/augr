@@ -84,8 +84,10 @@ func mapOrderStatus(raw string) (domain.OrderStatus, error) {
 	switch status := strings.ToLower(strings.TrimSpace(raw)); status {
 	case "resting", "open", "pending":
 		return domain.OrderStatusSubmitted, nil
-	case "executed", "filled", "partially_executed", "partial":
+	case "executed", "filled":
 		return domain.OrderStatusFilled, nil
+	case "partially_executed", "partial":
+		return domain.OrderStatusPartial, nil
 	case "canceled", "cancelled", "cancelled_by_user":
 		return domain.OrderStatusCancelled, nil
 	case "rejected":

@@ -38,6 +38,7 @@ type TradingPlan struct {
 	Ticker           string                `json:"ticker,omitempty"`
 	EntryType        string                `json:"entry_type,omitempty"`
 	EntryPrice       float64               `json:"entry_price,omitempty"`
+	ReferencePrice   float64               `json:"reference_price,omitempty"`
 	PositionSize     float64               `json:"position_size,omitempty"`
 	StopLoss         float64               `json:"stop_loss,omitempty"`
 	TakeProfit       float64               `json:"take_profit,omitempty"`
@@ -470,6 +471,10 @@ func (m *OrderManager) ProcessSignal(
 	if plan.EntryPrice > 0 {
 		order.LimitPrice = &plan.EntryPrice
 	}
+	if plan.ReferencePrice > 0 {
+		referencePrice := plan.ReferencePrice
+		order.ReferencePrice = &referencePrice
+	}
 
 	if plan.StopLoss > 0 {
 		order.StopPrice = &plan.StopLoss
@@ -814,10 +819,6 @@ func (m *OrderManager) handleFill(
 	now := m.currentTime()
 	order.FilledQuantity = order.Quantity
 	order.FilledAt = &now
-
-	if plan.EntryPrice > 0 {
-		order.FilledAvgPrice = &plan.EntryPrice
-	}
 
 	if err := m.orderRepo.Update(ctx, order); err != nil {
 		return fmt.Errorf("order_manager: update filled order: %w", err)

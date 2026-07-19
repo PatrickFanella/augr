@@ -401,6 +401,9 @@ func normalizeTicker(ticker string) (string, error) {
 }
 
 func resolveReferencePrice(order *domain.Order) (float64, bool) {
+	if order.ReferencePrice != nil && *order.ReferencePrice > 0 {
+		return *order.ReferencePrice, true
+	}
 	if order.FilledAvgPrice != nil && *order.FilledAvgPrice > 0 {
 		return *order.FilledAvgPrice, true
 	}
@@ -450,6 +453,7 @@ func cloneOrder(order *domain.Order) *domain.Order {
 		return nil
 	}
 	cloned := *order
+	cloned.ReferencePrice = cloneFloatPtr(order.ReferencePrice)
 	cloned.LimitPrice = cloneFloatPtr(order.LimitPrice)
 	cloned.StopPrice = cloneFloatPtr(order.StopPrice)
 	cloned.FilledAvgPrice = cloneFloatPtr(order.FilledAvgPrice)

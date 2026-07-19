@@ -316,6 +316,22 @@ func TestRunStrategy_KalshiSafeHoldPath(t *testing.T) {
 	}
 }
 
+func TestKalshiTradingPlanCopiesReferencePrice(t *testing.T) {
+	t.Parallel()
+
+	decision := kalshiexecution.NativeDecision{Side: "YES", EntryPrice: 0.04}
+	plan := kalshiTradingPlan(domain.PipelineSignalBuy, kalshiexecution.Snapshot{}, decision, "KXTEST")
+	if plan.ReferencePrice != 0.04 {
+		t.Fatalf("ReferencePrice = %v, want 0.04", plan.ReferencePrice)
+	}
+	if plan.EntryPrice != 0.04 {
+		t.Fatalf("EntryPrice = %v, want 0.04", plan.EntryPrice)
+	}
+	if plan.MarketType != domain.MarketTypeKalshi {
+		t.Fatalf("MarketType = %q, want kalshi", plan.MarketType)
+	}
+}
+
 func TestUsesStockOHLCVAnalysisSkipsEventMarkets(t *testing.T) {
 	t.Parallel()
 

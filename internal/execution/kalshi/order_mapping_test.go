@@ -143,24 +143,34 @@ func TestMapCreateOrderRequestRejectsOutOfRangeLimitPrice(t *testing.T) {
 func TestMapOrderStatus(t *testing.T) {
 	t.Parallel()
 
-	cases := map[string]domain.OrderStatus{
-		" resting ":  domain.OrderStatusSubmitted,
-		"EXECUTED":   domain.OrderStatusFilled,
-		" canceled ": domain.OrderStatusCancelled,
-		"rejected":   domain.OrderStatusRejected,
+	cases := []struct {
+		name string
+		raw  string
+		want domain.OrderStatus
+	}{
+		{name: "submitted_resting", raw: " resting ", want: domain.OrderStatusSubmitted},
+		{name: "submitted_open", raw: "open", want: domain.OrderStatusSubmitted},
+		{name: "submitted_pending", raw: "pending", want: domain.OrderStatusSubmitted},
+		{name: "filled_executed", raw: "EXECUTED", want: domain.OrderStatusFilled},
+		{name: "filled_alias", raw: "filled", want: domain.OrderStatusFilled},
+		{name: "partial_partially_executed", raw: "partially_executed", want: domain.OrderStatusPartial},
+		{name: "partial_alias", raw: " partial ", want: domain.OrderStatusPartial},
+		{name: "cancelled_canceled", raw: " canceled ", want: domain.OrderStatusCancelled},
+		{name: "cancelled_alias", raw: "cancelled_by_user", want: domain.OrderStatusCancelled},
+		{name: "rejected", raw: "rejected", want: domain.OrderStatusRejected},
 	}
 
-	for raw, want := range cases {
-		raw, want := raw, want
-		t.Run(raw, func(t *testing.T) {
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := mapOrderStatus(raw)
+			got, err := mapOrderStatus(tc.raw)
 			if err != nil {
-				t.Fatalf("mapOrderStatus(%q) error = %v", raw, err)
+				t.Fatalf("mapOrderStatus(%q) error = %v", tc.raw, err)
 			}
-			if got != want {
-				t.Fatalf("mapOrderStatus(%q) = %q, want %q", raw, got, want)
+			if got != tc.want {
+				t.Fatalf("mapOrderStatus(%q) = %q, want %q", tc.raw, got, tc.want)
 			}
 		})
 	}

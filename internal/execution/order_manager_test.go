@@ -16,6 +16,7 @@ import (
 
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution"
+	paperbroker "github.com/PatrickFanella/get-rich-quick/internal/execution/paper"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 	"github.com/PatrickFanella/get-rich-quick/internal/risk"
 )
@@ -554,6 +555,114 @@ func defaultPlan() execution.TradingPlan {
 		Confidence: 0.85,
 		Rationale:  "test rationale",
 		RiskReward: 2.0,
+	}
+}
+
+func floatPtr(value float64) *float64 { return &value }
+
+func TestOrderManager_CarriesKalshiReferencePriceToBroker(t *testing.T) {
+	strategyID := uuid.New()
+	runID := uuid.New()
+	reference := 0.04
+	entry := 0.04
+	filledAt := time.Date(2026, 7, 19, 12, 0, 0, 0, time.UTC)
+	var submitted *domain.Order
+	broker := &mockBroker{
+		submitOrderFn: func(ctx context.Context, order *domain.Order) (string, error) {
+			submitted = order
+			if order.ReferencePrice == nil || *order.ReferencePrice != reference {
+				t.Fatalf("broker ReferencePrice = %v, want %v", order.ReferencePrice, reference)
+			}
+			if order.LimitPrice == nil || *order.LimitPrice != entry {
+				t.Fatalf("broker LimitPrice = %v, want %v", order.LimitPrice, entry)
+			}
+			order.Status = domain.OrderStatusFilled
+			order.FilledQuantity = order.Quantity
+			order.FilledAvgPrice = floatPtr(0.039)
+			order.FilledAt = &filledAt
+			return "paper-123", nil
+		},
+		getOrderStatusFn: func(context.Context, string) (domain.OrderStatus, error) {
+			return domain.OrderStatusFilled, nil
+		},
+	}
+	orderRepo := &mockOrderRepo{}
+	positionRepo := &mockPositionRepo{}
+	tradeRepo := &mockTradeRepo{}
+	mgr := newTestOrderManager(broker, &mockRiskEngine{}, orderRepo, positionRepo, tradeRepo, &mockAuditLogRepo{})
+
+	plan := defaultPlan()
+	plan.MarketType = domain.MarketTypeKalshi
+	plan.EntryType = "limit"
+	plan.EntryPrice = entry
+	plan.ReferencePrice = reference
+	plan.Ticker = "KXTEST"
+
+	if err := mgr.ProcessSignal(context.Background(), defaultSignal(), plan, strategyID, runID); err != nil {
+		t.Fatalf("ProcessSignal() unexpected error: %v", err)
+	}
+	if submitted == nil {
+		t.Fatal("expected broker submission")
+	}
+	if len(orderRepo.orders) != 1 || orderRepo.orders[0].ReferencePrice == nil || *orderRepo.orders[0].ReferencePrice != reference {
+		t.Fatalf("persisted order reference = %+v, want %v", orderRepo.orders, reference)
+	}
+}
+
+func TestOrderManager_PersistsExactPaperFillPriceAcrossRepos(t *testing.T) {
+	strategyID := uuid.New()
+	runID := uuid.New()
+	plan := defaultPlan()
+	plan.MarketType = domain.MarketTypeStock
+	plan.EntryType = "market"
+	plan.EntryPrice = 99.5
+	plan.StopLoss = 100
+	plan.Ticker = "AAPL"
+
+	broker := paperbroker.NewPaperBroker(100000, 150, 0)
+	orderRepo := &mockOrderRepo{}
+	positionRepo := &mockPositionRepo{}
+	tradeRepo := &mockTradeRepo{}
+	var createdOrder *domain.Order
+	var persistedOrder *domain.Order
+	var persistedTrade *domain.Trade
+	var persistedPosition *domain.Position
+
+	orderRepo.createFn = func(_ context.Context, order *domain.Order) error {
+		createdOrder = order
+		return nil
+	}
+	orderRepo.updateFn = func(_ context.Context, order *domain.Order) error {
+		persistedOrder = order
+		return nil
+	}
+	tradeRepo.createFn = func(_ context.Context, trade *domain.Trade) error {
+		persistedTrade = trade
+		return nil
+	}
+	positionRepo.createFn = func(_ context.Context, position *domain.Position) error {
+		persistedPosition = position
+		return nil
+	}
+
+	mgr := execution.NewOrderManager(broker, "paper", &mockRiskEngine{}, positionRepo, orderRepo, tradeRepo, &mockAuditLogRepo{}, nil, execution.SizingConfig{Method: execution.PositionSizingMethodFixedFractional, FractionPct: 0.02}, slog.Default())
+	if err := mgr.ProcessSignal(context.Background(), defaultSignal(), plan, strategyID, runID); err != nil {
+		t.Fatalf("ProcessSignal() unexpected error: %v", err)
+	}
+	if createdOrder == nil || persistedOrder == nil || persistedTrade == nil || persistedPosition == nil {
+		t.Fatalf("missing persisted entities: order=%v trade=%v position=%v", createdOrder, persistedTrade, persistedPosition)
+	}
+	if createdOrder.FilledAvgPrice == nil || persistedOrder.FilledAvgPrice == nil {
+		t.Fatal("FilledAvgPrice = nil, want filled order price to be persisted")
+	}
+	if *persistedOrder.FilledAvgPrice == plan.EntryPrice || persistedTrade.Price == plan.EntryPrice || persistedPosition.AvgEntry == plan.EntryPrice {
+		t.Fatalf("persisted fill price unexpectedly matched plan entry price: order=%v trade=%v position=%v entry=%v", *persistedOrder.FilledAvgPrice, persistedTrade.Price, persistedPosition.AvgEntry, plan.EntryPrice)
+	}
+	if *persistedOrder.FilledAvgPrice != persistedTrade.Price || persistedTrade.Price != persistedPosition.AvgEntry {
+		t.Fatalf("persisted fill price mismatch: order=%v trade=%v position=%v", *persistedOrder.FilledAvgPrice, persistedTrade.Price, persistedPosition.AvgEntry)
+	}
+	if *persistedOrder.FilledAvgPrice <= plan.EntryPrice {
+		t.Fatalf("filled avg price = %v, want slippage-adjusted fill above plan entry %v", *persistedOrder.FilledAvgPrice, plan.EntryPrice)
 	}
 }
 
