@@ -158,7 +158,10 @@ func TestJobOrchestratorWrapAndRun_AutoDisabledJobsAreSkipped(t *testing.T) {
 }
 
 type stubAutomationMetrics struct {
-	alpacaRuns map[string]int
+	alpacaRuns     map[string]int
+	kalshiDryRuns  map[string]int
+	kalshiOutcomes map[string]int
+	transitions    []string
 }
 
 func (m *stubAutomationMetrics) RecordAutomationJobError(string) {}
@@ -171,6 +174,21 @@ func (m *stubAutomationMetrics) RecordAlpacaReconcileRun(result string) {
 }
 func (m *stubAutomationMetrics) RecordKalshiReconcileRun(result string) {
 	m.RecordAlpacaReconcileRun("kalshi_" + result)
+}
+func (m *stubAutomationMetrics) RecordKalshiSettlementDryRun(result string) {
+	if m.kalshiDryRuns == nil {
+		m.kalshiDryRuns = make(map[string]int)
+	}
+	m.kalshiDryRuns[result]++
+}
+func (m *stubAutomationMetrics) RecordKalshiSettlementOutcome(result string) {
+	if m.kalshiOutcomes == nil {
+		m.kalshiOutcomes = make(map[string]int)
+	}
+	m.kalshiOutcomes[result]++
+}
+func (m *stubAutomationMetrics) RecordKalshiSettlementTransition(from, to string) {
+	m.transitions = append(m.transitions, from+"->"+to)
 }
 
 func TestJobOrchestratorStatus_IncludesLastSummary(t *testing.T) {
@@ -326,12 +344,15 @@ func TestJobOrchestratorRegisterAllAddsKalshiSettlement(t *testing.T) {
 	t.Parallel()
 	orch := NewJobOrchestrator(OrchestratorDeps{
 		KalshiCatalog:     kalshiCatalogStub{},
-		PredictionSettler: predictionexecution.NewSettler(nil, nil, nil, nil),
+		PredictionSettler: predictionexecution.NewSettler(nil, nil, nil, nil, nil),
 	})
 	orch.RegisterAll()
 	status := singleJobStatus(t, orch, "kalshi_settlement")
 	if status.Schedule == "" || status.Schedule == "Manual only" {
 		t.Fatalf("kalshi settlement schedule = %q", status.Schedule)
+	}
+	if status.Enabled {
+		t.Fatal("kalshi_settlement enabled = true, want false by default")
 	}
 }
 
@@ -342,6 +363,60 @@ func TestJobOrchestratorRegisterAllAddsKalshiReconciliation(t *testing.T) {
 	status := singleJobStatus(t, orch, "kalshi_reconcile")
 	if status.Schedule == "" || status.Schedule == "Manual only" {
 		t.Fatalf("kalshi reconciliation schedule = %q", status.Schedule)
+	}
+}
+
+type kalshiSettlementGateStub struct {
+	state       *domain.KalshiSettlementGateState
+	err         error
+	failPersist bool
+}
+
+func (s *kalshiSettlementGateStub) Get(context.Context, string) (*domain.KalshiSettlementGateState, error) {
+	return s.state, s.err
+}
+func (s *kalshiSettlementGateStub) RecordSuccess(context.Context, string, int, int, int, int, int, string, time.Time) (*domain.KalshiSettlementGateState, error) {
+	if s.failPersist {
+		return nil, errors.New("persist failed")
+	}
+	return s.state, nil
+}
+func (s *kalshiSettlementGateStub) RecordFailure(context.Context, string, int, int, int, int, int, time.Time, string) (*domain.KalshiSettlementGateState, error) {
+	if s.failPersist {
+		return nil, errors.New("persist failed")
+	}
+	return s.state, nil
+}
+
+func TestJobOrchestratorSetEnabledKalshiSettlementDoesNotRequireEligibility(t *testing.T) {
+	orch := NewJobOrchestrator(OrchestratorDeps{KalshiSettlementGateRepo: &kalshiSettlementGateStub{state: &domain.KalshiSettlementGateState{Eligible: false}}})
+	orch.Register("kalshi_settlement", "test", schedulerSpecEveryMinute(), func(context.Context) error { return nil })
+	if err := orch.SetEnabled("kalshi_settlement", true); err == nil {
+		t.Fatal("SetEnabled(true) error = nil, want gate rejection")
+	}
+	orch.deps.KalshiSettlementGateRepo = &kalshiSettlementGateStub{state: &domain.KalshiSettlementGateState{Eligible: true}}
+	if err := orch.SetEnabled("kalshi_settlement", false); err != nil {
+		t.Fatalf("SetEnabled(false) error = %v", err)
+	}
+}
+
+func TestJobOrchestratorSetEnabledKalshiSettlementFailsClosedAfterGatePersistError(t *testing.T) {
+	orch := NewJobOrchestrator(OrchestratorDeps{KalshiSettlementGateRepo: &kalshiSettlementGateStub{err: errors.New("boom")}})
+	orch.Register("kalshi_settlement", "test", schedulerSpecEveryMinute(), func(context.Context) error { return nil })
+	if err := orch.SetEnabled("kalshi_settlement", true); err == nil {
+		t.Fatal("SetEnabled(true) error = nil, want gate load failure")
+	}
+}
+
+func TestJobOrchestratorSetEnabledKalshiSettlementKeepsUnhealthyLatchOnDisable(t *testing.T) {
+	orch := NewJobOrchestrator(OrchestratorDeps{KalshiSettlementGateRepo: &kalshiSettlementGateStub{state: &domain.KalshiSettlementGateState{Eligible: true}}})
+	orch.Register("kalshi_settlement", "test", schedulerSpecEveryMinute(), func(context.Context) error { return nil })
+	orch.kalshiGateUnhealthy = true
+	if err := orch.SetEnabled("kalshi_settlement", false); err != nil {
+		t.Fatalf("SetEnabled(false) error = %v", err)
+	}
+	if err := orch.SetEnabled("kalshi_settlement", true); err == nil {
+		t.Fatal("SetEnabled(true) error = nil, want unhealthy latch rejection")
 	}
 }
 
@@ -440,6 +515,9 @@ type kalshiCatalogStub struct{}
 func (kalshiCatalogStub) ListMarkets(context.Context, kalshidiscovery.ListOptions) ([]kalshidiscovery.MarketCandidate, string, error) {
 	return nil, "", nil
 }
+func (kalshiCatalogStub) GetMarket(context.Context, string) (*kalshidiscovery.MarketCandidate, error) {
+	return nil, nil
+}
 
 type kalshiStrategyRepoStub struct {
 	strategies []domain.Strategy
@@ -528,6 +606,9 @@ type polymarketPositionRepoStub struct {
 }
 
 func (s *polymarketPositionRepoStub) Create(context.Context, *domain.Position) error { return nil }
+func (s *polymarketPositionRepoStub) CreateAlpacaOwned(context.Context, *domain.Position) error {
+	return nil
+}
 func (s *polymarketPositionRepoStub) Get(context.Context, uuid.UUID) (*domain.Position, error) {
 	return nil, repository.ErrNotFound
 }
@@ -541,6 +622,9 @@ func (s *polymarketPositionRepoStub) Update(context.Context, *domain.Position) e
 func (s *polymarketPositionRepoStub) Delete(context.Context, uuid.UUID) error        { return nil }
 func (s *polymarketPositionRepoStub) GetOpen(context.Context, repository.PositionFilter, int, int) ([]domain.Position, error) {
 	return append([]domain.Position(nil), s.positions...), nil
+}
+func (s *polymarketPositionRepoStub) ListOpenAlpacaOwned(context.Context, int, int) ([]domain.Position, error) {
+	return nil, nil
 }
 func (s *polymarketPositionRepoStub) CountOpen(context.Context, repository.PositionFilter) (int, error) {
 	return len(s.positions), nil

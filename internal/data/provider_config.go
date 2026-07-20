@@ -4,6 +4,8 @@ import (
 	"log/slog"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/llm"
+	"github.com/PatrickFanella/get-rich-quick/internal/metrics"
+	provgov "github.com/PatrickFanella/get-rich-quick/internal/providergovernor"
 )
 
 // ProviderConfig holds the configuration passed to every provider factory.
@@ -15,6 +17,9 @@ type ProviderConfig struct {
 	Logger             *slog.Logger
 	LLMProvider        llm.Provider // optional; used by providers that need LLM triage (e.g. Reddit)
 	LLMModel           string       // model name for LLM triage calls
+	Governor           *provgov.ProviderGovernor
+	Metrics            *metrics.Metrics
+	ClientType         string
 }
 
 // ProviderFactory is the uniform constructor signature for all data providers.

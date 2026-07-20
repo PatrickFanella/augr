@@ -95,6 +95,24 @@ func TestNew(t *testing.T) {
 	if m.ReportStaleness == nil {
 		t.Fatal("ReportStaleness is nil")
 	}
+	if m.KalshiRateLimitTotal == nil {
+		t.Fatal("KalshiRateLimitTotal is nil")
+	}
+	if m.KalshiRetryAttemptsTotal == nil {
+		t.Fatal("KalshiRetryAttemptsTotal is nil")
+	}
+	if m.KalshiRetryWaitSeconds == nil {
+		t.Fatal("KalshiRetryWaitSeconds is nil")
+	}
+	if m.KalshiSettlementDryRunTotal == nil {
+		t.Fatal("KalshiSettlementDryRunTotal is nil")
+	}
+	if m.KalshiSettlementOutcomeTotal == nil {
+		t.Fatal("KalshiSettlementOutcomeTotal is nil")
+	}
+	if m.KalshiSettlementTransitionTotal == nil {
+		t.Fatal("KalshiSettlementTransitionTotal is nil")
+	}
 }
 
 func TestConvenienceMethods(t *testing.T) {
@@ -127,6 +145,12 @@ func TestConvenienceMethods(t *testing.T) {
 	m.SetKillSwitchActive(false)
 	m.RecordLLMRetry("configured_primary:openai")
 	m.RecordLLMBudgetExhausted()
+	m.RecordKalshiRateLimit("kalshi", "data", http.MethodGet)
+	m.RecordKalshiRetryAttempt("kalshi", "data", http.MethodGet)
+	m.ObserveKalshiRetryWaitSeconds("kalshi", "data", http.MethodGet, 1.25)
+	m.RecordKalshiSettlementDryRun("success")
+	m.RecordKalshiSettlementOutcome("success")
+	m.RecordKalshiSettlementTransition("dry_run", "live")
 	m.RecordReportWorkerSuccess("strategy-a")
 	m.RecordReportWorkerError("strategy-a")
 	m.ObserveReportStaleness("strategy-a", 120)
@@ -160,6 +184,12 @@ func TestHandler(t *testing.T) {
 	m.SetActive(3)
 	m.RecordLLMRetry("configured_primary:openai")
 	m.RecordLLMBudgetExhausted()
+	m.RecordKalshiRateLimit("kalshi", "data", http.MethodGet)
+	m.RecordKalshiRetryAttempt("kalshi", "data", http.MethodGet)
+	m.ObserveKalshiRetryWaitSeconds("kalshi", "data", http.MethodGet, 1.25)
+	m.RecordKalshiSettlementDryRun("success")
+	m.RecordKalshiSettlementOutcome("success")
+	m.RecordKalshiSettlementTransition("dry_run", "live")
 	m.RecordReportWorkerSuccess("strategy-a")
 	m.RecordReportWorkerError("strategy-a")
 	m.ObserveReportStaleness("strategy-a", 120)
@@ -203,6 +233,12 @@ func TestHandler(t *testing.T) {
 		"tradingagent_positions_open",
 		"tradingagent_circuit_breaker_state",
 		"tradingagent_kill_switch_active",
+		"tradingagent_kalshi_rate_limit_total",
+		"tradingagent_kalshi_retry_attempts_total",
+		"tradingagent_kalshi_retry_wait_seconds",
+		"tradingagent_kalshi_settlement_dry_run_total",
+		"tradingagent_kalshi_settlement_outcome_total",
+		"tradingagent_kalshi_settlement_transition_total",
 		"tradingagent_llm_retry_total",
 		"tradingagent_llm_budget_exhausted_total",
 		"tradingagent_report_worker_success_total",

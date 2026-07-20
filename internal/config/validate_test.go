@@ -150,6 +150,30 @@ func TestLoadParsesEnvironmentValues(t *testing.T) {
 	if !cfg.Brokers.Kalshi.Demo {
 		t.Fatal("cfg.Brokers.Kalshi.Demo = false, want true")
 	}
+	if cfg.Brokers.Kalshi.RequestsPerWindow != 60 {
+		t.Fatalf("cfg.Brokers.Kalshi.RequestsPerWindow = %d, want %d", cfg.Brokers.Kalshi.RequestsPerWindow, 60)
+	}
+	if cfg.Brokers.Kalshi.Window != time.Minute {
+		t.Fatalf("cfg.Brokers.Kalshi.Window = %s, want %s", cfg.Brokers.Kalshi.Window, time.Minute)
+	}
+	if cfg.Brokers.Kalshi.MaxAttempts != 3 {
+		t.Fatalf("cfg.Brokers.Kalshi.MaxAttempts = %d, want %d", cfg.Brokers.Kalshi.MaxAttempts, 3)
+	}
+	if cfg.Brokers.Kalshi.BaseBackoff != 100*time.Millisecond {
+		t.Fatalf("cfg.Brokers.Kalshi.BaseBackoff = %s, want %s", cfg.Brokers.Kalshi.BaseBackoff, 100*time.Millisecond)
+	}
+	if cfg.Brokers.Kalshi.MaxBackoff != 2*time.Second {
+		t.Fatalf("cfg.Brokers.Kalshi.MaxBackoff = %s, want %s", cfg.Brokers.Kalshi.MaxBackoff, 2*time.Second)
+	}
+	if cfg.Brokers.Kalshi.JitterRatio != 0.2 {
+		t.Fatalf("cfg.Brokers.Kalshi.JitterRatio = %v, want %v", cfg.Brokers.Kalshi.JitterRatio, 0.2)
+	}
+	if !cfg.Brokers.Kalshi.DryRun {
+		t.Fatal("cfg.Brokers.Kalshi.DryRun = false, want true")
+	}
+	if cfg.Brokers.Kalshi.SettlementGateThreshold != 20 {
+		t.Fatalf("cfg.Brokers.Kalshi.SettlementGateThreshold = %d, want %d", cfg.Brokers.Kalshi.SettlementGateThreshold, 20)
+	}
 
 	if cfg.Notifications.Telegram.BotToken != "telegram-token" {
 		t.Fatalf("cfg.Notifications.Telegram.BotToken = %q, want %q", cfg.Notifications.Telegram.BotToken, "telegram-token")
@@ -506,6 +530,7 @@ func validConfig() Config {
 			AlphaVantage: DataProviderConfig{RateLimitPerMinute: 5},
 			Finnhub:      DataProviderConfig{RateLimitPerMinute: 60},
 		},
+		Brokers: BrokerConfigs{Kalshi: KalshiConfig{RequestsPerWindow: 60, Window: time.Minute, MaxAttempts: 3, BaseBackoff: 100 * time.Millisecond, MaxBackoff: 2 * time.Second, JitterRatio: 0.2, DryRun: true, SettlementGateThreshold: 20}},
 		Risk: RiskConfig{
 			MaxPositionSizePct:      0.10,
 			MaxDailyLossPct:         0.02,

@@ -12,6 +12,14 @@ func TestBuildDiagnosticsSummaryCountsAndClassification(t *testing.T) {
 	t.Parallel()
 
 	got := BuildDiagnosticsSummary(DiagnosticsInput{
+		TotalStrategyRuns:    3,
+		TotalTradeDecisions:  2,
+		TotalStrategies:      4,
+		TotalOpenPositions:   1,
+		SampleStrategyRuns:   3,
+		SampleTradeDecisions: 2,
+		SampleStrategies:     2,
+		SampleOpenPositions:  1,
 		StrategyRuns: []RunDiagnostic{
 			{Status: "Completed", Signal: "Hold", MarketType: domain.MarketTypeStock},
 			{Status: "failed", Signal: "BUY", MarketType: domain.MarketTypeCrypto},
@@ -40,9 +48,13 @@ func TestBuildDiagnosticsSummaryCountsAndClassification(t *testing.T) {
 		OpenPositionsByMarket: map[domain.MarketType]int{
 			domain.MarketTypeCrypto: 3,
 		},
-		BuyingPower:   50,
-		Equity:        200,
-		GrossExposure: 70,
+		RunCountsBySignal:      map[string]int{"hold": 1, "buy": 1, "unknown": 1},
+		RunCountsByStatus:      map[string]int{"completed": 1, "failed": 1, "unknown": 1},
+		DecisionCountsByStatus: map[string]int{"rejected": 1, "candidate": 1},
+		NoActionReasons:        map[string]int{string(NoActionReasonHoldSignal): 2, string(NoActionReasonRiskRejected): 1, string(NoActionReasonSizingZero): 1, string(NoActionReasonSellWithoutPos): 1, string(NoActionReasonKillSwitch): 1, string(NoActionReasonLiveGateDenied): 1, string(NoActionReasonMissingData): 1, string(NoActionReasonUnknown): 1},
+		BuyingPower:            50,
+		Equity:                 200,
+		GrossExposure:          70,
 	})
 
 	wantRunSignals := map[string]int{"hold": 1, "buy": 1, "unknown": 1}
@@ -82,6 +94,12 @@ func TestBuildDiagnosticsSummaryCountsAndClassification(t *testing.T) {
 	wantOpen := map[string]int{"crypto": 3}
 	if !reflect.DeepEqual(got.OpenPositionsByMarket, wantOpen) {
 		t.Fatalf("open positions = %#v, want %#v", got.OpenPositionsByMarket, wantOpen)
+	}
+	if got.TotalStrategyRuns != 3 || got.TotalTradeDecisions != 2 || got.TotalStrategies != 4 || got.TotalOpenPositions != 1 {
+		t.Fatalf("unexpected totals: %+v", got)
+	}
+	if got.SampleStrategyRuns != 3 || got.SampleTradeDecisions != 2 || got.SampleStrategies != 2 || got.SampleOpenPositions != 1 {
+		t.Fatalf("unexpected samples: %+v", got)
 	}
 
 	assertNear(t, got.TargetGrossExposurePct, 0.35)

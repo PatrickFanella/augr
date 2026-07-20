@@ -11,10 +11,11 @@ import (
 )
 
 type stubAlpacaAdminReconciler struct {
-	summary automation.AlpacaReconcileSummary
-	report  automation.AlpacaVerificationReport
-	err     error
-	calls   int
+	summary  automation.AlpacaReconcileSummary
+	report   automation.AlpacaVerificationReport
+	plReport automation.AlpacaPLReconciliationReport
+	err      error
+	calls    int
 }
 
 func (s *stubAlpacaAdminReconciler) Reconcile(ctx context.Context) (automation.AlpacaReconcileSummary, error) {
@@ -24,6 +25,10 @@ func (s *stubAlpacaAdminReconciler) Reconcile(ctx context.Context) (automation.A
 
 func (s *stubAlpacaAdminReconciler) Verify(ctx context.Context) (automation.AlpacaVerificationReport, error) {
 	return s.report, s.err
+}
+
+func (s *stubAlpacaAdminReconciler) ReconciliationReport(ctx context.Context) (automation.AlpacaPLReconciliationReport, error) {
+	return s.plReport, s.err
 }
 
 func TestRunAlpacaReconcileNowReturnsSummaryAndVerification(t *testing.T) {
@@ -77,5 +82,42 @@ func TestRunAlpacaReconcileNowRequiresReconciler(t *testing.T) {
 
 	if rr.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want 503", rr.Code)
+	}
+}
+
+func TestGetAlpacaReconciliationReportReturnsReadOnlyPayload(t *testing.T) {
+	t.Parallel()
+
+	reconciler := &stubAlpacaAdminReconciler{
+		plReport: automation.AlpacaPLReconciliationReport{
+			BrokerCash:          1250,
+			BrokerEquity:        1500,
+			LocalClosedPnL:      180,
+			LocalOpenPnL:        -20,
+			TradeCount:          4,
+			FeeTotal:            2.5,
+			KnownAdjustments:    0,
+			UnexplainedResidual: 87.5,
+			AdjustmentDetails:   []string{"no persisted adjustment source discovered"},
+		},
+	}
+	s := &Server{alpacaReconciler: reconciler}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/automation/alpaca/reconciliation", nil)
+	rr := httptest.NewRecorder()
+	s.handleGetAlpacaReconciliationReport(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rr.Code)
+	}
+	var resp AlpacaReconciliationResponse
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Report.BrokerCash != 1250 || resp.Report.UnexplainedResidual != 87.5 {
+		t.Fatalf("unexpected report: %+v", resp.Report)
+	}
+	if reconciler.calls != 0 {
+		t.Fatalf("expected reconciliation report path to be read-only, calls=%d", reconciler.calls)
 	}
 }

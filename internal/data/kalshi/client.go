@@ -16,11 +16,21 @@ import (
 	"io"
 	"log/slog"
 	"math"
+	mathrand "math/rand"
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/PatrickFanella/get-rich-quick/internal/metrics"
+	provgov "github.com/PatrickFanella/get-rich-quick/internal/providergovernor"
 )
+
+type governor interface {
+	Reserve(context.Context) error
+	Sleep(context.Context, time.Duration) error
+}
 
 const (
 	defaultBaseURL = "https://external-api.demo.kalshi.co/trade-api/v2"
@@ -29,12 +39,23 @@ const (
 
 // Client is a small HTTP client for Kalshi Trade API v2.
 type Client struct {
-	baseURL    string
-	apiKeyID   string
-	privateKey *rsa.PrivateKey
-	httpClient *http.Client
-	now        func() time.Time
-	logger     *slog.Logger
+	baseURL     string
+	apiKeyID    string
+	privateKey  *rsa.PrivateKey
+	httpClient  *http.Client
+	now         func() time.Time
+	logger      *slog.Logger
+	governor    governor
+	metrics     *metrics.Metrics
+	clientType  string
+	nowClock    func() time.Time
+	random      *mathrand.Rand
+	randomMu    sync.Mutex
+	sleeper     func(context.Context, time.Duration) error
+	maxAttempts int
+	baseBackoff time.Duration
+	maxBackoff  time.Duration
+	jitterRatio float64
 }
 
 // NewClient constructs a Kalshi HTTP client.
@@ -49,19 +70,36 @@ func NewClient(baseURL, apiKeyID, privateKeyPEMB64 string, logger *slog.Logger) 
 		trimmedBaseURL = defaultBaseURL
 	}
 
-	privateKey, err := parsePrivateKey(strings.TrimSpace(privateKeyPEMB64))
-	if err != nil {
-		return nil, fmt.Errorf("kalshi: parse private key: %w", err)
+	trimmedAPIKeyID := strings.TrimSpace(apiKeyID)
+	trimmedPrivateKeyPEMB64 := strings.TrimSpace(privateKeyPEMB64)
+	if trimmedAPIKeyID == "" && trimmedPrivateKeyPEMB64 == "" {
+		privateKeyPEMB64 = ""
+	}
+
+	var privateKey *rsa.PrivateKey
+	if trimmedAPIKeyID != "" || trimmedPrivateKeyPEMB64 != "" {
+		var err error
+		privateKey, err = parsePrivateKey(trimmedPrivateKeyPEMB64)
+		if err != nil {
+			return nil, fmt.Errorf("kalshi: parse private key: %w", err)
+		}
 	}
 
 	client := &Client{
 		baseURL:  trimmedBaseURL,
-		apiKeyID: strings.TrimSpace(apiKeyID),
+		apiKeyID: trimmedAPIKeyID,
 		httpClient: &http.Client{
 			Timeout: defaultTimeout,
 		},
-		now:    time.Now,
-		logger: logger,
+		now:         time.Now,
+		logger:      logger,
+		nowClock:    time.Now,
+		random:      mathrand.New(mathrand.NewSource(1)),
+		sleeper:     func(ctx context.Context, d time.Duration) error { return (&provgov.ProviderGovernor{}).Sleep(ctx, d) },
+		maxAttempts: 3,
+		baseBackoff: 100 * time.Millisecond,
+		maxBackoff:  2 * time.Second,
+		jitterRatio: 0.2,
 	}
 	if privateKey != nil {
 		client.privateKey = privateKey
@@ -76,6 +114,59 @@ func (c *Client) SetHTTPClient(httpClient *http.Client) {
 		return
 	}
 	c.httpClient = httpClient
+}
+
+func (c *Client) SetGovernor(g governor) {
+	if c != nil {
+		c.governor = g
+	}
+}
+
+func (c *Client) SetMetrics(m *metrics.Metrics, clientType string) {
+	if c != nil {
+		c.metrics = m
+		c.clientType = clientType
+	}
+}
+
+func (c *Client) ClientType() string {
+	if c == nil {
+		return ""
+	}
+	return c.clientType
+}
+
+func (c *Client) Governor() governor {
+	if c == nil {
+		return nil
+	}
+	return c.governor
+}
+
+// SetRetryPolicy configures retry attempts and the maximum retry wait.
+// Retry-After is always respected as a floor. If a server asks for longer than
+// max, the client returns the typed rate-limit error immediately so the caller
+// or scheduler can defer without sleeping for hours.
+func (c *Client) SetRetryPolicy(maxAttempts int, base, max time.Duration, jitter float64) {
+	if c != nil {
+		c.maxAttempts, c.baseBackoff, c.maxBackoff, c.jitterRatio = maxAttempts, base, max, jitter
+	}
+}
+
+func (c *Client) SetHooks(now func() time.Time, random func() float64, sleeper func(context.Context, time.Duration) error) {
+	if c != nil {
+		if now != nil {
+			c.nowClock = now
+		}
+		if random != nil {
+			c.randomMu.Lock()
+			c.random = mathrand.New(mathrand.NewSource(int64(random()*1e9) + 1))
+			c.randomMu.Unlock()
+		}
+		if sleeper != nil {
+			c.sleeper = sleeper
+		}
+	}
 }
 
 func (c *Client) setNowFunc(now func() time.Time) {
@@ -149,6 +240,14 @@ func (c *Client) do(ctx context.Context, method, requestPath string, query url.V
 		}
 	}
 
+	if method == http.MethodGet || method == http.MethodDelete {
+		return c.doWithRetry(ctx, req, method, authenticated)
+	}
+	if c.governor != nil {
+		if err := c.governor.Reserve(ctx); err != nil {
+			return nil, err
+		}
+	}
 	resp, err := c.getHTTPClient().Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("kalshi: do request: %w", err)
@@ -163,10 +262,139 @@ func (c *Client) do(ctx context.Context, method, requestPath string, query url.V
 	}
 
 	if resp.StatusCode >= 400 {
+		if resp.StatusCode == 429 {
+			if c.metrics != nil {
+				c.metrics.RecordKalshiRateLimit("kalshi", c.clientType, method)
+			}
+			retryAfter := provgov.ParseRetryAfter(resp.Header.Get("Retry-After"), c.nowClock)
+			if retryAfter > 0 {
+				if err := c.persistCooldown(ctx, retryAfter); err != nil {
+					return nil, errors.Join(provgov.Wrap("kalshi", c.clientType, method, resp.StatusCode, retryAfter, string(responseBody)), err)
+				}
+			}
+			return nil, provgov.Wrap("kalshi", c.clientType, method, resp.StatusCode, retryAfter, string(responseBody))
+		}
 		return nil, fmt.Errorf("kalshi: request failed (status=%d): %s", resp.StatusCode, strings.TrimSpace(string(responseBody)))
 	}
 
 	return responseBody, nil
+}
+
+func (c *Client) doWithRetry(ctx context.Context, req *http.Request, method string, authenticated bool) ([]byte, error) {
+	_ = authenticated
+	maxAttempts := provgov.MaxAttempts(c.maxAttempts)
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		if c.governor != nil {
+			if err := c.governor.Reserve(ctx); err != nil {
+				return nil, err
+			}
+		}
+		resp, err := c.getHTTPClient().Do(req.Clone(ctx))
+		if err != nil {
+			return nil, fmt.Errorf("kalshi: do request: %w", err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if resp.StatusCode == 429 {
+			retryAfter := provgov.ParseRetryAfter(resp.Header.Get("Retry-After"), c.nowClock)
+			if c.metrics != nil {
+				c.metrics.RecordKalshiRateLimit("kalshi", c.clientType, method)
+			}
+			if retryAfter > 0 {
+				if err := c.persistCooldown(ctx, retryAfter); err != nil {
+					return nil, errors.Join(provgov.Wrap("kalshi", c.clientType, method, resp.StatusCode, retryAfter, string(body)), err)
+				}
+			}
+			if retryAfter > c.maxBackoff && c.maxBackoff > 0 {
+				return nil, provgov.Wrap("kalshi", c.clientType, method, resp.StatusCode, retryAfter, string(body))
+			}
+			if attempt+1 < maxAttempts && method != http.MethodPost {
+				wait := c.nextBackoff(attempt, retryAfter)
+				if err := c.recordRetryAndSleep(ctx, method, wait); err != nil {
+					return nil, err
+				}
+				continue
+			}
+			return nil, provgov.Wrap("kalshi", c.clientType, method, resp.StatusCode, retryAfter, string(body))
+		}
+		if resp.StatusCode >= 500 && method != http.MethodPost {
+			if attempt+1 < maxAttempts {
+				if err := c.recordRetryAndSleep(ctx, method, c.nextBackoff(attempt, 0)); err != nil {
+					return nil, err
+				}
+				continue
+			}
+		}
+		if resp.StatusCode >= 400 {
+			return nil, fmt.Errorf("kalshi: request failed (status=%d): %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		}
+		return body, nil
+	}
+	return nil, errors.New("kalshi: retry exhausted")
+}
+
+func (c *Client) persistCooldown(ctx context.Context, retryAfter time.Duration) error {
+	gov, ok := c.governor.(*provgov.ProviderGovernor)
+	if !ok || gov == nil || gov.Cooldown == nil {
+		return nil
+	}
+	now := c.nowClock
+	if now == nil {
+		now = time.Now
+	}
+	return gov.Cooldown.SetProviderCooldown(ctx, gov.Provider, now().Add(retryAfter))
+}
+
+func (c *Client) recordRetryAndSleep(ctx context.Context, method string, wait time.Duration) error {
+	if c.metrics != nil {
+		c.metrics.RecordKalshiRetryAttempt("kalshi", c.clientType, method)
+		c.metrics.ObserveKalshiRetryWaitSeconds("kalshi", c.clientType, method, wait.Seconds())
+	}
+	return c.sleep(ctx, wait)
+}
+
+func (c *Client) sleep(ctx context.Context, d time.Duration) error {
+	if c.governor != nil {
+		return c.governor.Sleep(ctx, d)
+	}
+	return c.sleeper(ctx, d)
+}
+
+func (c *Client) nextBackoff(attempt int, retryAfter time.Duration) time.Duration {
+	b := c.baseBackoff
+	if b <= 0 {
+		b = 100 * time.Millisecond
+	}
+	if c.maxBackoff > 0 && b > c.maxBackoff {
+		b = c.maxBackoff
+	}
+	if c.jitterRatio > 0 {
+		b = c.jitter(b)
+		if c.maxBackoff > 0 && b > c.maxBackoff {
+			b = c.maxBackoff
+		}
+	}
+	if retryAfter > b {
+		b = retryAfter
+	}
+	return b
+}
+
+func (c *Client) jitter(base time.Duration) time.Duration {
+	if c == nil || base <= 0 || c.jitterRatio <= 0 {
+		return base
+	}
+	c.randomMu.Lock()
+	r := c.random
+	var x float64
+	if r == nil {
+		x = 0.5
+	} else {
+		x = r.Float64()
+	}
+	c.randomMu.Unlock()
+	offset := (x*2 - 1) * c.jitterRatio
+	return time.Duration(float64(base) * (1 + offset))
 }
 
 func (c *Client) authHeaders(method, signedPath string) (http.Header, error) {

@@ -10,14 +10,21 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"io"
 	"log/slog"
 	"math"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
+	"sync"
 	"testing"
 	"time"
+
+	"github.com/PatrickFanella/get-rich-quick/internal/metrics"
+	provgov "github.com/PatrickFanella/get-rich-quick/internal/providergovernor"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 )
 
 func discardLogger() *slog.Logger {
@@ -377,6 +384,379 @@ func TestClientDelete_SendsAuthHeadersAndOmitsContentType(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("request details were not captured")
 	}
+}
+
+func TestClientPost_429ReturnsTypedErrorWithoutRetry(t *testing.T) {
+	t.Parallel()
+
+	privateKeyPEMB64, _ := testPrivateKeyPEMB64(t)
+	var calls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.Header().Set("Retry-After", "7")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte(`{"error":"rate limit"}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(server.URL+"/trade-api/v2", "test-key-id", privateKeyPEMB64, discardLogger())
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+	m := metrics.New()
+	client.SetHTTPClient(server.Client())
+	client.SetMetrics(m, "execution")
+	client.SetRetryPolicy(3, 10*time.Millisecond, time.Second, 0)
+	gov := &countingGovernor{}
+	client.SetGovernor(gov)
+
+	_, err = client.Post(context.Background(), "/orders", map[string]any{"ticker": "TST"})
+	if err == nil {
+		t.Fatal("Post() error = nil, want typed 429")
+	}
+	var rl *provgov.RateLimitError
+	if !errors.As(err, &rl) {
+		t.Fatalf("error type = %T, want *RateLimitError", err)
+	}
+	if rl.StatusCode != http.StatusTooManyRequests || rl.RetryAfter != 7*time.Second || calls != 1 {
+		t.Fatalf("rate limit error = %+v calls=%d", rl, calls)
+	}
+	if got := testutil.ToFloat64(m.KalshiRateLimitTotal.WithLabelValues("kalshi", "execution", http.MethodPost)); got != 1 {
+		t.Fatalf("kalshi rate limit metric = %v, want 1", got)
+	}
+	if gov.reserves != 1 {
+		t.Fatalf("reserve calls = %d, want 1", gov.reserves)
+	}
+}
+
+func TestClientPost_429PersistsCooldownAcrossClientsAndRestart(t *testing.T) {
+	t.Parallel()
+
+	privateKeyPEMB64, _ := testPrivateKeyPEMB64(t)
+	var calls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.Header().Set("Retry-After", "7")
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+	store := &fakeCooldownStore{}
+	client, err := NewClient(server.URL+"/trade-api/v2", "test-key-id", privateKeyPEMB64, discardLogger())
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+	client.SetHTTPClient(server.Client())
+	client.SetRetryPolicy(3, 10*time.Millisecond, time.Second, 0)
+	client.SetGovernor(&provgov.ProviderGovernor{Provider: "kalshi", Limiter: noOpLimiter{}, Cooldown: store, Clock: time.Now})
+	if _, err := client.Post(context.Background(), "/orders", map[string]any{"ticker": "TST"}); err == nil {
+		t.Fatal("Post() error = nil, want typed 429")
+	}
+	if calls != 1 {
+		t.Fatalf("calls = %d, want 1", calls)
+	}
+	client2, _ := NewClient(server.URL+"/trade-api/v2", "test-key-id", privateKeyPEMB64, discardLogger())
+	client2.SetHTTPClient(server.Client())
+	client2.SetRetryPolicy(3, 10*time.Millisecond, time.Second, 0)
+	client2.SetGovernor(&provgov.ProviderGovernor{Provider: "kalshi", Limiter: noOpLimiter{}, Cooldown: store, Clock: time.Now})
+	if _, err := client2.Post(context.Background(), "/orders", map[string]any{"ticker": "TST"}); err == nil {
+		t.Fatal("Post() error = nil, want durable cooldown")
+	}
+	if calls != 1 {
+		t.Fatalf("calls after cooldown = %d, want 1", calls)
+	}
+}
+
+func TestClientPostCooldownPersistenceErrorFailsClosed(t *testing.T) {
+	t.Parallel()
+
+	privateKeyPEMB64, _ := testPrivateKeyPEMB64(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "7")
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+	store := &fakeCooldownStore{setErr: errors.New("persist failed")}
+	client, _ := NewClient(server.URL+"/trade-api/v2", "test-key-id", privateKeyPEMB64, discardLogger())
+	client.SetHTTPClient(server.Client())
+	client.SetRetryPolicy(3, 10*time.Millisecond, time.Second, 0)
+	client.SetGovernor(&provgov.ProviderGovernor{Provider: "kalshi", Limiter: noOpLimiter{}, Cooldown: store, Clock: time.Now})
+	if _, err := client.Post(context.Background(), "/orders", map[string]any{"ticker": "TST"}); err == nil || !strings.Contains(err.Error(), "persist failed") {
+		t.Fatalf("Post() error = %v, want persist failure", err)
+	}
+}
+
+func TestProviderGovernorReserveHonorsCooldownAndContextCancellation(t *testing.T) {
+	t.Parallel()
+	store := &fakeCooldownStore{cooldown: map[string]time.Time{"kalshi": time.Now().Add(time.Hour)}}
+	gov := &provgov.ProviderGovernor{Provider: "kalshi", Limiter: noOpLimiter{}, Cooldown: store, Clock: time.Now}
+	if err := gov.Reserve(context.Background()); err == nil {
+		t.Fatal("Reserve() error = nil, want cooldown")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	store2 := &fakeCooldownStore{getErr: context.Canceled}
+	gov2 := &provgov.ProviderGovernor{Provider: "kalshi", Limiter: noOpLimiter{}, Cooldown: store2, Clock: time.Now}
+	if err := gov2.Reserve(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Reserve() error = %v, want context.Canceled", err)
+	}
+}
+
+func TestParseRetryAfterSupportsSecondsAndHTTPDate(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 7, 19, 12, 0, 0, 0, time.UTC)
+	if got := provgov.ParseRetryAfter("5", func() time.Time { return now }); got != 5*time.Second {
+		t.Fatalf("seconds retry-after = %s", got)
+	}
+	date := now.Add(10 * time.Second).Format(http.TimeFormat)
+	if got := provgov.ParseRetryAfter(date, func() time.Time { return now }); got != 10*time.Second {
+		t.Fatalf("date retry-after = %s", got)
+	}
+}
+
+func TestClientGetRetriesWithCapAndCancellation(t *testing.T) {
+	t.Parallel()
+	privateKeyPEMB64, _ := testPrivateKeyPEMB64(t)
+	var calls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte(`too many`))
+	}))
+	defer server.Close()
+	client, _ := NewClient(server.URL+"/trade-api/v2", "test-key-id", privateKeyPEMB64, discardLogger())
+	client.SetHTTPClient(server.Client())
+	client.SetRetryPolicy(2, time.Millisecond, time.Second, 0)
+	client.SetMetrics(nil, "data")
+	gov := &countingGovernor{}
+	client.SetGovernor(gov)
+	_, err := client.Get(context.Background(), "/markets", nil, true)
+	if err == nil {
+		t.Fatal("Get() error = nil, want retry failure")
+	}
+	if calls != 2 {
+		t.Fatalf("calls = %d, want 2", calls)
+	}
+	if gov.reserves != 2 {
+		t.Fatalf("reserve calls = %d, want 2", gov.reserves)
+	}
+}
+
+func TestClientGetRecordsRetryMetricsFor5xxAnd429(t *testing.T) {
+	t.Parallel()
+
+	privateKeyPEMB64, _ := testPrivateKeyPEMB64(t)
+	var calls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		switch calls {
+		case 1:
+			w.WriteHeader(http.StatusBadGateway)
+			_, _ = w.Write([]byte(`bad gateway`))
+		case 2:
+			w.Header().Set("Retry-After", "1")
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = w.Write([]byte(`rate limit`))
+		default:
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		}
+	}))
+	defer server.Close()
+
+	m := metrics.New()
+	client, err := NewClient(server.URL+"/trade-api/v2", "test-key-id", privateKeyPEMB64, discardLogger())
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+	client.SetHTTPClient(server.Client())
+	client.SetMetrics(m, "data")
+	client.SetRetryPolicy(3, 10*time.Millisecond, time.Second, 0)
+	client.SetHooks(nil, func() float64 { return 0.0 }, func(context.Context, time.Duration) error { return nil })
+
+	if _, err := client.Get(context.Background(), "/markets", nil, true); err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+
+	if got := testutil.ToFloat64(m.KalshiRetryAttemptsTotal.WithLabelValues("kalshi", "data", http.MethodGet)); got != 2 {
+		t.Fatalf("retry attempts = %v, want 2", got)
+	}
+	if got := testutil.CollectAndCount(m.KalshiRetryWaitSeconds); got == 0 {
+		t.Fatal("retry wait histogram was not observed")
+	}
+	if got := testutil.ToFloat64(m.KalshiRateLimitTotal.WithLabelValues("kalshi", "data", http.MethodGet)); got != 1 {
+		t.Fatalf("rate limit count = %v, want 1", got)
+	}
+}
+
+func TestClientGetCancelsOnSleepError(t *testing.T) {
+	t.Parallel()
+	privateKeyPEMB64, _ := testPrivateKeyPEMB64(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+	client, _ := NewClient(server.URL+"/trade-api/v2", "test-key-id", privateKeyPEMB64, discardLogger())
+	client.SetHTTPClient(server.Client())
+	client.SetRetryPolicy(3, time.Second, time.Second, 0)
+	wants := errors.New("sleep failed")
+	client.SetHooks(nil, nil, func(context.Context, time.Duration) error { return wants })
+	_, err := client.Get(context.Background(), "/markets", nil, true)
+	if !errors.Is(err, wants) {
+		t.Fatalf("Get() error = %v, want sleep error", err)
+	}
+}
+
+func TestClientGetHonorsContextCancellation(t *testing.T) {
+	t.Parallel()
+	privateKeyPEMB64, _ := testPrivateKeyPEMB64(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+	client, _ := NewClient(server.URL+"/trade-api/v2", "test-key-id", privateKeyPEMB64, discardLogger())
+	client.SetHTTPClient(server.Client())
+	client.SetRetryPolicy(3, time.Second, time.Second, 0)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := client.Get(ctx, "/markets", nil, true)
+	if err == nil {
+		t.Fatal("Get() error = nil, want context error")
+	}
+}
+
+func TestClientGetUsesDeterministicMaxBackoffAndJitter(t *testing.T) {
+	t.Parallel()
+	privateKeyPEMB64, _ := testPrivateKeyPEMB64(t)
+	var waits []time.Duration
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+	client, _ := NewClient(server.URL+"/trade-api/v2", "test-key-id", privateKeyPEMB64, discardLogger())
+	client.SetHTTPClient(server.Client())
+	client.SetRetryPolicy(3, 2*time.Second, 1500*time.Millisecond, 0.5)
+	client.SetHooks(nil, func() float64 { return 0.0 }, func(ctx context.Context, d time.Duration) error { waits = append(waits, d); return nil })
+	_, _ = client.Get(context.Background(), "/markets", nil, true)
+	if len(waits) == 0 || waits[0] != 1500*time.Millisecond {
+		t.Fatalf("waits = %#v, want capped 1500ms", waits)
+	}
+}
+
+func TestClientGetHonorsRetryAfterFloor(t *testing.T) {
+	t.Parallel()
+	privateKeyPEMB64, _ := testPrivateKeyPEMB64(t)
+	var waits []time.Duration
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "1")
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+	client, _ := NewClient(server.URL+"/trade-api/v2", "test-key-id", privateKeyPEMB64, discardLogger())
+	client.SetHTTPClient(server.Client())
+	client.SetRetryPolicy(3, time.Millisecond, time.Second, 0.5)
+	client.SetHooks(nil, func() float64 { return 0.0 }, func(ctx context.Context, d time.Duration) error { waits = append(waits, d); return nil })
+	_, _ = client.Get(context.Background(), "/markets", nil, true)
+	if len(waits) == 0 || waits[0] < time.Second {
+		t.Fatalf("waits = %#v, want >= Retry-After", waits)
+	}
+}
+
+func TestClientGetStopsImmediatelyWhenRetryAfterExceedsMaxBackoff(t *testing.T) {
+	t.Parallel()
+	privateKeyPEMB64, _ := testPrivateKeyPEMB64(t)
+	var waits []time.Duration
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "5")
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+	client, _ := NewClient(server.URL+"/trade-api/v2", "test-key-id", privateKeyPEMB64, discardLogger())
+	client.SetHTTPClient(server.Client())
+	client.SetRetryPolicy(3, time.Millisecond, time.Second, 0.5)
+	client.SetHooks(nil, func() float64 { return 0.0 }, func(ctx context.Context, d time.Duration) error { waits = append(waits, d); return nil })
+	_, err := client.Get(context.Background(), "/markets", nil, true)
+	if err == nil {
+		t.Fatal("Get() error = nil, want 429")
+	}
+	if len(waits) != 0 {
+		t.Fatalf("waits = %#v, want no sleep", waits)
+	}
+}
+
+func TestClientGetConcurrentRetriesAreRaceSafe(t *testing.T) {
+	t.Parallel()
+
+	privateKeyPEMB64, _ := testPrivateKeyPEMB64(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/trade-api/v2/markets/ok" {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"ok":true}`))
+			return
+		}
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+
+	client, err := NewClient(server.URL+"/trade-api/v2", "test-key-id", privateKeyPEMB64, discardLogger())
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+	client.SetHTTPClient(server.Client())
+	client.SetRetryPolicy(2, time.Millisecond, time.Second, 0.5)
+	client.SetHooks(nil, func() float64 { return 0.25 }, func(context.Context, time.Duration) error { return nil })
+	client.SetMetrics(nil, "data")
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _ = client.Get(context.Background(), "/markets/ok", nil, true)
+		}()
+	}
+	wg.Wait()
+}
+
+type countingGovernor struct{ reserves int }
+
+func (g *countingGovernor) Reserve(context.Context) error              { g.reserves++; return nil }
+func (g *countingGovernor) Sleep(context.Context, time.Duration) error { return nil }
+
+type noOpLimiter struct{}
+
+func (noOpLimiter) Wait(context.Context) error { return nil }
+
+type fakeCooldownStore struct {
+	mu       sync.Mutex
+	cooldown map[string]time.Time
+	setErr   error
+	getErr   error
+}
+
+func (s *fakeCooldownStore) GetProviderCooldown(context.Context, string) (time.Time, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.getErr != nil {
+		return time.Time{}, s.getErr
+	}
+	if s.cooldown == nil {
+		return time.Time{}, nil
+	}
+	return s.cooldown["kalshi"], nil
+}
+func (s *fakeCooldownStore) SetProviderCooldown(_ context.Context, _ string, until time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.setErr != nil {
+		return s.setErr
+	}
+	if s.cooldown == nil {
+		s.cooldown = map[string]time.Time{}
+	}
+	s.cooldown["kalshi"] = until
+	return nil
+}
+func (s *fakeCooldownStore) CompareAndClearProviderCooldown(context.Context, string, time.Time) (bool, error) {
+	return true, nil
 }
 
 func TestQuoteCentsToProbability(t *testing.T) {

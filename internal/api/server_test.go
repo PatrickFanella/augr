@@ -304,6 +304,7 @@ func TestGuestObservationRoutesAllowReadOnlyRequests(t *testing.T) {
 		"/api/v1/discovery/results",
 		"/api/v1/automation/status",
 		"/api/v1/automation/health",
+		"/api/v1/automation/alpaca/reconciliation",
 		"/api/v1/automation/alpaca/verify",
 		"/api/v1/signals/evaluated",
 		"/api/v1/me",
@@ -2637,7 +2638,8 @@ type stubPositionRepo struct {
 	positions []domain.Position
 }
 
-func (stubPositionRepo) Create(context.Context, *domain.Position) error { return nil }
+func (stubPositionRepo) Create(context.Context, *domain.Position) error            { return nil }
+func (stubPositionRepo) CreateAlpacaOwned(context.Context, *domain.Position) error { return nil }
 func (stubPositionRepo) Get(_ context.Context, _ uuid.UUID) (*domain.Position, error) {
 	return nil, fmt.Errorf("position: %w", repository.ErrNotFound)
 }
@@ -2667,6 +2669,10 @@ func (stubPositionRepo) Count(context.Context, repository.PositionFilter) (int, 
 
 func (stubPositionRepo) CountOpen(context.Context, repository.PositionFilter) (int, error) {
 	return 0, nil
+}
+
+func (s *stubPositionRepo) ListOpenAlpacaOwned(context.Context, int, int) ([]domain.Position, error) {
+	return append([]domain.Position(nil), s.positions...), nil
 }
 
 // stubTradeRepo

@@ -218,6 +218,18 @@ func TestPipelineRunRepoIntegration_CRUDAndFilters(t *testing.T) {
 		t.Fatalf("Get() returned unexpected run: %+v", got)
 	}
 
+	count, err := repo.Count(ctx, repository.PipelineRunFilter{Status: domain.PipelineStatusCompleted})
+	if err != nil {
+		t.Fatalf("Count() error = %v", err)
+	}
+	var sqlCount int
+	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM pipeline_runs WHERE status = $1`, domain.PipelineStatusCompleted).Scan(&sqlCount); err != nil {
+		t.Fatalf("direct SQL count error = %v", err)
+	}
+	if count != sqlCount {
+		t.Fatalf("Count() = %d, direct SQL = %d", count, sqlCount)
+	}
+
 	completedAt := startedAt1.Add(30 * time.Minute)
 	if err := repo.UpdateStatus(ctx, run1.ID, run1.TradeDate, repository.PipelineRunStatusUpdate{
 		Status:       domain.PipelineStatusCompleted,

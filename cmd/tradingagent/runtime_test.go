@@ -3,7 +3,11 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
 	"encoding/base64"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
@@ -43,11 +47,13 @@ func TestNewAPIServerSchemaBehindFailsFast(t *testing.T) {
 
 	origNewDB := runtimeNewDB
 	origCurrentSchemaVersion := runtimeCurrentSchemaVersion
+	origNewPaperAccountRepo := runtimeNewPaperAccountRepo
 	origAfterSchemaGate := runtimeAfterSchemaGate
 	origCloseDB := runtimeCloseDB
 	defer func() {
 		runtimeNewDB = origNewDB
 		runtimeCurrentSchemaVersion = origCurrentSchemaVersion
+		runtimeNewPaperAccountRepo = origNewPaperAccountRepo
 		runtimeAfterSchemaGate = origAfterSchemaGate
 		runtimeCloseDB = origCloseDB
 	}()
@@ -60,6 +66,7 @@ func TestNewAPIServerSchemaBehindFailsFast(t *testing.T) {
 	runtimeCurrentSchemaVersion = func(context.Context, *pgxpool.Pool) (int, error) {
 		return pgrepo.RequiredSchemaVersion - 1, nil
 	}
+	runtimeNewPaperAccountRepo = func(*pgrepo.DB) repository.PaperAccountRepository { return stubPaperAccountRepo{} }
 	runtimeAfterSchemaGate = func() { proceeded.Store(true) }
 	runtimeCloseDB = func(*pgrepo.DB) { closed.Store(true) }
 
@@ -102,11 +109,13 @@ func TestNewAPIServerSchemaAheadFailsFast(t *testing.T) {
 
 	origNewDB := runtimeNewDB
 	origCurrentSchemaVersion := runtimeCurrentSchemaVersion
+	origNewPaperAccountRepo := runtimeNewPaperAccountRepo
 	origAfterSchemaGate := runtimeAfterSchemaGate
 	origCloseDB := runtimeCloseDB
 	defer func() {
 		runtimeNewDB = origNewDB
 		runtimeCurrentSchemaVersion = origCurrentSchemaVersion
+		runtimeNewPaperAccountRepo = origNewPaperAccountRepo
 		runtimeAfterSchemaGate = origAfterSchemaGate
 		runtimeCloseDB = origCloseDB
 	}()
@@ -161,12 +170,14 @@ func TestNewAPIServerSchemaMatchSucceeds(t *testing.T) {
 
 	origNewDB := runtimeNewDB
 	origCurrentSchemaVersion := runtimeCurrentSchemaVersion
+	origNewPaperAccountRepo := runtimeNewPaperAccountRepo
 	origAfterSchemaGate := runtimeAfterSchemaGate
 	origCloseDB := runtimeCloseDB
 	origNewServer := runtimeNewServer
 	defer func() {
 		runtimeNewDB = origNewDB
 		runtimeCurrentSchemaVersion = origCurrentSchemaVersion
+		runtimeNewPaperAccountRepo = origNewPaperAccountRepo
 		runtimeAfterSchemaGate = origAfterSchemaGate
 		runtimeCloseDB = origCloseDB
 		runtimeNewServer = origNewServer
@@ -187,6 +198,7 @@ func TestNewAPIServerSchemaMatchSucceeds(t *testing.T) {
 	runtimeCurrentSchemaVersion = func(context.Context, *pgxpool.Pool) (int, error) {
 		return pgrepo.RequiredSchemaVersion, nil
 	}
+	runtimeNewPaperAccountRepo = func(*pgrepo.DB) repository.PaperAccountRepository { return stubPaperAccountRepo{} }
 	runtimeAfterSchemaGate = func() { proceeded.Store(true) }
 	runtimeCloseDB = func(*pgrepo.DB) { closed.Store(true) }
 	runtimeNewServer = func(api.ServerConfig, api.Deps, *slog.Logger) (*api.Server, error) {
@@ -227,11 +239,13 @@ func TestNewAPIServerSchemaDBUnreachableFailsBeforeSchemaGate(t *testing.T) {
 
 	origNewDB := runtimeNewDB
 	origCurrentSchemaVersion := runtimeCurrentSchemaVersion
+	origNewPaperAccountRepo := runtimeNewPaperAccountRepo
 	origAfterSchemaGate := runtimeAfterSchemaGate
 	origCloseDB := runtimeCloseDB
 	defer func() {
 		runtimeNewDB = origNewDB
 		runtimeCurrentSchemaVersion = origCurrentSchemaVersion
+		runtimeNewPaperAccountRepo = origNewPaperAccountRepo
 		runtimeAfterSchemaGate = origAfterSchemaGate
 		runtimeCloseDB = origCloseDB
 	}()
@@ -247,6 +261,7 @@ func TestNewAPIServerSchemaDBUnreachableFailsBeforeSchemaGate(t *testing.T) {
 		schemaVersionChecked.Store(true)
 		return pgrepo.RequiredSchemaVersion, nil
 	}
+	runtimeNewPaperAccountRepo = func(*pgrepo.DB) repository.PaperAccountRepository { return stubPaperAccountRepo{} }
 	runtimeAfterSchemaGate = func() { proceeded.Store(true) }
 	runtimeCloseDB = func(*pgrepo.DB) { closed.Store(true) }
 
@@ -268,6 +283,7 @@ func TestNewAPIServerSchemaDBUnreachableFailsBeforeSchemaGate(t *testing.T) {
 func TestNewAPIServerPolymarketResolutionFailureIsNonFatal(t *testing.T) {
 	origNewDB := runtimeNewDB
 	origCurrentSchemaVersion := runtimeCurrentSchemaVersion
+	origNewPaperAccountRepo := runtimeNewPaperAccountRepo
 	origAfterSchemaGate := runtimeAfterSchemaGate
 	origCloseDB := runtimeCloseDB
 	origNewServer := runtimeNewServer
@@ -275,6 +291,7 @@ func TestNewAPIServerPolymarketResolutionFailureIsNonFatal(t *testing.T) {
 	defer func() {
 		runtimeNewDB = origNewDB
 		runtimeCurrentSchemaVersion = origCurrentSchemaVersion
+		runtimeNewPaperAccountRepo = origNewPaperAccountRepo
 		runtimeAfterSchemaGate = origAfterSchemaGate
 		runtimeCloseDB = origCloseDB
 		runtimeNewServer = origNewServer
@@ -289,6 +306,7 @@ func TestNewAPIServerPolymarketResolutionFailureIsNonFatal(t *testing.T) {
 
 	runtimeNewDB = func(context.Context, string) (*pgrepo.DB, error) { return &pgrepo.DB{Pool: pool}, nil }
 	runtimeCurrentSchemaVersion = func(context.Context, *pgxpool.Pool) (int, error) { return pgrepo.RequiredSchemaVersion, nil }
+	runtimeNewPaperAccountRepo = func(*pgrepo.DB) repository.PaperAccountRepository { return stubPaperAccountRepo{} }
 	runtimeAfterSchemaGate = func() {}
 	runtimeCloseDB = func(*pgrepo.DB) {}
 	runtimeNewServer = func(_ api.ServerConfig, _ api.Deps, _ *slog.Logger) (*api.Server, error) { return &api.Server{}, nil }
@@ -315,12 +333,14 @@ func TestNewAPIServerPolymarketResolutionFailureIsNonFatal(t *testing.T) {
 func TestNewAPIServerWiresAlpacaReconcileAutomationJob(t *testing.T) {
 	origNewDB := runtimeNewDB
 	origCurrentSchemaVersion := runtimeCurrentSchemaVersion
+	origNewPaperAccountRepo := runtimeNewPaperAccountRepo
 	origAfterSchemaGate := runtimeAfterSchemaGate
 	origCloseDB := runtimeCloseDB
 	origNewServer := runtimeNewServer
 	defer func() {
 		runtimeNewDB = origNewDB
 		runtimeCurrentSchemaVersion = origCurrentSchemaVersion
+		runtimeNewPaperAccountRepo = origNewPaperAccountRepo
 		runtimeAfterSchemaGate = origAfterSchemaGate
 		runtimeCloseDB = origCloseDB
 		runtimeNewServer = origNewServer
@@ -340,6 +360,7 @@ func TestNewAPIServerWiresAlpacaReconcileAutomationJob(t *testing.T) {
 	runtimeCurrentSchemaVersion = func(context.Context, *pgxpool.Pool) (int, error) {
 		return pgrepo.RequiredSchemaVersion, nil
 	}
+	runtimeNewPaperAccountRepo = func(*pgrepo.DB) repository.PaperAccountRepository { return stubPaperAccountRepo{} }
 	runtimeAfterSchemaGate = func() {}
 	runtimeCloseDB = func(*pgrepo.DB) { cleanupCalled.Store(true) }
 	runtimeNewServer = func(_ api.ServerConfig, deps api.Deps, _ *slog.Logger) (*api.Server, error) {
@@ -389,12 +410,14 @@ func TestNewAPIServerWiresAlpacaReconcileAutomationJob(t *testing.T) {
 func TestNewAPIServerWiresPolymarketReconcileAutomationJob(t *testing.T) {
 	origNewDB := runtimeNewDB
 	origCurrentSchemaVersion := runtimeCurrentSchemaVersion
+	origNewPaperAccountRepo := runtimeNewPaperAccountRepo
 	origAfterSchemaGate := runtimeAfterSchemaGate
 	origCloseDB := runtimeCloseDB
 	origNewServer := runtimeNewServer
 	defer func() {
 		runtimeNewDB = origNewDB
 		runtimeCurrentSchemaVersion = origCurrentSchemaVersion
+		runtimeNewPaperAccountRepo = origNewPaperAccountRepo
 		runtimeAfterSchemaGate = origAfterSchemaGate
 		runtimeCloseDB = origCloseDB
 		runtimeNewServer = origNewServer
@@ -413,6 +436,7 @@ func TestNewAPIServerWiresPolymarketReconcileAutomationJob(t *testing.T) {
 	runtimeCurrentSchemaVersion = func(context.Context, *pgxpool.Pool) (int, error) {
 		return pgrepo.RequiredSchemaVersion, nil
 	}
+	runtimeNewPaperAccountRepo = func(*pgrepo.DB) repository.PaperAccountRepository { return stubPaperAccountRepo{} }
 	runtimeAfterSchemaGate = func() {}
 	runtimeCloseDB = func(*pgrepo.DB) {}
 	runtimeNewServer = func(_ api.ServerConfig, deps api.Deps, _ *slog.Logger) (*api.Server, error) {
@@ -459,12 +483,14 @@ func TestNewAPIServerWiresPolymarketReconcileAutomationJob(t *testing.T) {
 func TestNewAPIServerWiresKalshiDiscoveryAutomationJob(t *testing.T) {
 	origNewDB := runtimeNewDB
 	origCurrentSchemaVersion := runtimeCurrentSchemaVersion
+	origNewPaperAccountRepo := runtimeNewPaperAccountRepo
 	origAfterSchemaGate := runtimeAfterSchemaGate
 	origCloseDB := runtimeCloseDB
 	origNewServer := runtimeNewServer
 	defer func() {
 		runtimeNewDB = origNewDB
 		runtimeCurrentSchemaVersion = origCurrentSchemaVersion
+		runtimeNewPaperAccountRepo = origNewPaperAccountRepo
 		runtimeAfterSchemaGate = origAfterSchemaGate
 		runtimeCloseDB = origCloseDB
 		runtimeNewServer = origNewServer
@@ -483,6 +509,7 @@ func TestNewAPIServerWiresKalshiDiscoveryAutomationJob(t *testing.T) {
 	runtimeCurrentSchemaVersion = func(context.Context, *pgxpool.Pool) (int, error) {
 		return pgrepo.RequiredSchemaVersion, nil
 	}
+	runtimeNewPaperAccountRepo = func(*pgrepo.DB) repository.PaperAccountRepository { return stubPaperAccountRepo{} }
 	runtimeAfterSchemaGate = func() {}
 	runtimeCloseDB = func(*pgrepo.DB) {}
 	runtimeNewServer = func(_ api.ServerConfig, deps api.Deps, _ *slog.Logger) (*api.Server, error) {
@@ -517,6 +544,59 @@ func TestNewAPIServerWiresKalshiDiscoveryAutomationJob(t *testing.T) {
 	}
 
 	cleanup()
+}
+
+func TestNewRuntimeKalshiClientsShareGovernorAndSeparateLabels(t *testing.T) {
+	t.Parallel()
+
+	privateKeyPEMB64 := runtimeTestPrivateKeyPEMB64(t)
+	cfg := config.Config{Brokers: config.BrokerConfigs{Kalshi: config.KalshiConfig{APIKeyID: "kid", PrivateKeyPEMB64: privateKeyPEMB64, RequestsPerWindow: 1, Window: time.Second}}}
+	dataClient, execClient, gov, err := newRuntimeKalshiClients(cfg, metrics.New(), slogDiscardLogger(), nil)
+	if err != nil {
+		t.Fatalf("newRuntimeKalshiClients() error = %v", err)
+	}
+	if dataClient == nil || execClient == nil || gov == nil {
+		t.Fatalf("newRuntimeKalshiClients() = (%v, %v, %v), want non-nil clients and governor", dataClient, execClient, gov)
+	}
+	if dataClient == execClient {
+		t.Fatal("expected distinct data and execution clients")
+	}
+	if dataClient.Governor() != execClient.Governor() {
+		t.Fatal("expected shared governor instance")
+	}
+	if dataClient.ClientType() != "data" || execClient.ClientType() != "execution" {
+		t.Fatalf("client types = (%q, %q), want (data, execution)", dataClient.ClientType(), execClient.ClientType())
+	}
+}
+
+func runtimeTestPrivateKeyPEMB64(t *testing.T) string {
+	t.Helper()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() error = %v", err)
+	}
+	der := x509.MarshalPKCS1PrivateKey(key)
+	block := &pem.Block{Type: "RSA PRIVATE KEY", Bytes: der}
+	return base64.StdEncoding.EncodeToString(pem.EncodeToMemory(block))
+}
+
+func TestNewRuntimeKalshiClientsPublicCatalogWithoutLiveCredentials(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Config{Brokers: config.BrokerConfigs{Kalshi: config.KalshiConfig{APIBaseURL: "https://example.com", RequestsPerWindow: 1, Window: time.Second}}}
+	dataClient, execClient, gov, err := newRuntimeKalshiClients(cfg, metrics.New(), slogDiscardLogger(), nil)
+	if err != nil {
+		t.Fatalf("newRuntimeKalshiClients() error = %v", err)
+	}
+	if dataClient == nil || gov == nil {
+		t.Fatalf("newRuntimeKalshiClients() = (%v, %v, %v), want public data client and governor", dataClient, execClient, gov)
+	}
+	if execClient != nil {
+		t.Fatalf("execClient = %v, want nil without full credentials", execClient)
+	}
+	if dataClient.ClientType() != "data" {
+		t.Fatalf("dataClient.ClientType() = %q, want data", dataClient.ClientType())
+	}
 }
 
 func TestBootstrapPolymarketStopGuardsFiltersAndPaginates(t *testing.T) {
@@ -731,6 +811,14 @@ func (r *stubPipelineRunRepo) Count(context.Context, repository.PipelineRunFilte
 	return 0, nil
 }
 
+func (r *stubPipelineRunRepo) CountBySignal(context.Context, repository.PipelineRunFilter) (map[domain.PipelineSignal]int, error) {
+	return map[domain.PipelineSignal]int{}, nil
+}
+
+func (r *stubPipelineRunRepo) CountByStatus(context.Context, repository.PipelineRunFilter) (map[domain.PipelineStatus]int, error) {
+	return map[domain.PipelineStatus]int{}, nil
+}
+
 func (r *stubPipelineRunRepo) UpdateStatus(context.Context, uuid.UUID, time.Time, repository.PipelineRunStatusUpdate) error {
 	r.updateCalled = true
 	return nil
@@ -908,7 +996,8 @@ func (s *stubMarketDataService) GetSocialSentiment(context.Context, domain.Marke
 
 type stubPositionRepo struct{}
 
-func (stubPositionRepo) Create(context.Context, *domain.Position) error { return nil }
+func (stubPositionRepo) Create(context.Context, *domain.Position) error            { return nil }
+func (stubPositionRepo) CreateAlpacaOwned(context.Context, *domain.Position) error { return nil }
 func (stubPositionRepo) Get(_ context.Context, _ uuid.UUID) (*domain.Position, error) {
 	return nil, repository.ErrNotFound
 }
@@ -919,6 +1008,9 @@ func (stubPositionRepo) List(context.Context, repository.PositionFilter, int, in
 func (stubPositionRepo) Update(context.Context, *domain.Position) error { return nil }
 func (stubPositionRepo) Delete(context.Context, uuid.UUID) error        { return nil }
 func (stubPositionRepo) GetOpen(context.Context, repository.PositionFilter, int, int) ([]domain.Position, error) {
+	return nil, nil
+}
+func (stubPositionRepo) ListOpenAlpacaOwned(context.Context, int, int) ([]domain.Position, error) {
 	return nil, nil
 }
 
@@ -934,6 +1026,32 @@ func (stubPositionRepo) CountOpen(context.Context, repository.PositionFilter) (i
 	return 0, nil
 }
 
+func (stubPositionRepo) CountOpenByMarket(context.Context, repository.PositionFilter) (map[domain.MarketType]int, error) {
+	return map[domain.MarketType]int{}, nil
+}
+
+func (stubPositionRepo) GrossExposureOpen(context.Context, repository.PositionFilter) (float64, error) {
+	return 0, nil
+}
+
+type stubPaperAccountRepo struct{}
+
+func (stubPaperAccountRepo) ListPaperTrades(context.Context, int, int) ([]domain.Trade, error) {
+	return nil, nil
+}
+
+func (stubPaperAccountRepo) GetOpenPaperPositions(context.Context, int, int) ([]domain.Position, error) {
+	return nil, nil
+}
+
+func (stubPaperAccountRepo) ListOpenPaperOrders(context.Context, int, int) ([]domain.Order, error) {
+	return nil, nil
+}
+
+func (stubPaperAccountRepo) GetMaxPaperExternalIDSequence(context.Context) (uint64, error) {
+	return 0, nil
+}
+
 type historyPositionRepo struct {
 	stubPositionRepo
 	positions []domain.Position
@@ -945,7 +1063,8 @@ func (r historyPositionRepo) GetByStrategy(context.Context, uuid.UUID, repositor
 
 type metricPositionRepo struct{ count int }
 
-func (m metricPositionRepo) Create(context.Context, *domain.Position) error { return nil }
+func (m metricPositionRepo) Create(context.Context, *domain.Position) error            { return nil }
+func (m metricPositionRepo) CreateAlpacaOwned(context.Context, *domain.Position) error { return nil }
 func (m metricPositionRepo) Get(context.Context, uuid.UUID) (*domain.Position, error) {
 	return nil, repository.ErrNotFound
 }
@@ -957,6 +1076,9 @@ func (m metricPositionRepo) Delete(context.Context, uuid.UUID) error        { re
 func (m metricPositionRepo) GetOpen(context.Context, repository.PositionFilter, int, int) ([]domain.Position, error) {
 	return nil, nil
 }
+func (m metricPositionRepo) ListOpenAlpacaOwned(context.Context, int, int) ([]domain.Position, error) {
+	return nil, nil
+}
 func (m metricPositionRepo) GetByStrategy(context.Context, uuid.UUID, repository.PositionFilter, int, int) ([]domain.Position, error) {
 	return nil, nil
 }
@@ -965,6 +1087,12 @@ func (m metricPositionRepo) Count(context.Context, repository.PositionFilter) (i
 }
 func (m metricPositionRepo) CountOpen(context.Context, repository.PositionFilter) (int, error) {
 	return m.count, nil
+}
+func (m metricPositionRepo) CountOpenByMarket(context.Context, repository.PositionFilter) (map[domain.MarketType]int, error) {
+	return map[domain.MarketType]int{}, nil
+}
+func (m metricPositionRepo) GrossExposureOpen(context.Context, repository.PositionFilter) (float64, error) {
+	return 0, nil
 }
 
 type bootstrapPolymarketPositionRepoStub struct {
@@ -979,6 +1107,15 @@ func (r *bootstrapPolymarketPositionRepoStub) GetOpen(context.Context, repositor
 		return nil, nil
 	}
 	return append([]domain.Position(nil), r.pages[idx]...), nil
+}
+func (r *bootstrapPolymarketPositionRepoStub) ListOpenAlpacaOwned(context.Context, int, int) ([]domain.Position, error) {
+	return nil, nil
+}
+func (r *bootstrapPolymarketPositionRepoStub) CountOpenByMarket(context.Context, repository.PositionFilter) (map[domain.MarketType]int, error) {
+	return map[domain.MarketType]int{}, nil
+}
+func (r *bootstrapPolymarketPositionRepoStub) GrossExposureOpen(context.Context, repository.PositionFilter) (float64, error) {
+	return 0, nil
 }
 
 func floatPtr(v float64) *float64 { return &v }

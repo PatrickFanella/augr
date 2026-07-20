@@ -73,6 +73,27 @@ func Validate(cfg Config) error {
 	if cfg.Risk.CircuitBreakerCooldown <= 0 {
 		errs = append(errs, "RISK_CIRCUIT_BREAKER_COOLDOWN must be greater than 0")
 	}
+	if cfg.Brokers.Kalshi.RequestsPerWindow <= 0 {
+		errs = append(errs, "KALSHI_REQUESTS_PER_WINDOW must be greater than 0")
+	}
+	if cfg.Brokers.Kalshi.Window <= 0 {
+		errs = append(errs, "KALSHI_REQUEST_WINDOW must be greater than 0")
+	}
+	if cfg.Brokers.Kalshi.MaxAttempts <= 0 {
+		errs = append(errs, "KALSHI_MAX_ATTEMPTS must be greater than 0")
+	}
+	if cfg.Brokers.Kalshi.BaseBackoff <= 0 {
+		errs = append(errs, "KALSHI_BASE_BACKOFF must be greater than 0")
+	}
+	if cfg.Brokers.Kalshi.MaxBackoff <= 0 {
+		errs = append(errs, "KALSHI_MAX_BACKOFF must be greater than 0")
+	}
+	if cfg.Brokers.Kalshi.JitterRatio < 0 || cfg.Brokers.Kalshi.JitterRatio > 1 {
+		errs = append(errs, "KALSHI_JITTER_RATIO must be between 0 and 1")
+	}
+	if cfg.Brokers.Kalshi.SettlementGateThreshold < 0 {
+		errs = append(errs, "KALSHI_SETTLEMENT_GATE_THRESHOLD must be >= 0")
+	}
 
 	validateNotificationConfig(&errs, cfg.Notifications)
 

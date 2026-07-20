@@ -39,6 +39,14 @@ func NewProvider(baseURL string, logger *slog.Logger) *Provider {
 	return &Provider{client: client, logger: logger}
 }
 
+// NewProviderWithClient creates a Kalshi provider around an existing client.
+func NewProviderWithClient(client *Client, logger *slog.Logger) *Provider {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return &Provider{client: client, logger: logger}
+}
+
 // LoadSnapshot fetches the latest market metadata and order book for a ticker.
 func (p *Provider) LoadSnapshot(ctx context.Context, ticker string) (executionkalshi.Snapshot, error) {
 	if p == nil || p.client == nil {

@@ -614,6 +614,7 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 			ar.Get("/status", s.handleGetAutomationStatus)
 			ar.Get("/health", s.handleGetAutomationHealth)
 			ar.Get("/runs", s.handleListAutomationRuns)
+			ar.Get("/alpaca/reconciliation", s.handleGetAlpacaReconciliationReport)
 			ar.Get("/alpaca/verify", s.handleVerifyAlpacaReconcile)
 			ar.Post("/alpaca/reconcile", s.handleRunAlpacaReconcile)
 			ar.Post("/jobs/{name}/run", s.handleRunAutomationJob)

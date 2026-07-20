@@ -146,6 +146,44 @@ func (r *PipelineRunRepo) Count(ctx context.Context, filter repository.PipelineR
 	return total, nil
 }
 
+func (r *PipelineRunRepo) CountBySignal(ctx context.Context, filter repository.PipelineRunFilter) (map[domain.PipelineSignal]int, error) {
+	query, args := buildPipelineRunGroupedCountQuery("signal", filter)
+	rows, err := r.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: count pipeline runs by signal: %w", err)
+	}
+	defer rows.Close()
+	out := map[domain.PipelineSignal]int{}
+	for rows.Next() {
+		var key string
+		var total int
+		if err := rows.Scan(&key, &total); err != nil {
+			return nil, fmt.Errorf("postgres: count pipeline runs by signal scan: %w", err)
+		}
+		out[domain.PipelineSignal(key)] = total
+	}
+	return out, rows.Err()
+}
+
+func (r *PipelineRunRepo) CountByStatus(ctx context.Context, filter repository.PipelineRunFilter) (map[domain.PipelineStatus]int, error) {
+	query, args := buildPipelineRunGroupedCountQuery("status", filter)
+	rows, err := r.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: count pipeline runs by status: %w", err)
+	}
+	defer rows.Close()
+	out := map[domain.PipelineStatus]int{}
+	for rows.Next() {
+		var key string
+		var total int
+		if err := rows.Scan(&key, &total); err != nil {
+			return nil, fmt.Errorf("postgres: count pipeline runs by status scan: %w", err)
+		}
+		out[domain.PipelineStatus(key)] = total
+	}
+	return out, rows.Err()
+}
+
 // buildPipelineRunCountQuery constructs a SELECT COUNT(*) query for pipeline runs
 // with the same filter conditions used by buildPipelineRunListQuery.
 func buildPipelineRunCountQuery(filter repository.PipelineRunFilter) (string, []any) {
@@ -185,6 +223,11 @@ func buildPipelineRunCountQuery(filter repository.PipelineRunFilter) (string, []
 		base += " WHERE " + strings.Join(conditions, " AND ")
 	}
 	return base, args
+}
+
+func buildPipelineRunGroupedCountQuery(column string, filter repository.PipelineRunFilter) (string, []any) {
+	base, args := buildPipelineRunCountQuery(filter)
+	return strings.Replace(base, "SELECT COUNT(*) FROM pipeline_runs", fmt.Sprintf("SELECT %s, COUNT(*) FROM pipeline_runs", column), 1) + " GROUP BY " + column + " ORDER BY " + column, args
 }
 
 // UpdateStatus updates the status fields for a pipeline run. It returns

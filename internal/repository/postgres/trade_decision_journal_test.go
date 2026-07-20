@@ -1,13 +1,17 @@
 package postgres
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
@@ -30,28 +34,31 @@ func TestBuildTradeDecisionListQuery_NoFilters(t *testing.T) {
 
 func TestBuildTradeDecisionListQuery_AllFilters(t *testing.T) {
 	strategyID := uuid.New()
+	instrumentKey := "KX-ABC"
 	after := time.Date(2026, 6, 8, 12, 0, 0, 0, time.UTC)
 	before := time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC)
 
 	query, args := buildTradeDecisionListQuery(repository.TradeDecisionFilter{
 		StrategyID:    &strategyID,
+		InstrumentKey: instrumentKey,
 		MarketType:    domain.MarketTypeStock,
 		Status:        domain.TradeDecisionStatusLive,
 		CreatedAfter:  &after,
 		CreatedBefore: &before,
 	}, 25, 50)
 
-	if len(args) != 7 {
+	if len(args) != 8 {
 		t.Fatalf("expected 7 args, got %d: %#v", len(args), args)
 	}
 	assertContains(t, query, "strategy_id = $1")
-	assertContains(t, query, "market_type = $2")
-	assertContains(t, query, "status = $3")
-	assertContains(t, query, "created_at >= $4")
-	assertContains(t, query, "created_at <= $5")
-	assertContains(t, query, "LIMIT $6 OFFSET $7")
-	if args[0] != strategyID || args[1] != domain.MarketTypeStock || args[2] != domain.TradeDecisionStatusLive {
-		t.Fatalf("unexpected filter args: %#v", args[:3])
+	assertContains(t, query, "instrument_key = $2")
+	assertContains(t, query, "market_type = $3")
+	assertContains(t, query, "status = $4")
+	assertContains(t, query, "created_at >= $5")
+	assertContains(t, query, "created_at <= $6")
+	assertContains(t, query, "LIMIT $7 OFFSET $8")
+	if args[0] != strategyID || args[1] != instrumentKey || args[2] != domain.MarketTypeStock || args[3] != domain.TradeDecisionStatusLive {
+		t.Fatalf("unexpected filter args: %#v", args[:4])
 	}
 }
 
@@ -201,6 +208,131 @@ func TestScanTradeDecision_RoundTrip(t *testing.T) {
 	if !got.CreatedAt.Equal(createdAt) || !got.UpdatedAt.Equal(updatedAt) {
 		t.Fatalf("unexpected timestamps: got=%v/%v want=%v/%v", got.CreatedAt, got.UpdatedAt, createdAt, updatedAt)
 	}
+}
+
+func TestTradeDecisionJournalRepo_CountByNoActionReason_ParsesFilterAndCoalescesZero(t *testing.T) {
+	t.Helper()
+	ctx := context.Background()
+	pool, cleanup := newTradeDecisionIntegrationPool(t, ctx)
+	defer cleanup()
+
+	repo := NewTradeDecisionJournalRepo(pool)
+	strategyID := uuid.New()
+	if _, err := pool.Exec(ctx, `INSERT INTO strategies (id, market_type) VALUES ($1, $2)`, strategyID, domain.MarketTypeStock); err != nil {
+		t.Fatalf("insert strategy: %v", err)
+	}
+	decisionTime := time.Date(2026, 6, 10, 15, 0, 0, 0, time.UTC)
+	rows := []struct {
+		status   domain.TradeDecisionStatus
+		reasons  []string
+		evidence json.RawMessage
+	}{
+		{status: domain.TradeDecisionStatusClosed, reasons: []string{"hold_signal"}},
+		{status: domain.TradeDecisionStatusRejected, reasons: []string{"risk_rejected"}, evidence: json.RawMessage(`{"note":"risk flagged"}`)},
+		{status: domain.TradeDecisionStatusRejected, reasons: []string{"sizing_zero"}, evidence: json.RawMessage(`{"note":"size 0"}`)},
+		{status: domain.TradeDecisionStatusRejected},
+	}
+	for _, row := range rows {
+		if _, err := pool.Exec(ctx, `INSERT INTO trade_decisions (id, strategy_id, instrument_key, market_type, side, status, risk_reasons, evidence, created_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`, uuid.New(), &strategyID, "AAPL", domain.MarketTypeStock, domain.OrderSideBuy, row.status, row.reasons, row.evidence, decisionTime); err != nil {
+			t.Fatalf("insert trade decision: %v", err)
+		}
+	}
+	filtered, err := repo.CountByNoActionReason(ctx, repository.TradeDecisionFilter{StrategyID: &strategyID, MarketType: domain.MarketTypeStock})
+	if err != nil {
+		t.Fatalf("CountByNoActionReason() error = %v", err)
+	}
+	if filtered["hold_signal"] != 1 || filtered["risk_rejected"] != 1 || filtered["sizing_zero"] != 1 || filtered["unknown"] != 1 {
+		t.Fatalf("unexpected reason counts: %#v", filtered)
+	}
+	empty, err := repo.CountByNoActionReason(ctx, repository.TradeDecisionFilter{InstrumentKey: "NOPE"})
+	if err != nil {
+		t.Fatalf("CountByNoActionReason() empty error = %v", err)
+	}
+	for _, key := range []string{"hold_signal", "risk_rejected", "sizing_zero", "unknown"} {
+		if empty[key] != 0 {
+			t.Fatalf("expected zero for %s, got %d", key, empty[key])
+		}
+	}
+}
+
+func TestTradeDecisionJournalRepo_CountByNoActionReason_EmptyTableEmptyFilterReturnsZeros(t *testing.T) {
+	t.Helper()
+	ctx := context.Background()
+	pool, cleanup := newTradeDecisionIntegrationPool(t, ctx)
+	defer cleanup()
+
+	repo := NewTradeDecisionJournalRepo(pool)
+	counts, err := repo.CountByNoActionReason(ctx, repository.TradeDecisionFilter{})
+	if err != nil {
+		t.Fatalf("CountByNoActionReason() error = %v", err)
+	}
+	for _, key := range []string{"hold_signal", "risk_rejected", "sizing_zero", "sell_without_position", "kill_switch", "live_gate_denied", "missing_data", "unknown"} {
+		if counts[key] != 0 {
+			t.Fatalf("expected zero for %s, got %d", key, counts[key])
+		}
+	}
+}
+
+func newTradeDecisionIntegrationPool(t *testing.T, ctx context.Context) (*pgxpool.Pool, func()) {
+	t.Helper()
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+	connString := os.Getenv("DB_URL")
+	if connString == "" {
+		connString = os.Getenv("DATABASE_URL")
+	}
+	if connString == "" {
+		t.Skip("skipping integration test: DB_URL or DATABASE_URL is not set")
+	}
+	adminPool, err := pgxpool.New(ctx, connString)
+	if err != nil {
+		t.Fatalf("failed to create admin pool: %v", err)
+	}
+	if _, err := adminPool.Exec(ctx, `CREATE EXTENSION IF NOT EXISTS pgcrypto`); err != nil {
+		adminPool.Close()
+		t.Fatalf("failed to ensure pgcrypto extension: %v", err)
+	}
+	schemaName := "integration_trade_decision_" + strings.ReplaceAll(uuid.New().String(), "-", "")
+	if _, err := adminPool.Exec(ctx, `CREATE SCHEMA `+"\""+schemaName+"\""); err != nil {
+		adminPool.Close()
+		t.Fatalf("failed to create test schema: %v", err)
+	}
+	config, err := pgxpool.ParseConfig(connString)
+	if err != nil {
+		_, _ = adminPool.Exec(ctx, `DROP SCHEMA `+"\""+schemaName+"\""+` CASCADE`)
+		adminPool.Close()
+		t.Fatalf("failed to parse pool config: %v", err)
+	}
+	config.ConnConfig.RuntimeParams["search_path"] = schemaName + ",public"
+	pool, err := pgxpool.NewWithConfig(ctx, config)
+	if err != nil {
+		_, _ = adminPool.Exec(ctx, `DROP SCHEMA `+"\""+schemaName+"\""+` CASCADE`)
+		adminPool.Close()
+		t.Fatalf("failed to create test pool: %v", err)
+	}
+	ddl := []string{
+		`CREATE TYPE trade_decision_status AS ENUM ('candidate','paper','live','closed','rejected','hold')`,
+		`CREATE TYPE market_type AS ENUM ('stock','crypto','kalshi','polymarket')`,
+		`CREATE TYPE order_side AS ENUM ('buy','sell')`,
+		`CREATE TABLE strategies (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), market_type market_type NOT NULL)`,
+		`CREATE TABLE trade_decisions (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), strategy_id UUID REFERENCES strategies(id), instrument_key TEXT NOT NULL, market_type market_type NOT NULL, side order_side NOT NULL, status trade_decision_status NOT NULL, risk_reasons TEXT[], evidence JSONB, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
+	}
+	for _, stmt := range ddl {
+		if _, err := pool.Exec(ctx, stmt); err != nil {
+			pool.Close()
+			_, _ = adminPool.Exec(ctx, `DROP SCHEMA `+"\""+schemaName+"\""+` CASCADE`)
+			adminPool.Close()
+			t.Fatalf("failed to apply test schema DDL: %v", err)
+		}
+	}
+	cleanup := func() {
+		pool.Close()
+		_, _ = adminPool.Exec(ctx, `DROP SCHEMA `+"\""+schemaName+"\""+` CASCADE`)
+		adminPool.Close()
+	}
+	return pool, cleanup
 }
 
 type fakeTradeDecisionScanner struct {

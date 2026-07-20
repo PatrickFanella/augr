@@ -2,6 +2,8 @@ package postgres
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"strings"
@@ -61,6 +63,58 @@ func (r *PositionRepo) Create(ctx context.Context, position *domain.Position) er
 		return fmt.Errorf("postgres: create position: %w", err)
 	}
 
+	return nil
+}
+
+// CreateAlpacaOwned atomically creates or reuses an open Alpaca-owned position.
+func (r *PositionRepo) CreateAlpacaOwned(ctx context.Context, position *domain.Position) error {
+	if position == nil {
+		return fmt.Errorf("postgres: create alpaca-owned position: position is nil")
+	}
+	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return fmt.Errorf("postgres: create alpaca-owned position begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, alpacaOwnedLockKey(position.Ticker, position.Side)); err != nil {
+		return fmt.Errorf("postgres: create alpaca-owned position advisory lock: %w", err)
+	}
+
+	row := tx.QueryRow(ctx, positionSelectSQL+` WHERE p.closed_at IS NULL AND p.ticker = $1 AND p.side = $2 AND (
+		EXISTS (SELECT 1 FROM position_provenance pp WHERE pp.position_id = p.id AND pp.broker = 'alpaca') OR
+		EXISTS (SELECT 1 FROM trades t JOIN orders o ON o.id = t.order_id WHERE t.position_id = p.id AND o.broker = 'alpaca')
+	) ORDER BY p.opened_at ASC, p.id ASC LIMIT 1`, position.Ticker, position.Side)
+	if existing, err := scanPosition(row); err == nil {
+		*position = *existing
+		return tx.Commit(ctx)
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("postgres: create alpaca-owned position lookup existing: %w", err)
+	}
+
+	insertRow := tx.QueryRow(ctx, `INSERT INTO positions (
+		strategy_id, ticker, side, quantity, avg_entry,
+		current_price, unrealized_pnl, realized_pnl,
+		stop_loss, take_profit, closed_at, asset_class, underlying_ticker,
+		option_type, strike, expiry, contract_multiplier, leg_group_id,
+		delta, gamma, theta, vega
+	) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
+	RETURNING id, opened_at`,
+		position.StrategyID, position.Ticker, position.Side, position.Quantity, position.AvgEntry,
+		position.CurrentPrice, position.UnrealizedPnL, position.RealizedPnL, position.StopLoss, position.TakeProfit,
+		position.ClosedAt, position.AssetClass, nullString(position.UnderlyingTicker), position.OptionType,
+		position.Strike, position.Expiry, position.ContractMultiplier, position.LegGroupID,
+		position.Delta, position.Gamma, position.Theta, position.Vega,
+	)
+	if err := insertRow.Scan(&position.ID, &position.OpenedAt); err != nil {
+		return fmt.Errorf("postgres: create alpaca-owned position insert: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO position_provenance (position_id, broker) VALUES ($1, 'alpaca')`, position.ID); err != nil {
+		return fmt.Errorf("postgres: create alpaca-owned position provenance: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("postgres: create alpaca-owned position commit: %w", err)
+	}
 	return nil
 }
 
@@ -153,6 +207,36 @@ func (r *PositionRepo) Delete(ctx context.Context, id uuid.UUID) error {
 func (r *PositionRepo) GetOpen(ctx context.Context, filter repository.PositionFilter, limit, offset int) ([]domain.Position, error) {
 	query, args := buildPositionOpenQuery(filter, limit, offset)
 	return r.list(ctx, query, args, "get open positions")
+}
+
+// ListOpenAlpacaOwned returns open positions that can be proven Alpaca-owned via
+// linked trades whose orders were recorded with broker='alpaca'.
+func (r *PositionRepo) ListOpenAlpacaOwned(ctx context.Context, limit, offset int) ([]domain.Position, error) {
+	rows, err := r.pool.Query(ctx, positionSelectSQL+` WHERE p.closed_at IS NULL AND (
+		EXISTS (SELECT 1 FROM position_provenance pp WHERE pp.position_id = p.id AND pp.broker = 'alpaca') OR
+		EXISTS (SELECT 1 FROM trades t JOIN orders o ON o.id = t.order_id WHERE t.position_id = p.id AND o.broker = 'alpaca')
+	) ORDER BY p.opened_at ASC, p.id ASC LIMIT $1 OFFSET $2`, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: list open alpaca-owned positions: %w", err)
+	}
+	defer rows.Close()
+	var positions []domain.Position
+	for rows.Next() {
+		position, err := scanPosition(rows)
+		if err != nil {
+			return nil, fmt.Errorf("postgres: list open alpaca-owned positions scan: %w", err)
+		}
+		positions = append(positions, *position)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("postgres: list open alpaca-owned positions rows: %w", err)
+	}
+	return positions, nil
+}
+
+func alpacaOwnedLockKey(ticker string, side domain.PositionSide) int64 {
+	h := sha256.Sum256([]byte("alpaca-owned|" + strings.ToUpper(strings.TrimSpace(ticker)) + "|" + string(side)))
+	return int64(binary.BigEndian.Uint64(h[:8]) &^ (1 << 63))
 }
 
 // GetByStrategy returns positions for the given strategy with optional
@@ -301,6 +385,83 @@ func (r *PositionRepo) CountOpen(ctx context.Context, filter repository.Position
 	var total int
 	if err := r.pool.QueryRow(ctx, query, args...).Scan(&total); err != nil {
 		return 0, fmt.Errorf("postgres: count open positions: %w", err)
+	}
+	return total, nil
+}
+
+func (r *PositionRepo) CountOpenByMarket(ctx context.Context, filter repository.PositionFilter) (map[domain.MarketType]int, error) {
+	var (
+		conditions []string
+		args       []any
+		argIdx     int
+	)
+	nextArg := func(v any) string {
+		argIdx++
+		args = append(args, v)
+		return fmt.Sprintf("$%d", argIdx)
+	}
+	conditions = append(conditions, "p.closed_at IS NULL")
+	if filter.Ticker != "" {
+		conditions = append(conditions, "p.ticker = "+nextArg(filter.Ticker))
+	}
+	if filter.Side != "" {
+		conditions = append(conditions, "p.side = "+nextArg(filter.Side))
+	}
+	if filter.OpenedAfter != nil {
+		conditions = append(conditions, "p.opened_at >= "+nextArg(*filter.OpenedAfter))
+	}
+	if filter.OpenedBefore != nil {
+		conditions = append(conditions, "p.opened_at <= "+nextArg(*filter.OpenedBefore))
+	}
+	query := `SELECT COALESCE(s.market_type, '') AS market_type, COUNT(*)
+		FROM positions p LEFT JOIN strategies s ON s.id = p.strategy_id
+		WHERE ` + strings.Join(conditions, " AND ") + ` GROUP BY COALESCE(s.market_type, '') ORDER BY COALESCE(s.market_type, '')`
+	rows, err := r.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: count open positions by market: %w", err)
+	}
+	defer rows.Close()
+	out := map[domain.MarketType]int{}
+	for rows.Next() {
+		var key string
+		var total int
+		if err := rows.Scan(&key, &total); err != nil {
+			return nil, fmt.Errorf("postgres: count open positions by market scan: %w", err)
+		}
+		out[domain.MarketType(key)] = total
+	}
+	return out, rows.Err()
+}
+
+func (r *PositionRepo) GrossExposureOpen(ctx context.Context, filter repository.PositionFilter) (float64, error) {
+	var total float64
+	var (
+		conditions []string
+		args       []any
+		argIdx     int
+	)
+	nextArg := func(v any) string {
+		argIdx++
+		args = append(args, v)
+		return fmt.Sprintf("$%d", argIdx)
+	}
+	conditions = append(conditions, "p.closed_at IS NULL")
+	if filter.Ticker != "" {
+		conditions = append(conditions, "p.ticker = "+nextArg(filter.Ticker))
+	}
+	if filter.Side != "" {
+		conditions = append(conditions, "p.side = "+nextArg(filter.Side))
+	}
+	if filter.OpenedAfter != nil {
+		conditions = append(conditions, "p.opened_at >= "+nextArg(*filter.OpenedAfter))
+	}
+	if filter.OpenedBefore != nil {
+		conditions = append(conditions, "p.opened_at <= "+nextArg(*filter.OpenedBefore))
+	}
+	query := `SELECT COALESCE(SUM(COALESCE(p.current_price, p.avg_entry) * p.quantity),0)
+		FROM positions p WHERE ` + strings.Join(conditions, " AND ")
+	if err := r.pool.QueryRow(ctx, query, args...).Scan(&total); err != nil {
+		return 0, fmt.Errorf("postgres: gross exposure open: %w", err)
 	}
 	return total, nil
 }

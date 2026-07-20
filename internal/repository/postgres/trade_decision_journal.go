@@ -133,6 +133,63 @@ func (r *TradeDecisionJournalRepo) Count(ctx context.Context, filter repository.
 	return total, nil
 }
 
+func (r *TradeDecisionJournalRepo) CountByStatus(ctx context.Context, filter repository.TradeDecisionFilter) (map[domain.TradeDecisionStatus]int, error) {
+	query, args := buildTradeDecisionFilteredQuery("SELECT status, COUNT(*) FROM trade_decisions", filter, 0, 0, false)
+	query += " GROUP BY status ORDER BY status"
+	rows, err := r.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: count trade decisions by status: %w", err)
+	}
+	defer rows.Close()
+	out := map[domain.TradeDecisionStatus]int{}
+	for rows.Next() {
+		var key string
+		var total int
+		if err := rows.Scan(&key, &total); err != nil {
+			return nil, fmt.Errorf("postgres: count trade decisions by status scan: %w", err)
+		}
+		out[domain.TradeDecisionStatus(key)] = total
+	}
+	return out, rows.Err()
+}
+
+func (r *TradeDecisionJournalRepo) CountByNoActionReason(ctx context.Context, filter repository.TradeDecisionFilter) (map[string]int, error) {
+	filtered, args := buildTradeDecisionFilteredQuery(`SELECT
+			id, risk_reasons, status, evidence
+			FROM trade_decisions`, filter, 0, 0, false)
+	query := `SELECT
+		COALESCE(SUM(CASE WHEN risk_reasons @> ARRAY['hold_signal']::text[] OR status = 'hold' THEN 1 ELSE 0 END), 0) AS hold_signal,
+		COALESCE(SUM(CASE WHEN risk_reasons @> ARRAY['risk_rejected']::text[] OR evidence::text ILIKE '%risk%' THEN 1 ELSE 0 END), 0) AS risk_rejected,
+		COALESCE(SUM(CASE WHEN risk_reasons @> ARRAY['sizing_zero']::text[] OR evidence::text ILIKE '%size%0%' THEN 1 ELSE 0 END), 0) AS sizing_zero,
+		COALESCE(SUM(CASE WHEN risk_reasons @> ARRAY['sell_without_position']::text[] THEN 1 ELSE 0 END), 0) AS sell_without_position,
+		COALESCE(SUM(CASE WHEN risk_reasons @> ARRAY['kill_switch']::text[] THEN 1 ELSE 0 END), 0) AS kill_switch,
+		COALESCE(SUM(CASE WHEN risk_reasons @> ARRAY['live_gate_denied']::text[] THEN 1 ELSE 0 END), 0) AS live_gate_denied,
+		COALESCE(SUM(CASE WHEN risk_reasons @> ARRAY['missing_data']::text[] THEN 1 ELSE 0 END), 0) AS missing_data,
+		COALESCE(SUM(CASE WHEN COALESCE(array_length(risk_reasons,1),0)=0 AND evidence IS NULL THEN 1 ELSE 0 END), 0) AS unknown
+		FROM (` + filtered + `) td`
+	rows, err := r.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: count trade decisions reasons: %w", err)
+	}
+	defer rows.Close()
+	out := map[string]int{}
+	if rows.Next() {
+		var hold, risk, size, sell, kill, live, missing, unknown int
+		if err := rows.Scan(&hold, &risk, &size, &sell, &kill, &live, &missing, &unknown); err != nil {
+			return nil, fmt.Errorf("postgres: count trade decisions reasons scan: %w", err)
+		}
+		out["hold_signal"] = hold
+		out["risk_rejected"] = risk
+		out["sizing_zero"] = size
+		out["sell_without_position"] = sell
+		out["kill_switch"] = kill
+		out["live_gate_denied"] = live
+		out["missing_data"] = missing
+		out["unknown"] = unknown
+	}
+	return out, rows.Err()
+}
+
 // AttachPaperOrder links a paper order to the trade decision.
 func (r *TradeDecisionJournalRepo) AttachPaperOrder(ctx context.Context, decisionID, orderID uuid.UUID) error {
 	return r.attachOrder(ctx, decisionID, orderID, "paper_order_id", domain.TradeDecisionStatusPaper)
@@ -315,6 +372,9 @@ func buildTradeDecisionFilteredQuery(base string, filter repository.TradeDecisio
 
 	if filter.StrategyID != nil {
 		conditions = append(conditions, "strategy_id = "+nextArg(*filter.StrategyID))
+	}
+	if filter.InstrumentKey != "" {
+		conditions = append(conditions, "instrument_key = "+nextArg(filter.InstrumentKey))
 	}
 	if filter.MarketType != "" {
 		conditions = append(conditions, "market_type = "+nextArg(filter.MarketType))

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/automation"
@@ -155,9 +156,9 @@ func TestAutomationStatusIncludesAlpacaReconcileLastSummary(t *testing.T) {
 	o := newTestOrchestrator()
 	registerJob(o, "alpaca_reconcile")
 	o.SetLastSummary("alpaca_reconcile", map[string]int{
-		"orders_created":   2,
+		"orders_created":    2,
 		"positions_created": 1,
-		"trades_created":   3,
+		"trades_created":    3,
 	})
 
 	s := &Server{automation: o}
@@ -187,5 +188,21 @@ func TestAutomationStatusIncludesAlpacaReconcileLastSummary(t *testing.T) {
 	}
 	if statuses[0].LastSummary["trades_created"] != 3 {
 		t.Fatalf("trades_created = %d, want 3", statuses[0].LastSummary["trades_created"])
+	}
+}
+
+func TestAutomationEnableRejectsKalshiGateErrorsAsBadRequest(t *testing.T) {
+	o := automation.NewJobOrchestrator(automation.OrchestratorDeps{})
+	o.Register("kalshi_settlement", "test", scheduler.ScheduleSpec{Cron: "0 * * * *"}, func(context.Context) error { return nil })
+	o.SetEnabled("kalshi_settlement", false)
+	if err := o.SetEnabled("kalshi_settlement", true); err == nil || !strings.Contains(err.Error(), "gate unavailable") {
+		t.Fatalf("expected gate unavailable error, got %v", err)
+	}
+	s := &Server{automation: o}
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/automation/jobs/kalshi_settlement/enable", strings.NewReader(`{"enabled":true}`))
+	rr := httptest.NewRecorder()
+	s.handleSetAutomationJobEnabled(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status=%d, want 400", rr.Code)
 	}
 }

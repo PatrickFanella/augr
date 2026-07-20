@@ -3,7 +3,9 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -33,4 +35,29 @@ func NewDB(ctx context.Context, connString string) (*DB, error) {
 // Close releases all connections held by the pool.
 func (db *DB) Close() {
 	db.Pool.Close()
+}
+
+func (db *DB) GetProviderCooldown(ctx context.Context, provider string) (time.Time, error) {
+	var until time.Time
+	err := db.Pool.QueryRow(ctx, `SELECT retry_after_until FROM provider_rate_limit_cooldowns WHERE provider = $1`, provider).Scan(&until)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return time.Time{}, nil
+		}
+		return time.Time{}, err
+	}
+	return until, nil
+}
+
+func (db *DB) SetProviderCooldown(ctx context.Context, provider string, until time.Time) error {
+	_, err := db.Pool.Exec(ctx, `INSERT INTO provider_rate_limit_cooldowns (provider, retry_after_until, updated_at) VALUES ($1, $2, NOW()) ON CONFLICT (provider) DO UPDATE SET retry_after_until = GREATEST(provider_rate_limit_cooldowns.retry_after_until, EXCLUDED.retry_after_until), updated_at = NOW()`, provider, until)
+	return err
+}
+
+func (db *DB) CompareAndClearProviderCooldown(ctx context.Context, provider string, observed time.Time) (bool, error) {
+	ct, err := db.Pool.Exec(ctx, `DELETE FROM provider_rate_limit_cooldowns WHERE provider = $1 AND retry_after_until = $2 AND retry_after_until <= NOW()`, provider, observed)
+	if err != nil {
+		return false, err
+	}
+	return ct.RowsAffected() > 0, nil
 }

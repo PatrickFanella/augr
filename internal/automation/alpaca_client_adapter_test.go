@@ -99,6 +99,36 @@ func TestAlpacaClientAdapterListOrders_MapsBrokerOrders(t *testing.T) {
 	}
 }
 
+func TestAlpacaClientAdapterGetAccountSnapshot_UsesBalanceAPI(t *testing.T) {
+	t.Parallel()
+
+	requestSeen := make(chan struct{}, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v2/account" {
+			t.Fatalf("request path = %s, want /v2/account", r.URL.Path)
+		}
+		requestSeen <- struct{}{}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"currency":"USD","cash":"123.45","buying_power":"999.99","equity":"456.78"}`))
+	}))
+	defer server.Close()
+	client := alpacaexec.NewClient("test-key", "test-secret", true, slog.New(slog.NewTextHandler(testDiscardWriter{}, nil)))
+	client.SetBaseURL(server.URL)
+	adapter := NewAlpacaClientAdapter(client)
+	got, err := adapter.GetAccountSnapshot(context.Background())
+	if err != nil {
+		t.Fatalf("GetAccountSnapshot() error = %v", err)
+	}
+	if got.Cash != 123.45 || got.Equity != 456.78 {
+		t.Fatalf("GetAccountSnapshot() = %+v, want cash/equity from account balance", got)
+	}
+	select {
+	case <-requestSeen:
+	default:
+		t.Fatal("account request was not made")
+	}
+}
+
 func TestAlpacaClientAdapterListFills_PaginatesActivities(t *testing.T) {
 	t.Parallel()
 

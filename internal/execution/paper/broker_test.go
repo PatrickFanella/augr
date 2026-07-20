@@ -229,22 +229,24 @@ func TestPaperBrokerSubmitOrder_NormalizesTickerForPositions(t *testing.T) {
 	broker := NewPaperBroker(1000, 0, 0)
 
 	_, err := broker.SubmitOrder(context.Background(), &domain.Order{
-		Ticker:    "aapl",
-		Side:      domain.OrderSideBuy,
-		OrderType: domain.OrderTypeMarket,
-		Quantity:  1,
-		StopPrice: floatPtr(100),
+		Ticker:     "aapl",
+		MarketType: domain.MarketTypeStock,
+		Side:       domain.OrderSideBuy,
+		OrderType:  domain.OrderTypeMarket,
+		Quantity:   1,
+		StopPrice:  floatPtr(100),
 	})
 	if err != nil {
 		t.Fatalf("SubmitOrder(first) error = %v", err)
 	}
 
 	_, err = broker.SubmitOrder(context.Background(), &domain.Order{
-		Ticker:    " AAPL ",
-		Side:      domain.OrderSideBuy,
-		OrderType: domain.OrderTypeMarket,
-		Quantity:  2,
-		StopPrice: floatPtr(100),
+		Ticker:     " AAPL ",
+		MarketType: domain.MarketTypeStock,
+		Side:       domain.OrderSideBuy,
+		OrderType:  domain.OrderTypeMarket,
+		Quantity:   2,
+		StopPrice:  floatPtr(100),
 	})
 	if err != nil {
 		t.Fatalf("SubmitOrder(second) error = %v", err)
@@ -261,6 +263,113 @@ func TestPaperBrokerSubmitOrder_NormalizesTickerForPositions(t *testing.T) {
 		t.Fatalf("positions[0].Ticker = %q, want %q", positions[0].Ticker, "AAPL")
 	}
 	assertFloatClose(t, positions[0].Quantity, 3, 1e-9)
+}
+
+func TestPaperBrokerPredictionPositionsStaySeparatedAndRestoreUpdatesCanonicalSide(t *testing.T) {
+	t.Parallel()
+
+	broker := NewPaperBroker(1000, 0, 0)
+	if err := broker.RestorePositions([]domain.Position{{Ticker: "MARKET:YES", MarketType: domain.MarketTypePolymarket, Side: domain.PositionSideLong, Quantity: 2, AvgEntry: 0.4, CurrentPrice: floatPtr(0.45)}}); err != nil {
+		t.Fatalf("RestorePositions() error = %v", err)
+	}
+	if _, err := broker.SubmitOrder(context.Background(), &domain.Order{Ticker: "MARKET", MarketType: domain.MarketTypePolymarket, Side: domain.OrderSideBuy, PredictionSide: "YES", OrderType: domain.OrderTypeMarket, Quantity: 1, StopPrice: floatPtr(0.5)}); err != nil {
+		t.Fatalf("SubmitOrder(YES) error = %v", err)
+	}
+	if _, err := broker.SubmitOrder(context.Background(), &domain.Order{Ticker: "MARKET", MarketType: domain.MarketTypePolymarket, Side: domain.OrderSideBuy, PredictionSide: "NO", OrderType: domain.OrderTypeMarket, Quantity: 1, StopPrice: floatPtr(0.5)}); err != nil {
+		t.Fatalf("SubmitOrder(NO) error = %v", err)
+	}
+	positions, err := broker.GetPositions(context.Background())
+	if err != nil {
+		t.Fatalf("GetPositions() error = %v", err)
+	}
+	if len(positions) != 2 {
+		t.Fatalf("GetPositions() len = %d, want 2", len(positions))
+	}
+	if positions[0].Ticker != "MARKET:NO" && positions[1].Ticker != "MARKET:NO" {
+		t.Fatalf("missing NO position: %+v", positions)
+	}
+	if positions[0].Ticker != "MARKET:YES" && positions[1].Ticker != "MARKET:YES" {
+		t.Fatalf("missing YES position: %+v", positions)
+	}
+	for _, pos := range positions {
+		if pos.Ticker == "MARKET:YES" {
+			assertFloatClose(t, pos.Quantity, 3, 1e-9)
+		}
+		if pos.Ticker == "MARKET:NO" {
+			assertFloatClose(t, pos.Quantity, 1, 1e-9)
+		}
+	}
+}
+
+func TestPaperBrokerPredictionSubmitKeepsBaseOrderTickerAndCanonicalPositionTicker(t *testing.T) {
+	t.Parallel()
+
+	broker := NewPaperBroker(1000, 0, 0)
+	order := &domain.Order{Ticker: " market ", MarketType: domain.MarketTypePolymarket, Side: domain.OrderSideBuy, PredictionSide: "yes", OrderType: domain.OrderTypeMarket, Quantity: 1, StopPrice: floatPtr(0.5)}
+	if _, err := broker.SubmitOrder(context.Background(), order); err != nil {
+		t.Fatalf("SubmitOrder() error = %v", err)
+	}
+	if order.Ticker != "MARKET" {
+		t.Fatalf("order ticker = %q, want base ticker", order.Ticker)
+	}
+	positions, err := broker.GetPositions(context.Background())
+	if err != nil {
+		t.Fatalf("GetPositions() error = %v", err)
+	}
+	if len(positions) != 1 || positions[0].Ticker != "MARKET:YES" {
+		t.Fatalf("positions = %+v, want canonical side-qualified position", positions)
+	}
+
+	alreadyQualified := &domain.Order{Ticker: "MARKET:YES", MarketType: domain.MarketTypePolymarket, Side: domain.OrderSideBuy, PredictionSide: "YES", OrderType: domain.OrderTypeMarket, Quantity: 1, StopPrice: floatPtr(0.5)}
+	if _, err := broker.SubmitOrder(context.Background(), alreadyQualified); err != nil {
+		t.Fatalf("SubmitOrder(alreadyQualified) error = %v", err)
+	}
+	if alreadyQualified.Ticker != "MARKET" {
+		t.Fatalf("already-qualified order ticker = %q, want base ticker", alreadyQualified.Ticker)
+	}
+	positions, err = broker.GetPositions(context.Background())
+	if err != nil {
+		t.Fatalf("GetPositions() error = %v", err)
+	}
+	if len(positions) != 1 || positions[0].Ticker != "MARKET:YES" {
+		t.Fatalf("positions after already-qualified order = %+v, want exactly MARKET:YES", positions)
+	}
+}
+
+func TestPaperBrokerPredictionSubmitRejectsConflictingTickerSuffix(t *testing.T) {
+	t.Parallel()
+
+	broker := NewPaperBroker(1000, 0, 0)
+	_, err := broker.SubmitOrder(context.Background(), &domain.Order{Ticker: "MARKET:NO", MarketType: domain.MarketTypePolymarket, Side: domain.OrderSideBuy, PredictionSide: "YES", OrderType: domain.OrderTypeMarket, Quantity: 1, StopPrice: floatPtr(0.5)})
+	if err == nil {
+		t.Fatal("SubmitOrder() error = nil, want conflict rejection")
+	}
+	if got := err.Error(); !strings.Contains(got, "conflicts with prediction side") {
+		t.Fatalf("SubmitOrder() error = %q, want conflict rejection", got)
+	}
+}
+
+func TestPaperBrokerPredictionSubmitInfersMissingSideFromTickerSuffix(t *testing.T) {
+	t.Parallel()
+
+	broker := NewPaperBroker(1000, 0, 0)
+	order := &domain.Order{Ticker: " market : no ", MarketType: domain.MarketTypePolymarket, Side: domain.OrderSideBuy, PredictionSide: "", OrderType: domain.OrderTypeMarket, Quantity: 1, StopPrice: floatPtr(0.5)}
+	if _, err := broker.SubmitOrder(context.Background(), order); err != nil {
+		t.Fatalf("SubmitOrder() error = %v", err)
+	}
+	if order.Ticker != "MARKET" || order.PredictionSide != "NO" {
+		t.Fatalf("order = %+v, want base ticker + inferred side", order)
+	}
+}
+
+func TestPaperBrokerPredictionSubmitRejectsMissingSuffixWithoutSide(t *testing.T) {
+	t.Parallel()
+
+	broker := NewPaperBroker(1000, 0, 0)
+	_, err := broker.SubmitOrder(context.Background(), &domain.Order{Ticker: "MARKET", MarketType: domain.MarketTypePolymarket, Side: domain.OrderSideBuy, PredictionSide: "", OrderType: domain.OrderTypeMarket, Quantity: 1, StopPrice: floatPtr(0.5)})
+	if err == nil {
+		t.Fatal("SubmitOrder() error = nil, want rejection")
+	}
 }
 
 func TestPaperBrokerSubmitOrder_UsesInjectedClock(t *testing.T) {
@@ -324,6 +433,102 @@ func TestPaperBrokerSubmitOrder_ClampsExtremeSellSlippage(t *testing.T) {
 	}
 	if *order.FilledAvgPrice <= 0 {
 		t.Fatalf("SubmitOrder() FilledAvgPrice = %v, want > 0", *order.FilledAvgPrice)
+	}
+}
+
+func TestPaperBrokerRestoreState(t *testing.T) {
+	t.Parallel()
+
+	broker := NewPaperBroker(1000, 0, 0)
+	if err := broker.RestoreAccount(execution.Balance{Currency: "USD", Cash: 750, BuyingPower: 750, Equity: 820}); err != nil {
+		t.Fatalf("RestoreAccount() error = %v", err)
+	}
+	if err := broker.RestorePositions([]domain.Position{{Ticker: "AAPL", Side: domain.PositionSideLong, Quantity: 2, AvgEntry: 100, CurrentPrice: floatPtr(110)}}); err != nil {
+		t.Fatalf("RestorePositions() error = %v", err)
+	}
+	if err := broker.RestoreOrderSequence(41); err != nil {
+		t.Fatalf("RestoreOrderSequence() error = %v", err)
+	}
+	positions, err := broker.GetPositions(context.Background())
+	if err != nil {
+		t.Fatalf("GetPositions() error = %v", err)
+	}
+	if len(positions) != 1 || positions[0].Ticker != "AAPL" {
+		t.Fatalf("unexpected positions: %+v", positions)
+	}
+	balance, err := broker.GetAccountBalance(context.Background())
+	if err != nil {
+		t.Fatalf("GetAccountBalance() error = %v", err)
+	}
+	assertFloatClose(t, balance.Cash, 750, 1e-9)
+	order := &domain.Order{Ticker: "MSFT", Side: domain.OrderSideBuy, OrderType: domain.OrderTypeMarket, Quantity: 1, StopPrice: floatPtr(100)}
+	id, err := broker.SubmitOrder(context.Background(), order)
+	if err != nil {
+		t.Fatalf("SubmitOrder() error = %v", err)
+	}
+	if id != "paper-42" {
+		t.Fatalf("next external id = %q, want paper-42", id)
+	}
+}
+
+func TestPaperBrokerRestoreState_UsesUnmultipliedCashAndMarketValue(t *testing.T) {
+	t.Parallel()
+
+	broker := NewPaperBroker(1000, 0, 0)
+	if err := broker.RestoreAccount(execution.Balance{Currency: "USD", Cash: 700, BuyingPower: 700, Equity: 1010}); err != nil {
+		t.Fatalf("RestoreAccount() error = %v", err)
+	}
+	if err := broker.RestorePositions([]domain.Position{
+		{Ticker: "AAPL", Side: domain.PositionSideLong, Quantity: 2, AvgEntry: 100, CurrentPrice: floatPtr(110), ContractMultiplier: 100},
+		{Ticker: "YES", Side: domain.PositionSideLong, Quantity: 3, AvgEntry: 0.25, CurrentPrice: floatPtr(0.30), MarketType: domain.MarketTypeStock, ContractMultiplier: 100},
+	}); err != nil {
+		t.Fatalf("RestorePositions() error = %v", err)
+	}
+	balance, err := broker.GetAccountBalance(context.Background())
+	if err != nil {
+		t.Fatalf("GetAccountBalance() error = %v", err)
+	}
+	assertFloatClose(t, balance.Cash, 700, 1e-9)
+	assertFloatClose(t, balance.Equity, 1010, 1e-9)
+	assertFloatClose(t, balance.BuyingPower, 700, 1e-9)
+	_, err = broker.SubmitOrder(context.Background(), &domain.Order{Ticker: "MSFT", Side: domain.OrderSideBuy, OrderType: domain.OrderTypeMarket, Quantity: 1, StopPrice: floatPtr(100)})
+	if err != nil {
+		t.Fatalf("SubmitOrder() error = %v", err)
+	}
+	balance, err = broker.GetAccountBalance(context.Background())
+	if err != nil {
+		t.Fatalf("GetAccountBalance() error = %v", err)
+	}
+	assertFloatClose(t, balance.Cash, 600, 1e-9)
+}
+
+func TestPaperBrokerRestorePositions_MergesLotsAndRejectsMixedKeys(t *testing.T) {
+	t.Parallel()
+
+	broker := NewPaperBroker(1000, 0, 0)
+	if err := broker.RestorePositions([]domain.Position{
+		{Ticker: "AAPL", Side: domain.PositionSideLong, Quantity: 2, AvgEntry: 100, CurrentPrice: floatPtr(110)},
+		{Ticker: "AAPL", Side: domain.PositionSideLong, Quantity: 3, AvgEntry: 120, CurrentPrice: floatPtr(110)},
+	}); err != nil {
+		t.Fatalf("RestorePositions() error = %v", err)
+	}
+	positions, err := broker.GetPositions(context.Background())
+	if err != nil {
+		t.Fatalf("GetPositions() error = %v", err)
+	}
+	if len(positions) != 1 {
+		t.Fatalf("positions len = %d, want 1", len(positions))
+	}
+	assertFloatClose(t, positions[0].Quantity, 5, 1e-9)
+	assertFloatClose(t, positions[0].AvgEntry, 112, 1e-9)
+	if positions[0].CurrentPrice == nil {
+		t.Fatal("CurrentPrice = nil")
+	}
+	if err := broker.RestorePositions([]domain.Position{
+		{Ticker: "AAPL", Side: domain.PositionSideLong, Quantity: 1, AvgEntry: 100},
+		{Ticker: "AAPL", Side: domain.PositionSideShort, Quantity: 1, AvgEntry: 100},
+	}); err == nil {
+		t.Fatal("RestorePositions() mixed side error = nil, want error")
 	}
 }
 

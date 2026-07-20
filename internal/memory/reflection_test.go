@@ -98,9 +98,10 @@ type mockPositionRepo struct {
 	err      error
 }
 
-func (m *mockPositionRepo) Create(context.Context, *domain.Position) error { return nil }
-func (m *mockPositionRepo) Update(context.Context, *domain.Position) error { return nil }
-func (m *mockPositionRepo) Delete(context.Context, uuid.UUID) error        { return nil }
+func (m *mockPositionRepo) Create(context.Context, *domain.Position) error            { return nil }
+func (m *mockPositionRepo) CreateAlpacaOwned(context.Context, *domain.Position) error { return nil }
+func (m *mockPositionRepo) Update(context.Context, *domain.Position) error            { return nil }
+func (m *mockPositionRepo) Delete(context.Context, uuid.UUID) error                   { return nil }
 
 func (m *mockPositionRepo) Get(_ context.Context, _ uuid.UUID) (*domain.Position, error) {
 	return m.position, m.err
@@ -111,6 +112,10 @@ func (m *mockPositionRepo) List(context.Context, repository.PositionFilter, int,
 }
 
 func (m *mockPositionRepo) GetOpen(context.Context, repository.PositionFilter, int, int) ([]domain.Position, error) {
+	return nil, nil
+}
+
+func (m *mockPositionRepo) ListOpenAlpacaOwned(context.Context, int, int) ([]domain.Position, error) {
 	return nil, nil
 }
 

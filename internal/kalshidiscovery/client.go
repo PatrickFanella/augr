@@ -85,6 +85,35 @@ func (c *Client) ListMarkets(ctx context.Context, opts ListOptions) ([]MarketCan
 	return decodeMarketListResponse(body)
 }
 
+// GetMarket fetches a single market by ticker from /markets/{ticker}.
+func (c *Client) GetMarket(ctx context.Context, ticker string) (*MarketCandidate, error) {
+	if c == nil || c.api == nil {
+		return nil, errors.New("kalshi discovery: client is nil")
+	}
+	ticker = strings.TrimSpace(ticker)
+	if ticker == "" {
+		return nil, errors.New("kalshi discovery: ticker is required")
+	}
+	body, err := c.api.Get(ctx, "/markets/"+url.PathEscape(ticker), nil, false)
+	if err != nil {
+		return nil, err
+	}
+	if candidate, err := decodeMarketCandidate(body); err == nil {
+		return &candidate, nil
+	}
+	var wrapped struct {
+		Market json.RawMessage `json:"market"`
+	}
+	if err := json.Unmarshal(body, &wrapped); err == nil && len(wrapped.Market) > 0 {
+		candidate, err := decodeMarketCandidate(wrapped.Market)
+		if err != nil {
+			return nil, err
+		}
+		return &candidate, nil
+	}
+	return nil, fmt.Errorf("kalshi discovery: unexpected market response: %s", strings.TrimSpace(string(body)))
+}
+
 // SyncCatalog fetches every catalog page, persists snapshots, and upserts watched
 // markets only when selected returns true for a candidate.
 func (c *Client) SyncCatalog(

@@ -287,6 +287,10 @@ func (r *mockPositionRepo) Create(ctx context.Context, position *domain.Position
 	return nil
 }
 
+func (r *mockPositionRepo) CreateAlpacaOwned(ctx context.Context, position *domain.Position) error {
+	return r.Create(ctx, position)
+}
+
 func (r *mockPositionRepo) Get(ctx context.Context, id uuid.UUID) (*domain.Position, error) {
 	if r.getFn != nil {
 		return r.getFn(ctx, id)
@@ -330,6 +334,10 @@ func (r *mockPositionRepo) GetOpen(ctx context.Context, filter repository.Positi
 		return r.getOpenFn(ctx, filter, limit, offset)
 	}
 
+	return nil, nil
+}
+
+func (r *mockPositionRepo) ListOpenAlpacaOwned(_ context.Context, _ int, _ int) ([]domain.Position, error) {
 	return nil, nil
 }
 
@@ -443,6 +451,14 @@ type mockAgentEventRepo struct {
 	events []*domain.AgentEvent
 
 	createFn func(ctx context.Context, event *domain.AgentEvent) error
+}
+
+type mockMetricsRecorder struct {
+	records []struct{ broker, side, status string }
+}
+
+func (m *mockMetricsRecorder) RecordOrder(broker, side, status string) {
+	m.records = append(m.records, struct{ broker, side, status string }{broker: broker, side: side, status: status})
 }
 
 type mockDecisionRecorder struct {
@@ -560,6 +576,80 @@ func defaultPlan() execution.TradingPlan {
 
 func floatPtr(value float64) *float64 { return &value }
 
+type fakeFinancialLifecycleRepo struct {
+	called int
+	input  repository.OrderFillInput
+	result repository.OrderFillResult
+	err    error
+}
+
+func (f *fakeFinancialLifecycleRepo) ApplyOrderFill(_ context.Context, input repository.OrderFillInput) (repository.OrderFillResult, error) {
+	f.called++
+	f.input = input
+	return f.result, f.err
+}
+
+func (f *fakeFinancialLifecycleRepo) SettlePredictionDecision(context.Context, repository.PredictionDecisionSettlementInput) (repository.PredictionDecisionSettlementResult, error) {
+	return repository.PredictionDecisionSettlementResult{}, nil
+}
+
+func TestOrderManagerHandleFillUsesFinancialLifecycleRepository(t *testing.T) {
+	strategyID, runID, decisionID := uuid.New(), uuid.New(), uuid.New()
+	orderID := uuid.New()
+	order := &domain.Order{ID: orderID, StrategyID: &strategyID, Ticker: "AAPL", MarketType: domain.MarketTypeStock, Side: domain.OrderSideBuy, Status: domain.OrderStatusSubmitted, Quantity: 10}
+	plan := defaultPlan()
+	plan.EntryPrice = 101
+	tradeRepo := &mockTradeRepo{}
+	orderRepo := &mockOrderRepo{}
+	positionRepo := &mockPositionRepo{}
+	auditRepo := &mockAuditLogRepo{}
+	metrics := &mockMetricsRecorder{}
+	financialRepo := &fakeFinancialLifecycleRepo{result: repository.OrderFillResult{OrderID: orderID, TradeID: uuid.New(), Replayed: false, PositionID: nil}}
+	mgr := newTestOrderManager(&mockBroker{}, &mockRiskEngine{}, orderRepo, positionRepo, tradeRepo, auditRepo).WithFinancialLifecycleRepo(financialRepo).WithMetrics(metrics)
+	if err := mgr.HandleFillForTest(context.Background(), order, plan, strategyID, runID, decisionID); err != nil {
+		t.Fatalf("HandleFillForTest() error = %v", err)
+	}
+	if financialRepo.called != 1 {
+		t.Fatalf("financial repo called %d times, want 1", financialRepo.called)
+	}
+	if len(orderRepo.updates) != 0 || len(positionRepo.positions) != 0 || len(tradeRepo.trades) != 0 {
+		t.Fatalf("legacy persistence should be bypassed: orders=%d positions=%d trades=%d", len(orderRepo.updates), len(positionRepo.positions), len(tradeRepo.trades))
+	}
+	if len(auditRepo.entries) != 1 || len(metrics.records) != 1 {
+		t.Fatalf("expected side effects on non-replay result, got audit=%d metrics=%d", len(auditRepo.entries), len(metrics.records))
+	}
+	if len(orderRepo.updates) != 0 {
+		t.Fatalf("expected no order repo updates")
+	}
+	replayRepo := &fakeFinancialLifecycleRepo{result: repository.OrderFillResult{OrderID: orderID, TradeID: uuid.New(), Replayed: true}}
+	order2 := &domain.Order{ID: uuid.New(), StrategyID: &strategyID, Ticker: "MSFT", MarketType: domain.MarketTypeStock, Side: domain.OrderSideBuy, Status: domain.OrderStatusSubmitted, Quantity: 5}
+	auditRepo2 := &mockAuditLogRepo{}
+	tradeRepo2 := &mockTradeRepo{}
+	positionRepo2 := &mockPositionRepo{}
+	metrics2 := &mockMetricsRecorder{}
+	mgr2 := newTestOrderManager(&mockBroker{}, &mockRiskEngine{}, &mockOrderRepo{}, positionRepo2, tradeRepo2, auditRepo2).WithFinancialLifecycleRepo(replayRepo).WithMetrics(metrics2)
+	if err := mgr2.HandleFillForTest(context.Background(), order2, plan, strategyID, runID, decisionID); err != nil {
+		t.Fatalf("HandleFillForTest replay() error = %v", err)
+	}
+	if len(auditRepo2.entries) != 0 || len(tradeRepo2.trades) != 0 || len(positionRepo2.positions) != 0 || len(metrics2.records) != 0 {
+		t.Fatalf("replayed fill should suppress side effects: audit=%d trades=%d positions=%d metrics=%d", len(auditRepo2.entries), len(tradeRepo2.trades), len(positionRepo2.positions), len(metrics2.records))
+	}
+
+	failingRepo := &fakeFinancialLifecycleRepo{err: errors.New("boom")}
+	order3 := &domain.Order{ID: uuid.New(), StrategyID: &strategyID, Ticker: "GOOG", MarketType: domain.MarketTypeStock, Side: domain.OrderSideBuy, Status: domain.OrderStatusSubmitted, Quantity: 2}
+	orderRepo3 := &mockOrderRepo{}
+	tradeRepo3 := &mockTradeRepo{}
+	positionRepo3 := &mockPositionRepo{}
+	auditRepo3 := &mockAuditLogRepo{}
+	mgr3 := newTestOrderManager(&mockBroker{}, &mockRiskEngine{}, orderRepo3, positionRepo3, tradeRepo3, auditRepo3).WithFinancialLifecycleRepo(failingRepo)
+	if err := mgr3.HandleFillForTest(context.Background(), order3, plan, strategyID, runID, decisionID); err == nil {
+		t.Fatal("expected financial repo error")
+	}
+	if len(orderRepo3.updates) != 0 || len(positionRepo3.positions) != 0 || len(tradeRepo3.trades) != 0 || len(auditRepo3.entries) != 0 {
+		t.Fatalf("failed financial fill should not persist legacy state: orders=%d positions=%d trades=%d audit=%d", len(orderRepo3.updates), len(positionRepo3.positions), len(tradeRepo3.trades), len(auditRepo3.entries))
+	}
+}
+
 func TestOrderManager_CarriesKalshiReferencePriceToBroker(t *testing.T) {
 	strategyID := uuid.New()
 	runID := uuid.New()
@@ -597,6 +687,7 @@ func TestOrderManager_CarriesKalshiReferencePriceToBroker(t *testing.T) {
 	plan.EntryPrice = entry
 	plan.ReferencePrice = reference
 	plan.Ticker = "KXTEST"
+	plan.Side = "YES"
 
 	if err := mgr.ProcessSignal(context.Background(), defaultSignal(), plan, strategyID, runID); err != nil {
 		t.Fatalf("ProcessSignal() unexpected error: %v", err)
@@ -798,6 +889,214 @@ func TestProcessSignal_PolymarketPositionTickerIncludesPredictionSide(t *testing
 	}
 	if len(orderRepo.orders) != 1 || orderRepo.orders[0].Ticker != "will-example-happen" || orderRepo.orders[0].PredictionSide != "NO" {
 		t.Fatalf("unexpected order identity: %+v", orderRepo.orders)
+	}
+}
+
+func TestProcessSignal_PredictionSuffixInferencePersistsBaseTickerAndSide(t *testing.T) {
+	orderRepo := &mockOrderRepo{}
+	positionRepo := &mockPositionRepo{}
+	tradeRepo := &mockTradeRepo{}
+	mgr := newTestOrderManager(&mockBroker{}, &mockRiskEngine{}, orderRepo, positionRepo, tradeRepo, &mockAuditLogRepo{})
+
+	plan := defaultPlan()
+	plan.MarketType = domain.MarketTypeKalshi
+	plan.Ticker = "will-example-happen:yes"
+	plan.Side = ""
+	plan.EntryPrice = 0.43
+
+	if err := mgr.ProcessSignal(context.Background(), defaultSignal(), plan, uuid.New(), uuid.New()); err != nil {
+		t.Fatalf("ProcessSignal() unexpected error: %v", err)
+	}
+	if len(orderRepo.orders) != 1 {
+		t.Fatalf("expected 1 order created, got %d", len(orderRepo.orders))
+	}
+	if got := orderRepo.orders[0].Ticker; got != "WILL-EXAMPLE-HAPPEN" {
+		t.Fatalf("order ticker = %q, want base ticker", got)
+	}
+	if got := orderRepo.orders[0].PredictionSide; got != "YES" {
+		t.Fatalf("order prediction side = %q, want YES", got)
+	}
+	if len(positionRepo.positions) != 1 || positionRepo.positions[0].Ticker != "WILL-EXAMPLE-HAPPEN:YES" {
+		t.Fatalf("positions = %+v, want inferred side-qualified position", positionRepo.positions)
+	}
+}
+
+func TestProcessSignal_PredictionMixedCaseSuffixBuyAndSellReuseNormalizedIdentity(t *testing.T) {
+	strategyID := uuid.New()
+	positionID := uuid.New()
+	positionRepo := &mockPositionRepo{}
+	tradeRepo := &mockTradeRepo{}
+	auditRepo := &mockAuditLogRepo{}
+	orderRepo := &mockOrderRepo{}
+	mgr := newTestOrderManager(&mockBroker{}, &mockRiskEngine{}, orderRepo, positionRepo, tradeRepo, auditRepo)
+
+	buyPlan := defaultPlan()
+	buyPlan.MarketType = domain.MarketTypePolymarket
+	buyPlan.Ticker = " market : yes "
+	buyPlan.Side = ""
+	buyPlan.EntryPrice = 0.50
+
+	if err := mgr.ProcessSignal(context.Background(), defaultSignal(), buyPlan, strategyID, uuid.New()); err != nil {
+		t.Fatalf("buy ProcessSignal() unexpected error: %v", err)
+	}
+	if len(orderRepo.orders) != 1 {
+		t.Fatalf("expected 1 buy order, got %d", len(orderRepo.orders))
+	}
+	if got := orderRepo.orders[0].Ticker; got != "MARKET" {
+		t.Fatalf("buy order ticker = %q, want MARKET", got)
+	}
+	if got := orderRepo.orders[0].PredictionSide; got != "YES" {
+		t.Fatalf("buy order prediction side = %q, want YES", got)
+	}
+
+	positionRepo.getByStrategyFn = func(ctx context.Context, gotStrategyID uuid.UUID, filter repository.PositionFilter, limit, offset int) ([]domain.Position, error) {
+		if gotStrategyID != strategyID {
+			t.Fatalf("strategyID = %s, want %s", gotStrategyID, strategyID)
+		}
+		if filter.Ticker != "MARKET:YES" || filter.Side != domain.PositionSideLong {
+			t.Fatalf("filter = %+v, want MARKET:YES long", filter)
+		}
+		return []domain.Position{{ID: positionID, StrategyID: &strategyID, Ticker: "MARKET:YES", Side: domain.PositionSideLong, Quantity: 3, AvgEntry: 0.50, OpenedAt: time.Now()}}, nil
+	}
+
+	sellPlan := defaultPlan()
+	sellPlan.MarketType = domain.MarketTypePolymarket
+	sellPlan.Ticker = " market : yes "
+	sellPlan.Side = ""
+	sellPlan.EntryPrice = 0.60
+	sellPlan.Action = domain.PipelineSignalSell
+
+	if err := mgr.ProcessSignal(context.Background(), execution.FinalSignal{Signal: domain.PipelineSignalSell, Confidence: 0.9}, sellPlan, strategyID, uuid.New()); err != nil {
+		t.Fatalf("sell ProcessSignal() unexpected error: %v", err)
+	}
+	if len(orderRepo.orders) != 2 {
+		t.Fatalf("expected sell order to be created after owned-position lookup, got %d orders", len(orderRepo.orders))
+	}
+	if got := orderRepo.orders[1].Ticker; got != "MARKET" || orderRepo.orders[1].PredictionSide != "YES" {
+		t.Fatalf("sell order identity = %q:%q, want MARKET:YES", got, orderRepo.orders[1].PredictionSide)
+	}
+}
+
+func TestProcessSignal_PredictionNoSuffixRejectedBeforeCreateOrSubmit(t *testing.T) {
+	var submitCalls int
+	broker := &mockBroker{submitOrderFn: func(context.Context, *domain.Order) (string, error) { submitCalls++; return "", nil }}
+	orderRepo := &mockOrderRepo{}
+	positionRepo := &mockPositionRepo{}
+	tradeRepo := &mockTradeRepo{}
+	mgr := newTestOrderManager(broker, &mockRiskEngine{}, orderRepo, positionRepo, tradeRepo, &mockAuditLogRepo{})
+
+	plan := defaultPlan()
+	plan.MarketType = domain.MarketTypePolymarket
+	plan.Ticker = "will-example-happen"
+	plan.Side = ""
+
+	err := mgr.ProcessSignal(context.Background(), defaultSignal(), plan, uuid.New(), uuid.New())
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if len(orderRepo.orders) != 0 || submitCalls != 0 {
+		t.Fatalf("expected no order creation or submission, got orders=%d submitCalls=%d", len(orderRepo.orders), submitCalls)
+	}
+}
+
+func TestProcessSignal_PredictionInvalidIdentityRejectedBeforeOwnershipQuery(t *testing.T) {
+	var ownershipCalls int
+	positionRepo := &mockPositionRepo{getByStrategyFn: func(context.Context, uuid.UUID, repository.PositionFilter, int, int) ([]domain.Position, error) {
+		ownershipCalls++
+		t.Fatal("ownership lookup should not be called for invalid prediction identity")
+		return nil, nil
+	}}
+	orderRepo := &mockOrderRepo{}
+	tradeRepo := &mockTradeRepo{}
+	mgr := newTestOrderManager(&mockBroker{}, &mockRiskEngine{}, orderRepo, positionRepo, tradeRepo, &mockAuditLogRepo{})
+
+	plan := defaultPlan()
+	plan.MarketType = domain.MarketTypePolymarket
+	plan.Ticker = "will-example-happen"
+	plan.Side = ""
+	plan.Action = domain.PipelineSignalSell
+
+	err := mgr.ProcessSignal(context.Background(), execution.FinalSignal{Signal: domain.PipelineSignalSell, Confidence: 0.9}, plan, uuid.New(), uuid.New())
+	if err == nil || !strings.Contains(err.Error(), "requires valid side YES or NO") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ownershipCalls != 0 || len(orderRepo.orders) != 0 {
+		t.Fatalf("expected no ownership lookup/order write, got ownershipCalls=%d orders=%d", ownershipCalls, len(orderRepo.orders))
+	}
+}
+
+func TestProcessSignal_PredictionQualifiedTickerNormalizesBeforePersistence(t *testing.T) {
+	orderRepo := &mockOrderRepo{}
+	positionRepo := &mockPositionRepo{}
+	tradeRepo := &mockTradeRepo{}
+	var submitCalls int
+	broker := &mockBroker{
+		submitOrderFn: func(ctx context.Context, order *domain.Order) (string, error) {
+			submitCalls++
+			if order.Ticker != "WILL-EXAMPLE-HAPPEN" {
+				t.Fatalf("submitted ticker = %q, want base ticker", order.Ticker)
+			}
+			if order.PredictionSide != "YES" {
+				t.Fatalf("submitted prediction side = %q, want YES", order.PredictionSide)
+			}
+			return "ext-123", nil
+		},
+	}
+	mgr := newTestOrderManager(broker, &mockRiskEngine{}, orderRepo, positionRepo, tradeRepo, &mockAuditLogRepo{})
+
+	plan := defaultPlan()
+	plan.MarketType = domain.MarketTypeKalshi
+	plan.Ticker = "will-example-happen:yes"
+	plan.Side = "YES"
+	plan.EntryPrice = 0.43
+
+	if err := mgr.ProcessSignal(context.Background(), defaultSignal(), plan, uuid.New(), uuid.New()); err != nil {
+		t.Fatalf("ProcessSignal() unexpected error: %v", err)
+	}
+	if submitCalls != 1 {
+		t.Fatalf("submit calls = %d, want 1", submitCalls)
+	}
+	if len(orderRepo.orders) != 1 {
+		t.Fatalf("expected 1 order created, got %d", len(orderRepo.orders))
+	}
+	if got := orderRepo.orders[0].Ticker; got != "WILL-EXAMPLE-HAPPEN" {
+		t.Fatalf("order ticker = %q, want base ticker", got)
+	}
+	if got := positionRepo.positions[0].Ticker; got != "WILL-EXAMPLE-HAPPEN:YES" {
+		t.Fatalf("position ticker = %q, want base-qualified position ticker", got)
+	}
+}
+
+func TestProcessSignal_PredictionConflictingTickerSuffixRejectedBeforeCreate(t *testing.T) {
+	var submitCalls int
+	broker := &mockBroker{
+		submitOrderFn: func(context.Context, *domain.Order) (string, error) {
+			submitCalls++
+			return "", nil
+		},
+	}
+	orderRepo := &mockOrderRepo{}
+	positionRepo := &mockPositionRepo{}
+	tradeRepo := &mockTradeRepo{}
+	mgr := newTestOrderManager(broker, &mockRiskEngine{}, orderRepo, positionRepo, tradeRepo, &mockAuditLogRepo{})
+
+	plan := defaultPlan()
+	plan.MarketType = domain.MarketTypePolymarket
+	plan.Ticker = "will-example-happen:NO"
+	plan.Side = "YES"
+
+	err := mgr.ProcessSignal(context.Background(), defaultSignal(), plan, uuid.New(), uuid.New())
+	if err == nil {
+		t.Fatal("expected conflict error")
+	}
+	if !strings.Contains(err.Error(), "conflicts with prediction side") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(orderRepo.orders) != 0 {
+		t.Fatalf("expected zero orders created, got %d", len(orderRepo.orders))
+	}
+	if submitCalls != 0 {
+		t.Fatalf("submit calls = %d, want 0", submitCalls)
 	}
 }
 
@@ -1227,6 +1526,7 @@ func TestProcessSignal_RejectsWhenPerMarketExposureWouldExceedLimit(t *testing.T
 				p := defaultPlan()
 				p.MarketType = domain.MarketTypePolymarket
 				p.Ticker = "POLY-2"
+				p.Side = "YES"
 				return p
 			}(),
 		},
@@ -1717,6 +2017,60 @@ func TestProcessSignal_HoldSignalSkipped(t *testing.T) {
 	}
 }
 
+func TestProcessSignal_HoldSignalSkipsPredictionNormalizationForPredictionMarkets(t *testing.T) {
+	for _, marketType := range []domain.MarketType{domain.MarketTypeKalshi, domain.MarketTypePolymarket} {
+		marketType := marketType
+		t.Run(string(marketType), func(t *testing.T) {
+			broker := &mockBroker{}
+			riskEng := &mockRiskEngine{}
+			orderRepo := &mockOrderRepo{createFn: func(context.Context, *domain.Order) error {
+				t.Fatal("unexpected order write")
+				return nil
+			}, updateFn: func(context.Context, *domain.Order) error {
+				t.Fatal("unexpected order update")
+				return nil
+			}}
+			positionRepo := &mockPositionRepo{createFn: func(context.Context, *domain.Position) error {
+				t.Fatal("unexpected position write")
+				return nil
+			}, updateFn: func(context.Context, *domain.Position) error {
+				t.Fatal("unexpected position update")
+				return nil
+			}, getByStrategyFn: func(context.Context, uuid.UUID, repository.PositionFilter, int, int) ([]domain.Position, error) {
+				t.Fatal("unexpected position lookup")
+				return nil, nil
+			}}
+			tradeRepo := &mockTradeRepo{createFn: func(context.Context, *domain.Trade) error {
+				t.Fatal("unexpected trade write")
+				return nil
+			}}
+			auditRepo := &mockAuditLogRepo{}
+
+			mgr := newTestOrderManager(broker, riskEng, orderRepo, positionRepo, tradeRepo, auditRepo)
+
+			err := mgr.ProcessSignal(
+				context.Background(),
+				execution.FinalSignal{Signal: domain.PipelineSignalHold, Confidence: 0.5},
+				execution.TradingPlan{MarketType: marketType, Ticker: "MARKET", Side: "", Action: domain.PipelineSignalBuy},
+				uuid.New(),
+				uuid.New(),
+			)
+			if err != nil {
+				t.Fatalf("ProcessSignal() unexpected error for %s hold signal: %v", marketType, err)
+			}
+			if len(orderRepo.orders) != 0 || len(orderRepo.updates) != 0 {
+				t.Fatalf("expected no order writes for %s hold signal", marketType)
+			}
+			if len(positionRepo.positions) != 0 || len(positionRepo.updates) != 0 {
+				t.Fatalf("expected no position writes for %s hold signal", marketType)
+			}
+			if len(tradeRepo.trades) != 0 {
+				t.Fatalf("expected no trade writes for %s hold signal", marketType)
+			}
+		})
+	}
+}
+
 func TestProcessSignal_SellSignal(t *testing.T) {
 	broker := &mockBroker{}
 	riskEng := &mockRiskEngine{}
@@ -1777,8 +2131,8 @@ func TestProcessSignal_SellSignal(t *testing.T) {
 		t.Fatalf("expected 1 position, got %d", len(positionRepo.positions))
 	}
 
-	if positionRepo.positions[0].Side != domain.PositionSideShort {
-		t.Errorf("expected short position, got %s", positionRepo.positions[0].Side)
+	if positionRepo.positions[0].Side != domain.PositionSideLong {
+		t.Errorf("expected long position, got %s", positionRepo.positions[0].Side)
 	}
 }
 

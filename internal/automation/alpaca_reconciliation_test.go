@@ -19,10 +19,36 @@ type alpacaReconciliationBrokerStub struct {
 	positions []domain.Position
 	orders    []BrokerOrderSnapshot
 	fills     []BrokerFillSnapshot
+	account   BrokerAccountSnapshot
 
 	positionsErr error
 	ordersErr    error
 	fillsErr     error
+}
+
+type alpacaPLAggregateStub struct {
+	closed float64
+	open   float64
+	trades int
+	fees   float64
+	calls  []string
+}
+
+func (s *alpacaPLAggregateStub) ClosedRealizedPnL(context.Context) (float64, error) {
+	s.calls = append(s.calls, "closed")
+	return s.closed, nil
+}
+func (s *alpacaPLAggregateStub) OpenUnrealizedPnL(context.Context) (float64, error) {
+	s.calls = append(s.calls, "open")
+	return s.open, nil
+}
+func (s *alpacaPLAggregateStub) TradeCount(context.Context) (int, error) {
+	s.calls = append(s.calls, "count")
+	return s.trades, nil
+}
+func (s *alpacaPLAggregateStub) FeeTotal(context.Context) (float64, error) {
+	s.calls = append(s.calls, "fees")
+	return s.fees, nil
 }
 
 func (s *alpacaReconciliationBrokerStub) GetPositions(ctx context.Context) ([]domain.Position, error) {
@@ -50,6 +76,10 @@ func (s *alpacaReconciliationBrokerStub) ListFills(ctx context.Context) ([]Broke
 	out := make([]BrokerFillSnapshot, len(s.fills))
 	copy(out, s.fills)
 	return out, nil
+}
+
+func (s *alpacaReconciliationBrokerStub) GetAccountSnapshot(ctx context.Context) (BrokerAccountSnapshot, error) {
+	return s.account, nil
 }
 
 type recordingStrategyRepo struct {
@@ -185,6 +215,7 @@ type recordingPositionRepo struct {
 	open    []*domain.Position
 	created []*domain.Position
 	updated []*domain.Position
+	proven  map[uuid.UUID]struct{}
 }
 
 func newRecordingPositionRepo(existing ...*domain.Position) *recordingPositionRepo {
@@ -206,6 +237,24 @@ func (r *recordingPositionRepo) Create(_ context.Context, position *domain.Posit
 	*position = *cloned
 	r.created = append(r.created, clonePosition(cloned))
 	r.open = append(r.open, cloned)
+	return nil
+}
+
+func (r *recordingPositionRepo) CreateAlpacaOwned(ctx context.Context, position *domain.Position) error {
+	cloned := clonePosition(position)
+	if cloned.ID == uuid.Nil {
+		cloned.ID = uuid.New()
+	}
+	if cloned.OpenedAt.IsZero() {
+		cloned.OpenedAt = time.Now().UTC()
+	}
+	*position = *cloned
+	r.created = append(r.created, clonePosition(cloned))
+	r.open = append(r.open, cloned)
+	if r.proven == nil {
+		r.proven = map[uuid.UUID]struct{}{}
+	}
+	r.proven[cloned.ID] = struct{}{}
 	return nil
 }
 
@@ -261,6 +310,22 @@ func (r *recordingPositionRepo) GetOpen(_ context.Context, filter repository.Pos
 			continue
 		}
 		filtered = append(filtered, *clonePosition(position))
+	}
+	return paginatePositions(filtered, limit, offset), nil
+}
+
+func (r *recordingPositionRepo) ListOpenAlpacaOwned(_ context.Context, limit, offset int) ([]domain.Position, error) {
+	if len(r.proven) == 0 {
+		return nil, nil
+	}
+	var filtered []domain.Position
+	for _, position := range r.open {
+		if position.ClosedAt != nil {
+			continue
+		}
+		if _, ok := r.proven[position.ID]; ok {
+			filtered = append(filtered, *clonePosition(position))
+		}
 	}
 	return paginatePositions(filtered, limit, offset), nil
 }
@@ -387,6 +452,7 @@ func TestAlpacaReconcilerReconcile_ImportsOrdersPositionsAndFills(t *testing.T) 
 	positions := newRecordingPositionRepo()
 	trades := newRecordingTradeRepo(orders)
 	broker := &alpacaReconciliationBrokerStub{
+		account: BrokerAccountSnapshot{Cash: 1000, Equity: 1500},
 		positions: []domain.Position{{
 			Ticker:        "SNAL",
 			Side:          domain.PositionSideLong,
@@ -502,6 +568,56 @@ func TestAlpacaReconcilerReconcile_ImportsOrdersPositionsAndFills(t *testing.T) 
 	}
 }
 
+func TestAlpacaReconcilerReconcile_DedupesRepeatedAlpacaImports(t *testing.T) {
+	t.Parallel()
+
+	broker := &alpacaReconciliationBrokerStub{positions: []domain.Position{{Ticker: "SNAL", Side: domain.PositionSideLong, Quantity: 10, AvgEntry: 1.23, AssetClass: domain.AssetClassEquity}}}
+	positions := newRecordingPositionRepo()
+	reconciler := NewAlpacaReconciler(AlpacaReconcilerDeps{Broker: broker, OrderRepo: newRecordingOrderRepo(), PositionRepo: positions, TradeRepo: newRecordingTradeRepo(newRecordingOrderRepo()), Logger: slog.New(slog.NewTextHandler(testWriter{t}, nil))})
+	first, err := reconciler.Reconcile(context.Background())
+	if err != nil {
+		t.Fatalf("first Reconcile() error = %v", err)
+	}
+	second, err := reconciler.Reconcile(context.Background())
+	if err != nil {
+		t.Fatalf("second Reconcile() error = %v", err)
+	}
+	if first.PositionsCreated != 1 || second.PositionsCreated != 0 {
+		t.Fatalf("dedupe counts = %#v then %#v", first, second)
+	}
+	if len(positions.created) != 1 {
+		t.Fatalf("created positions = %d, want 1", len(positions.created))
+	}
+}
+
+func TestAlpacaReconcilerReconciliationReport_UsesAggregateRepoAndIsReadOnly(t *testing.T) {
+	t.Parallel()
+
+	broker := &alpacaReconciliationBrokerStub{account: BrokerAccountSnapshot{Cash: 900, Equity: 1050}}
+	agg := &alpacaPLAggregateStub{closed: 120, open: -12.5, trades: 2, fees: 2.0}
+	reconciler := NewAlpacaReconciler(AlpacaReconcilerDeps{Broker: broker, PLAggregate: agg, Logger: slog.New(slog.NewTextHandler(testWriter{t}, nil))})
+
+	report, err := reconciler.ReconciliationReport(context.Background())
+	if err != nil {
+		t.Fatalf("ReconciliationReport() error = %v", err)
+	}
+	if report.BrokerCash != 900 || report.BrokerEquity != 1050 {
+		t.Fatalf("unexpected broker snapshot: %+v", report)
+	}
+	if report.LocalClosedPnL != 120 || report.LocalOpenPnL != -12.5 || report.TradeCount != 2 || report.FeeTotal != 2.0 {
+		t.Fatalf("unexpected local aggregates: %+v", report)
+	}
+	if report.UnexplainedResidual != 44.5 {
+		t.Fatalf("unexpected residual: %+v", report)
+	}
+	if len(report.AdjustmentDetails) == 0 {
+		t.Fatal("expected adjustment detail note")
+	}
+	if got := strings.Join(agg.calls, ","); got != "closed,open,count,fees" {
+		t.Fatalf("aggregate repo calls = %q, want closed,open,count,fees", got)
+	}
+}
+
 func TestAlpacaReconcilerReconcile_UpdatesExistingRecordsAndSkipsKnownFills(t *testing.T) {
 	t.Parallel()
 
@@ -538,6 +654,7 @@ func TestAlpacaReconcilerReconcile_UpdatesExistingRecordsAndSkipsKnownFills(t *t
 	}}}
 	orders := newRecordingOrderRepo(existingOrder)
 	positions := newRecordingPositionRepo(existingPosition)
+	positions.proven = map[uuid.UUID]struct{}{existingPositionID: struct{}{}}
 	trades := newRecordingTradeRepo(orders)
 	trades.seedOrderExternalID("existing-order", &domain.Trade{
 		ID:         uuid.New(),
@@ -680,6 +797,7 @@ func TestAlpacaReconcilerReconcile_ClosesLocalAlpacaPositionsMissingFromBroker(t
 	}
 	orders := newRecordingOrderRepo()
 	positions := newRecordingPositionRepo(stalePosition, polymarketPosition)
+	positions.proven = map[uuid.UUID]struct{}{stalePosition.ID: struct{}{}}
 	audit := &auditLogRepoStub{}
 	reconciler := NewAlpacaReconciler(AlpacaReconcilerDeps{
 		Broker:       &alpacaReconciliationBrokerStub{},
@@ -744,6 +862,33 @@ func TestAlpacaReconcilerReconcile_ClosesLocalAlpacaPositionsMissingFromBroker(t
 	}
 	if got := details["positions_closed"]; got != float64(1) {
 		t.Fatalf("audit positions_closed = %v, want 1", got)
+	}
+}
+
+func TestAlpacaReconcilerReconcile_OnlyClosesProvenAlpacaPositions(t *testing.T) {
+	t.Parallel()
+
+	proven := &domain.Position{ID: uuid.New(), MarketType: domain.MarketTypeStock, Ticker: "AAPL", Side: domain.PositionSideLong, Quantity: 10, AvgEntry: 100, UnrealizedPnL: float64Ptr(5)}
+	localPaper := &domain.Position{ID: uuid.New(), MarketType: domain.MarketTypeStock, Ticker: "MSFT", Side: domain.PositionSideLong, Quantity: 5, AvgEntry: 200, UnrealizedPnL: float64Ptr(7)}
+	positions := newRecordingPositionRepo(proven, localPaper)
+	positions.proven = map[uuid.UUID]struct{}{proven.ID: struct{}{}}
+	reconciler := NewAlpacaReconciler(AlpacaReconcilerDeps{Broker: &alpacaReconciliationBrokerStub{}, OrderRepo: newRecordingOrderRepo(), PositionRepo: positions, TradeRepo: newRecordingTradeRepo(newRecordingOrderRepo()), Logger: slog.New(slog.NewTextHandler(testWriter{t}, nil))})
+
+	summary, err := reconciler.Reconcile(context.Background())
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v", err)
+	}
+	if summary.PositionsClosed != 1 {
+		t.Fatalf("PositionsClosed = %d, want 1", summary.PositionsClosed)
+	}
+	if len(positions.updated) != 1 || positions.updated[0].Ticker != "AAPL" {
+		t.Fatalf("updated positions = %#v, want only AAPL", positions.updated)
+	}
+	if positions.updated[0].ClosedAt == nil {
+		t.Fatal("expected proven Alpaca position to close")
+	}
+	if localPaper.ClosedAt != nil {
+		t.Fatal("expected non-Alpaca position to remain open")
 	}
 }
 
@@ -826,6 +971,7 @@ func TestAlpacaReconcilerVerify_IgnoresVolatilePositionMarkToMarketFields(t *tes
 		CurrentPrice:  float64Ptr(0.7727),
 		UnrealizedPnL: float64Ptr(-29.46),
 	})
+	positions.proven = map[uuid.UUID]struct{}{positions.open[0].ID: {}}
 	orders := newRecordingOrderRepo()
 	reconciler := NewAlpacaReconciler(AlpacaReconcilerDeps{
 		Broker: &alpacaReconciliationBrokerStub{
@@ -853,6 +999,29 @@ func TestAlpacaReconcilerVerify_IgnoresVolatilePositionMarkToMarketFields(t *tes
 	}
 	if len(report.Mismatches) != 0 {
 		t.Fatalf("len(Mismatches) = %d, want 0", len(report.Mismatches))
+	}
+}
+
+func TestAlpacaReconcilerVerify_DuplicateTickerPaperPositionDoesNotSatisfyAlpacaVerification(t *testing.T) {
+	t.Parallel()
+
+	positions := newRecordingPositionRepo(&domain.Position{ID: uuid.New(), Ticker: "AAPL", Side: domain.PositionSideLong, Quantity: 1, AvgEntry: 99})
+	reconciler := NewAlpacaReconciler(AlpacaReconcilerDeps{
+		Broker:       &alpacaReconciliationBrokerStub{positions: []domain.Position{{Ticker: "AAPL", Side: domain.PositionSideLong, Quantity: 1, AvgEntry: 100, AssetClass: domain.AssetClassEquity}}},
+		OrderRepo:    newRecordingOrderRepo(),
+		PositionRepo: positions,
+		TradeRepo:    newRecordingTradeRepo(newRecordingOrderRepo()),
+		Logger:       slog.New(slog.NewTextHandler(testWriter{t}, nil)),
+	})
+	report, err := reconciler.Verify(context.Background())
+	if err != nil {
+		t.Fatalf("Verify() error = %v", err)
+	}
+	if report.Verified {
+		t.Fatalf("Verified = true, want false")
+	}
+	if report.MissingPositions != 1 {
+		t.Fatalf("MissingPositions = %d, want 1", report.MissingPositions)
 	}
 }
 

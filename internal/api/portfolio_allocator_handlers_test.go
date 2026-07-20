@@ -27,6 +27,7 @@ func (s portfolioDiagnosticsBalanceSource) GetAccountBalance(context.Context) (e
 
 type portfolioDiagnosticsRunRepo struct {
 	runs       []domain.PipelineRun
+	total      int
 	lastFilter repository.PipelineRunFilter
 	lastLimit  int
 	lastOffset int
@@ -46,7 +47,21 @@ func (s *portfolioDiagnosticsRunRepo) List(_ context.Context, filter repository.
 	return s.runs, nil
 }
 func (s *portfolioDiagnosticsRunRepo) Count(context.Context, repository.PipelineRunFilter) (int, error) {
-	return len(s.runs), nil
+	return s.total, nil
+}
+func (s *portfolioDiagnosticsRunRepo) CountBySignal(context.Context, repository.PipelineRunFilter) (map[domain.PipelineSignal]int, error) {
+	counts := make(map[domain.PipelineSignal]int)
+	for _, run := range s.runs {
+		counts[run.Signal]++
+	}
+	return counts, nil
+}
+func (s *portfolioDiagnosticsRunRepo) CountByStatus(context.Context, repository.PipelineRunFilter) (map[domain.PipelineStatus]int, error) {
+	counts := make(map[domain.PipelineStatus]int)
+	for _, run := range s.runs {
+		counts[run.Status]++
+	}
+	return counts, nil
 }
 func (s *portfolioDiagnosticsRunRepo) UpdateStatus(context.Context, uuid.UUID, time.Time, repository.PipelineRunStatusUpdate) error {
 	return nil
@@ -54,6 +69,7 @@ func (s *portfolioDiagnosticsRunRepo) UpdateStatus(context.Context, uuid.UUID, t
 
 type portfolioDiagnosticsTradeDecisionRepo struct {
 	decisions  []domain.TradeDecision
+	total      int
 	lastFilter repository.TradeDecisionFilter
 	lastLimit  int
 	lastOffset int
@@ -72,7 +88,17 @@ func (s *portfolioDiagnosticsTradeDecisionRepo) List(_ context.Context, filter r
 	return s.decisions, nil
 }
 func (s *portfolioDiagnosticsTradeDecisionRepo) Count(context.Context, repository.TradeDecisionFilter) (int, error) {
-	return len(s.decisions), nil
+	return s.total, nil
+}
+func (s *portfolioDiagnosticsTradeDecisionRepo) CountByStatus(context.Context, repository.TradeDecisionFilter) (map[domain.TradeDecisionStatus]int, error) {
+	counts := make(map[domain.TradeDecisionStatus]int)
+	for _, d := range s.decisions {
+		counts[d.Status]++
+	}
+	return counts, nil
+}
+func (s *portfolioDiagnosticsTradeDecisionRepo) CountByNoActionReason(context.Context, repository.TradeDecisionFilter) (map[string]int, error) {
+	return map[string]int{string(portfolio.NoActionReasonRiskRejected): 1}, nil
 }
 func (s *portfolioDiagnosticsTradeDecisionRepo) AttachPaperOrder(context.Context, uuid.UUID, uuid.UUID) error {
 	return nil
@@ -83,6 +109,7 @@ func (s *portfolioDiagnosticsTradeDecisionRepo) AttachLiveOrder(context.Context,
 
 type portfolioDiagnosticsStrategyRepo struct {
 	strategies []domain.Strategy
+	total      int
 	calls      []repository.StrategyFilter
 }
 
@@ -106,7 +133,16 @@ func (s *portfolioDiagnosticsStrategyRepo) List(_ context.Context, filter reposi
 	return out, nil
 }
 func (s *portfolioDiagnosticsStrategyRepo) Count(context.Context, repository.StrategyFilter) (int, error) {
-	return len(s.strategies), nil
+	return s.total, nil
+}
+func (s *portfolioDiagnosticsStrategyRepo) CountByMarket(context.Context, repository.StrategyFilter) (map[domain.MarketType]int, error) {
+	counts := make(map[domain.MarketType]int)
+	for _, strategy := range s.strategies {
+		if strategy.Status == domain.StrategyStatusActive {
+			counts[strategy.MarketType]++
+		}
+	}
+	return counts, nil
 }
 func (s *portfolioDiagnosticsStrategyRepo) Update(context.Context, *domain.Strategy) error {
 	return nil
@@ -121,12 +157,17 @@ func (s *portfolioDiagnosticsStrategyRepo) GetThesisRaw(context.Context, uuid.UU
 
 type portfolioDiagnosticsPositionRepo struct {
 	positions  []domain.Position
+	totalOpen  int
+	markets    map[uuid.UUID]domain.MarketType
 	lastFilter repository.PositionFilter
 	lastLimit  int
 	lastOffset int
 }
 
 func (s *portfolioDiagnosticsPositionRepo) Create(context.Context, *domain.Position) error {
+	return nil
+}
+func (s *portfolioDiagnosticsPositionRepo) CreateAlpacaOwned(context.Context, *domain.Position) error {
 	return nil
 }
 func (s *portfolioDiagnosticsPositionRepo) Get(context.Context, uuid.UUID) (*domain.Position, error) {
@@ -149,7 +190,34 @@ func (s *portfolioDiagnosticsPositionRepo) Count(context.Context, repository.Pos
 	return len(s.positions), nil
 }
 func (s *portfolioDiagnosticsPositionRepo) CountOpen(context.Context, repository.PositionFilter) (int, error) {
-	return len(s.positions), nil
+	return s.totalOpen, nil
+}
+func (s *portfolioDiagnosticsPositionRepo) ListOpenAlpacaOwned(context.Context, int, int) ([]domain.Position, error) {
+	return append([]domain.Position(nil), s.positions...), nil
+}
+func (s *portfolioDiagnosticsPositionRepo) CountOpenByMarket(context.Context, repository.PositionFilter) (map[domain.MarketType]int, error) {
+	counts := make(map[domain.MarketType]int)
+	for _, pos := range s.positions {
+		market := domain.MarketType("")
+		if pos.StrategyID != nil {
+			if m, ok := s.markets[*pos.StrategyID]; ok {
+				market = m
+			}
+		}
+		counts[market]++
+	}
+	return counts, nil
+}
+func (s *portfolioDiagnosticsPositionRepo) GrossExposureOpen(context.Context, repository.PositionFilter) (float64, error) {
+	var total float64
+	for _, pos := range s.positions {
+		price := pos.CurrentPrice
+		if price == nil {
+			price = &pos.AvgEntry
+		}
+		total += pos.Quantity * *price
+	}
+	return total, nil
 }
 func (s *portfolioDiagnosticsPositionRepo) GetByStrategy(context.Context, uuid.UUID, repository.PositionFilter, int, int) ([]domain.Position, error) {
 	return nil, nil
@@ -165,21 +233,21 @@ func TestPortfolioAllocatorDiagnosticsReturnsSummary(t *testing.T) {
 	runRepo := &portfolioDiagnosticsRunRepo{runs: []domain.PipelineRun{
 		{Status: domain.PipelineStatusCompleted, Signal: domain.PipelineSignalHold},
 		{Status: domain.PipelineStatusFailed, Signal: domain.PipelineSignalBuy},
-	}}
+	}, total: 101}
 	decisionRepo := &portfolioDiagnosticsTradeDecisionRepo{decisions: []domain.TradeDecision{
 		{Status: domain.TradeDecisionStatusRejected, Side: domain.OrderSideBuy, RiskReasons: []string{"risk_rejected"}},
 		{Status: domain.TradeDecisionStatusCandidate, Side: domain.OrderSideSell},
-	}}
+	}, total: 202}
 	strategyRepo := &portfolioDiagnosticsStrategyRepo{strategies: []domain.Strategy{
 		{ID: stockStrategyID, MarketType: domain.MarketTypeStock, Status: domain.StrategyStatusActive},
 		{ID: cryptoStrategyID, MarketType: domain.MarketTypeCrypto, Status: domain.StrategyStatusActive},
 		{ID: unknownStrategyID, MarketType: domain.MarketTypePolymarket, Status: domain.StrategyStatusInactive},
-	}}
+	}, total: 303}
 	positionRepo := &portfolioDiagnosticsPositionRepo{positions: []domain.Position{
 		{StrategyID: &stockStrategyID, Quantity: 5, CurrentPrice: floatPtr(12)},
 		{StrategyID: &cryptoStrategyID, Quantity: 10, AvgEntry: 2},
 		{Quantity: 3, CurrentPrice: floatPtr(7)},
-	}}
+	}, totalOpen: 404, markets: map[uuid.UUID]domain.MarketType{stockStrategyID: domain.MarketTypeStock, cryptoStrategyID: domain.MarketTypeCrypto}}
 
 	deps := testDeps()
 	deps.Runs = runRepo
@@ -214,6 +282,12 @@ func TestPortfolioAllocatorDiagnosticsReturnsSummary(t *testing.T) {
 	if got.TargetGrossExposurePct != 0.35 {
 		t.Fatalf("target gross exposure pct = %v, want 0.35", got.TargetGrossExposurePct)
 	}
+	if got.TotalStrategyRuns != 101 || got.TotalTradeDecisions != 202 || got.TotalStrategies != 303 || got.TotalOpenPositions != 404 {
+		t.Fatalf("unexpected totals: %+v", got)
+	}
+	if got.SampleStrategyRuns != 2 || got.SampleTradeDecisions != 2 || got.SampleStrategies != 2 || got.SampleOpenPositions != 3 {
+		t.Fatalf("unexpected sample sizes: %+v", got)
+	}
 	if got.GrossExposurePct != 1 {
 		t.Fatalf("gross exposure pct = %v, want 1", got.GrossExposurePct)
 	}
@@ -223,7 +297,7 @@ func TestPortfolioAllocatorDiagnosticsReturnsSummary(t *testing.T) {
 	if containsWarning(got.Warnings, portfolioDiagnosticsWarningAccountBal) || !containsWarning(got.Warnings, portfolioDiagnosticsWarningUnknownOpen) {
 		t.Fatalf("warnings = %#v, want unknown open warning only", got.Warnings)
 	}
-	if len(strategyRepo.calls) != 2 || strategyRepo.calls[0].Status != domain.StrategyStatusActive || strategyRepo.calls[1].Status != "" {
+	if len(strategyRepo.calls) != 1 || strategyRepo.calls[0].Status != domain.StrategyStatusActive {
 		t.Fatalf("unexpected strategy repo calls: %#v", strategyRepo.calls)
 	}
 	if runRepo.lastLimit != portfolioDiagnosticsRunsLimit || decisionRepo.lastLimit != portfolioDiagnosticsDecisionsLimit || positionRepo.lastLimit != portfolioDiagnosticsPositionsLimit {

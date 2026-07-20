@@ -59,6 +59,41 @@ func NewPaperBroker(initialBalance, slippageBps, feePct float64) *PaperBroker {
 	}
 }
 
+// RestoreOrders replaces the in-memory order book during startup.
+func (b *PaperBroker) RestoreOrders(orders []domain.Order) error {
+	if b == nil {
+		return errors.New("paper: broker is required")
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.orders == nil {
+		b.orders = make(map[string]*domain.Order, len(orders))
+	}
+	for i := range orders {
+		order := cloneOrder(&orders[i])
+		if order == nil || strings.TrimSpace(order.ExternalID) == "" {
+			return errors.New("paper: restored order requires external id")
+		}
+		b.orders[order.ExternalID] = order
+		if seq, ok := parsePaperSequenceLocal(order.ExternalID); ok && seq > b.nextOrderID {
+			b.nextOrderID = seq
+		}
+	}
+	return nil
+}
+
+func parsePaperSequenceLocal(externalID string) (uint64, bool) {
+	externalID = strings.TrimSpace(externalID)
+	if !strings.HasPrefix(externalID, "paper-") {
+		return 0, false
+	}
+	var seq uint64
+	if _, err := fmt.Sscanf(strings.TrimPrefix(externalID, "paper-"), "%d", &seq); err != nil {
+		return 0, false
+	}
+	return seq, true
+}
+
 // SetNowFunc overrides the broker time source, allowing callers to inject a
 // simulated clock during backtests.
 func (b *PaperBroker) SetNowFunc(now func() time.Time) {
@@ -87,6 +122,52 @@ func (b *PaperBroker) RestoreAccount(balance execution.Balance) error {
 	return nil
 }
 
+// RestorePositions replaces the open paper position book during startup
+// reconstruction.
+func (b *PaperBroker) RestorePositions(positions []domain.Position) error {
+	if b == nil {
+		return errors.New("paper: broker is required")
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.positions = make(map[string]*domain.Position, len(positions))
+	grouped := make(map[string]*domain.Position)
+	for i := range positions {
+		position := clonePosition(&positions[i])
+		if position == nil {
+			continue
+		}
+		if position.Ticker == "" || position.Quantity <= 0 {
+			return fmt.Errorf("paper: restored position must have ticker and positive quantity")
+		}
+		key := positionKey(position)
+		if existing, ok := grouped[key]; ok {
+			merged, err := mergeRestoredPositions(existing, position)
+			if err != nil {
+				return err
+			}
+			grouped[key] = merged
+			continue
+		}
+		grouped[key] = position
+	}
+	for key, position := range grouped {
+		b.positions[key] = position
+	}
+	return nil
+}
+
+// RestoreOrderSequence restores the next external paper order sequence number.
+func (b *PaperBroker) RestoreOrderSequence(nextOrderID uint64) error {
+	if b == nil {
+		return errors.New("paper: broker is required")
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.nextOrderID = nextOrderID
+	return nil
+}
+
 // SubmitOrder simulates an immediate paper-trading fill when the order is marketable.
 func (b *PaperBroker) SubmitOrder(ctx context.Context, order *domain.Order) (string, error) {
 	if b == nil {
@@ -99,7 +180,16 @@ func (b *PaperBroker) SubmitOrder(ctx context.Context, order *domain.Order) (str
 		return "", fmt.Errorf("paper: submit order: %w", err)
 	}
 
-	ticker, err := normalizeTicker(order.Ticker)
+	baseTicker, err := normalizeTicker(order.Ticker)
+	if err != nil {
+		return "", err
+	}
+	baseTicker, normalizedSide, err := execution.NormalizePredictionOrderTicker(order.MarketType, baseTicker, order.PredictionSide)
+	if err != nil {
+		return "", err
+	}
+	order.PredictionSide = normalizedSide
+	positionTicker, err := canonicalPositionTicker(order.MarketType, baseTicker, order.PredictionSide)
 	if err != nil {
 		return "", err
 	}
@@ -113,10 +203,10 @@ func (b *PaperBroker) SubmitOrder(ctx context.Context, order *domain.Order) (str
 	now := b.currentTime().UTC()
 	externalID := b.nextExternalIDLocked()
 
-	order.Ticker = ticker
 	order.ExternalID = externalID
 	order.Status = domain.OrderStatusSubmitted
 	order.SubmittedAt = timePtr(now)
+	order.Ticker = baseTicker
 	if order.CreatedAt.IsZero() {
 		order.CreatedAt = now
 	}
@@ -154,7 +244,7 @@ func (b *PaperBroker) SubmitOrder(ctx context.Context, order *domain.Order) (str
 	order.FilledAvgPrice = floatPtr(fillPrice)
 	order.FilledAt = timePtr(now)
 
-	b.applyFillLocked(ticker, order.Side, order.Quantity, fillPrice, now)
+	b.applyFillLocked(positionTicker, order.MarketType, order.Side, order.Quantity, fillPrice, now)
 	b.balance.BuyingPower = b.balance.Cash
 	b.balance.Equity = b.markToMarketEquityLocked()
 	b.orders[externalID] = cloneOrder(order)
@@ -313,13 +403,14 @@ func (b *PaperBroker) simulateFillPrice(order *domain.Order) (float64, bool, err
 	}
 }
 
-func (b *PaperBroker) applyFillLocked(ticker string, side domain.OrderSide, quantity, fillPrice float64, filledAt time.Time) {
+func (b *PaperBroker) applyFillLocked(ticker string, marketType domain.MarketType, side domain.OrderSide, quantity, fillPrice float64, filledAt time.Time) {
 	currentPrice := floatPtr(fillPrice)
 	position, ok := b.positions[ticker]
 	if !ok {
 		b.positions[ticker] = &domain.Position{
 			ID:           uuid.New(),
 			Ticker:       ticker,
+			MarketType:   marketType,
 			Side:         sideToPositionSide(side),
 			Quantity:     quantity,
 			AvgEntry:     fillPrice,
@@ -355,6 +446,7 @@ func (b *PaperBroker) applyFillLocked(ticker string, side domain.OrderSide, quan
 	b.positions[ticker] = &domain.Position{
 		ID:           uuid.New(),
 		Ticker:       ticker,
+		MarketType:   marketType,
 		Side:         fillSide,
 		Quantity:     remainingQuantity,
 		AvgEntry:     fillPrice,
@@ -380,6 +472,42 @@ func (b *PaperBroker) markToMarketEquityLocked() float64 {
 	return equity
 }
 
+func positionKey(position *domain.Position) string {
+	if position == nil {
+		return ""
+	}
+	return canonicalPositionKey(position.MarketType, position.Ticker, "")
+}
+
+func marketTypeFromPosition(position *domain.Position) domain.MarketType {
+	return position.MarketType
+}
+
+func mergeRestoredPositions(a, b *domain.Position) (*domain.Position, error) {
+	if a == nil || b == nil {
+		return nil, errors.New("paper: restored position is required")
+	}
+	if a.Ticker != b.Ticker || a.Side != b.Side || a.AssetClass != b.AssetClass || a.MarketType != b.MarketType {
+		return nil, fmt.Errorf("paper: irreconcilable restored positions for %s", a.Ticker)
+	}
+	a.Quantity += b.Quantity
+	a.AvgEntry = ((a.AvgEntry * (a.Quantity - b.Quantity)) + (b.AvgEntry * b.Quantity)) / a.Quantity
+	if a.CurrentPrice == nil {
+		a.CurrentPrice = cloneFloatPtr(b.CurrentPrice)
+	} else if b.CurrentPrice != nil && *a.CurrentPrice != *b.CurrentPrice {
+		return nil, fmt.Errorf("paper: irreconcilable restored current prices for %s", a.Ticker)
+	}
+	a.UnrealizedPnL = nil
+	if a.CurrentPrice != nil {
+		pnl := (*a.CurrentPrice - a.AvgEntry) * a.Quantity
+		if a.Side == domain.PositionSideShort {
+			pnl = (a.AvgEntry - *a.CurrentPrice) * a.Quantity
+		}
+		a.UnrealizedPnL = floatPtr(pnl)
+	}
+	return a, nil
+}
+
 func validateOrder(order *domain.Order) error {
 	switch order.Side {
 	case domain.OrderSideBuy, domain.OrderSideSell:
@@ -398,6 +526,42 @@ func normalizeTicker(ticker string) (string, error) {
 		return "", errors.New("paper: order ticker is required")
 	}
 	return normalized, nil
+}
+
+func canonicalPositionTicker(marketType domain.MarketType, ticker, predictionSide string) (string, error) {
+	normalizedTicker, err := normalizeTicker(ticker)
+	if err != nil {
+		return "", err
+	}
+	if marketType.Normalize() != domain.MarketTypePolymarket && marketType.Normalize() != domain.MarketTypeKalshi {
+		return normalizedTicker, nil
+	}
+	if slug, side, ok := splitPredictionTicker(normalizedTicker); ok {
+		return slug + ":" + side, nil
+	}
+	side := strings.ToUpper(strings.TrimSpace(predictionSide))
+	if side != "YES" && side != "NO" {
+		return normalizedTicker, nil
+	}
+	return normalizedTicker + ":" + side, nil
+}
+
+func canonicalPositionKey(marketType domain.MarketType, ticker, predictionSide string) string {
+	key, err := canonicalPositionTicker(marketType, ticker, predictionSide)
+	if err != nil {
+		return strings.ToUpper(strings.TrimSpace(ticker))
+	}
+	return key
+}
+
+func splitPredictionTicker(ticker string) (string, string, bool) {
+	slug, side, found := strings.Cut(ticker, ":")
+	slug = strings.TrimSpace(slug)
+	side = strings.ToUpper(strings.TrimSpace(side))
+	if !found || slug == "" || (side != "YES" && side != "NO") {
+		return "", "", false
+	}
+	return strings.ToUpper(slug), side, true
 }
 
 func resolveReferencePrice(order *domain.Order) (float64, bool) {

@@ -23,7 +23,6 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/api"
 	"github.com/PatrickFanella/get-rich-quick/internal/config"
 	"github.com/PatrickFanella/get-rich-quick/internal/data"
-	kalshidata "github.com/PatrickFanella/get-rich-quick/internal/data/kalshi"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/eventmarkets"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution"
@@ -92,6 +91,7 @@ type realStrategyRunner struct {
 	tradeRepo              repository.TradeRepository
 	opportunityRepo        repository.OpportunityRepository
 	auditLogRepo           repository.AuditLogRepository
+	financialRepo          repository.FinancialLifecycleRepository
 	riskEngine             risk.RiskEngine
 	tradeDecisionRecorder  execution.DecisionRecorder
 	metrics                *metrics.Metrics
@@ -104,6 +104,7 @@ type realStrategyRunner struct {
 	localPaperBroker       *paper.PaperBroker
 	portfolioAllocatorMode portfolio.AllocatorMode
 	kalshiLiveClient       kalshiexecution.LiveClient
+	kalshiDataProvider     kalshiMarketDataSource
 	polymarketClient       *polymarketexecution.Client // nil if not configured
 	polymarketMarketData   polymarketMarketDataSource
 	kalshiMarketData       kalshiMarketDataSource
@@ -127,6 +128,7 @@ func newRealStrategyRunner(
 	positionRepo repository.PositionRepository,
 	tradeRepo repository.TradeRepository,
 	auditLogRepo repository.AuditLogRepository,
+	financialRepo repository.FinancialLifecycleRepository,
 	riskEngine risk.RiskEngine,
 	appMetrics *metrics.Metrics,
 	notificationManager *notification.Manager,
@@ -134,6 +136,8 @@ func newRealStrategyRunner(
 	llmBudget *llm.Budget,
 	promptOverrides promptOverrideSource,
 	tradeDecisionRecorder execution.DecisionRecorder,
+	kalshiDataProvider kalshiMarketDataSource,
+	kalshiLiveClient kalshiexecution.LiveClient,
 	polymarketFeed polymarketTickFeed,
 	logger *slog.Logger,
 ) *realStrategyRunner {
@@ -154,6 +158,7 @@ func newRealStrategyRunner(
 		positionRepo:          positionRepo,
 		tradeRepo:             tradeRepo,
 		auditLogRepo:          auditLogRepo,
+		financialRepo:         financialRepo,
 		riskEngine:            riskEngine,
 		tradeDecisionRecorder: tradeDecisionRecorder,
 		metrics:               appMetrics,
@@ -163,21 +168,13 @@ func newRealStrategyRunner(
 		promptOverrides:       promptOverrides,
 		logger:                logger,
 		polymarketFeed:        polymarketFeed,
+		kalshiDataProvider:    kalshiDataProvider,
+		kalshiLiveClient:      kalshiLiveClient,
 		polymarketWorkerCtx:   workerCtx,
 		polymarketWorkerStop:  workerStop,
 		localPaperBroker:      paper.NewPaperBroker(localPaperBuyingPower, 0, 0),
 	}
 	runner.setRiskPortfolioSnapshotSource(runner.localPaperBroker)
-
-	if strings.TrimSpace(cfg.Brokers.Kalshi.APIKeyID) != "" && strings.TrimSpace(cfg.Brokers.Kalshi.PrivateKeyPEMB64) != "" {
-		if signedClient, err := kalshidata.NewClient(cfg.Brokers.Kalshi.APIBaseURL, cfg.Brokers.Kalshi.APIKeyID, cfg.Brokers.Kalshi.PrivateKeyPEMB64, logger); err != nil {
-			logger.Warn("kalshi live client construction failed; live execution disabled", slog.String("error", err.Error()))
-		} else if liveClient, err := kalshiexecution.NewLiveHTTPClient(signedClient); err != nil {
-			logger.Warn("kalshi live client adapter construction failed; live execution disabled", slog.String("error", err.Error()))
-		} else {
-			runner.kalshiLiveClient = liveClient
-		}
-	}
 
 	// Wire Polymarket client if credentials are configured.
 	pm := cfg.Brokers.Polymarket
@@ -201,7 +198,9 @@ func newRealStrategyRunner(
 		client.SetGatewayBaseURL(pm.GatewayBaseURL)
 		runner.polymarketMarketData = client
 	}
-	runner.kalshiMarketData = kalshidata.NewProvider(cfg.Brokers.Kalshi.APIBaseURL, logger)
+	if runner.kalshiMarketData == nil {
+		runner.kalshiMarketData = runner.kalshiDataProvider
+	}
 
 	return runner
 }
@@ -767,6 +766,9 @@ func (r *realStrategyRunner) runKalshiNative(ctx context.Context, strategy domai
 		return nil, err
 	}
 
+	if r.kalshiMarketData == nil {
+		r.kalshiMarketData = r.kalshiDataProvider
+	}
 	if r.kalshiMarketData == nil {
 		return failRun(errors.New("kalshi native: market data client is required"))
 	}
@@ -1582,7 +1584,12 @@ func (r *realStrategyRunner) newOrderManager(ctx context.Context, strategy domai
 		r.eventRepo,
 		applyPolymarketSizingCap(strategy.MarketType, sizingConfigForStrategy(ctx, strategy, strategyConfig, resolved, r.positionRepo, r.logger), r.cfg.Risk.Polymarket.MaxPositionUSDC),
 		r.logger,
-	).WithMetrics(r.metrics).WithDecisionRecorder(r.tradeDecisionRecorder).WithLiveGate(gate).WithLiveTrading(!strategy.IsPaper), nil
+	).WithMetrics(r.metrics).WithDecisionRecorder(r.tradeDecisionRecorder).WithLiveGate(gate).WithLiveTrading(!strategy.IsPaper).WithFinancialLifecycleRepo(func() repository.FinancialLifecycleRepository {
+		if strategy.IsPaper {
+			return r.financialRepo
+		}
+		return nil
+	}()), nil
 }
 
 func (r *realStrategyRunner) recordPortfolioOpportunity(ctx context.Context, strategy domain.Strategy, runID *uuid.UUID, finalSignal execution.FinalSignal, plan execution.TradingPlan) {

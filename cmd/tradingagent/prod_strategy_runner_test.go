@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -130,8 +131,9 @@ func TestRunStrategy_KalshiLiveRoutingRespectsGatesAndClientInitialization(t *te
 					PrivateKeyPEMB64: "base64-private-key",
 				}},
 			},
-			kalshiLiveClient: &fakeKalshiLiveClient{},
-			logger:           slogDiscardLogger(),
+			kalshiDataProvider: &fakeKalshiMarketData{label: "shared-data"},
+			kalshiLiveClient:   &fakeKalshiLiveClient{},
+			logger:             slogDiscardLogger(),
 		}
 		broker, name, err := runner.newBrokerForStrategy(domain.Strategy{Ticker: "KXTEST-YESNO", MarketType: domain.MarketTypeKalshi, IsPaper: true})
 		if err != nil {
@@ -158,8 +160,9 @@ func TestRunStrategy_KalshiLiveRoutingRespectsGatesAndClientInitialization(t *te
 					PrivateKeyPEMB64: "base64-private-key",
 				}},
 			},
-			kalshiLiveClient: &fakeKalshiLiveClient{},
-			logger:           slogDiscardLogger(),
+			kalshiDataProvider: &fakeKalshiMarketData{label: "shared-data"},
+			kalshiLiveClient:   &fakeKalshiLiveClient{},
+			logger:             slogDiscardLogger(),
 		}
 		broker, name, err := runner.newBrokerForStrategy(strategy)
 		if err != nil {
@@ -176,7 +179,7 @@ func TestRunStrategy_KalshiLiveRoutingRespectsGatesAndClientInitialization(t *te
 	t.Run("live disabled is denied by gate before broker route", func(t *testing.T) {
 		t.Parallel()
 
-		runner := &realStrategyRunner{kalshiMarketData: snapshot, logger: slogDiscardLogger()}
+		runner := &realStrategyRunner{kalshiDataProvider: &fakeKalshiMarketData{label: "shared-data"}, kalshiMarketData: snapshot, logger: slogDiscardLogger()}
 		_, err := runner.RunStrategy(context.Background(), strategy)
 		if err == nil || !strings.Contains(err.Error(), "live trading disabled") {
 			t.Fatalf("RunStrategy() error = %v, want live gate denial", err)
@@ -191,8 +194,9 @@ func TestRunStrategy_KalshiLiveRoutingRespectsGatesAndClientInitialization(t *te
 				Features:                     config.FeatureFlags{EnableLiveTrading: true},
 				LiveTradingAllowedStrategies: []string{strategy.ID.String()},
 			},
-			kalshiMarketData: snapshot,
-			logger:           slogDiscardLogger(),
+			kalshiDataProvider: &fakeKalshiMarketData{label: "shared-data"},
+			kalshiMarketData:   snapshot,
+			logger:             slogDiscardLogger(),
 		}
 		_, err := runner.RunStrategy(context.Background(), strategy)
 		if err == nil || !strings.Contains(err.Error(), "broker not live-allowlisted") {
@@ -209,8 +213,9 @@ func TestRunStrategy_KalshiLiveRoutingRespectsGatesAndClientInitialization(t *te
 				LiveTradingAllowedStrategies: []string{strategy.ID.String()},
 				LiveTradingAllowedBrokers:    []string{"kalshi"},
 			},
-			kalshiMarketData: snapshot,
-			logger:           slogDiscardLogger(),
+			kalshiDataProvider: &fakeKalshiMarketData{label: "shared-data"},
+			kalshiMarketData:   snapshot,
+			logger:             slogDiscardLogger(),
 		}
 		_, err := runner.RunStrategy(context.Background(), strategy)
 		if err == nil || !strings.Contains(err.Error(), "KALSHI_API_KEY_ID and KALSHI_PRIVATE_KEY_PEM_B64") {
@@ -231,8 +236,9 @@ func TestRunStrategy_KalshiLiveRoutingRespectsGatesAndClientInitialization(t *te
 					PrivateKeyPEMB64: "base64-private-key",
 				}},
 			},
-			kalshiMarketData: snapshot,
-			logger:           slogDiscardLogger(),
+			kalshiDataProvider: &fakeKalshiMarketData{label: "shared-data"},
+			kalshiMarketData:   snapshot,
+			logger:             slogDiscardLogger(),
 		}
 		_, err := runner.RunStrategy(context.Background(), strategy)
 		if err == nil || !strings.Contains(err.Error(), "kalshi live client is not initialised") {
@@ -316,6 +322,48 @@ func TestRunStrategy_KalshiSafeHoldPath(t *testing.T) {
 	}
 }
 
+func TestNewOrderManager_UsesFinancialLifecycleRepoForPaperOnly(t *testing.T) {
+	t.Parallel()
+
+	strategyID := uuid.New()
+	runner := &realStrategyRunner{
+		cfg: config.Config{
+			Features:                     config.FeatureFlags{EnableLiveTrading: true},
+			LiveTradingAllowedStrategies: []string{strategyID.String()},
+			LiveTradingAllowedBrokers:    []string{"kalshi"},
+			Brokers:                      config.BrokerConfigs{Kalshi: config.KalshiConfig{APIKeyID: "kalshi-key-id", PrivateKeyPEMB64: "base64-private-key"}},
+		},
+		financialRepo:    &strategyLifecycleRepoStub{},
+		kalshiLiveClient: &fakeKalshiLiveClient{},
+		kalshiMarketData: staticKalshiMarketData{snapshot: kalshiexecution.Snapshot{Ticker: "KXTEST-YESNO", Status: "active", CloseTime: time.Now().UTC().Add(time.Hour), FetchedAt: time.Now().UTC()}},
+		logger:           slogDiscardLogger(),
+	}
+	paperMgr, err := runner.newOrderManager(context.Background(), domain.Strategy{ID: strategyID, IsPaper: true, MarketType: domain.MarketTypeKalshi, Ticker: "KXTEST-YESNO"}, agent.ResolvedConfig{}, &agent.StrategyConfig{})
+	if err != nil {
+		t.Fatalf("newOrderManager(paper) error = %v", err)
+	}
+	liveMgr, err := runner.newOrderManager(context.Background(), domain.Strategy{ID: strategyID, IsPaper: false, MarketType: domain.MarketTypeKalshi, Ticker: "KXTEST-YESNO"}, agent.ResolvedConfig{}, &agent.StrategyConfig{})
+	if err != nil {
+		t.Fatalf("newOrderManager(live) error = %v", err)
+	}
+	if reflect.ValueOf(paperMgr).Elem().FieldByName("financialRepo").IsNil() {
+		t.Fatal("paper order manager did not receive financial lifecycle repo")
+	}
+	if !reflect.ValueOf(liveMgr).Elem().FieldByName("financialRepo").IsNil() {
+		t.Fatal("live order manager unexpectedly received financial lifecycle repo")
+	}
+}
+
+type strategyLifecycleRepoStub struct{}
+
+func (strategyLifecycleRepoStub) ApplyOrderFill(context.Context, repository.OrderFillInput) (repository.OrderFillResult, error) {
+	return repository.OrderFillResult{}, nil
+}
+
+func (strategyLifecycleRepoStub) SettlePredictionDecision(context.Context, repository.PredictionDecisionSettlementInput) (repository.PredictionDecisionSettlementResult, error) {
+	return repository.PredictionDecisionSettlementResult{}, nil
+}
+
 func TestKalshiTradingPlanCopiesReferencePrice(t *testing.T) {
 	t.Parallel()
 
@@ -364,6 +412,12 @@ type staticKalshiMarketData struct{ snapshot kalshiexecution.Snapshot }
 
 func (s staticKalshiMarketData) LoadSnapshot(context.Context, string) (kalshiexecution.Snapshot, error) {
 	return s.snapshot, nil
+}
+
+type fakeKalshiMarketData struct{ label string }
+
+func (f *fakeKalshiMarketData) LoadSnapshot(context.Context, string) (kalshiexecution.Snapshot, error) {
+	return kalshiexecution.Snapshot{Ticker: f.label}, nil
 }
 
 func mustKalshiConfig(t *testing.T, meta map[string]any) json.RawMessage {

@@ -2,12 +2,14 @@ package automation
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/robfig/cron/v3"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/data"
@@ -17,7 +19,7 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	kalshiexecution "github.com/PatrickFanella/get-rich-quick/internal/execution/kalshi"
 	polymarketexecution "github.com/PatrickFanella/get-rich-quick/internal/execution/polymarket"
-	predictionexecution "github.com/PatrickFanella/get-rich-quick/internal/execution/prediction"
+	prediction "github.com/PatrickFanella/get-rich-quick/internal/execution/prediction"
 	kalshidiscovery "github.com/PatrickFanella/get-rich-quick/internal/kalshidiscovery"
 	"github.com/PatrickFanella/get-rich-quick/internal/llm"
 	"github.com/PatrickFanella/get-rich-quick/internal/llm/embedding"
@@ -52,30 +54,36 @@ type StrategyTrigger interface {
 
 // OrchestratorDeps bundles external dependencies required by the orchestrator.
 type OrchestratorDeps struct {
-	Universe                    *universe.Universe
-	Polygon                     *polygon.Client
-	DataService                 *data.DataService
-	AlpacaReconciler            *AlpacaReconciler
-	OptionsProvider             data.OptionsDataProvider
-	LLMProvider                 llm.Provider
-	GeneratorMetrics            discovery.GeneratorMetrics
-	EmbeddingProvider           embedding.Provider // optional; nil = skip embedding during triage
-	EventsProvider              data.EventsProvider
-	StrategyRepo                repository.StrategyRepository
-	PositionRepo                repository.PositionRepository
-	OrderRepo                   repository.OrderRepository
-	TradeRepo                   repository.TradeRepository
-	OpportunityRepo             repository.OpportunityRepository
-	AllocationDecisionRepo      repository.AllocationDecisionRepository
-	RunRepo                     repository.PipelineRunRepository
-	JobRunRepo                  *pgrepo.JobRunRepo
-	OptionsScanRepo             *pgrepo.OptionsScanRepo
-	NewsFeedRepo                *pgrepo.NewsFeedRepo
-	StrategyTrigger             StrategyTrigger                        // optional; nil = no event-driven triggers
-	PolymarketAccountRepo       repository.PolymarketAccountRepository // optional; nil = skip profiling job
-	PolymarketReconciler        *polymarketexecution.Reconciler        // optional; nil = skip reconciliation job
-	PredictionSettler           *predictionexecution.Settler           // optional; settles paper event positions from provider outcomes
-	KalshiReconciler            *kalshiexecution.Reconciler            // optional; nil = skip live reconciliation job
+	Universe               *universe.Universe
+	Polygon                *polygon.Client
+	DataService            *data.DataService
+	AlpacaReconciler       *AlpacaReconciler
+	OptionsProvider        data.OptionsDataProvider
+	LLMProvider            llm.Provider
+	GeneratorMetrics       discovery.GeneratorMetrics
+	EmbeddingProvider      embedding.Provider // optional; nil = skip embedding during triage
+	EventsProvider         data.EventsProvider
+	StrategyRepo           repository.StrategyRepository
+	PositionRepo           repository.PositionRepository
+	OrderRepo              repository.OrderRepository
+	TradeRepo              repository.TradeRepository
+	OpportunityRepo        repository.OpportunityRepository
+	AllocationDecisionRepo repository.AllocationDecisionRepository
+	RunRepo                repository.PipelineRunRepository
+	JobRunRepo             *pgrepo.JobRunRepo
+	OptionsScanRepo        *pgrepo.OptionsScanRepo
+	NewsFeedRepo           *pgrepo.NewsFeedRepo
+	StrategyTrigger        StrategyTrigger                        // optional; nil = no event-driven triggers
+	PolymarketAccountRepo  repository.PolymarketAccountRepository // optional; nil = skip profiling job
+	PolymarketReconciler   *polymarketexecution.Reconciler        // optional; nil = skip reconciliation job
+	PredictionSettler      interface {
+		PendingMarkets(context.Context, domain.MarketType) ([]string, error)
+		SettlePreview(context.Context, domain.MarketType, string) (*prediction.SettlementPreview, error)
+		PreviewMarket(context.Context, domain.MarketType, string) (int, error)
+		SettleDecisions(context.Context, domain.MarketType, string, string, time.Time, []uuid.UUID) (int, error)
+		SettleMarket(context.Context, domain.MarketType, string, string, time.Time) (int, error)
+	} // optional; settles paper event positions from provider outcomes
+	KalshiReconciler            *kalshiexecution.Reconciler // optional; nil = skip live reconciliation job
 	PolymarketResolvedRepo      repository.PolymarketResolvedMarketsRepository
 	PolymarketWatchedRepo       repository.PolymarketWatchedMarketsRepository // optional; nil = skip discovery auto-watch
 	PolymarketDiscoveryRuns     repository.PolymarketDiscoveryRunRepository   // optional; nil = skip chunked discovery job registration/execution
@@ -83,15 +91,19 @@ type OrchestratorDeps struct {
 	DisablePolymarketAutomation bool                                          // disables Polymarket profile/reconcile/resolution/discovery cron jobs
 	KalshiCatalog               interface {
 		ListMarkets(context.Context, kalshidiscovery.ListOptions) ([]kalshidiscovery.MarketCandidate, string, error)
+		GetMarket(context.Context, string) (*kalshidiscovery.MarketCandidate, error)
 	}
 	PortfolioAllocatorMode    portfolio.AllocatorMode
 	PortfolioPaperProcessor   portfolio.PaperOrderProcessor
 	KalshiWatchedRepo         repository.KalshiWatchedMarketsRepository
 	KalshiMarketSnapshotsRepo repository.KalshiMarketSnapshotsRepository
 	KalshiDiscoveryRuns       repository.KalshiDiscoveryRunRepository // optional; nil = skip progress recording
-	ReportArtifactRepo        *pgrepo.ReportArtifactRepo              // optional; nil = skip report jobs
-	BacktestConfigRepo        repository.BacktestConfigRepository     // optional; needed by report jobs
-	BacktestRunRepo           repository.BacktestRunRepository        // optional; needed by report jobs
+	KalshiSettlementGateRepo  repository.KalshiSettlementGateRepository
+	KalshiSettlementThreshold int
+	KalshiSettlementDryRun    bool
+	ReportArtifactRepo        *pgrepo.ReportArtifactRepo          // optional; nil = skip report jobs
+	BacktestConfigRepo        repository.BacktestConfigRepository // optional; needed by report jobs
+	BacktestRunRepo           repository.BacktestRunRepository    // optional; needed by report jobs
 	OvernightBacktestRuns     repository.OvernightBacktestRunRepository
 	Logger                    *slog.Logger
 }
@@ -113,26 +125,42 @@ type RegisteredJob struct {
 	RunCount            int
 	ErrorCount          int
 	ConsecutiveFailures int
+	SettlementGate      *SettlementGateStatus
 	Running             bool
 	Enabled             bool
 }
 
 // JobStatus is the read-only snapshot returned by Status.
 type JobStatus struct {
-	Name                string         `json:"name"`
-	Description         string         `json:"description"`
-	Schedule            string         `json:"schedule"`
-	LastRun             *time.Time     `json:"last_run,omitempty"`
-	LastResult          string         `json:"last_result"`
-	LastSummary         map[string]int `json:"last_summary,omitempty"`
-	LastError           string         `json:"last_error,omitempty"`
-	LastErrorAt         *time.Time     `json:"last_error_at,omitempty"`
-	RunCount            int            `json:"run_count"`
-	ErrorCount          int            `json:"error_count"`
-	ConsecutiveFailures int            `json:"consecutive_failures"`
-	StuckFor            *time.Duration `json:"stuck_for,omitempty"`
-	Running             bool           `json:"running"`
-	Enabled             bool           `json:"enabled"`
+	Name                string                `json:"name"`
+	Description         string                `json:"description"`
+	Schedule            string                `json:"schedule"`
+	LastRun             *time.Time            `json:"last_run,omitempty"`
+	LastResult          string                `json:"last_result"`
+	LastSummary         map[string]int        `json:"last_summary,omitempty"`
+	LastError           string                `json:"last_error,omitempty"`
+	LastErrorAt         *time.Time            `json:"last_error_at,omitempty"`
+	RunCount            int                   `json:"run_count"`
+	ErrorCount          int                   `json:"error_count"`
+	ConsecutiveFailures int                   `json:"consecutive_failures"`
+	StuckFor            *time.Duration        `json:"stuck_for,omitempty"`
+	Running             bool                  `json:"running"`
+	Enabled             bool                  `json:"enabled"`
+	SettlementGate      *SettlementGateStatus `json:"settlement_gate,omitempty"`
+}
+
+type SettlementGateStatus struct {
+	ConsecutiveSuccesses  int        `json:"consecutive_dry_run_successes"`
+	Threshold             int        `json:"threshold"`
+	Eligible              bool       `json:"eligible"`
+	ProjectionFingerprint string     `json:"projection_fingerprint,omitempty"`
+	LastOutcome           string     `json:"last_outcome,omitempty"`
+	LastError             string     `json:"last_error,omitempty"`
+	LastRunAt             *time.Time `json:"last_run_at,omitempty"`
+	Fetched               int        `json:"fetched"`
+	Resolved              int        `json:"resolved"`
+	WouldSettleMarkets    int        `json:"would_settle_markets"`
+	WouldSettleDecisions  int        `json:"would_settle_decisions"`
 }
 
 // AutomationJobMetrics is implemented by *metrics.Metrics.
@@ -141,6 +169,9 @@ type AutomationJobMetrics interface {
 	RecordAutomationJobError(jobName string)
 	RecordAlpacaReconcileRun(result string)
 	RecordKalshiReconcileRun(result string)
+	RecordKalshiSettlementDryRun(result string)
+	RecordKalshiSettlementOutcome(result string)
+	RecordKalshiSettlementTransition(from, to string)
 }
 
 // ReportWorkerMetrics captures report worker success/error emission.
@@ -151,14 +182,15 @@ type ReportWorkerMetrics interface {
 
 // JobOrchestrator is the central registry and cron runner for all automated jobs.
 type JobOrchestrator struct {
-	jobs          map[string]*RegisteredJob
-	cron          *cron.Cron
-	deps          OrchestratorDeps
-	logger        *slog.Logger
-	rssAggregator *rss.Aggregator
-	metrics       AutomationJobMetrics
-	reportMetrics ReportWorkerMetrics
-	reportWorker  *ReportWorker
+	jobs                map[string]*RegisteredJob
+	cron                *cron.Cron
+	deps                OrchestratorDeps
+	logger              *slog.Logger
+	rssAggregator       *rss.Aggregator
+	metrics             AutomationJobMetrics
+	reportMetrics       ReportWorkerMetrics
+	reportWorker        *ReportWorker
+	kalshiGateUnhealthy bool
 }
 
 // NewJobOrchestrator constructs a new orchestrator.
@@ -297,6 +329,7 @@ func (o *JobOrchestrator) Status() []JobStatus {
 			StuckFor:            stuckFor,
 			Running:             job.Running,
 			Enabled:             job.Enabled,
+			SettlementGate:      cloneSettlementGateStatus(job.SettlementGate),
 		}
 		job.mu.Unlock()
 		statuses = append(statuses, s)
@@ -401,14 +434,59 @@ func (o *JobOrchestrator) SetEnabled(name string, enabled bool) error {
 	if !ok {
 		return fmt.Errorf("automation: unknown job %q", name)
 	}
+	if name == "kalshi_settlement" && enabled {
+		if o.kalshiGateUnhealthy {
+			return fmt.Errorf("automation: kalshi settlement gate unhealthy")
+		}
+		if o.deps.KalshiSettlementGateRepo == nil {
+			o.kalshiGateUnhealthy = true
+			return fmt.Errorf("automation: kalshi settlement gate unavailable")
+		}
+		state, err := o.deps.KalshiSettlementGateRepo.Get(context.Background(), name)
+		if err != nil {
+			o.kalshiGateUnhealthy = true
+			return fmt.Errorf("automation: load kalshi settlement gate: %w", err)
+		}
+		if state == nil || !state.Eligible {
+			return fmt.Errorf("automation: kalshi settlement gate not eligible")
+		}
+	}
 	job.mu.Lock()
+	previous := job.Enabled
 	job.Enabled = enabled
+	if name == "kalshi_settlement" && o.deps.KalshiSettlementGateRepo != nil {
+		if state, err := o.deps.KalshiSettlementGateRepo.Get(context.Background(), name); err == nil {
+			job.SettlementGate = settlementGateStatusFromState(state)
+		}
+	}
 	job.mu.Unlock()
+	if name == "kalshi_settlement" && o.metrics != nil && previous != enabled {
+		o.metrics.RecordKalshiSettlementTransition(fmt.Sprintf("%t", previous), fmt.Sprintf("%t", enabled))
+	}
 	o.logger.Info("automation: job enabled state changed",
 		slog.String("job", name),
 		slog.Bool("enabled", enabled),
 	)
 	return nil
+}
+
+func settlementGateStatusFromState(state *domain.KalshiSettlementGateState) *SettlementGateStatus {
+	if state == nil {
+		return nil
+	}
+	return &SettlementGateStatus{
+		ConsecutiveSuccesses:  state.ConsecutiveSuccesses,
+		Threshold:             state.Threshold,
+		Eligible:              state.Eligible,
+		ProjectionFingerprint: state.ProjectionFingerprint,
+		LastOutcome:           state.LastOutcome,
+		LastError:             state.LastError,
+		LastRunAt:             state.LastRunAt,
+		Fetched:               state.Fetched,
+		Resolved:              state.Resolved,
+		WouldSettleMarkets:    state.WouldSettleMarkets,
+		WouldSettleDecisions:  state.WouldSettleDecisions,
+	}
 }
 
 // wrapAndRun is the common wrapper that checks preconditions and runs the job.
@@ -562,6 +640,19 @@ func (o *JobOrchestrator) hydrateFromDB() {
 	if o.deps.JobRunRepo == nil {
 		return
 	}
+	if o.deps.KalshiSettlementGateRepo != nil {
+		if state, err := o.deps.KalshiSettlementGateRepo.Get(context.Background(), "kalshi_settlement"); err == nil {
+			if job, ok := o.jobs["kalshi_settlement"]; ok {
+				job.mu.Lock()
+				job.SettlementGate = &SettlementGateStatus{ConsecutiveSuccesses: state.ConsecutiveSuccesses, Threshold: state.Threshold, Eligible: state.Eligible, ProjectionFingerprint: state.ProjectionFingerprint, LastOutcome: state.LastOutcome, LastError: state.LastError, LastRunAt: state.LastRunAt, Fetched: state.Fetched, Resolved: state.Resolved, WouldSettleMarkets: state.WouldSettleMarkets, WouldSettleDecisions: state.WouldSettleDecisions}
+				job.mu.Unlock()
+				o.kalshiGateUnhealthy = false
+			}
+		} else if !errors.Is(err, repository.ErrNotFound) {
+			o.logger.Warn("automation: failed to hydrate kalshi settlement gate", slog.Any("error", err))
+			o.kalshiGateUnhealthy = true
+		}
+	}
 
 	summaries, err := o.deps.JobRunRepo.Summaries(context.Background())
 	if err != nil {
@@ -597,4 +688,12 @@ func cloneSummary(summary map[string]int) map[string]int {
 		cloned[key] = value
 	}
 	return cloned
+}
+
+func cloneSettlementGateStatus(s *SettlementGateStatus) *SettlementGateStatus {
+	if s == nil {
+		return nil
+	}
+	clone := *s
+	return &clone
 }

@@ -156,10 +156,18 @@ type PolymarketConfig struct {
 
 // KalshiConfig contains credentials and endpoint settings for Kalshi.
 type KalshiConfig struct {
-	APIBaseURL       string
-	APIKeyID         string
-	PrivateKeyPEMB64 string
-	Demo             bool
+	APIBaseURL              string
+	APIKeyID                string
+	PrivateKeyPEMB64        string
+	Demo                    bool
+	RequestsPerWindow       int
+	Window                  time.Duration
+	MaxAttempts             int
+	BaseBackoff             time.Duration
+	MaxBackoff              time.Duration
+	JitterRatio             float64
+	DryRun                  bool
+	SettlementGateThreshold int
 }
 
 // BrokerConfig contains broker credentials and execution mode.
@@ -377,6 +385,38 @@ func loadFromEnvironment() (Config, error) {
 	}
 
 	kalshiDemo, err := getEnvBool("KALSHI_DEMO", true)
+	if err != nil {
+		return Config{}, err
+	}
+	kalshiRequestsPerWindow, err := getEnvInt("KALSHI_REQUESTS_PER_WINDOW", 60)
+	if err != nil {
+		return Config{}, err
+	}
+	kalshiWindow, err := getEnvDuration("KALSHI_REQUEST_WINDOW", time.Minute)
+	if err != nil {
+		return Config{}, err
+	}
+	kalshiMaxAttempts, err := getEnvInt("KALSHI_MAX_ATTEMPTS", 3)
+	if err != nil {
+		return Config{}, err
+	}
+	kalshiBaseBackoff, err := getEnvDuration("KALSHI_BASE_BACKOFF", 100*time.Millisecond)
+	if err != nil {
+		return Config{}, err
+	}
+	kalshiMaxBackoff, err := getEnvDuration("KALSHI_MAX_BACKOFF", 2*time.Second)
+	if err != nil {
+		return Config{}, err
+	}
+	kalshiJitterRatio, err := getEnvFloat64("KALSHI_JITTER_RATIO", 0.2)
+	if err != nil {
+		return Config{}, err
+	}
+	kalshiDryRun, err := getEnvBool("KALSHI_DRY_RUN", true)
+	if err != nil {
+		return Config{}, err
+	}
+	kalshiSettlementGateThreshold, err := getEnvInt("KALSHI_SETTLEMENT_GATE_THRESHOLD", 20)
 	if err != nil {
 		return Config{}, err
 	}
@@ -628,10 +668,18 @@ func loadFromEnvironment() (Config, error) {
 				CLOBURL:        getEnvString("POLYMARKET_CLOB_URL", "https://clob.polymarket.com"),
 			},
 			Kalshi: KalshiConfig{
-				APIBaseURL:       getEnvString("KALSHI_API_BASE_URL", "https://external-api.demo.kalshi.co/trade-api/v2"),
-				APIKeyID:         os.Getenv("KALSHI_API_KEY_ID"),
-				PrivateKeyPEMB64: os.Getenv("KALSHI_PRIVATE_KEY_PEM_B64"),
-				Demo:             kalshiDemo,
+				APIBaseURL:              getEnvString("KALSHI_API_BASE_URL", "https://external-api.demo.kalshi.co/trade-api/v2"),
+				APIKeyID:                os.Getenv("KALSHI_API_KEY_ID"),
+				PrivateKeyPEMB64:        os.Getenv("KALSHI_PRIVATE_KEY_PEM_B64"),
+				Demo:                    kalshiDemo,
+				RequestsPerWindow:       kalshiRequestsPerWindow,
+				Window:                  kalshiWindow,
+				MaxAttempts:             kalshiMaxAttempts,
+				BaseBackoff:             kalshiBaseBackoff,
+				MaxBackoff:              kalshiMaxBackoff,
+				JitterRatio:             kalshiJitterRatio,
+				DryRun:                  kalshiDryRun,
+				SettlementGateThreshold: kalshiSettlementGateThreshold,
 			},
 		},
 		Risk: RiskConfig{

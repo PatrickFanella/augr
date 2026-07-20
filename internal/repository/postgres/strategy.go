@@ -120,6 +120,47 @@ func (r *StrategyRepo) Count(ctx context.Context, filter repository.StrategyFilt
 	return total, nil
 }
 
+func (r *StrategyRepo) CountByMarket(ctx context.Context, filter repository.StrategyFilter) (map[domain.MarketType]int, error) {
+	var (
+		conditions []string
+		args       []any
+		argIdx     int
+	)
+	nextArg := func(v any) string { argIdx++; args = append(args, v); return fmt.Sprintf("$%d", argIdx) }
+	if filter.Ticker != "" {
+		conditions = append(conditions, "ticker = "+nextArg(filter.Ticker))
+	}
+	if filter.MarketType != "" {
+		conditions = append(conditions, "market_type = "+nextArg(filter.MarketType))
+	}
+	if filter.Status != "" {
+		conditions = append(conditions, "status = "+nextArg(filter.Status))
+	}
+	if filter.IsPaper != nil {
+		conditions = append(conditions, "is_paper = "+nextArg(*filter.IsPaper))
+	}
+	query := `SELECT market_type, COUNT(*) FROM strategies`
+	if len(conditions) > 0 {
+		query += " WHERE " + strings.Join(conditions, " AND ")
+	}
+	query += " GROUP BY market_type ORDER BY market_type"
+	rows, err := r.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: count strategies by market: %w", err)
+	}
+	defer rows.Close()
+	out := map[domain.MarketType]int{}
+	for rows.Next() {
+		var key string
+		var total int
+		if err := rows.Scan(&key, &total); err != nil {
+			return nil, fmt.Errorf("postgres: count strategies by market scan: %w", err)
+		}
+		out[domain.MarketType(key)] = total
+	}
+	return out, rows.Err()
+}
+
 // buildStrategyCountQuery constructs a SELECT COUNT(*) query for strategies
 // with the same filter conditions used by buildListQuery.
 func buildStrategyCountQuery(filter repository.StrategyFilter) (string, []any) {

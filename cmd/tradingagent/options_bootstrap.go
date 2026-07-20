@@ -3,6 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
+	"math"
+	"strconv"
+	"strings"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution"
@@ -10,13 +13,13 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 )
 
-func bootstrapPaperOptionsAccount(ctx context.Context, broker *paper.PaperBroker, positionRepo repository.PositionRepository, tradeRepo repository.TradeRepository) error {
-	if broker == nil || positionRepo == nil || tradeRepo == nil {
+func bootstrapPaperOptionsAccount(ctx context.Context, broker *paper.PaperBroker, paperRepo repository.PaperAccountRepository) error {
+	if broker == nil || paperRepo == nil {
 		return fmt.Errorf("paper options account dependencies are required")
 	}
 	var allTrades []domain.Trade
 	for offset := 0; ; offset += 250 {
-		trades, err := tradeRepo.List(ctx, repository.TradeFilter{}, 250, offset)
+		trades, err := paperRepo.ListPaperTrades(ctx, 250, offset)
 		if err != nil {
 			return err
 		}
@@ -27,7 +30,7 @@ func bootstrapPaperOptionsAccount(ctx context.Context, broker *paper.PaperBroker
 	}
 	var allPositions []domain.Position
 	for offset := 0; ; offset += 250 {
-		positions, err := positionRepo.GetOpen(ctx, repository.PositionFilter{}, 250, offset)
+		positions, err := paperRepo.GetOpenPaperPositions(ctx, 250, offset)
 		if err != nil {
 			return err
 		}
@@ -36,22 +39,46 @@ func bootstrapPaperOptionsAccount(ctx context.Context, broker *paper.PaperBroker
 			break
 		}
 	}
-	balance, err := reconstructPaperOptionsBalance(localPaperBuyingPower, allTrades, allPositions)
+	var allOrders []domain.Order
+	for offset := 0; ; offset += 250 {
+		orders, err := paperRepo.ListOpenPaperOrders(ctx, 250, offset)
+		if err != nil {
+			return err
+		}
+		allOrders = append(allOrders, orders...)
+		if len(orders) < 250 {
+			break
+		}
+	}
+	balance, err := reconstructPaperBalance(localPaperBuyingPower, allTrades, allPositions)
 	if err != nil {
 		return err
 	}
-	return broker.RestoreAccount(balance)
+	if err := broker.RestoreAccount(balance); err != nil {
+		return err
+	}
+	if err := broker.RestorePositions(allPositions); err != nil {
+		return err
+	}
+	if err := broker.RestoreOrders(allOrders); err != nil {
+		return err
+	}
+	maxSeq, err := paperRepo.GetMaxPaperExternalIDSequence(ctx)
+	if err != nil {
+		return err
+	}
+	if err := broker.RestoreOrderSequence(maxSeq); err != nil {
+		return err
+	}
+	return nil
 }
 
-func reconstructPaperOptionsBalance(initialCash float64, trades []domain.Trade, positions []domain.Position) (execution.Balance, error) {
+func reconstructPaperBalance(initialCash float64, trades []domain.Trade, positions []domain.Position) (execution.Balance, error) {
 	cash := initialCash
 	for _, trade := range trades {
-		if trade.AssetClass != domain.AssetClassOption {
-			continue
-		}
-		cashFlow := trade.Premium
+		cashFlow := tradeNotional(trade)
 		if cashFlow == 0 {
-			cashFlow = trade.Price * trade.Quantity * trade.ContractMultiplier
+			continue
 		}
 		if trade.Side == domain.OrderSideBuy {
 			cash -= cashFlow + trade.Fee
@@ -61,14 +88,10 @@ func reconstructPaperOptionsBalance(initialCash float64, trades []domain.Trade, 
 	}
 	equity := cash
 	for _, position := range positions {
-		if position.AssetClass != domain.AssetClassOption || position.ClosedAt != nil {
+		if position.ClosedAt != nil {
 			continue
 		}
-		price := position.AvgEntry
-		if position.CurrentPrice != nil {
-			price = *position.CurrentPrice
-		}
-		value := price * position.Quantity * position.ContractMultiplier
+		value := positionMarketValue(position)
 		if position.Side == domain.PositionSideShort {
 			equity -= value
 		} else {
@@ -78,5 +101,29 @@ func reconstructPaperOptionsBalance(initialCash float64, trades []domain.Trade, 
 	if cash < 0 || equity < 0 {
 		return execution.Balance{}, fmt.Errorf("reconstructed paper options account is negative: cash=%.2f equity=%.2f", cash, equity)
 	}
+	if math.IsNaN(cash) || math.IsInf(cash, 0) || math.IsNaN(equity) || math.IsInf(equity, 0) {
+		return execution.Balance{}, fmt.Errorf("invalid reconstructed balance")
+	}
 	return execution.Balance{Currency: "USD", Cash: cash, BuyingPower: cash, Equity: equity}, nil
+}
+
+func tradeNotional(trade domain.Trade) float64 {
+	return trade.Price * trade.Quantity
+}
+
+func positionMarketValue(position domain.Position) float64 {
+	price := position.AvgEntry
+	if position.CurrentPrice != nil && *position.CurrentPrice > 0 {
+		price = *position.CurrentPrice
+	}
+	return price * position.Quantity
+}
+
+func parsePaperSequence(externalID string) (uint64, bool) {
+	externalID = strings.TrimSpace(externalID)
+	if !strings.HasPrefix(externalID, "paper-") {
+		return 0, false
+	}
+	n, err := strconv.ParseUint(strings.TrimPrefix(externalID, "paper-"), 10, 64)
+	return n, err == nil
 }

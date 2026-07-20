@@ -20,6 +20,13 @@ type AlpacaReconciliationBroker interface {
 	GetPositions(ctx context.Context) ([]domain.Position, error)
 	ListOrders(ctx context.Context) ([]BrokerOrderSnapshot, error)
 	ListFills(ctx context.Context) ([]BrokerFillSnapshot, error)
+	GetAccountSnapshot(ctx context.Context) (BrokerAccountSnapshot, error)
+}
+
+// BrokerAccountSnapshot captures the read-only cash/equity snapshot needed for reconciliation.
+type BrokerAccountSnapshot struct {
+	Cash   float64
+	Equity float64
 }
 
 // StrategyLookupRepository is the narrow strategy dependency needed by reconciliation.
@@ -37,7 +44,10 @@ type OrderPersistence interface {
 // PositionPersistence is the narrow position repository surface needed by reconciliation.
 type PositionPersistence interface {
 	Create(ctx context.Context, position *domain.Position) error
+	CreateAlpacaOwned(ctx context.Context, position *domain.Position) error
+	List(ctx context.Context, filter repository.PositionFilter, limit, offset int) ([]domain.Position, error)
 	GetOpen(ctx context.Context, filter repository.PositionFilter, limit, offset int) ([]domain.Position, error)
+	ListOpenAlpacaOwned(ctx context.Context, limit, offset int) ([]domain.Position, error)
 	Update(ctx context.Context, position *domain.Position) error
 }
 
@@ -81,6 +91,7 @@ type BrokerFillSnapshot struct {
 // AlpacaReconcilerDeps bundles repository and broker dependencies.
 type AlpacaReconcilerDeps struct {
 	Broker       AlpacaReconciliationBroker
+	PLAggregate  repository.AlpacaPLAggregateRepository
 	StrategyRepo StrategyLookupRepository
 	OrderRepo    OrderPersistence
 	PositionRepo PositionPersistence
@@ -118,6 +129,18 @@ type AlpacaVerificationReport struct {
 	Verified         bool                         `json:"verified"`
 }
 
+type AlpacaPLReconciliationReport struct {
+	BrokerCash          float64  `json:"broker_cash"`
+	BrokerEquity        float64  `json:"broker_equity"`
+	LocalClosedPnL      float64  `json:"local_closed_pnl"`
+	LocalOpenPnL        float64  `json:"local_open_pnl"`
+	TradeCount          int      `json:"trade_count"`
+	FeeTotal            float64  `json:"fee_total"`
+	KnownAdjustments    float64  `json:"known_adjustments"`
+	UnexplainedResidual float64  `json:"unexplained_residual"`
+	AdjustmentDetails   []string `json:"adjustment_details,omitempty"`
+}
+
 func (s AlpacaReconcileSummary) Map() map[string]int {
 	return map[string]int{
 		"orders_created":       s.OrdersCreated,
@@ -131,9 +154,43 @@ func (s AlpacaReconcileSummary) Map() map[string]int {
 	}
 }
 
+func (r *AlpacaReconciler) ReconciliationReport(ctx context.Context) (AlpacaPLReconciliationReport, error) {
+	if r == nil || r.broker == nil {
+		return AlpacaPLReconciliationReport{}, fmt.Errorf("alpaca_reconcile: broker is required")
+	}
+	if r.plAggregate == nil {
+		return AlpacaPLReconciliationReport{}, fmt.Errorf("alpaca_reconcile: alpaca pl aggregate repository is required")
+	}
+
+	account, err := r.broker.GetAccountSnapshot(ctx)
+	if err != nil {
+		return AlpacaPLReconciliationReport{}, fmt.Errorf("alpaca_reconcile: fetch account snapshot: %w", err)
+	}
+	report := AlpacaPLReconciliationReport{
+		BrokerCash:        account.Cash,
+		BrokerEquity:      account.Equity,
+		AdjustmentDetails: []string{"no persisted adjustment source discovered"},
+	}
+	if report.LocalClosedPnL, err = r.plAggregate.ClosedRealizedPnL(ctx); err != nil {
+		return AlpacaPLReconciliationReport{}, fmt.Errorf("alpaca_reconcile: closed realized pnl: %w", err)
+	}
+	if report.LocalOpenPnL, err = r.plAggregate.OpenUnrealizedPnL(ctx); err != nil {
+		return AlpacaPLReconciliationReport{}, fmt.Errorf("alpaca_reconcile: open unrealized pnl: %w", err)
+	}
+	if report.TradeCount, err = r.plAggregate.TradeCount(ctx); err != nil {
+		return AlpacaPLReconciliationReport{}, fmt.Errorf("alpaca_reconcile: trade count: %w", err)
+	}
+	if report.FeeTotal, err = r.plAggregate.FeeTotal(ctx); err != nil {
+		return AlpacaPLReconciliationReport{}, fmt.Errorf("alpaca_reconcile: fee total: %w", err)
+	}
+	report.UnexplainedResidual = report.BrokerEquity - (report.BrokerCash + report.LocalClosedPnL + report.LocalOpenPnL - report.FeeTotal)
+	return report, nil
+}
+
 // AlpacaReconciler imports Alpaca broker state into local orders, positions, and trades tables.
 type AlpacaReconciler struct {
 	broker       AlpacaReconciliationBroker
+	plAggregate  repository.AlpacaPLAggregateRepository
 	strategyRepo StrategyLookupRepository
 	orderRepo    OrderPersistence
 	positionRepo PositionPersistence
@@ -149,6 +206,7 @@ func NewAlpacaReconciler(deps AlpacaReconcilerDeps) *AlpacaReconciler {
 	}
 	return &AlpacaReconciler{
 		broker:       deps.Broker,
+		plAggregate:  deps.PLAggregate,
 		strategyRepo: deps.StrategyRepo,
 		orderRepo:    deps.OrderRepo,
 		positionRepo: deps.PositionRepo,
@@ -204,7 +262,7 @@ func (r *AlpacaReconciler) Reconcile(ctx context.Context) (AlpacaReconcileSummar
 		orderByExternalID[order.ExternalID] = &cloned
 	}
 
-	existingPositions, err := r.positionRepo.GetOpen(ctx, repository.PositionFilter{}, 1000, 0)
+	existingPositions, err := r.positionRepo.ListOpenAlpacaOwned(ctx, 1000, 0)
 	if err != nil {
 		return AlpacaReconcileSummary{}, fmt.Errorf("alpaca_reconcile: list local positions: %w", err)
 	}
@@ -273,7 +331,7 @@ func (r *AlpacaReconciler) Reconcile(ctx context.Context) (AlpacaReconcileSummar
 		}
 
 		position := snapshotToPosition(snapshot, strategyID)
-		if err := r.positionRepo.Create(ctx, position); err != nil {
+		if err := r.positionRepo.CreateAlpacaOwned(ctx, position); err != nil {
 			return summary, fmt.Errorf("alpaca_reconcile: create position %s: %w", snapshot.Ticker, err)
 		}
 		positionByTicker[position.Ticker] = position
@@ -391,7 +449,7 @@ func (r *AlpacaReconciler) Verify(ctx context.Context) (AlpacaVerificationReport
 	if err != nil {
 		return AlpacaVerificationReport{}, fmt.Errorf("alpaca_reconcile: list local orders: %w", err)
 	}
-	localPositions, err := r.positionRepo.GetOpen(ctx, repository.PositionFilter{}, 1000, 0)
+	localPositions, err := r.positionRepo.ListOpenAlpacaOwned(ctx, 1000, 0)
 	if err != nil {
 		return AlpacaVerificationReport{}, fmt.Errorf("alpaca_reconcile: list local positions: %w", err)
 	}
@@ -538,6 +596,7 @@ func snapshotToOrder(snapshot BrokerOrderSnapshot, strategyID *uuid.UUID) *domai
 func snapshotToPosition(snapshot domain.Position, strategyID *uuid.UUID) *domain.Position {
 	return &domain.Position{
 		StrategyID:    strategyID,
+		MarketType:    marketTypeFromAssetClass(snapshot.AssetClass),
 		Ticker:        snapshot.Ticker,
 		Side:          snapshot.Side,
 		Quantity:      snapshot.Quantity,
@@ -545,6 +604,27 @@ func snapshotToPosition(snapshot domain.Position, strategyID *uuid.UUID) *domain
 		CurrentPrice:  cloneFloatPtr(snapshot.CurrentPrice),
 		UnrealizedPnL: cloneFloatPtr(snapshot.UnrealizedPnL),
 	}
+}
+
+func marketTypeFromAssetClass(assetClass domain.AssetClass) domain.MarketType {
+	switch assetClass {
+	case domain.AssetClassOption:
+		return domain.MarketTypeOptions
+	case "crypto":
+		return domain.MarketTypeCrypto
+	default:
+		return domain.MarketTypeStock
+	}
+}
+
+func positionPnl(position domain.Position) float64 {
+	if position.ClosedAt != nil {
+		return position.RealizedPnL
+	}
+	if position.UnrealizedPnL != nil {
+		return *position.UnrealizedPnL
+	}
+	return 0
 }
 
 func applyOrderSnapshot(order *domain.Order, snapshot BrokerOrderSnapshot, strategyID *uuid.UUID) bool {

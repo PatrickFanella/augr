@@ -75,6 +75,14 @@ func (a *AlpacaClientAdapter) GetAccountBalance(ctx context.Context) (execution.
 	return a.broker.GetAccountBalance(ctx)
 }
 
+func (a *AlpacaClientAdapter) GetAccountSnapshot(ctx context.Context) (BrokerAccountSnapshot, error) {
+	balance, err := a.GetAccountBalance(ctx)
+	if err != nil {
+		return BrokerAccountSnapshot{}, err
+	}
+	return BrokerAccountSnapshot{Cash: balance.Cash, Equity: balance.Equity}, nil
+}
+
 func (a *AlpacaClientAdapter) ListOrders(ctx context.Context) ([]BrokerOrderSnapshot, error) {
 	if a == nil || a.client == nil {
 		return nil, errors.New("alpaca: reconciliation client is required")

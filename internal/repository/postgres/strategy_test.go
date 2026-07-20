@@ -201,6 +201,18 @@ func TestStrategyRepoIntegration_CreateListAndUpdateStatus(t *testing.T) {
 		t.Fatalf("paused strategy id = %s, want %s", pausedOnly[0].ID, paused.ID)
 	}
 
+	count, err := repo.Count(ctx, repository.StrategyFilter{Status: domain.StrategyStatusActive})
+	if err != nil {
+		t.Fatalf("Count() error = %v", err)
+	}
+	var sqlCount int
+	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM strategies WHERE status = $1`, domain.StrategyStatusActive).Scan(&sqlCount); err != nil {
+		t.Fatalf("direct SQL count error = %v", err)
+	}
+	if count != sqlCount {
+		t.Fatalf("Count() = %d, direct SQL = %d", count, sqlCount)
+	}
+
 	paused.Status = domain.StrategyStatusInactive
 	paused.ScheduleCron = "0 15 * * 1-5"
 	paused.SkipNextRun = false

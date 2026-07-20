@@ -92,6 +92,7 @@ type OrderManager struct {
 	positionRepo     repository.PositionRepository
 	orderRepo        repository.OrderRepository
 	tradeRepo        repository.TradeRepository
+	financialRepo    repository.FinancialLifecycleRepository
 	auditLogRepo     repository.AuditLogRepository
 	agentEventRepo   repository.AgentEventRepository
 	decisionRecorder DecisionRecorder
@@ -159,6 +160,15 @@ func (m *OrderManager) WithDecisionRecorder(recorder DecisionRecorder) *OrderMan
 	return m
 }
 
+// WithFinancialLifecycleRepo wires the atomic financial lifecycle repository.
+func (m *OrderManager) WithFinancialLifecycleRepo(repo repository.FinancialLifecycleRepository) *OrderManager {
+	if m == nil {
+		return nil
+	}
+	m.financialRepo = repo
+	return m
+}
+
 // WithLiveTrading toggles the live-execution path. Paper/default paths should
 // leave this disabled.
 func (m *OrderManager) WithLiveTrading(enabled bool) *OrderManager {
@@ -221,6 +231,12 @@ func (m *OrderManager) ProcessSignal(
 		m.logger.InfoContext(ctx, "hold signal received, skipping order", "ticker", plan.Ticker)
 		return nil
 	}
+	if normalizedTicker, normalizedSide, err := NormalizePredictionOrderTicker(marketType, plan.Ticker, plan.Side); err != nil {
+		return fmt.Errorf("order_manager: normalize prediction order ticker: %w", err)
+	} else {
+		plan.Ticker = normalizedTicker
+		plan.Side = normalizedSide
+	}
 
 	// A stock SELL signal only makes sense as an exit for a position this
 	// strategy already owns. Do not turn discovery sell signals for unowned stock
@@ -271,13 +287,12 @@ func (m *OrderManager) ProcessSignal(
 	}
 
 	if signal.Signal == domain.PipelineSignalSell && marketType == domain.MarketTypePolymarket {
-		predictionSide := strings.ToUpper(strings.TrimSpace(plan.Side))
-		ownedQuantity, err := m.openPolymarketPositionQuantity(ctx, strategyID, plan.Ticker, predictionSide)
+		ownedQuantity, err := m.openPolymarketPositionQuantity(ctx, strategyID, plan.Ticker, plan.Side)
 		if err != nil {
 			return err
 		}
 		if ownedQuantity <= 0 {
-			m.logger.InfoContext(ctx, "polymarket sell signal has no open side-qualified position, skipping order", "ticker", plan.Ticker, "prediction_side", predictionSide, "strategy_id", strategyID)
+			m.logger.InfoContext(ctx, "polymarket sell signal has no open side-qualified position, skipping order", "ticker", plan.Ticker, "prediction_side", plan.Side, "strategy_id", strategyID)
 
 			decision := m.newTradeDecision(
 				strategyID,
@@ -295,7 +310,7 @@ func (m *OrderManager) ProcessSignal(
 				"reason":            "unowned_polymarket_exit_no_open_position",
 				"has_open_position": false,
 				"ticker":            plan.Ticker,
-				"prediction_side":   predictionSide,
+				"prediction_side":   plan.Side,
 				"strategy_id":       strategyID.String(),
 				"pipeline_run_id":   runID.String(),
 				"pipeline_signal":   signal.Signal,
@@ -304,7 +319,7 @@ func (m *OrderManager) ProcessSignal(
 
 			if auditErr := m.audit(ctx, "sell_without_position_skipped", "order", nil, map[string]any{
 				"ticker":          plan.Ticker,
-				"prediction_side": predictionSide,
+				"prediction_side": plan.Side,
 				"strategy_id":     strategyID,
 				"run_id":          runID,
 				"signal":          signal.Signal,
@@ -465,7 +480,7 @@ func (m *OrderManager) ProcessSignal(
 		Status:         domain.OrderStatusPending,
 		Broker:         m.brokerName,
 		CreatedAt:      now,
-		PredictionSide: strings.ToUpper(strings.TrimSpace(plan.Side)),
+		PredictionSide: plan.Side,
 	}
 
 	if plan.EntryPrice > 0 {
@@ -566,13 +581,12 @@ func (m *OrderManager) ProcessSignal(
 	}
 
 	submittedAt := m.currentTime()
+	if err := m.orderRepo.Update(ctx, SanitizedSubmittedOrder(order, externalID, submittedAt)); err != nil {
+		return fmt.Errorf("order_manager: update submitted order: %w", err)
+	}
 	order.ExternalID = externalID
 	order.Status = domain.OrderStatusSubmitted
 	order.SubmittedAt = &submittedAt
-
-	if err := m.orderRepo.Update(ctx, order); err != nil {
-		return fmt.Errorf("order_manager: update submitted order: %w", err)
-	}
 	m.recordOrderMetric(order.Side, order.Status)
 	m.attachTradeDecisionOrder(ctx, decision.ID, order.ID, m.liveTrading)
 
@@ -798,8 +812,40 @@ func polymarketPositionTicker(slug, side string) string {
 	if side == "" {
 		return slug
 	}
+	if existingSlug, existingSide, ok := strings.Cut(slug, ":"); ok {
+		existingSlug = strings.TrimSpace(existingSlug)
+		existingSide = strings.ToUpper(strings.TrimSpace(existingSide))
+		if existingSlug != "" && (existingSide == "YES" || existingSide == "NO") {
+			return existingSlug + ":" + existingSide
+		}
+	}
 
 	return slug + ":" + side
+}
+
+func NormalizePredictionOrderTicker(marketType domain.MarketType, ticker, predictionSide string) (string, string, error) {
+	trimmedTicker := strings.TrimSpace(ticker)
+	normalizedSide := strings.ToUpper(strings.TrimSpace(predictionSide))
+	if marketType.Normalize() != domain.MarketTypePolymarket && marketType.Normalize() != domain.MarketTypeKalshi {
+		return trimmedTicker, normalizedSide, nil
+	}
+	if slug, tickerSide, ok := strings.Cut(trimmedTicker, ":"); ok {
+		slug = strings.TrimSpace(slug)
+		tickerSide = strings.ToUpper(strings.TrimSpace(tickerSide))
+		if slug != "" && (tickerSide == "YES" || tickerSide == "NO") {
+			if normalizedSide != "YES" && normalizedSide != "NO" {
+				return strings.ToUpper(slug), tickerSide, nil
+			}
+			if tickerSide != normalizedSide {
+				return "", "", fmt.Errorf("order_manager: prediction ticker suffix %q conflicts with prediction side %q", tickerSide, normalizedSide)
+			}
+			return strings.ToUpper(slug), normalizedSide, nil
+		}
+	}
+	if normalizedSide != "YES" && normalizedSide != "NO" {
+		return "", "", fmt.Errorf("order_manager: prediction order requires valid side YES or NO")
+	}
+	return trimmedTicker, normalizedSide, nil
 }
 
 func realizedPnL(side domain.PositionSide, avgEntry, fillPrice, quantity float64) float64 {
@@ -807,6 +853,21 @@ func realizedPnL(side domain.PositionSide, avgEntry, fillPrice, quantity float64
 		return (fillPrice - avgEntry) * quantity
 	}
 	return (avgEntry - fillPrice) * quantity
+}
+
+func SanitizedSubmittedOrder(order *domain.Order, externalID string, submittedAt time.Time) *domain.Order {
+	if order == nil {
+		return nil
+	}
+
+	cp := *order
+	cp.ExternalID = externalID
+	cp.Status = domain.OrderStatusSubmitted
+	cp.SubmittedAt = &submittedAt
+	cp.FilledQuantity = 0
+	cp.FilledAvgPrice = nil
+	cp.FilledAt = nil
+	return &cp
 }
 
 // handleFill creates a Trade and creates or updates the Position.
@@ -820,11 +881,6 @@ func (m *OrderManager) handleFill(
 	order.FilledQuantity = order.Quantity
 	order.FilledAt = &now
 
-	if err := m.orderRepo.Update(ctx, order); err != nil {
-		return fmt.Errorf("order_manager: update filled order: %w", err)
-	}
-	m.recordOrderMetric(order.Side, order.Status)
-
 	// Determine fill price.
 	fillPrice := plan.EntryPrice
 	if order.FilledAvgPrice != nil {
@@ -832,7 +888,49 @@ func (m *OrderManager) handleFill(
 	}
 
 	marketType := order.MarketType.Normalize()
+	if m.financialRepo == nil {
+		if err := m.orderRepo.Update(ctx, order); err != nil {
+			return fmt.Errorf("order_manager: update filled order: %w", err)
+		}
+		m.recordOrderMetric(order.Side, order.Status)
+	}
 	var position *domain.Position
+	if m.financialRepo != nil {
+		trade := &domain.Trade{ID: uuid.New(), OrderID: &order.ID, Ticker: order.Ticker, Side: order.Side, Quantity: order.FilledQuantity, Price: fillPrice, ExecutedAt: now}
+		var stopLoss, takeProfit *float64
+		if plan.StopLoss > 0 {
+			stopLoss = &plan.StopLoss
+		}
+		if plan.TakeProfit > 0 {
+			takeProfit = &plan.TakeProfit
+		}
+		result, err := m.financialRepo.ApplyOrderFill(ctx, repository.OrderFillInput{IdempotencyKey: "paper_fill:v1:" + order.ID.String() + ":full", Order: order, FillIntent: repository.OrderFillIntent{Side: order.Side, Quantity: order.FilledQuantity, ExecutionPrice: fillPrice}, Now: now, StopLoss: stopLoss, TakeProfit: takeProfit, Trade: trade})
+		if err != nil {
+			return fmt.Errorf("order_manager: persist fill: %w", err)
+		}
+		if !result.Replayed {
+			m.recordOrderMetric(order.Side, order.Status)
+		}
+		position := result.Position
+		if position == nil && result.PositionID != nil {
+			position = &domain.Position{ID: *result.PositionID}
+		}
+		if !result.Replayed {
+			m.recordTradeDecisionReplay(ctx, decisionID, domain.ReplayEventTypeFillObserved, map[string]any{"order_id": order.ID, "trade_id": result.TradeID, "price": fillPrice, "quantity": order.FilledQuantity, "prediction_side": order.PredictionSide})
+		}
+		if !result.Replayed && position != nil {
+			m.recordTradeDecisionReplay(ctx, decisionID, domain.ReplayEventTypePositionUpdated, map[string]any{"position_id": position.ID, "ticker": position.Ticker, "quantity": position.Quantity, "realized_pnl": position.RealizedPnL, "closed_at": position.ClosedAt})
+		}
+		if !result.Replayed {
+			if auditErr := m.audit(ctx, "order_filled", "order", &order.ID, map[string]any{"fill_price": fillPrice, "quantity": order.FilledQuantity, "trade_id": result.TradeID, "position_id": result.PositionID}); auditErr != nil {
+				m.logger.ErrorContext(ctx, "audit log failed", "error", auditErr)
+			}
+		}
+		if !result.Replayed {
+			m.emitOrderEvent(ctx, OrderEventFilled, order, strategyID, runID)
+		}
+		return nil
+	}
 	if marketType == domain.MarketTypePolymarket && order.Side == domain.OrderSideSell {
 		positionTicker := polymarketPositionTicker(order.Ticker, order.PredictionSide)
 		positions, err := m.positionRepo.GetByStrategy(ctx, *order.StrategyID, repository.PositionFilter{
@@ -870,9 +968,6 @@ func (m *OrderManager) handleFill(
 		}
 	} else {
 		positionSide := domain.PositionSideLong
-		if order.Side == domain.OrderSideSell {
-			positionSide = domain.PositionSideShort
-		}
 
 		positionTicker := order.Ticker
 		if marketType == domain.MarketTypePolymarket || marketType == domain.MarketTypeKalshi {
@@ -950,6 +1045,11 @@ func (m *OrderManager) handleFill(
 	m.emitOrderEvent(ctx, OrderEventFilled, order, strategyID, runID)
 
 	return nil
+}
+
+// HandleFillForTest exposes handleFill for focused unit coverage.
+func (m *OrderManager) HandleFillForTest(ctx context.Context, order *domain.Order, plan TradingPlan, strategyID, runID, decisionID uuid.UUID) error {
+	return m.handleFill(ctx, order, plan, strategyID, runID, decisionID)
 }
 
 // signalToSide maps a pipeline signal to an order side.

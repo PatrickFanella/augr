@@ -48,6 +48,10 @@ func (r *reconcilerPositionRepoStub) Create(context.Context, *domain.Position) e
 	panic("unexpected Create call")
 }
 
+func (r *reconcilerPositionRepoStub) CreateAlpacaOwned(context.Context, *domain.Position) error {
+	panic("unexpected CreateAlpacaOwned call")
+}
+
 func (r *reconcilerPositionRepoStub) Get(context.Context, uuid.UUID) (*domain.Position, error) {
 	panic("unexpected Get call")
 }
@@ -80,6 +84,10 @@ func (r *reconcilerPositionRepoStub) GetOpen(_ context.Context, _ repository.Pos
 		end = len(r.positions)
 	}
 	return append([]domain.Position(nil), r.positions[offset:end]...), nil
+}
+
+func (r *reconcilerPositionRepoStub) ListOpenAlpacaOwned(context.Context, int, int) ([]domain.Position, error) {
+	return nil, nil
 }
 
 func (r *reconcilerPositionRepoStub) CountOpen(context.Context, repository.PositionFilter) (int, error) {

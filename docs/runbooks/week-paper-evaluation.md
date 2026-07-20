@@ -12,7 +12,7 @@ govern any later live-capital decision.
 
 ## Start gate
 
-1. Confirm `ENABLE_LIVE_TRADING=false`, broker sandbox/paper modes, schema 54,
+1. Confirm `ENABLE_LIVE_TRADING=false`, broker sandbox/paper modes, schema 57,
    healthy database/Redis, current app/web images, and a healthy `augr-api`
    Prometheus target.
 2. Confirm one usable LLM provider. A fallback-only week measures deterministic

@@ -28,6 +28,12 @@ type Metrics struct {
 	AutomationJobErrorsTotal           *prometheus.CounterVec
 	AlpacaReconcileRunsTotal           *prometheus.CounterVec
 	KalshiReconcileRunsTotal           *prometheus.CounterVec
+	KalshiRateLimitTotal               *prometheus.CounterVec
+	KalshiRetryAttemptsTotal           *prometheus.CounterVec
+	KalshiRetryWaitSeconds             *prometheus.HistogramVec
+	KalshiSettlementDryRunTotal        *prometheus.CounterVec
+	KalshiSettlementOutcomeTotal       *prometheus.CounterVec
+	KalshiSettlementTransitionTotal    *prometheus.CounterVec
 	PolymarketReconciliationDriftTotal *prometheus.CounterVec
 	PolymarketStopGuardTriggeredTotal  *prometheus.CounterVec
 	PolymarketStopGuardSendErrorsTotal *prometheus.CounterVec
@@ -143,6 +149,37 @@ func New() *Metrics {
 			Help: "Total Kalshi reconciliation runs by outcome.",
 		}, []string{"result"}),
 
+		KalshiRateLimitTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "tradingagent_kalshi_rate_limit_total",
+			Help: "Total Kalshi 429 responses by provider, client type, and method.",
+		}, []string{"provider", "client_type", "method"}),
+
+		KalshiRetryAttemptsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "tradingagent_kalshi_retry_attempts_total",
+			Help: "Total Kalshi retry attempts by provider, client type, and method.",
+		}, []string{"provider", "client_type", "method"}),
+
+		KalshiRetryWaitSeconds: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Name:    "tradingagent_kalshi_retry_wait_seconds",
+			Help:    "Kalshi retry wait seconds by provider, client type, and method.",
+			Buckets: prometheus.DefBuckets,
+		}, []string{"provider", "client_type", "method"}),
+
+		KalshiSettlementDryRunTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "tradingagent_kalshi_settlement_dry_run_total",
+			Help: "Kalshi settlement dry-run decisions.",
+		}, []string{"result"}),
+
+		KalshiSettlementOutcomeTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "tradingagent_kalshi_settlement_outcome_total",
+			Help: "Kalshi settlement outcomes.",
+		}, []string{"result"}),
+
+		KalshiSettlementTransitionTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "tradingagent_kalshi_settlement_transition_total",
+			Help: "Kalshi settlement transition helpers.",
+		}, []string{"from", "to"}),
+
 		PolymarketReconciliationDriftTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "tradingagent_polymarket_reconciliation_drift_total",
 			Help: "Total Polymarket reconciliation drifts by drift type.",
@@ -239,6 +276,12 @@ func New() *Metrics {
 		m.AutomationJobErrorsTotal,
 		m.AlpacaReconcileRunsTotal,
 		m.KalshiReconcileRunsTotal,
+		m.KalshiRateLimitTotal,
+		m.KalshiRetryAttemptsTotal,
+		m.KalshiRetryWaitSeconds,
+		m.KalshiSettlementDryRunTotal,
+		m.KalshiSettlementOutcomeTotal,
+		m.KalshiSettlementTransitionTotal,
 		m.PolymarketReconciliationDriftTotal,
 		m.PolymarketStopGuardTriggeredTotal,
 		m.PolymarketStopGuardSendErrorsTotal,
@@ -351,6 +394,43 @@ func (m *Metrics) RecordKalshiReconcileRun(result string) {
 		return
 	}
 	m.KalshiReconcileRunsTotal.WithLabelValues(result).Inc()
+}
+
+func (m *Metrics) RecordKalshiRateLimit(provider, clientType, method string) {
+	if m == nil {
+		return
+	}
+	m.KalshiRateLimitTotal.WithLabelValues(provider, clientType, method).Inc()
+}
+
+func (m *Metrics) RecordKalshiRetryAttempt(provider, clientType, method string) {
+	if m == nil {
+		return
+	}
+	m.KalshiRetryAttemptsTotal.WithLabelValues(provider, clientType, method).Inc()
+}
+
+func (m *Metrics) ObserveKalshiRetryWaitSeconds(provider, clientType, method string, seconds float64) {
+	if m == nil {
+		return
+	}
+	m.KalshiRetryWaitSeconds.WithLabelValues(provider, clientType, method).Observe(seconds)
+}
+
+func (m *Metrics) RecordKalshiSettlementDryRun(result string) {
+	if m != nil {
+		m.KalshiSettlementDryRunTotal.WithLabelValues(result).Inc()
+	}
+}
+func (m *Metrics) RecordKalshiSettlementOutcome(result string) {
+	if m != nil {
+		m.KalshiSettlementOutcomeTotal.WithLabelValues(result).Inc()
+	}
+}
+func (m *Metrics) RecordKalshiSettlementTransition(from, to string) {
+	if m != nil {
+		m.KalshiSettlementTransitionTotal.WithLabelValues(from, to).Inc()
+	}
 }
 
 // IncDrift increments the Polymarket reconciliation drift counter for the given drift type.

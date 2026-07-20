@@ -405,3 +405,6 @@ TradingAgents/
 .blacktower/worktrees/
 .blacktower/worktrees.json
 # END Blacktower worktrees
+
+# Local deepwork session state
+.blacktower/deepwork/

@@ -249,6 +249,39 @@ func TestClientListMarkets_DecodesCurrentDollarFields(t *testing.T) {
 	}
 }
 
+func TestClientGetMarket_DecodesNakedAndWrappedResponses(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct{ name, body string }{
+		{name: "naked", body: `{"ticker":"KAL-3","event_ticker":"EVT-3","title":"Naked"}`},
+		{name: "wrapped", body: `{"market":{"ticker":"KAL-4","event_ticker":"EVT-4","title":"Wrapped"}}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(tt.body))
+			}))
+			defer server.Close()
+			api, err := dataKalshi.NewClient(server.URL+"/trade-api/v2", "", "", testDiscoveryLogger())
+			if err != nil {
+				t.Fatalf("NewClient() error = %v", err)
+			}
+			api.SetHTTPClient(server.Client())
+			market, err := NewClient(api).GetMarket(context.Background(), "k")
+			if err != nil || market == nil {
+				t.Fatalf("GetMarket() = %#v, %v", market, err)
+			}
+			if tt.name == "naked" && market.Ticker != "KAL-3" {
+				t.Fatalf("market=%#v", market)
+			}
+			if tt.name == "wrapped" && market.Ticker != "KAL-4" {
+				t.Fatalf("market=%#v", market)
+			}
+		})
+	}
+}
+
 func TestClientListMarkets_PrefersCurrentLiquidityFields(t *testing.T) {
 	t.Parallel()
 

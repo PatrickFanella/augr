@@ -58,6 +58,7 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/observability"
 	"github.com/PatrickFanella/get-rich-quick/internal/operations"
 	"github.com/PatrickFanella/get-rich-quick/internal/portfolio"
+	provgov "github.com/PatrickFanella/get-rich-quick/internal/providergovernor"
 	"github.com/PatrickFanella/get-rich-quick/internal/recorder"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 	pgrepo "github.com/PatrickFanella/get-rich-quick/internal/repository/postgres"
@@ -71,6 +72,35 @@ import (
 
 type watchedMarketsLoaderAdapter struct {
 	repo repository.PolymarketWatchedMarketsRepository
+}
+
+func newRuntimeKalshiClients(cfg config.Config, appMetrics *metrics.Metrics, logger *slog.Logger, cooldownStore provgov.CooldownStore) (*kalshidata.Client, *kalshidata.Client, *provgov.ProviderGovernor, error) {
+	_ = logger
+	baseURL := strings.TrimSpace(cfg.Brokers.Kalshi.APIBaseURL)
+	apiKeyID := strings.TrimSpace(cfg.Brokers.Kalshi.APIKeyID)
+	privateKeyPEMB64 := strings.TrimSpace(cfg.Brokers.Kalshi.PrivateKeyPEMB64)
+	if baseURL == "" && apiKeyID == "" && privateKeyPEMB64 == "" {
+		return nil, nil, nil, nil
+	}
+	kalshiGov := &provgov.ProviderGovernor{Provider: "kalshi", Limiter: data.NewRateLimiter(cfg.Brokers.Kalshi.RequestsPerWindow, cfg.Brokers.Kalshi.Window), Cooldown: cooldownStore, Sleeper: provgov.NewContextSleeper(), Clock: time.Now}
+	dataClient, err := kalshidata.NewClient(baseURL, "", "", logger)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	dataClient.SetGovernor(kalshiGov)
+	dataClient.SetMetrics(appMetrics, "data")
+	dataClient.SetRetryPolicy(cfg.Brokers.Kalshi.MaxAttempts, cfg.Brokers.Kalshi.BaseBackoff, cfg.Brokers.Kalshi.MaxBackoff, cfg.Brokers.Kalshi.JitterRatio)
+	var execClient *kalshidata.Client
+	if apiKeyID != "" && privateKeyPEMB64 != "" {
+		execClient, err = kalshidata.NewClient(baseURL, apiKeyID, privateKeyPEMB64, logger)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		execClient.SetGovernor(kalshiGov)
+		execClient.SetMetrics(appMetrics, "execution")
+		execClient.SetRetryPolicy(cfg.Brokers.Kalshi.MaxAttempts, cfg.Brokers.Kalshi.BaseBackoff, cfg.Brokers.Kalshi.MaxBackoff, cfg.Brokers.Kalshi.JitterRatio)
+	}
+	return dataClient, execClient, kalshiGov, nil
 }
 
 type polymarketStatusSource struct {
@@ -108,11 +138,14 @@ func (a watchedMarketsLoaderAdapter) ListEnabledSlugs(ctx context.Context) ([]st
 }
 
 var (
-	runtimeNewDB                = pgrepo.NewDB
-	runtimeCurrentSchemaVersion = pgrepo.CurrentSchemaVersion
-	runtimeNewServer            = api.NewServer
-	runtimeAfterSchemaGate      = func() {}
-	runtimeCloseDB              = func(db *pgrepo.DB) {
+	runtimeNewDB                                                                   = pgrepo.NewDB
+	runtimeCurrentSchemaVersion                                                    = pgrepo.CurrentSchemaVersion
+	runtimeNewPaperAccountRepo  func(*pgrepo.DB) repository.PaperAccountRepository = func(db *pgrepo.DB) repository.PaperAccountRepository {
+		return pgrepo.NewPaperAccountRepo(db)
+	}
+	runtimeNewServer       = api.NewServer
+	runtimeAfterSchemaGate = func() {}
+	runtimeCloseDB         = func(db *pgrepo.DB) {
 		if db != nil {
 			db.Close()
 		}
@@ -240,12 +273,13 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 	orderRepo := pgrepo.NewOrderRepo(db.Pool)
 	positionRepo := pgrepo.NewPositionRepo(db.Pool)
 	tradeRepo := pgrepo.NewTradeRepo(db.Pool)
+	paperAccountRepo := runtimeNewPaperAccountRepo(db)
 	tradeDecisionRepo := pgrepo.NewTradeDecisionJournalRepo(db.Pool)
 	opportunityRepo := pgrepo.NewOpportunityRepo(db.Pool)
 	allocationDecisionRepo := pgrepo.NewAllocationDecisionRepo(db.Pool)
 	replayEventRepo := pgrepo.NewReplayEventRepo(db.Pool)
 	tradeDecisionRecorder := execution.NewTradeDecisionJournalRecorder(tradeDecisionRepo, replayEventRepo)
-	predictionSettler := predictionexecution.NewSettler(tradeDecisionRepo, positionRepo, tradeRepo, replayEventRepo)
+	predictionSettler := predictionexecution.NewSettler(db, tradeDecisionRepo, positionRepo, tradeRepo, replayEventRepo)
 	memoryRepo := pgrepo.NewMemoryRepo(db.Pool)
 	apiKeyRepo := pgrepo.NewAPIKeyRepo(db.Pool)
 	auditLogRepo := pgrepo.NewAuditLogRepo(db.Pool)
@@ -396,7 +430,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 	if strings.EqualFold(cfg.Environment, "smoke") {
 		pipeline := newSmokePipeline(runRepo, snapshotRepo, decisionRepo, eventRepo, logger)
 		runner := newSmokeRunner(runRepo, snapshotRepo, decisionRepo, eventRepo, logger)
-		strategyRunner := newSmokeStrategyRunner(runner, runRepo, decisionRepo, orderRepo, positionRepo, tradeRepo, auditLogRepo, eventRepo, riskEngine, notificationManager, tradeDecisionRecorder, logger)
+		strategyRunner := newSmokeStrategyRunner(runner, runRepo, decisionRepo, orderRepo, positionRepo, tradeRepo, auditLogRepo, eventRepo, riskEngine, db, notificationManager, tradeDecisionRecorder, logger)
 		deps.Runner = strategyRunner
 		sched = scheduler.NewScheduler(
 			strategyRepo,
@@ -413,6 +447,8 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 	} else {
 		// Global rate limiter: 50 req/min shared across all providers.
 		data.SetGlobalLimiter(data.NewRateLimiter(50, time.Minute))
+		kalshiDataClient, kalshiExecClient, kalshiGov, kalshiErr := newRuntimeKalshiClients(cfg, appMetrics, logger, db)
+		_ = kalshiGov
 
 		reg := data.NewProviderRegistry()
 		polygon.Register(reg)
@@ -422,7 +458,9 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 		newsapi.Register(reg)
 		yahoo.Register(reg)
 		binance.Register(reg)
-		kalshidata.Register(reg)
+		reg.Kalshi = func(cfg data.ProviderConfig) data.DataProvider {
+			return kalshidata.NewProviderWithClient(kalshiDataClient, cfg.Logger)
+		}
 		polymarketData.Register(reg)
 		stocktwitsData.Register(reg)
 		redditData.Register(reg)
@@ -462,6 +500,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 			alpacaAdapter := automation.NewAlpacaClientAdapter(alpacaClient)
 			alpacaReconciler = automation.NewAlpacaReconciler(automation.AlpacaReconcilerDeps{
 				Broker:       alpacaAdapter,
+				PLAggregate:  pgrepo.NewAlpacaPLAggregateRepo(db.Pool),
 				StrategyRepo: strategyRepo,
 				OrderRepo:    orderRepo,
 				PositionRepo: positionRepo,
@@ -499,6 +538,14 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 			GeneratorMetrics: appMetrics,
 			Logger:           logger,
 		}
+		var kalshiLiveClient kalshiexecution.LiveClient
+		if kalshiExecClient != nil {
+			if liveClient, liveErr := kalshiexecution.NewLiveHTTPClient(kalshiExecClient); liveErr != nil {
+				logger.Warn("kalshi live client adapter construction failed; live execution disabled", slog.String("error", liveErr.Error()))
+			} else {
+				kalshiLiveClient = liveClient
+			}
+		}
 		strategyRunner = newRealStrategyRunner(
 			cfg,
 			dataService,
@@ -510,6 +557,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 			positionRepo,
 			tradeRepo,
 			auditLogRepo,
+			db,
 			riskEngine,
 			appMetrics,
 			notificationManager,
@@ -517,14 +565,16 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 			sharedLLMBudget,
 			promptSettingsSvc,
 			tradeDecisionRecorder,
+			kalshidata.NewProviderWithClient(kalshiDataClient, logger),
+			kalshiLiveClient,
 			polymarketFeed,
 			logger,
 		)
 		portfolioAllocatorMode := portfolioAllocatorModeFromEnv()
 		strategyRunner.opportunityRepo = opportunityRepo
 		strategyRunner.optionsProvider = deps.OptionsProvider
-		if err := bootstrapPaperOptionsAccount(ctx, strategyRunner.localPaperBroker, positionRepo, tradeRepo); err != nil {
-			logger.Warn("paper options account bootstrap failed; using conservative fresh paper balance until reconciliation", slog.Any("error", err))
+		if err := bootstrapPaperOptionsAccount(ctx, strategyRunner.localPaperBroker, paperAccountRepo); err != nil {
+			return nil, nil, nil, err
 		}
 		strategyRunner.portfolioAllocatorMode = portfolioAllocatorMode
 		deps.Runner = strategyRunner
@@ -532,21 +582,17 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 			logger.Warn("polymarket stop guard bootstrap failed", slog.Any("error", err))
 		}
 
-		kalshiDiscoveryClient, err := kalshidata.NewClient(cfg.Brokers.Kalshi.APIBaseURL, cfg.Brokers.Kalshi.APIKeyID, cfg.Brokers.Kalshi.PrivateKeyPEMB64, logger)
 		var kalshiCatalog interface {
 			ListMarkets(context.Context, kalshidiscovery.ListOptions) ([]kalshidiscovery.MarketCandidate, string, error)
+			GetMarket(context.Context, string) (*kalshidiscovery.MarketCandidate, error)
 		}
 		var kalshiExecutionReconciler *kalshiexecution.Reconciler
-		if err != nil {
-			logger.Warn("automation: failed to create kalshi discovery client", slog.Any("error", err))
+		if kalshiErr != nil {
+			logger.Warn("automation: failed to create kalshi discovery client", slog.Any("error", kalshiErr))
 		} else {
-			kalshiCatalog = kalshidiscovery.NewClient(kalshiDiscoveryClient)
-			if strings.TrimSpace(cfg.Brokers.Kalshi.APIKeyID) != "" && strings.TrimSpace(cfg.Brokers.Kalshi.PrivateKeyPEMB64) != "" {
-				if liveClient, liveErr := kalshiexecution.NewLiveHTTPClient(kalshiDiscoveryClient); liveErr != nil {
-					logger.Warn("automation: failed to create kalshi reconciliation client", slog.Any("error", liveErr))
-				} else {
-					kalshiExecutionReconciler = kalshiexecution.NewReconciler(kalshiexecution.ReconcilerDeps{Broker: kalshiexecution.NewBroker(liveClient), PositionRepo: positionRepo, Logger: logger})
-				}
+			kalshiCatalog = kalshidiscovery.NewClient(kalshiDataClient)
+			if kalshiLiveClient != nil && strings.TrimSpace(cfg.Brokers.Kalshi.APIKeyID) != "" && strings.TrimSpace(cfg.Brokers.Kalshi.PrivateKeyPEMB64) != "" {
+				kalshiExecutionReconciler = kalshiexecution.NewReconciler(kalshiexecution.ReconcilerDeps{Broker: kalshiexecution.NewBroker(kalshiLiveClient), PositionRepo: positionRepo, Logger: logger})
 			}
 		}
 
@@ -609,15 +655,17 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 				overnightBacktestRunRepo := pgrepo.NewOvernightBacktestRunRepo(db.Pool)
 				polymarketDiscoveryRunRepo := pgrepo.NewPolymarketDiscoveryRunRepo(db.Pool)
 				portfolioPaperProcessor := portfolio.NewPaperOrderManagerProcessor(portfolio.PaperOrderManagerProcessorDeps{
-					RiskEngine:       riskEngine,
-					PositionRepo:     positionRepo,
-					OrderRepo:        orderRepo,
-					TradeRepo:        tradeRepo,
-					AuditLogRepo:     auditLogRepo,
-					AgentEventRepo:   eventRepo,
-					DecisionRecorder: tradeDecisionRecorder,
-					Metrics:          appMetrics,
-					Logger:           logger,
+					RiskEngine:             riskEngine,
+					PositionRepo:           positionRepo,
+					OrderRepo:              orderRepo,
+					TradeRepo:              tradeRepo,
+					AuditLogRepo:           auditLogRepo,
+					AgentEventRepo:         eventRepo,
+					DecisionRecorder:       tradeDecisionRecorder,
+					FinancialLifecycleRepo: db,
+					Metrics:                appMetrics,
+					Logger:                 logger,
+					PaperBroker:            strategyRunner.localPaperBroker,
 				})
 				orch := automation.NewJobOrchestrator(automation.OrchestratorDeps{
 					Universe:                    deps.Universe,
@@ -654,6 +702,9 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 					KalshiWatchedRepo:           pgrepo.NewKalshiWatchedMarketsRepo(db.Pool),
 					KalshiMarketSnapshotsRepo:   pgrepo.NewKalshiMarketSnapshotsRepo(db.Pool),
 					KalshiDiscoveryRuns:         pgrepo.NewKalshiDiscoveryRunRepo(db.Pool),
+					KalshiSettlementGateRepo:    pgrepo.NewKalshiSettlementGateRepo(db.Pool),
+					KalshiSettlementThreshold:   cfg.Brokers.Kalshi.SettlementGateThreshold,
+					KalshiSettlementDryRun:      cfg.Brokers.Kalshi.DryRun,
 					ReportArtifactRepo:          reportArtifactRepo,
 					BacktestConfigRepo:          backtestConfigRepo,
 					BacktestRunRepo:             backtestRunRepo,
@@ -1044,6 +1095,7 @@ type smokeStrategyRunner struct {
 	tradeRepo             repository.TradeRepository
 	auditLogRepo          repository.AuditLogRepository
 	agentEventRepo        repository.AgentEventRepository
+	financialRepo         repository.FinancialLifecycleRepository
 	tradeDecisionRecorder execution.DecisionRecorder
 	notificationManager   *notification.Manager
 	logger                *slog.Logger
@@ -1059,6 +1111,7 @@ func newSmokeStrategyRunner(
 	auditLogRepo repository.AuditLogRepository,
 	agentEventRepo repository.AgentEventRepository,
 	riskEngine risk.RiskEngine,
+	financialRepo repository.FinancialLifecycleRepository,
 	notificationManager *notification.Manager,
 	tradeDecisionRecorder execution.DecisionRecorder,
 	logger *slog.Logger,
@@ -1081,6 +1134,7 @@ func newSmokeStrategyRunner(
 		tradeRepo:             tradeRepo,
 		auditLogRepo:          auditLogRepo,
 		agentEventRepo:        agentEventRepo,
+		financialRepo:         financialRepo,
 		tradeDecisionRecorder: tradeDecisionRecorder,
 		notificationManager:   notificationManager,
 		logger:                logger,
@@ -1187,7 +1241,7 @@ func (r *smokeStrategyRunner) newOrderManager(ctx context.Context, strategy doma
 		r.agentEventRepo,
 		sizingConfigForStrategy(ctx, strategy, strategyConfig, resolved, r.positionRepo, r.logger),
 		r.logger,
-	).WithDecisionRecorder(r.tradeDecisionRecorder), nil
+	).WithFinancialLifecycleRepo(r.financialRepo).WithDecisionRecorder(r.tradeDecisionRecorder), nil
 }
 
 func (r *smokeStrategyRunner) dispatchNotifications(ctx context.Context, strategy domain.Strategy, run *domain.PipelineRun, state *agent.PipelineState) error {

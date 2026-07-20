@@ -196,6 +196,18 @@ func TestTradeRepoIntegration_CreateListGetByOrderAndPosition(t *testing.T) {
 		t.Fatalf("expected only tradeB from date range, got %+v", byDateRange)
 	}
 
+	count, err := tradeRepo.Count(ctx, repository.TradeFilter{Ticker: stringPtr("AAPL")})
+	if err != nil {
+		t.Fatalf("Count() error = %v", err)
+	}
+	var sqlCount int
+	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM trades WHERE ticker = $1`, "AAPL").Scan(&sqlCount); err != nil {
+		t.Fatalf("direct SQL count error = %v", err)
+	}
+	if count != sqlCount {
+		t.Fatalf("Count() = %d, direct SQL = %d", count, sqlCount)
+	}
+
 	pagedTrades, err := tradeRepo.List(ctx, repository.TradeFilter{}, 1, 1)
 	if err != nil {
 		t.Fatalf("List() pagination error = %v", err)

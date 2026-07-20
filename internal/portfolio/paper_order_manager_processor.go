@@ -15,24 +15,26 @@ import (
 var ErrPaperProcessorUnavailable = errors.New("portfolio: paper processor unavailable")
 
 // PaperOrderManagerProcessor adapts the existing order manager to allocator
-// paper execution. It always uses an in-memory paper broker and never enables
-// live trading.
+// paper execution. It always uses the shared local in-memory PaperBroker and
+// never enables live trading.
 type PaperOrderManagerProcessor struct {
 	deps PaperOrderManagerProcessorDeps
 }
 
 type PaperOrderManagerProcessorDeps struct {
-	RiskEngine       risk.RiskEngine
-	PositionRepo     repository.PositionRepository
-	OrderRepo        repository.OrderRepository
-	TradeRepo        repository.TradeRepository
-	AuditLogRepo     repository.AuditLogRepository
-	AgentEventRepo   repository.AgentEventRepository
-	DecisionRecorder execution.DecisionRecorder
-	Metrics          execution.OrderMetricsRecorder
-	Logger           *slog.Logger
-	InitialBalance   float64
-	FractionPct      float64
+	FinancialLifecycleRepo repository.FinancialLifecycleRepository
+	RiskEngine             risk.RiskEngine
+	PositionRepo           repository.PositionRepository
+	OrderRepo              repository.OrderRepository
+	TradeRepo              repository.TradeRepository
+	AuditLogRepo           repository.AuditLogRepository
+	AgentEventRepo         repository.AgentEventRepository
+	DecisionRecorder       execution.DecisionRecorder
+	Metrics                execution.OrderMetricsRecorder
+	Logger                 *slog.Logger
+	InitialBalance         float64
+	FractionPct            float64
+	PaperBroker            *paper.PaperBroker
 }
 
 func NewPaperOrderManagerProcessor(deps PaperOrderManagerProcessorDeps) *PaperOrderManagerProcessor {
@@ -54,8 +56,12 @@ func (p *PaperOrderManagerProcessor) ProcessPaperOrder(ctx context.Context, requ
 	if fractionPct <= 0 {
 		return PaperOrderResult{Skipped: true, Reason: "missing_fraction_pct"}, nil
 	}
+	broker := p.deps.PaperBroker
+	if broker == nil {
+		broker = paper.NewPaperBroker(initialBalance, 0, 0)
+	}
 	manager := execution.NewOrderManager(
-		paper.NewPaperBroker(initialBalance, 0, 0),
+		broker,
 		"paper",
 		p.deps.RiskEngine,
 		p.deps.PositionRepo,
@@ -65,7 +71,7 @@ func (p *PaperOrderManagerProcessor) ProcessPaperOrder(ctx context.Context, requ
 		p.deps.AgentEventRepo,
 		execution.SizingConfig{Method: execution.PositionSizingMethodFixedFractional, FractionPct: fractionPct},
 		p.deps.Logger,
-	).WithLiveTrading(false)
+	).WithFinancialLifecycleRepo(p.deps.FinancialLifecycleRepo).WithLiveTrading(false)
 	if p.deps.Metrics != nil {
 		manager = manager.WithMetrics(p.deps.Metrics)
 	}

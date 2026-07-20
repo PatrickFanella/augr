@@ -36,6 +36,18 @@ type DecisionDiagnostic struct {
 type DiagnosticsInput struct {
 	StrategyRuns             []RunDiagnostic
 	TradeDecisions           []DecisionDiagnostic
+	TotalStrategyRuns        int
+	TotalTradeDecisions      int
+	TotalStrategies          int
+	TotalOpenPositions       int
+	SampleStrategyRuns       int
+	SampleTradeDecisions     int
+	SampleStrategies         int
+	SampleOpenPositions      int
+	RunCountsBySignal        map[string]int
+	RunCountsByStatus        map[string]int
+	DecisionCountsByStatus   map[string]int
+	NoActionReasons          map[string]int
 	ActiveStrategiesByMarket map[domain.MarketType]int
 	OpenPositionsByMarket    map[domain.MarketType]int
 	BuyingPower              float64
@@ -46,6 +58,14 @@ type DiagnosticsInput struct {
 }
 
 type DiagnosticsSummary struct {
+	TotalStrategyRuns         int            `json:"total_strategy_runs"`
+	TotalTradeDecisions       int            `json:"total_trade_decisions"`
+	TotalStrategies           int            `json:"total_strategies"`
+	TotalOpenPositions        int            `json:"total_open_positions"`
+	SampleStrategyRuns        int            `json:"sample_strategy_runs"`
+	SampleTradeDecisions      int            `json:"sample_trade_decisions"`
+	SampleStrategies          int            `json:"sample_strategies"`
+	SampleOpenPositions       int            `json:"sample_open_positions"`
 	RunCountsBySignal         map[string]int `json:"run_counts_by_signal"`
 	RunCountsByStatus         map[string]int `json:"run_counts_by_status"`
 	DecisionCountsByStatus    map[string]int `json:"decision_counts_by_status"`
@@ -61,6 +81,14 @@ type DiagnosticsSummary struct {
 
 func BuildDiagnosticsSummary(input DiagnosticsInput) DiagnosticsSummary {
 	summary := DiagnosticsSummary{
+		TotalStrategyRuns:        input.TotalStrategyRuns,
+		TotalTradeDecisions:      input.TotalTradeDecisions,
+		TotalStrategies:          input.TotalStrategies,
+		TotalOpenPositions:       input.TotalOpenPositions,
+		SampleStrategyRuns:       input.SampleStrategyRuns,
+		SampleTradeDecisions:     input.SampleTradeDecisions,
+		SampleStrategies:         input.SampleStrategies,
+		SampleOpenPositions:      input.SampleOpenPositions,
 		RunCountsBySignal:        map[string]int{},
 		RunCountsByStatus:        map[string]int{},
 		DecisionCountsByStatus:   map[string]int{},
@@ -70,36 +98,17 @@ func BuildDiagnosticsSummary(input DiagnosticsInput) DiagnosticsSummary {
 		Warnings:                 []string{},
 	}
 
-	for _, run := range input.StrategyRuns {
-		signal := normalizeToken(run.Signal)
-		status := normalizeToken(run.Status)
-		increment(summary.RunCountsBySignal, signal)
-		increment(summary.RunCountsByStatus, status)
-		if signal == string(domain.PipelineSignalHold) {
-			incrementReason(summary.NoActionReasons, NoActionReasonHoldSignal)
-		}
+	for k, v := range input.RunCountsBySignal {
+		summary.RunCountsBySignal[normalizeToken(k)] = v
 	}
-
-	for _, decision := range input.TradeDecisions {
-		status := normalizeToken(decision.Status)
-		signal := normalizeToken(decision.Signal)
-		increment(summary.DecisionCountsByStatus, status)
-
-		reasons := classifyDecisionReasons(decision)
-		if signal == string(domain.PipelineSignalHold) {
-			reasons = append(reasons, NoActionReasonHoldSignal)
-		}
-		if len(reasons) == 0 {
-			reasons = []NoActionReason{NoActionReasonUnknown}
-		}
-		seen := map[NoActionReason]struct{}{}
-		for _, reason := range reasons {
-			if _, ok := seen[reason]; ok {
-				continue
-			}
-			seen[reason] = struct{}{}
-			incrementReason(summary.NoActionReasons, reason)
-		}
+	for k, v := range input.RunCountsByStatus {
+		summary.RunCountsByStatus[normalizeToken(k)] = v
+	}
+	for k, v := range input.DecisionCountsByStatus {
+		summary.DecisionCountsByStatus[normalizeToken(k)] = v
+	}
+	for k, v := range input.NoActionReasons {
+		summary.NoActionReasons[normalizeToken(k)] = v
 	}
 
 	for market, count := range input.ActiveStrategiesByMarket {

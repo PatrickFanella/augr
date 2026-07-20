@@ -115,10 +115,19 @@ type TradeFilter struct {
 // TradeDecisionFilter defines supported filters when listing trade decisions.
 type TradeDecisionFilter struct {
 	StrategyID    *uuid.UUID
+	InstrumentKey string
 	MarketType    domain.MarketType
 	Status        domain.TradeDecisionStatus
 	CreatedAfter  *time.Time
 	CreatedBefore *time.Time
+}
+
+// AlpacaPLAggregateRepository provides read-only Alpaca-only P/L aggregates.
+type AlpacaPLAggregateRepository interface {
+	ClosedRealizedPnL(ctx context.Context) (float64, error)
+	OpenUnrealizedPnL(ctx context.Context) (float64, error)
+	TradeCount(ctx context.Context) (int, error)
+	FeeTotal(ctx context.Context) (float64, error)
 }
 
 // OpportunityFilter defines supported filters when listing opportunities.
@@ -348,6 +357,7 @@ type OrderRepository interface {
 // PositionRepository provides CRUD operations for positions.
 type PositionRepository interface {
 	Create(ctx context.Context, position *domain.Position) error
+	CreateAlpacaOwned(ctx context.Context, position *domain.Position) error
 	Get(ctx context.Context, id uuid.UUID) (*domain.Position, error)
 	List(ctx context.Context, filter PositionFilter, limit, offset int) ([]domain.Position, error)
 	// Count returns the total number of positions matching the filter.
@@ -355,6 +365,7 @@ type PositionRepository interface {
 	Update(ctx context.Context, position *domain.Position) error
 	Delete(ctx context.Context, id uuid.UUID) error
 	GetOpen(ctx context.Context, filter PositionFilter, limit, offset int) ([]domain.Position, error)
+	ListOpenAlpacaOwned(ctx context.Context, limit, offset int) ([]domain.Position, error)
 	// CountOpen returns the total number of open (not yet closed) positions.
 	CountOpen(ctx context.Context, filter PositionFilter) (int, error)
 	GetByStrategy(ctx context.Context, strategyID uuid.UUID, filter PositionFilter, limit, offset int) ([]domain.Position, error)
@@ -368,6 +379,67 @@ type TradeRepository interface {
 	Count(ctx context.Context, filter TradeFilter) (int, error)
 	GetByOrder(ctx context.Context, orderID uuid.UUID, filter TradeFilter, limit, offset int) ([]domain.Trade, error)
 	GetByPosition(ctx context.Context, positionID uuid.UUID, filter TradeFilter, limit, offset int) ([]domain.Trade, error)
+}
+
+// PaperAccountRepository provides provenance-safe paper-account reconstruction reads.
+type PaperAccountRepository interface {
+	ListPaperTrades(ctx context.Context, limit, offset int) ([]domain.Trade, error)
+	GetOpenPaperPositions(ctx context.Context, limit, offset int) ([]domain.Position, error)
+	ListOpenPaperOrders(ctx context.Context, limit, offset int) ([]domain.Order, error)
+	GetMaxPaperExternalIDSequence(ctx context.Context) (uint64, error)
+}
+
+// OrderFillIntent describes the execution fill that should be persisted atomically.
+type OrderFillIntent struct {
+	Side           domain.OrderSide
+	Quantity       float64
+	ExecutionPrice float64
+}
+
+// OrderFillInput carries the durable fill identity and entities to persist.
+type OrderFillInput struct {
+	IdempotencyKey string
+	Order          *domain.Order
+	FillIntent     OrderFillIntent
+	Now            time.Time
+	StopLoss       *float64
+	TakeProfit     *float64
+	Trade          *domain.Trade
+}
+
+// OrderFillResult returns the persisted identifiers for replay/idempotency.
+type OrderFillResult struct {
+	OrderID    uuid.UUID
+	PositionID *uuid.UUID
+	Position   *domain.Position
+	TradeID    uuid.UUID
+	CreatedAt  time.Time
+	Replayed   bool
+}
+
+// PredictionDecisionSettlementInput carries settlement persistence details.
+type PredictionDecisionSettlementInput struct {
+	IdempotencyKey string
+	Decision       *domain.TradeDecision
+	PositionTicker string
+	Payout         float64
+	ResolvedAt     time.Time
+}
+
+// PredictionDecisionSettlementResult returns the persisted settlement ids.
+type PredictionDecisionSettlementResult struct {
+	DecisionID    uuid.UUID
+	PositionID    *uuid.UUID
+	TradeID       uuid.UUID
+	ReplayEventID *uuid.UUID
+	CreatedAt     time.Time
+	Replayed      bool
+}
+
+// FinancialLifecycleRepository persists atomic fill and prediction settlement lifecycles.
+type FinancialLifecycleRepository interface {
+	ApplyOrderFill(ctx context.Context, input OrderFillInput) (OrderFillResult, error)
+	SettlePredictionDecision(ctx context.Context, input PredictionDecisionSettlementInput) (PredictionDecisionSettlementResult, error)
 }
 
 // TradeDecisionJournalRepository provides access to persisted trade decisions.
@@ -517,6 +589,13 @@ type KalshiDiscoveryRunRepository interface {
 	GetActive(ctx context.Context) (*domain.KalshiDiscoveryRun, error)
 	Finish(ctx context.Context, run *domain.KalshiDiscoveryRun) error
 	ListLatest(ctx context.Context, limit int) ([]domain.KalshiDiscoveryRun, error)
+}
+
+// KalshiSettlementGateRepository stores durable dry-run gating state for Kalshi settlement.
+type KalshiSettlementGateRepository interface {
+	Get(ctx context.Context, jobName string) (*domain.KalshiSettlementGateState, error)
+	RecordSuccess(ctx context.Context, jobName string, threshold int, fetched, resolved, wouldSettleMarkets, wouldSettleDecisions int, projectionFingerprint string, lastRunAt time.Time) (*domain.KalshiSettlementGateState, error)
+	RecordFailure(ctx context.Context, jobName string, threshold int, fetched, resolved, wouldSettleMarkets, wouldSettleDecisions int, lastRunAt time.Time, lastError string) (*domain.KalshiSettlementGateState, error)
 }
 
 // PolymarketResolvedMarketsRepository tracks resolved market processing.
