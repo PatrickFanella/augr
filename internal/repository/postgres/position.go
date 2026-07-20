@@ -413,9 +413,9 @@ func (r *PositionRepo) CountOpenByMarket(ctx context.Context, filter repository.
 	if filter.OpenedBefore != nil {
 		conditions = append(conditions, "p.opened_at <= "+nextArg(*filter.OpenedBefore))
 	}
-	query := `SELECT COALESCE(s.market_type, '') AS market_type, COUNT(*)
+	query := `SELECT COALESCE(s.market_type::text, '') AS market_type, COUNT(*)
 		FROM positions p LEFT JOIN strategies s ON s.id = p.strategy_id
-		WHERE ` + strings.Join(conditions, " AND ") + ` GROUP BY COALESCE(s.market_type, '') ORDER BY COALESCE(s.market_type, '')`
+		WHERE ` + strings.Join(conditions, " AND ") + ` GROUP BY COALESCE(s.market_type::text, '') ORDER BY COALESCE(s.market_type::text, '')`
 	rows, err := r.pool.Query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("postgres: count open positions by market: %w", err)

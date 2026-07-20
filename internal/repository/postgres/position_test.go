@@ -450,6 +450,46 @@ func TestPositionRepoIntegration_CountOpenByMarketAndGrossExposureParity(t *test
 	}
 }
 
+func TestPositionRepoIntegration_CountOpenByMarketHandlesNullAndEnumMarketTypes(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	pool, cleanup := newPositionIntegrationPool(t, ctx)
+	defer cleanup()
+
+	repo := NewPositionRepo(pool)
+	stockStrategy := createTestPositionStrategy(t, ctx, pool, domain.MarketTypeStock)
+	current := 12.5
+	positions := []*domain.Position{
+		{StrategyID: &stockStrategy, Ticker: "AAPL", Side: domain.PositionSideLong, Quantity: 1, AvgEntry: 10, CurrentPrice: &current},
+		{Ticker: "UNASSIGNED", Side: domain.PositionSideLong, Quantity: 1, AvgEntry: 5, CurrentPrice: &current},
+	}
+	for _, pos := range positions {
+		if err := repo.Create(ctx, pos); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+	}
+
+	counts, err := repo.CountOpenByMarket(ctx, repository.PositionFilter{})
+	if err != nil {
+		t.Fatalf("CountOpenByMarket() error = %v", err)
+	}
+	if counts[domain.MarketTypeStock] != 1 {
+		t.Fatalf("expected 1 stock position, got %#v", counts)
+	}
+	if counts[domain.MarketType("")] != 1 {
+		t.Fatalf("expected 1 unassigned/null-market position grouped under empty string, got %#v", counts)
+	}
+
+	var sqlCount int
+	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM positions p LEFT JOIN strategies s ON s.id = p.strategy_id WHERE p.closed_at IS NULL AND COALESCE(s.market_type::text, '') = ''`).Scan(&sqlCount); err != nil {
+		t.Fatalf("direct SQL count error = %v", err)
+	}
+	if counts[domain.MarketType("")] != sqlCount {
+		t.Fatalf("CountOpenByMarket() empty-key = %d, direct SQL = %d", counts[domain.MarketType("")], sqlCount)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Test helpers
 // ---------------------------------------------------------------------------
