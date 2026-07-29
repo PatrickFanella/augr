@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 
@@ -16,6 +17,10 @@ func (s *Server) handleRiskCockpit(w http.ResponseWriter, r *http.Request) {
 	}
 	if s.tradeDecisions == nil {
 		respondError(w, http.StatusNotImplemented, "risk cockpit requires trade decision journal repository", ErrCodeNotImplemented)
+		return
+	}
+	if s.positions == nil {
+		respondError(w, http.StatusNotImplemented, "risk cockpit requires position repository", ErrCodeNotImplemented)
 		return
 	}
 
@@ -43,6 +48,15 @@ func (s *Server) handleRiskCockpit(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	summary := risk.BuildCockpitSummary(decisions, &status, time.Now().UTC())
+	positions, openPositionCount, err := s.loadAllOpenPositions(r.Context())
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to list open positions for risk cockpit", ErrCodeInternal)
+		return
+	}
+	summary := risk.BuildCockpitSummaryWithPositions(decisions, positions, &status, time.Now().UTC())
+	if openPositionCount != len(positions) {
+		summary.ReconciliationStatus = "incomplete"
+		summary.Warnings = append(summary.Warnings, fmt.Sprintf("risk aggregation loaded %d of %d open positions", len(positions), openPositionCount))
+	}
 	respondJSON(w, http.StatusOK, summary)
 }

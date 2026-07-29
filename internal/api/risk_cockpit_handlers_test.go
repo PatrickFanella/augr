@@ -21,6 +21,12 @@ func TestRiskCockpitRoute(t *testing.T) {
 	}
 	deps := testDeps()
 	deps.TradeDecisions = repo
+	currentPrice := 4.5
+	unrealized := 0.5
+	deps.Positions = &stubPositionRepo{positions: []domain.Position{{
+		MarketType: domain.MarketTypeStock, Ticker: "AAPL", Side: domain.PositionSideLong,
+		Quantity: 1, AvgEntry: 4, CurrentPrice: &currentPrice, UnrealizedPnL: &unrealized,
+	}}}
 	deps.Risk = &stubRiskEngine{getStatusFn: func(context.Context) (risk.EngineStatus, error) {
 		return risk.EngineStatus{
 			KillSwitch:     risk.KillSwitchStatus{Active: true},
@@ -38,8 +44,8 @@ func TestRiskCockpitRoute(t *testing.T) {
 	if !body.KillSwitchActive || !body.CircuitBreaker {
 		t.Fatalf("unexpected active flags: %+v", body)
 	}
-	if len(body.Exposures) != 4 {
-		t.Fatalf("exposures len = %d want 4", len(body.Exposures))
+	if len(body.Exposures) != 5 {
+		t.Fatalf("exposures len = %d want 5", len(body.Exposures))
 	}
 	if body.Exposures[0].MarketType != domain.MarketTypeStock || body.Exposures[0].OpenPositions != 1 || body.Exposures[0].GrossExposure != 4 {
 		t.Fatalf("unexpected stock exposure: %+v", body.Exposures[0])
@@ -56,6 +62,7 @@ func TestRiskCockpitHandlerMissingDeps(t *testing.T) {
 	}{
 		{name: "missing risk", srv: &Server{}},
 		{name: "missing decisions", srv: &Server{risk: &stubRiskEngine{}}},
+		{name: "missing positions", srv: &Server{risk: &stubRiskEngine{}, tradeDecisions: &stubTradeDecisionJournalRepo{}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			rr := httptest.NewRecorder()

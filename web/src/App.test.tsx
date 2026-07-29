@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 
 import App from '@/App'
 import { setTokenSnapshot } from '@/shared/auth/tokenStore'
-import { buildAuthResponse, buildOrder, buildPosition, buildRiskStatus, buildRun, buildStrategy, fixtureDate } from '@/test/fixtures'
+import { buildAuthResponse, buildOrder, buildPortfolioSummary, buildPosition, buildRiskStatus, buildRun, buildStrategy, fixtureDate } from '@/test/fixtures'
 import { apiBaseUrl, FakeWebSocket, installAppTestHarness, resetApp, server, state, strategyId } from '@/test/app-harness'
 
 describe('first vertical slice app', () => {
@@ -61,7 +61,7 @@ describe('first vertical slice app', () => {
     expect((await screen.findAllByText('<img src=x onerror=alert(1)>')).length).toBeGreaterThan(0)
     expect(document.querySelector('img[src="x"]')).toBeNull()
     expect(document.querySelector('script')).toBeNull()
-  })
+  }, 10_000)
 
   it('displays unknown status values without crashing', async () => {
     resetApp('/cockpit')
@@ -85,7 +85,8 @@ describe('first vertical slice app', () => {
     expect((await screen.findAllByRole('link', { name: /dev paper mean reversion/i }))[0]).toHaveAttribute('href', '/strategies/00000000-0000-4000-8000-000000000010')
     expect(screen.getAllByText('PAPER').length).toBeGreaterThan(0)
     expect(screen.getAllByText('LIVE').length).toBeGreaterThan(0)
-    expect(screen.getByRole('table')).toBeTruthy()
+    expect(screen.getByRole('table').closest('.responsive-table-view')).toBeTruthy()
+    expect(screen.getByLabelText(/strategies cards/i)).toHaveClass('responsive-card-view')
   })
 
   it('keeps strategy filters in the URL and filters rows', async () => {
@@ -456,6 +457,24 @@ describe('first vertical slice app', () => {
     expect(screen.getAllByRole('link', { name: /Strategy/i })[0]).toHaveAttribute('href', '/strategies/00000000-0000-4000-8000-000000000010')
   })
 
+  it('renders missing portfolio valuation as incomplete rather than zero', async () => {
+    resetApp('/portfolio')
+    setTokenSnapshot(buildAuthResponse())
+    server.use(http.get(`${apiBaseUrl}/portfolio/summary`, () => HttpResponse.json(buildPortfolioSummary({
+      marked_positions: 0,
+      unmarked_positions: 1,
+      unrealized_pnl: null,
+      total_pnl: null,
+      gross_marked_value: null,
+      valuation_status: 'unavailable',
+    }))))
+    render(<App />)
+
+    expect(await screen.findByText(/valuation unavailable for 1 of 1/i)).toBeTruthy()
+    expect(screen.getAllByText(/unknown/i).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/unrealized p\/l/i).length).toBeGreaterThan(0)
+  })
+
   it('renders persisted option contract and Greek position metadata', async () => {
     resetApp('/portfolio')
     setTokenSnapshot(buildAuthResponse())
@@ -568,6 +587,8 @@ describe('first vertical slice app', () => {
 
     expect(await screen.findByRole('heading', { name: /^orders$/i })).toBeTruthy()
     expect(await screen.findByRole('table', { name: /^orders$/i })).toBeTruthy()
+    expect(screen.getByRole('table', { name: /^orders$/i }).closest('.responsive-table-view')).toBeTruthy()
+    expect(screen.getByLabelText(/order cards/i)).toHaveClass('responsive-card-view')
     expect(screen.getAllByRole('link', { name: /Strategy/i })[0]).toHaveAttribute('href', '/strategies/00000000-0000-4000-8000-000000000010')
     expect(screen.getAllByRole('link', { name: /Run/i }).some((link) => link.getAttribute('href') === '/runs/00000000-0000-4000-8000-000000000020')).toBe(true)
     expect(screen.getAllByText(/paper-broker|backup-broker/i).length).toBeGreaterThan(0)

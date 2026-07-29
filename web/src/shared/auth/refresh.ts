@@ -1,6 +1,6 @@
 import { appConfig } from '@/app/config/env'
 import { parseContract } from '@/shared/api/contract'
-import { ApiClientError, toApiClientError } from '@/shared/api/errors'
+import { ApiClientError, isApiClientError, toApiClientError } from '@/shared/api/errors'
 import { authResponseSchema } from '@/shared/api/schemas'
 import { clearTokenSnapshot, getAuthEpoch, getRefreshToken, setTokenSnapshot } from '@/shared/auth/tokenStore'
 import { redactUrl } from '@/shared/logging/redact'
@@ -30,7 +30,8 @@ export async function refreshAccessToken(): Promise<AuthResponse> {
       return tokens
     })
     .catch((error) => {
-      if (getAuthEpoch() === startEpoch) {
+      const definitiveFailure = isApiClientError(error) && ['unauthorized', 'bad_request', 'validation'].includes(error.kind)
+      if (definitiveFailure && getAuthEpoch() === startEpoch) {
         clearTokenSnapshot()
         onRefreshFailure?.()
       }

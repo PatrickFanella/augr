@@ -143,7 +143,7 @@ export function StrategiesListPage() {
 
         {rows.length > 0 ? (
           <>
-            <div className="table-wrap" role="region" aria-label="Strategies table" tabIndex={0}>
+            <div className="table-wrap responsive-table-view" role="region" aria-label="Strategies table" tabIndex={0}>
               <table className="operations-table" aria-label="Trading strategies">
                 <thead>
                   <tr>
@@ -171,7 +171,7 @@ export function StrategiesListPage() {
                 </tbody>
               </table>
             </div>
-            <div className="card-list" aria-label="Strategies cards">
+            <div className="card-list responsive-card-view" aria-label="Strategies cards">
               {rows.map((strategy) => (
                 <article className="strategy-card" key={strategy.id}>
                   <div className="panel-header">

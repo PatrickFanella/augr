@@ -392,12 +392,21 @@ export const riskCockpitSummarySchema = z
       z.object({
         market_type: forwardCompatibleEnumSchema,
         open_positions: z.number().int(),
+        marked_positions: z.number().int(),
+        unmarked_positions: z.number().int(),
         approved_decisions: z.number().int(),
         rejected_decisions: z.number().int(),
         gross_exposure: z.number(),
+        gross_marked_value: optionalNullable(z.number()).optional(),
         net_expected_value: z.number(),
       }).passthrough(),
     ),
+    open_positions: z.number().int().nonnegative(),
+    marked_positions: z.number().int().nonnegative(),
+    unmarked_positions: z.number().int().nonnegative(),
+    gross_cost_basis: z.number().nonnegative(),
+    valuation_status: z.enum(['complete', 'partial', 'unavailable']),
+    reconciliation_status: z.enum(['complete', 'incomplete']),
     warnings: z.array(z.string()),
   })
   .passthrough()
@@ -509,8 +518,15 @@ export const healthStatusResponseSchema = z
 export const portfolioSummarySchema = z
   .object({
     open_positions: z.number().int().nonnegative(),
-    unrealized_pnl: z.number(),
+    marked_positions: z.number().int().nonnegative(),
+    unmarked_positions: z.number().int().nonnegative(),
+    unrealized_pnl: z.number().nullable(),
     realized_pnl: z.number(),
+    total_pnl: z.number().nullable(),
+    gross_cost_basis: z.number().nonnegative(),
+    gross_marked_value: z.number().nullable(),
+    valuation_status: z.enum(['complete', 'partial', 'unavailable']),
+    valuation_generated_at: isoDateSchema,
   })
   .passthrough()
 
@@ -547,6 +563,8 @@ export const settingsResponseSchema = z
       .object({
         environment: z.string(),
         version: z.string(),
+        build_commit: z.string().optional(),
+        build_time: z.string().optional(),
         current_schema_version: z.number().int(),
         required_schema_version: z.number().int(),
         schema_status: z.string(),
@@ -557,6 +575,8 @@ export const settingsResponseSchema = z
               name: z.string(),
               paper_mode: z.boolean(),
               configured: z.boolean(),
+              data_environment: z.enum(['demo', 'live', 'unknown']).optional(),
+              data_source_url: z.string().optional(),
             })
             .passthrough(),
         ),
@@ -572,6 +592,10 @@ export const eventMarketsSummarySchema = z.object({
     active_paper: z.number().int().nonnegative(),
     last_run_status: z.string(),
     live_trading_ready: z.boolean(),
+    data_environment: z.enum(['demo', 'live', 'unknown']).optional(),
+    data_status: z.enum(['current', 'stale', 'unavailable']).optional(),
+    data_captured_at: isoDateSchema.optional(),
+    data_age_seconds: z.number().int().nonnegative().optional(),
   }).passthrough()),
 }).passthrough()
 

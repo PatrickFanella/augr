@@ -1,6 +1,7 @@
 package risk
 
 import (
+	"fmt"
 	"math"
 	"time"
 
@@ -12,6 +13,7 @@ var cockpitMarketOrder = []domain.MarketType{
 	domain.MarketTypeCrypto,
 	domain.MarketTypeOptions,
 	domain.MarketTypePolymarket,
+	domain.MarketTypeKalshi,
 }
 
 func isFinite(v float64) bool {
@@ -134,4 +136,65 @@ func buildCockpitSummary(decisions []domain.TradeDecision, status *EngineStatus,
 // deterministic cockpit snapshot suitable for API responses and tests.
 func BuildCockpitSummary(decisions []domain.TradeDecision, status *EngineStatus, generatedAt time.Time) CockpitSummary {
 	return buildCockpitSummary(decisions, status, generatedAt)
+}
+
+// BuildCockpitSummaryWithPositions uses durable open positions as the source
+// of truth for exposure while retaining decision counts as separate context.
+func BuildCockpitSummaryWithPositions(decisions []domain.TradeDecision, positions []domain.Position, status *EngineStatus, generatedAt time.Time) CockpitSummary {
+	result := buildCockpitSummary(decisions, status, generatedAt)
+	byMarket := make(map[domain.MarketType]*CockpitExposure, len(result.Exposures))
+	for i := range result.Exposures {
+		exposure := &result.Exposures[i]
+		exposure.OpenPositions = 0
+		exposure.MarkedPositions = 0
+		exposure.UnmarkedPositions = 0
+		exposure.GrossExposure = 0
+		exposure.GrossMarkedValue = nil
+		exposure.NetExpectedValue = 0
+		byMarket[exposure.MarketType] = exposure
+	}
+
+	markedByMarket := make(map[domain.MarketType]float64, len(result.Exposures))
+	for _, position := range positions {
+		exposure, ok := byMarket[position.MarketType]
+		if !ok {
+			result.ReconciliationStatus = "incomplete"
+			result.Warnings = append(result.Warnings, "open position market "+string(position.MarketType)+" is absent from risk aggregation")
+			continue
+		}
+		multiplier := position.ContractMultiplier
+		if multiplier == 0 {
+			multiplier = 1
+		}
+		exposure.OpenPositions++
+		result.OpenPositions++
+		costBasis := math.Abs(position.Quantity * position.AvgEntry * multiplier)
+		exposure.GrossExposure += costBasis
+		result.GrossCostBasis += costBasis
+		if position.CurrentPrice == nil || position.UnrealizedPnL == nil {
+			exposure.UnmarkedPositions++
+			result.UnmarkedPositions++
+			continue
+		}
+		exposure.MarkedPositions++
+		result.MarkedPositions++
+		markedByMarket[position.MarketType] += math.Abs(position.Quantity * *position.CurrentPrice * multiplier)
+	}
+	for marketType, markedValue := range markedByMarket {
+		value := markedValue
+		byMarket[marketType].GrossMarkedValue = &value
+	}
+
+	if result.ReconciliationStatus == "" {
+		result.ReconciliationStatus = "complete"
+	}
+	result.ValuationStatus = "complete"
+	if result.UnmarkedPositions > 0 {
+		result.ValuationStatus = "partial"
+		if result.MarkedPositions == 0 {
+			result.ValuationStatus = "unavailable"
+		}
+		result.Warnings = append(result.Warnings, fmt.Sprintf("valuation incomplete: %d of %d open positions are marked", result.MarkedPositions, result.OpenPositions))
+	}
+	return result
 }

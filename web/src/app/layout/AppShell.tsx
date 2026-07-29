@@ -86,6 +86,7 @@ export function AppShell() {
   const configuredBrokers = settings.data?.system.connected_brokers.filter((item) => item.configured) ?? [];
   const brokerModes = new Set(configuredBrokers.map((broker) => broker.paper_mode === false ? 'live' : 'paper'));
   const mode = configuredBrokers.length === 0 ? 'Mode unknown' : brokerModes.size > 1 ? 'Mixed paper/live' : brokerModes.has('live') ? 'Live' : 'Paper';
+  const kalshiFeed = settings.data?.system.connected_brokers.find((broker) => broker.name === 'kalshi');
 
   const [isCollapsed, setIsCollapsed] = useState(getInitialCollapsedState);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
@@ -292,6 +293,7 @@ export function AppShell() {
             </div>
           </div>
           <div className="header-cluster">
+            {kalshiFeed?.configured ? <span className={`status-pill ${kalshiFeed.data_environment === 'live' ? 'success' : 'warning'}`} title={kalshiFeed.data_source_url}>Kalshi {kalshiFeed.data_environment ?? 'unknown'}</span> : null}
             <span className={`status-pill ${realtime.status}`}>Realtime {realtime.status}</span>
             <button
               ref={activityToggleRef}

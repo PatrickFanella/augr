@@ -421,6 +421,9 @@ func (m *OrderManager) ProcessSignal(
 		if signal.Signal == domain.PipelineSignalSell && plan.PositionSize > 0 {
 			quantity = math.Min(plan.PositionSize, predictionExitMaxQuantity)
 		}
+		if marketType.Normalize() == domain.MarketTypeKalshi {
+			quantity = quantizeKalshiContracts(quantity)
+		}
 	}
 
 	if quantity <= 0 {
@@ -664,6 +667,13 @@ func (m *OrderManager) ProcessSignal(
 
 		return nil
 	}
+}
+
+func quantizeKalshiContracts(quantity float64) float64 {
+	if quantity <= 0 {
+		return 0
+	}
+	return math.Floor((quantity+1e-9)*100) / 100
 }
 
 func planMarketType(plan TradingPlan) domain.MarketType {

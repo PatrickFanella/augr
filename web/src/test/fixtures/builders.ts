@@ -334,9 +334,15 @@ export function buildRiskCockpit(overrides: Partial<RiskCockpitSummary> = {}): R
     kill_switch_active: false,
     circuit_breaker: false,
     exposures: [
-      { market_type: 'stock', open_positions: 2, approved_decisions: 5, rejected_decisions: 1, gross_exposure: 0.18, net_expected_value: 120.5 },
-      { market_type: 'crypto', open_positions: 1, approved_decisions: 2, rejected_decisions: 0, gross_exposure: 0.06, net_expected_value: 25.25 },
+      { market_type: 'stock', open_positions: 2, marked_positions: 2, unmarked_positions: 0, approved_decisions: 5, rejected_decisions: 1, gross_exposure: 0.18, gross_marked_value: 0.2, net_expected_value: 120.5 },
+      { market_type: 'crypto', open_positions: 1, marked_positions: 1, unmarked_positions: 0, approved_decisions: 2, rejected_decisions: 0, gross_exposure: 0.06, gross_marked_value: 0.07, net_expected_value: 25.25 },
     ],
+    open_positions: 3,
+    marked_positions: 3,
+    unmarked_positions: 0,
+    gross_cost_basis: 0.24,
+    valuation_status: 'complete',
+    reconciliation_status: 'complete',
     warnings: ['paper risk cockpit fixture'],
     ...overrides,
   }
@@ -354,8 +360,15 @@ export function buildRiskBreakers(overrides: Partial<RiskBreakersResponse> = {})
 export function buildPortfolioSummary(overrides: Partial<PortfolioSummary> = {}): PortfolioSummary {
   return {
     open_positions: 1,
+    marked_positions: 1,
+    unmarked_positions: 0,
     unrealized_pnl: 15,
     realized_pnl: 0,
+    total_pnl: 15,
+    gross_cost_basis: 100,
+    gross_marked_value: 115,
+    valuation_status: 'complete',
+    valuation_generated_at: fixtureDate,
     ...overrides,
   }
 }

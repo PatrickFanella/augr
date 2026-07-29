@@ -12,6 +12,9 @@ CMD ["air", "-c", ".air.toml"]
 FROM golang:${GO_VERSION}-alpine AS builder
 ARG TARGETOS=linux
 ARG TARGETARCH=amd64
+ARG BUILD_VERSION=development
+ARG BUILD_COMMIT=unknown
+ARG BUILD_TIME=unknown
 WORKDIR /src
 
 RUN apk add --no-cache ca-certificates
@@ -21,7 +24,7 @@ RUN go mod download
 
 COPY cmd ./cmd
 COPY internal ./internal
-RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w" -o /out/tradingagent ./cmd/tradingagent
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w -X main.version=${BUILD_VERSION}" -o /out/tradingagent ./cmd/tradingagent
 
 FROM alpine:${ALPINE_VERSION} AS production
 RUN addgroup -S app && \
@@ -35,6 +38,12 @@ COPY --chown=app:app migrations ./migrations
 RUN chmod 444 ./ca-certificates.crt
 
 ENV APP_ENV=production
+ARG BUILD_VERSION=development
+ARG BUILD_COMMIT=unknown
+ARG BUILD_TIME=unknown
+ENV APP_VERSION=${BUILD_VERSION}
+ENV APP_BUILD_COMMIT=${BUILD_COMMIT}
+ENV APP_BUILD_TIME=${BUILD_TIME}
 ENV SSL_CERT_FILE=/app/ca-certificates.crt
 
 USER app:app

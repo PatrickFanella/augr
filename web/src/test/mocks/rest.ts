@@ -352,7 +352,7 @@ export function createP0RestHandlers(options: P0MockHandlersOptions = {}) {
       const error = scenarioError(state)
       if (error) return error
       if (state.scenario === 'empty-data') return HttpResponse.json(buildRiskCockpit({ exposures: [], warnings: [] }))
-      if (state.scenario === 'partial-service-failure') return HttpResponse.json(buildRiskCockpit({ exposures: [{ market_type: 'new_market', open_positions: 1, approved_decisions: 1, rejected_decisions: 1, gross_exposure: 0.11, net_expected_value: -5 }], warnings: ['unsafe <script>alert(1)</script>'] }))
+      if (state.scenario === 'partial-service-failure') return HttpResponse.json(buildRiskCockpit({ exposures: [{ market_type: 'new_market', open_positions: 1, marked_positions: 0, unmarked_positions: 1, approved_decisions: 1, rejected_decisions: 1, gross_exposure: 0.11, net_expected_value: -5 }], warnings: ['unsafe <script>alert(1)</script>'] }))
       return HttpResponse.json(buildRiskCockpit())
     }),
 

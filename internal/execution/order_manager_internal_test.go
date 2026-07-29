@@ -6,6 +6,23 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 )
 
+func TestQuantizeKalshiContractsUsesFixedPointGranularity(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		input float64
+		want  float64
+	}{
+		{input: 1.234567, want: 1.23},
+		{input: 0.019, want: 0.01},
+		{input: 2, want: 2},
+		{input: 0.009, want: 0},
+	} {
+		if got := quantizeKalshiContracts(tc.input); got != tc.want {
+			t.Fatalf("quantizeKalshiContracts(%v) = %v, want %v", tc.input, got, tc.want)
+		}
+	}
+}
+
 func TestPolymarketPositionTickerIdempotent(t *testing.T) {
 	t.Parallel()
 	if got := polymarketPositionTicker(" MARKET ", "yes"); got != "MARKET:YES" {

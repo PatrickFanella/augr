@@ -34,7 +34,7 @@ function OrderInstrument({ order }: { order: Order }) {
 function OrdersRows({ orders }: { orders: Order[] }) {
   return (
     <>
-      <div className="table-wrap">
+      <div className="table-wrap responsive-table-view">
         <table className="operations-table orders-table" aria-label="Orders">
           <thead><tr><th>Order</th><th>Ticker</th><th>Side</th><th>Type</th><th>Status</th><th>Quantity</th><th>Filled</th><th>Limit</th><th>Broker</th><th>Created</th></tr></thead>
           <tbody>{orders.map((order) => (
@@ -53,7 +53,7 @@ function OrdersRows({ orders }: { orders: Order[] }) {
           ))}</tbody>
         </table>
       </div>
-      <div className="card-list" aria-label="Order cards">
+      <div className="card-list responsive-card-view" aria-label="Order cards">
         {orders.map((order) => (
           <article className="strategy-card" key={order.id}>
             <h3><OrderInstrument order={order} /></h3>

@@ -24,6 +24,9 @@ const (
 
 // MarketCandidate is a read-only Kalshi market catalog entry.
 type MarketCandidate struct {
+	Provider     string          `json:"provider"`
+	Environment  string          `json:"environment"`
+	SourceURL    string          `json:"source_url"`
 	Ticker       string          `json:"ticker"`
 	EventTicker  string          `json:"event_ticker,omitempty"`
 	Title        string          `json:"title,omitempty"`
@@ -57,11 +60,24 @@ type SyncResult struct {
 
 // Client wraps the public Kalshi client for catalog sync.
 type Client struct {
-	api *dataKalshi.Client
+	api         *dataKalshi.Client
+	environment string
+	sourceURL   string
 }
 
 // NewClient builds a catalog sync client.
-func NewClient(api *dataKalshi.Client) *Client { return &Client{api: api} }
+func NewClient(api *dataKalshi.Client) *Client {
+	return NewClientWithProvenance(api, "", true)
+}
+
+// NewClientWithProvenance binds every fetched record to its configured feed.
+func NewClientWithProvenance(api *dataKalshi.Client, sourceURL string, demo bool) *Client {
+	environment := "live"
+	if demo {
+		environment = "demo"
+	}
+	return &Client{api: api, environment: environment, sourceURL: strings.TrimRight(strings.TrimSpace(sourceURL), "/")}
+}
 
 // ListMarkets fetches one page from /markets using the public GET endpoint.
 func (c *Client) ListMarkets(ctx context.Context, opts ListOptions) ([]MarketCandidate, string, error) {
@@ -82,7 +98,11 @@ func (c *Client) ListMarkets(ctx context.Context, opts ListOptions) ([]MarketCan
 	if err != nil {
 		return nil, "", err
 	}
-	return decodeMarketListResponse(body)
+	candidates, cursor, err := decodeMarketListResponse(body)
+	for i := range candidates {
+		c.applyProvenance(&candidates[i])
+	}
+	return candidates, cursor, err
 }
 
 // GetMarket fetches a single market by ticker from /markets/{ticker}.
@@ -99,6 +119,7 @@ func (c *Client) GetMarket(ctx context.Context, ticker string) (*MarketCandidate
 		return nil, err
 	}
 	if candidate, err := decodeMarketCandidate(body); err == nil {
+		c.applyProvenance(&candidate)
 		return &candidate, nil
 	}
 	var wrapped struct {
@@ -109,9 +130,19 @@ func (c *Client) GetMarket(ctx context.Context, ticker string) (*MarketCandidate
 		if err != nil {
 			return nil, err
 		}
+		c.applyProvenance(&candidate)
 		return &candidate, nil
 	}
 	return nil, fmt.Errorf("kalshi discovery: unexpected market response: %s", strings.TrimSpace(string(body)))
+}
+
+func (c *Client) applyProvenance(candidate *MarketCandidate) {
+	if c == nil || candidate == nil {
+		return
+	}
+	candidate.Provider = "kalshi"
+	candidate.Environment = c.environment
+	candidate.SourceURL = c.sourceURL
 }
 
 // SyncCatalog fetches every catalog page, persists snapshots, and upserts watched
@@ -162,6 +193,9 @@ func (c *Client) SyncCatalog(
 // ToSnapshot converts the candidate into a persistence snapshot.
 func (m MarketCandidate) ToSnapshot() *domain.KalshiMarketSnapshot {
 	return &domain.KalshiMarketSnapshot{
+		Provider:     firstNonEmpty(m.Provider, "kalshi"),
+		Environment:  firstNonEmpty(m.Environment, "unknown"),
+		SourceURL:    m.SourceURL,
 		Ticker:       m.Ticker,
 		Title:        m.Title,
 		Status:       m.Status,
@@ -174,6 +208,15 @@ func (m MarketCandidate) ToSnapshot() *domain.KalshiMarketSnapshot {
 		CloseTime:    m.CloseTime,
 		Raw:          append(json.RawMessage(nil), m.Raw...),
 	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 // ToWatchedMarket converts the candidate into a watched market record.

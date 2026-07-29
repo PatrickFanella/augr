@@ -29,13 +29,15 @@ export function SettingsPage() {
           <dl className="kv-grid">
             <dt>Environment</dt><dd>{settings.system.environment}</dd>
             <dt>Version</dt><dd>{settings.system.version}</dd>
+            <dt>Commit</dt><dd>{settings.system.build_commit || 'Unknown'}</dd>
+            <dt>Built</dt><dd>{settings.system.build_time ? new Date(settings.system.build_time).toLocaleString() : 'Unknown'}</dd>
             <dt>Schema</dt><dd>{settings.system.current_schema_version} / required {settings.system.required_schema_version}</dd>
             <dt>Uptime</dt><dd>{Math.floor(settings.system.uptime_seconds / 60).toLocaleString()} minutes</dd>
           </dl>
         </section>
         <section className="panel" aria-labelledby="broker-readiness-heading">
           <h2 id="broker-readiness-heading">Broker readiness</h2>
-          {settings.system.connected_brokers.length === 0 ? <p>No brokers reported.</p> : <div className="table-wrap"><table aria-label="Broker readiness"><thead><tr><th>Broker</th><th>Configured</th><th>Mode</th></tr></thead><tbody>{settings.system.connected_brokers.map((broker) => <tr key={broker.name}><th scope="row">{broker.name}</th><td>{broker.configured ? 'Configured' : 'Not configured'}</td><td><span className={`status-pill ${broker.paper_mode ? 'unknown' : 'warning'}`}>{broker.paper_mode ? 'Paper' : 'Live'}</span></td></tr>)}</tbody></table></div>}
+          {settings.system.connected_brokers.length === 0 ? <p>No brokers reported.</p> : <div className="table-wrap"><table aria-label="Broker readiness"><thead><tr><th>Broker</th><th>Configured</th><th>Mode</th><th>Market data</th></tr></thead><tbody>{settings.system.connected_brokers.map((broker) => <tr key={broker.name}><th scope="row">{broker.name}</th><td>{broker.configured ? 'Configured' : 'Not configured'}</td><td><span className={`status-pill ${broker.paper_mode ? 'unknown' : 'warning'}`}>{broker.paper_mode ? 'Paper' : 'Live'}</span></td><td>{broker.data_environment ? <span className={`status-pill ${broker.data_environment === 'live' ? 'success' : 'warning'}`} title={broker.data_source_url}>{broker.data_environment}</span> : '—'}</td></tr>)}</tbody></table></div>}
         </section>
         <section className="panel" aria-labelledby="llm-readiness-heading">
           <h2 id="llm-readiness-heading">LLM readiness</h2>

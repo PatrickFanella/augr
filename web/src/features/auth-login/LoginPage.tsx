@@ -41,6 +41,7 @@ export function LoginPage() {
       <form className="login-card" onSubmit={onSubmit} aria-label="Sign in">
         <p className="eyebrow">Augr operations</p>
         <h1>Sign in</h1>
+        {params.get('reason') === 'expired' ? <Alert variant="warning">Session expired. Sign in to continue to your previous destination.</Alert> : null}
         <label>
           Username
           <input autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} required />

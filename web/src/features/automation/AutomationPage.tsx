@@ -110,7 +110,7 @@ export function AutomationPage() {
                     <td>{job.schedule || 'Manual only'}</td>
                     <td>{formatRelativeTime(job.last_run)}</td>
                     <td>{job.run_count}</td>
-                    <td>{job.error_count > 0 ? <StatusBadge status="danger" label={String(job.error_count)} /> : job.error_count}</td>
+                    <td>{job.error_count > 0 ? <><StatusBadge status={job.consecutive_failures > 0 ? 'danger' : 'warning'} label={`${job.error_count} historical`} />{job.consecutive_failures > 0 ? <span className="cell-detail">{job.consecutive_failures} consecutive</span> : null}{job.last_error ? <span className="cell-detail" title={job.last_error}>{job.last_error}</span> : null}</> : '0'}</td>
                     <td><AutomationActions job={job} /></td>
                   </tr>
                 ))}

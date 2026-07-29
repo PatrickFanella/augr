@@ -366,9 +366,12 @@ export type RiskBreakersResponse = {
 export type RiskCockpitExposure = {
   market_type: MarketType
   open_positions: number
+  marked_positions: number
+  unmarked_positions: number
   approved_decisions: number
   rejected_decisions: number
   gross_exposure: number
+  gross_marked_value?: number
   net_expected_value: number
 }
 
@@ -377,6 +380,12 @@ export type RiskCockpitSummary = {
   kill_switch_active: boolean
   circuit_breaker: boolean
   exposures: RiskCockpitExposure[]
+  open_positions: number
+  marked_positions: number
+  unmarked_positions: number
+  gross_cost_basis: number
+  valuation_status: 'complete' | 'partial' | 'unavailable'
+  reconciliation_status: 'complete' | 'incomplete'
   warnings: string[]
 }
 
@@ -474,6 +483,10 @@ export type EventMarketProviderSummary = {
   active_paper: number
   last_run_status: string
   live_trading_ready: boolean
+  data_environment?: 'demo' | 'live' | 'unknown'
+  data_status?: 'current' | 'stale' | 'unavailable'
+  data_captured_at?: ISODate
+  data_age_seconds?: number
 }
 
 export type EventMarketsSummaryResponse = {

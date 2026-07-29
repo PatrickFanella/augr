@@ -25,6 +25,8 @@ export type SettingsResponse = {
   system: {
     environment: string
     version: string
+    build_commit?: string
+    build_time?: string
     current_schema_version: number
     required_schema_version: number
     schema_status: string
@@ -33,6 +35,8 @@ export type SettingsResponse = {
       name: string
       paper_mode: boolean
       configured: boolean
+      data_environment?: 'demo' | 'live' | 'unknown'
+      data_source_url?: string
     }>
   }
 }

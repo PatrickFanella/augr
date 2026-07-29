@@ -267,7 +267,7 @@ describe('risk console', () => {
     await userEvent.click(await screen.findByRole('button', { name: /resume stock market/i }))
     const resumeDialog = screen.getByRole('dialog', { name: /resume stock market/i })
     expect(within(resumeDialog).queryByLabelText(/reason/i)).toBeNull()
-    expect(within(resumeDialog).getByText(/backend rbac and resume reason support are unresolved/i)).toBeTruthy()
+    expect(within(resumeDialog).getByText(/resume removes a market-level safety block/i)).toBeTruthy()
     await userEvent.click(within(resumeDialog).getByRole('button', { name: /resume market/i }))
     expect(await screen.findByText(/verified stock market open/i)).toBeTruthy()
   })

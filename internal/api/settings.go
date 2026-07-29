@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -76,6 +77,8 @@ type OllamaProviderResponse struct {
 type SystemInfo struct {
 	Environment           string             `json:"environment"`
 	Version               string             `json:"version"`
+	BuildCommit           string             `json:"build_commit,omitempty"`
+	BuildTime             string             `json:"build_time,omitempty"`
 	CurrentSchemaVersion  int                `json:"current_schema_version"`
 	RequiredSchemaVersion int                `json:"required_schema_version"`
 	SchemaStatus          string             `json:"schema_status"`
@@ -85,9 +88,11 @@ type SystemInfo struct {
 
 // BrokerConnection summarizes broker connectivity/configuration.
 type BrokerConnection struct {
-	Name       string `json:"name"`
-	PaperMode  bool   `json:"paper_mode"`
-	Configured bool   `json:"configured"`
+	Name            string `json:"name"`
+	PaperMode       bool   `json:"paper_mode"`
+	Configured      bool   `json:"configured"`
+	DataEnvironment string `json:"data_environment,omitempty"`
+	DataSourceURL   string `json:"data_source_url,omitempty"`
 }
 
 // SettingsUpdateRequest is the payload accepted by the settings update endpoint.
@@ -194,6 +199,8 @@ func NewMemorySettingsService(bootstrap SettingsBootstrap) *MemorySettingsServic
 		system: SystemInfo{
 			Environment:           strings.TrimSpace(bootstrap.Environment),
 			Version:               version,
+			BuildCommit:           strings.TrimSpace(os.Getenv("APP_BUILD_COMMIT")),
+			BuildTime:             strings.TrimSpace(os.Getenv("APP_BUILD_TIME")),
 			CurrentSchemaVersion:  bootstrap.CurrentSchemaVersion,
 			RequiredSchemaVersion: bootstrap.RequiredSchemaVersion,
 			SchemaStatus:          normalizeSchemaStatus(bootstrap.SchemaStatus),
@@ -332,6 +339,20 @@ func NewMemorySettingsServiceFromConfig(cfg config.Config, currentSchemaVersion,
 				PaperMode:  cfg.Brokers.Binance.PaperMode,
 				Configured: strings.TrimSpace(cfg.Brokers.Binance.APIKey) != "" && strings.TrimSpace(cfg.Brokers.Binance.APISecret) != "",
 			},
+			{
+				Name:            "polymarket",
+				PaperMode:       true,
+				Configured:      strings.TrimSpace(cfg.Brokers.Polymarket.APIBaseURL) != "",
+				DataEnvironment: "live",
+				DataSourceURL:   cfg.Brokers.Polymarket.APIBaseURL,
+			},
+			{
+				Name:            "kalshi",
+				PaperMode:       cfg.Brokers.Kalshi.DryRun || cfg.Brokers.Kalshi.Demo,
+				Configured:      strings.TrimSpace(cfg.Brokers.Kalshi.APIBaseURL) != "",
+				DataEnvironment: map[bool]string{true: "demo", false: "live"}[cfg.Brokers.Kalshi.Demo],
+				DataSourceURL:   cfg.Brokers.Kalshi.APIBaseURL,
+			},
 		},
 		StartedAt: time.Now().UTC(),
 	})
@@ -364,6 +385,8 @@ func (s *MemorySettingsService) getLocked() SettingsResponse {
 		System: SystemInfo{
 			Environment:           s.system.Environment,
 			Version:               s.system.Version,
+			BuildCommit:           s.system.BuildCommit,
+			BuildTime:             s.system.BuildTime,
 			CurrentSchemaVersion:  s.system.CurrentSchemaVersion,
 			RequiredSchemaVersion: s.system.RequiredSchemaVersion,
 			SchemaStatus:          s.system.SchemaStatus,
@@ -541,6 +564,9 @@ func validateProviderModel(provider, model string) error {
 }
 
 func detectBuildVersion() string {
+	if version := strings.TrimSpace(os.Getenv("APP_VERSION")); version != "" {
+		return version
+	}
 	if buildInfo, ok := debug.ReadBuildInfo(); ok {
 		version := strings.TrimSpace(buildInfo.Main.Version)
 		if version != "" && version != "(devel)" {

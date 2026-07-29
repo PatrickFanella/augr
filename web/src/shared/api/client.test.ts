@@ -84,4 +84,15 @@ describe('api client refresh handling', () => {
     expect(putCalls).toBe(1)
     expect(refreshCalls).toBe(0)
   })
+
+  it('retains the session when refresh fails transiently', async () => {
+    configureApiClient({ baseUrl: apiBaseUrl })
+    setTokenSnapshot(buildAuthResponse({ access_token: 'expired-access-token' }))
+    server.use(
+      http.post(`${apiBaseUrl}/auth/refresh`, () => HttpResponse.json({ error: 'temporarily unavailable', code: 'ERR_INTERNAL' }, { status: 503 })),
+    )
+
+    await expect(getCurrentUser()).rejects.toThrow(/temporarily unavailable/i)
+    expect(getAccessToken()).toBe('expired-access-token')
+  })
 })

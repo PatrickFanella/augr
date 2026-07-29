@@ -1613,6 +1613,7 @@ func TestPortfolioSummaryIncludesClosedPositionRealizedPnL(t *testing.T) {
 	t.Parallel()
 
 	unrealized := 12.5
+	currentPrice := 112.5
 	positionRepo := &stubPositionRepo{
 		positions: []domain.Position{{
 			ID:          uuid.New(),
@@ -1628,6 +1629,7 @@ func TestPortfolioSummaryIncludesClosedPositionRealizedPnL(t *testing.T) {
 			Side:          domain.PositionSideLong,
 			Quantity:      1,
 			AvgEntry:      100,
+			CurrentPrice:  &currentPrice,
 			UnrealizedPnL: &unrealized,
 			RealizedPnL:   3,
 		}},
@@ -1650,6 +1652,39 @@ func TestPortfolioSummaryIncludesClosedPositionRealizedPnL(t *testing.T) {
 	}
 	if got := body["realized_pnl"]; got != 211.21 {
 		t.Fatalf("realized_pnl = %v, want 211.21", got)
+	}
+	if got := body["valuation_status"]; got != "complete" {
+		t.Fatalf("valuation_status = %v, want complete", got)
+	}
+}
+
+func TestPortfolioSummaryDoesNotRenderUnknownValuationAsZero(t *testing.T) {
+	t.Parallel()
+	positionRepo := &stubPositionRepo{positions: []domain.Position{{
+		ID:         uuid.New(),
+		MarketType: domain.MarketTypeKalshi,
+		Ticker:     "KX-UNKNOWN",
+		Side:       domain.PositionSideLong,
+		Quantity:   10,
+		AvgEntry:   0.25,
+	}}}
+	deps := testDeps()
+	deps.Positions = positionRepo
+	srv := newTestServerWithDeps(t, deps)
+
+	rr := doRequest(t, srv, http.MethodGet, "/api/v1/portfolio/summary", nil)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", rr.Code, http.StatusOK, rr.Body.String())
+	}
+	body := decodeJSON[PortfolioSummary](t, rr)
+	if body.UnrealizedPnL != nil || body.TotalPnL != nil || body.GrossMarkedValue != nil {
+		t.Fatalf("unknown valuation returned numeric values: %+v", body)
+	}
+	if body.ValuationStatus != "unavailable" || body.MarkedPositions != 0 || body.UnmarkedPositions != 1 {
+		t.Fatalf("unexpected valuation coverage: %+v", body)
+	}
+	if body.GrossCostBasis != 2.5 {
+		t.Fatalf("gross_cost_basis = %v, want 2.5", body.GrossCostBasis)
 	}
 }
 
@@ -2667,8 +2702,14 @@ func (stubPositionRepo) Count(context.Context, repository.PositionFilter) (int, 
 	return 0, nil
 }
 
-func (stubPositionRepo) CountOpen(context.Context, repository.PositionFilter) (int, error) {
-	return 0, nil
+func (s *stubPositionRepo) CountOpen(context.Context, repository.PositionFilter) (int, error) {
+	count := 0
+	for _, position := range s.positions {
+		if position.ClosedAt == nil {
+			count++
+		}
+	}
+	return count, nil
 }
 
 func (s *stubPositionRepo) ListOpenAlpacaOwned(context.Context, int, int) ([]domain.Position, error) {

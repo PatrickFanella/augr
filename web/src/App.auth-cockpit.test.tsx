@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import App from '@/App'
 import { setTokenSnapshot } from '@/shared/auth/tokenStore'
-import { buildAuthResponse, buildRiskBreakers, buildRiskStatus, buildSettings, fixtureDate, mockRefreshToken } from '@/test/fixtures'
+import { buildAuthResponse, buildRiskBreakers, buildRiskCockpit, buildRiskStatus, buildSettings, mockRefreshToken } from '@/test/fixtures'
 import { apiBaseUrl, FakeWebSocket, installAppTestHarness, resetApp, server, state } from '@/test/app-harness'
 
 describe('authentication and cockpit', () => {
@@ -57,6 +57,7 @@ describe('authentication and cockpit', () => {
     resetApp('/cockpit')
     render(<App />)
     expect(await screen.findByRole('heading', { name: /sign in/i })).toBeTruthy()
+    expect(window.location.search).toContain('next=%2Fcockpit')
   })
 
   it('renders an authenticated 404 without hiding the bad route', async () => {
@@ -91,6 +92,8 @@ describe('authentication and cockpit', () => {
     )
     render(<App />)
     expect(await screen.findByRole('heading', { name: /sign in/i })).toBeTruthy()
+    expect(screen.getByRole('status')).toHaveTextContent(/session expired/i)
+    expect(window.location.search).toContain('next=%2Fcockpit')
   })
 
   it('logs out and clears protected UI', async () => {
@@ -232,7 +235,7 @@ describe('authentication and cockpit', () => {
     setTokenSnapshot(buildAuthResponse())
     server.use(
       http.get(`${apiBaseUrl}/risk/status`, () => HttpResponse.json(buildRiskStatus())),
-      http.get(`${apiBaseUrl}/risk/cockpit`, () => HttpResponse.json({ generated_at: fixtureDate, kill_switch_active: false, circuit_breaker: false, exposures: [], warnings: [] })),
+      http.get(`${apiBaseUrl}/risk/cockpit`, () => HttpResponse.json(buildRiskCockpit({ warnings: [] }))),
       http.get(`${apiBaseUrl}/risk/breakers`, () => HttpResponse.json(buildRiskBreakers({ tripped: [] }))),
     )
     render(<App />)

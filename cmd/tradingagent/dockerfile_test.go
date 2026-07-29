@@ -19,7 +19,7 @@ func TestProductionDockerfileContainsRequiredStages(t *testing.T) {
 		"FROM golang:${GO_VERSION}-alpine AS builder",
 		"COPY go.mod go.sum ./",
 		"RUN go mod download",
-		"RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags=\"-s -w\" -o /out/tradingagent ./cmd/tradingagent",
+		"RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags=\"-s -w -X main.version=${BUILD_VERSION}\" -o /out/tradingagent ./cmd/tradingagent",
 		"FROM alpine:${ALPINE_VERSION} AS production",
 		"COPY --from=builder /out/tradingagent ./tradingagent",
 		"COPY --from=builder /etc/ssl/certs/ca-certificates.crt ./ca-certificates.crt",

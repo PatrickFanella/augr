@@ -14,8 +14,8 @@ import { useRealtime } from '@/shared/websocket/RealtimeProvider'
 
 const pageSize = 20
 
-function money(value?: number) {
-  if (value === undefined) return 'Unknown'
+function money(value?: number | null) {
+  if (value === undefined || value === null) return 'Unknown'
   return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(value)
 }
 
@@ -29,8 +29,8 @@ function percent(value?: number) {
   return `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(value)}%`
 }
 
-function pnlClass(value?: number) {
-  if (value === undefined) return 'unknown'
+function pnlClass(value?: number | null) {
+  if (value === undefined || value === null) return 'unknown'
   if (value > 0) return 'active'
   if (value < 0) return 'unknown'
   return 'unknown'
@@ -339,8 +339,9 @@ export function PortfolioPage() {
         <div><span>Open positions</span><strong>{summaryQuery.data?.open_positions ?? '—'}</strong></div>
         <div><span>Unrealized P/L</span><strong className={pnlClass(summaryQuery.data?.unrealized_pnl)}>{summaryQuery.data ? money(summaryQuery.data.unrealized_pnl) : '—'}</strong></div>
         <div><span>Realized P/L</span><strong className={pnlClass(summaryQuery.data?.realized_pnl)}>{summaryQuery.data ? money(summaryQuery.data.realized_pnl) : '—'}</strong></div>
-        <div><span>Total P/L</span><strong className={pnlClass(summaryQuery.data ? summaryQuery.data.unrealized_pnl + summaryQuery.data.realized_pnl : undefined)}>{summaryQuery.data ? money(summaryQuery.data.unrealized_pnl + summaryQuery.data.realized_pnl) : '—'}</strong></div>
+        <div><span>Total P/L</span><strong className={pnlClass(summaryQuery.data?.total_pnl ?? undefined)}>{summaryQuery.data ? money(summaryQuery.data.total_pnl ?? undefined) : '—'}</strong></div>
       </section>
+      {summaryQuery.data?.unmarked_positions ? <Alert variant="warning">Valuation unavailable for {summaryQuery.data.unmarked_positions} of {summaryQuery.data.open_positions} open positions. Unrealized and total P/L remain incomplete until all positions are marked.</Alert> : null}
       {summaryQuery.isLoading ? <LoadingState label="Loading portfolio summary…" /> : null}
       {summaryQuery.error ? <ErrorState error={summaryQuery.error} onRetry={() => void summaryQuery.refetch()} /> : null}
 

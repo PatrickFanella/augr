@@ -110,15 +110,21 @@ func (r *KalshiMarketSnapshotsRepo) Create(ctx context.Context, snapshot *domain
 	if snapshot.CapturedAt.IsZero() {
 		snapshot.CapturedAt = time.Now().UTC()
 	}
+	if snapshot.Provider == "" {
+		snapshot.Provider = "kalshi"
+	}
+	if snapshot.Environment == "" {
+		snapshot.Environment = "unknown"
+	}
 	raw := snapshot.Raw
 	if len(raw) == 0 {
 		raw = json.RawMessage(`{}`)
 	}
 	row := r.pool.QueryRow(ctx, `INSERT INTO kalshi_market_snapshots
-		(id, ticker, title, status, yes_bid, yes_ask, no_bid, no_ask, volume, open_interest, close_time, raw, captured_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		(id, provider, environment, source_url, ticker, title, status, yes_bid, yes_ask, no_bid, no_ask, volume, open_interest, close_time, raw, captured_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 		RETURNING captured_at`,
-		snapshot.ID, snapshot.Ticker, snapshot.Title, snapshot.Status, snapshot.YesBid, snapshot.YesAsk, snapshot.NoBid, snapshot.NoAsk, snapshot.Volume, snapshot.OpenInterest, snapshot.CloseTime, raw, snapshot.CapturedAt,
+		snapshot.ID, snapshot.Provider, snapshot.Environment, snapshot.SourceURL, snapshot.Ticker, snapshot.Title, snapshot.Status, snapshot.YesBid, snapshot.YesAsk, snapshot.NoBid, snapshot.NoAsk, snapshot.Volume, snapshot.OpenInterest, snapshot.CloseTime, raw, snapshot.CapturedAt,
 	)
 	if err := row.Scan(&snapshot.CapturedAt); err != nil {
 		return fmt.Errorf("postgres: create kalshi market snapshot: %w", err)
@@ -283,7 +289,7 @@ func buildKalshiSnapshotListQuery(whereClause, ticker string, limit int) (string
 	if limit <= 0 {
 		limit = 20
 	}
-	query := `SELECT id, ticker, title, status, yes_bid, yes_ask, no_bid, no_ask, volume, open_interest, close_time, raw, captured_at FROM kalshi_market_snapshots`
+	query := `SELECT id, provider, environment, source_url, ticker, title, status, yes_bid, yes_ask, no_bid, no_ask, volume, open_interest, close_time, raw, captured_at FROM kalshi_market_snapshots`
 	args := make([]any, 0, 2)
 	if whereClause != "" {
 		query += ` ` + whereClause
@@ -323,7 +329,7 @@ func scanKalshiWatchedMarket(sc scanner) (*domain.KalshiWatchedMarket, error) {
 
 func scanKalshiMarketSnapshot(sc scanner) (*domain.KalshiMarketSnapshot, error) {
 	var snapshot domain.KalshiMarketSnapshot
-	if err := sc.Scan(&snapshot.ID, &snapshot.Ticker, &snapshot.Title, &snapshot.Status, &snapshot.YesBid, &snapshot.YesAsk, &snapshot.NoBid, &snapshot.NoAsk, &snapshot.Volume, &snapshot.OpenInterest, &snapshot.CloseTime, &snapshot.Raw, &snapshot.CapturedAt); err != nil {
+	if err := sc.Scan(&snapshot.ID, &snapshot.Provider, &snapshot.Environment, &snapshot.SourceURL, &snapshot.Ticker, &snapshot.Title, &snapshot.Status, &snapshot.YesBid, &snapshot.YesAsk, &snapshot.NoBid, &snapshot.NoAsk, &snapshot.Volume, &snapshot.OpenInterest, &snapshot.CloseTime, &snapshot.Raw, &snapshot.CapturedAt); err != nil {
 		return nil, err
 	}
 	return &snapshot, nil

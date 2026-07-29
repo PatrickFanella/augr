@@ -1072,6 +1072,10 @@ label {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
 }
 
+.responsive-card-view {
+  display: none;
+}
+
 .metric-row,
 .filter-bar {
   display: flex;
@@ -1216,6 +1220,12 @@ label {
   border: var(--border-width) solid var(--color-border);
   border-radius: var(--radius-lg);
   background: var(--color-surface);
+}
+
+.operations-table thead th {
+  position: sticky;
+  z-index: 1;
+  top: 0;
 }
 
 table {
@@ -1800,6 +1810,14 @@ tbody tr:hover {
 
   .kv-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .responsive-table-view {
+    display: none;
+  }
+
+  .responsive-card-view {
+    display: grid;
   }
 }
 

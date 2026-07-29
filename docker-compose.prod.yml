@@ -35,6 +35,10 @@ services:
       context: .
       dockerfile: Dockerfile
       target: production
+      args:
+        BUILD_VERSION: ${BUILD_VERSION:-development}
+        BUILD_COMMIT: ${BUILD_COMMIT:-unknown}
+        BUILD_TIME: ${BUILD_TIME:-unknown}
     environment:
       APP_ENV: production
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-tradingagent}?sslmode=disable

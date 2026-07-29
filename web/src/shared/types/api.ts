@@ -30,6 +30,13 @@ export type ListResponse<T> = {
 
 export type PortfolioSummary = {
   open_positions: number
-  unrealized_pnl: number
+  marked_positions: number
+  unmarked_positions: number
+  unrealized_pnl: number | null
   realized_pnl: number
+  total_pnl: number | null
+  gross_cost_basis: number
+  gross_marked_value: number | null
+  valuation_status: 'complete' | 'partial' | 'unavailable'
+  valuation_generated_at: string
 }

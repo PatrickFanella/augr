@@ -36,6 +36,9 @@ func TestHandleGetEventMarketsSummaryReturnsConfiguredProviders(t *testing.T) {
 	deps.KalshiDiscoveryRuns = &eventMarketSummaryKalshiDiscoveryRunsRepoStub{runs: []domain.KalshiDiscoveryRun{
 		{ID: uuid.New(), Status: domain.KalshiDiscoveryStatusCompleted, StartedAt: time.Date(2026, 6, 18, 11, 0, 0, 0, time.UTC)},
 	}}
+	deps.KalshiSnapshotsRepo = &kalshiSummarySnapshotsRepoStub{snapshots: []domain.KalshiMarketSnapshot{{
+		Provider: "kalshi", Environment: "demo", Ticker: "KX-ONE", CapturedAt: time.Now().UTC(),
+	}}}
 	deps.PolymarketWatchedRepo = &eventMarketSummaryPolymarketWatchedRepoStub{markets: []domain.PolymarketWatchedMarket{
 		{Slug: "will-example-happen", Enabled: true},
 	}}
@@ -65,6 +68,9 @@ func TestHandleGetEventMarketsSummaryReturnsConfiguredProviders(t *testing.T) {
 	}
 	if kalshi.LiveTradingReady {
 		t.Fatalf("kalshi live_trading_ready = true, want false")
+	}
+	if kalshi.DataEnvironment != "demo" || kalshi.DataStatus != "current" {
+		t.Fatalf("kalshi data provenance = %#v", kalshi)
 	}
 
 	polymarket, ok := providers["polymarket"]

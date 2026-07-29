@@ -591,7 +591,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 		if kalshiErr != nil {
 			logger.Warn("automation: failed to create kalshi discovery client", slog.Any("error", kalshiErr))
 		} else {
-			kalshiCatalog = kalshidiscovery.NewClient(kalshiDataClient)
+			kalshiCatalog = kalshidiscovery.NewClientWithProvenance(kalshiDataClient, cfg.Brokers.Kalshi.APIBaseURL, cfg.Brokers.Kalshi.Demo)
 			if kalshiLiveClient != nil && strings.TrimSpace(cfg.Brokers.Kalshi.APIKeyID) != "" && strings.TrimSpace(cfg.Brokers.Kalshi.PrivateKeyPEMB64) != "" {
 				kalshiExecutionReconciler = kalshiexecution.NewReconciler(kalshiexecution.ReconcilerDeps{Broker: kalshiexecution.NewBroker(kalshiLiveClient), PositionRepo: positionRepo, Logger: logger})
 			}

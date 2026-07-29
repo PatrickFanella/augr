@@ -21,7 +21,8 @@ function statusClass(status: string) {
   return 'warning'
 }
 
-function pnlClass(value: number) {
+function pnlClass(value?: number | null) {
+  if (value === undefined || value === null) return 'unknown'
   if (value > 0) return 'success'
   if (value < 0) return 'warning'
   return 'unknown'
@@ -166,12 +167,7 @@ export function CockpitPage() {
   const automation = useQuery({ queryKey: queryKeys.automationHealth, queryFn: ({ signal }) => getAutomationHealth(signal), refetchInterval: 30_000 })
   const hasWidgetError = [health, portfolio, openPositions, runs, orders, trades, automation].some((query) => query.isError && !(isApiClientError(query.error) && query.error.kind === 'not_implemented'))
   const classification = classifyCockpit({ risk: risk.data, cockpit: riskCockpit.data, breakers: breakers.data, health: health.data, automationHealthy: automation.data?.healthy, realtimeStatus: realtime.status, hasWidgetError })
-  const portfolioPnl = portfolio.data ? portfolio.data.unrealized_pnl + portfolio.data.realized_pnl : 0
-  const positionNotional = Array.from((openPositions.data?.data?.slice(0, 6) ?? []).reduce((totals, position) => {
-    const notional = Math.abs(position.quantity * (position.current_price ?? position.avg_entry) * (position.contract_multiplier ?? 1))
-    totals.set(position.ticker, (totals.get(position.ticker) ?? 0) + notional)
-    return totals
-  }, new Map<string, number>()), ([ticker, notional]) => ({ ticker, notional }))
+  const portfolioPnl = portfolio.data?.total_pnl
 
   useEffect(() => {
     send({ action: 'subscribe_all' })
@@ -181,6 +177,7 @@ export function CockpitPage() {
     ...(riskCockpit.data?.warnings ?? []),
     ...(breakers.data?.tripped.filter((breaker) => !breaker.reset_at).map((breaker) => `${breaker.scope}: ${breaker.reason}`) ?? []),
     ...(automation.data && automation.data.failing_jobs > 0 ? [`${automation.data.failing_jobs} automation job${automation.data.failing_jobs === 1 ? '' : 's'} failing`] : []),
+    ...(portfolio.data && portfolio.data.unmarked_positions > 0 ? [`Valuation unavailable for ${portfolio.data.unmarked_positions} of ${portfolio.data.open_positions} open positions`] : []),
     ...(realtime.status !== 'connected' ? [`Realtime feed is ${realtime.status}`] : []),
   ]
 
@@ -216,11 +213,11 @@ export function CockpitPage() {
       <section className="ops-metrics" aria-label="Paper account summary">
         <article className="ops-metric">
           <div className="ops-metric-icon"><CircleDollarSign /></div>
-          <div><p>Total P&amp;L</p><strong className={pnlClass(portfolioPnl)}>${formatCurrency(portfolioPnl)}</strong><span>Realized + unrealized</span></div>
+          <div><p>Total P&amp;L</p><strong className={pnlClass(portfolioPnl)}>{portfolioPnl == null ? 'Incomplete' : `$${formatCurrency(portfolioPnl)}`}</strong><span>{portfolio.data?.valuation_status === 'complete' ? 'Realized + unrealized' : 'Waiting for position marks'}</span></div>
         </article>
         <article className="ops-metric">
           <div className="ops-metric-icon"><WalletCards /></div>
-          <div><p>Open positions</p><strong>{portfolio.data?.open_positions ?? '—'}</strong><span>{positionNotional.length ? `${positionNotional.length} instruments` : 'No active exposure'}</span></div>
+          <div><p>Open positions</p><strong>{portfolio.data?.open_positions ?? '—'}</strong><span>{portfolio.data ? `${portfolio.data.marked_positions} / ${portfolio.data.open_positions} marked` : 'Valuation loading'}</span></div>
         </article>
         <article className="ops-metric">
           <div className="ops-metric-icon"><Activity /></div>
@@ -244,9 +241,9 @@ export function CockpitPage() {
       <div className="ops-two-column">
         <QueryPanel title="Paper account" query={portfolio}>{(data) => (
           <div className="account-breakdown">
-            <div><span>Unrealized</span><strong className={pnlClass(data.unrealized_pnl)}>${formatCurrency(data.unrealized_pnl)}</strong></div>
+            <div><span>Unrealized</span><strong className={pnlClass(data.unrealized_pnl)}>{data.unrealized_pnl == null ? 'Unavailable' : `$${formatCurrency(data.unrealized_pnl)}`}</strong></div>
             <div><span>Realized</span><strong className={pnlClass(data.realized_pnl)}>${formatCurrency(data.realized_pnl)}</strong></div>
-            <div><span>Total</span><strong className={pnlClass(data.unrealized_pnl + data.realized_pnl)}>${formatCurrency(data.unrealized_pnl + data.realized_pnl)}</strong></div>
+            <div><span>Total</span><strong className={pnlClass(data.total_pnl)}>{data.total_pnl == null ? 'Incomplete' : `$${formatCurrency(data.total_pnl)}`}</strong></div>
           </div>
         )}</QueryPanel>
 
@@ -261,11 +258,11 @@ export function CockpitPage() {
       </div>
 
       <QueryPanel title="Market exposure" query={riskCockpit} wide>{(cockpitData) => (
-        cockpitData.exposures.length > 0 ? <table aria-label="cockpit risk exposure"><thead><tr><th>Market</th><th>Open positions</th><th>Gross exposure</th><th>Expected value</th></tr></thead><tbody>{cockpitData.exposures.slice(0, 5).map((exposure) => <tr key={exposure.market_type}><td>{exposure.market_type}</td><td>{exposure.open_positions}</td><td>${formatCurrency(exposure.gross_exposure)}</td><td>${formatCurrency(exposure.net_expected_value)}</td></tr>)}</tbody></table> : <div className="quiet-state"><ShieldCheck /><div><strong>No market exposure</strong><p>The paper account has no open risk.</p></div></div>
+        cockpitData.exposures.length > 0 ? <table aria-label="cockpit risk exposure"><thead><tr><th>Market</th><th>Open positions</th><th>Valuation</th><th>Gross cost basis</th></tr></thead><tbody>{cockpitData.exposures.map((exposure) => <tr key={exposure.market_type}><td>{exposure.market_type}</td><td>{exposure.open_positions}</td><td>{exposure.marked_positions} / {exposure.open_positions} marked</td><td>${formatCurrency(exposure.gross_exposure)}</td></tr>)}</tbody></table> : <div className="quiet-state"><ShieldCheck /><div><strong>No market exposure</strong><p>The paper account has no open risk.</p></div></div>
       )}</QueryPanel>
 
       <div className="ops-activity-grid">
-        <QueryPanel title="Open positions" query={openPositions} wide>{(data) => <OpenPositions positions={data.data} />}</QueryPanel>
+        <QueryPanel title="Open positions" query={openPositions} wide>{(data) => <><OpenPositions positions={data.data} />{data.total !== undefined && data.total > data.data.length ? <p className="muted">Showing {data.data.length} of {data.total}. <Link to="/portfolio">Open the full portfolio.</Link></p> : null}</>}</QueryPanel>
         <QueryPanel title="Active runs" query={runs} wide>{(data) => <RecentRuns runs={data.data} />}</QueryPanel>
         <QueryPanel title="Recent orders" query={orders} wide>{(data) => <RecentOrders orders={data.data} />}</QueryPanel>
         <QueryPanel title="Recent trades" query={trades} wide>{(data) => <RecentTrades trades={data.data} />}</QueryPanel>

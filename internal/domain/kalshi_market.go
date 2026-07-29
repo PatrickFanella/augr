@@ -29,6 +29,9 @@ type KalshiWatchedMarket struct {
 // KalshiMarketSnapshot captures a point-in-time market view.
 type KalshiMarketSnapshot struct {
 	ID           uuid.UUID       `json:"id"`
+	Provider     string          `json:"provider"`
+	Environment  string          `json:"environment"`
+	SourceURL    string          `json:"source_url"`
 	Ticker       string          `json:"ticker"`
 	Title        string          `json:"title,omitempty"`
 	Status       string          `json:"status,omitempty"`

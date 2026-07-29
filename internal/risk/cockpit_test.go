@@ -31,8 +31,8 @@ func TestBuildCockpitSummaryEmptyState(t *testing.T) {
 	if got.KillSwitchActive || got.CircuitBreaker {
 		t.Fatalf("unexpected active flags: %+v", got)
 	}
-	if len(got.Exposures) != 4 {
-		t.Fatalf("exposures len = %d want 4", len(got.Exposures))
+	if len(got.Exposures) != 5 {
+		t.Fatalf("exposures len = %d want 5", len(got.Exposures))
 	}
 	if len(got.Warnings) != 1 || got.Warnings[0] != "no trade decisions available" {
 		t.Fatalf("warnings = %+v", got.Warnings)
@@ -58,6 +58,7 @@ func TestBuildCockpitSummaryMixedMarketsAndOrdering(t *testing.T) {
 		domain.MarketTypeCrypto,
 		domain.MarketTypeOptions,
 		domain.MarketTypePolymarket,
+		domain.MarketTypeKalshi,
 	}
 	for i, mt := range wantOrder {
 		if got.Exposures[i].MarketType != mt {
@@ -82,6 +83,29 @@ func TestBuildCockpitSummaryMixedMarketsAndOrdering(t *testing.T) {
 	}
 	if len(got.Warnings) != 1 || got.Warnings[0] != "market options has rejected decisions but no approved exposure" {
 		t.Fatalf("warnings = %+v", got.Warnings)
+	}
+}
+
+func TestBuildCockpitSummaryWithPositionsIncludesKalshiAndMissingMarks(t *testing.T) {
+	now := time.Date(2026, 7, 28, 12, 0, 0, 0, time.UTC)
+	markedPrice := 0.3
+	markedPnL := 0.5
+	got := BuildCockpitSummaryWithPositions(nil, []domain.Position{
+		{MarketType: domain.MarketTypeKalshi, Ticker: "KX-A", Quantity: 10, AvgEntry: 0.25, CurrentPrice: &markedPrice, UnrealizedPnL: &markedPnL},
+		{MarketType: domain.MarketTypeKalshi, Ticker: "KX-B", Quantity: 20, AvgEntry: 0.10},
+	}, nil, now)
+	kalshi := got.Exposures[4]
+	if kalshi.OpenPositions != 2 || kalshi.MarkedPositions != 1 || kalshi.UnmarkedPositions != 1 {
+		t.Fatalf("unexpected Kalshi coverage: %+v", kalshi)
+	}
+	if kalshi.GrossExposure != 4.5 || got.GrossCostBasis != 4.5 {
+		t.Fatalf("unexpected cost basis: exposure=%v total=%v", kalshi.GrossExposure, got.GrossCostBasis)
+	}
+	if got.ValuationStatus != "partial" || got.ReconciliationStatus != "complete" {
+		t.Fatalf("unexpected statuses: %+v", got)
+	}
+	if len(got.Warnings) == 0 {
+		t.Fatal("expected missing-mark warning")
 	}
 }
 

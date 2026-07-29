@@ -433,7 +433,7 @@ export function RiskPage() {
   return (
     <div className="detail-stack">
       <nav className="breadcrumbs" aria-label="Breadcrumbs"><Link to="/cockpit">Cockpit</Link><span aria-hidden="true">/</span><span>Risk</span></nav>
-      <PageHeader eyebrow="Safety console" title="Risk" description="Inspect global risk, circuit breakers, kill switch state, market exposure, persisted breakers, and approved risk controls. This slice adds only breaker reset on top of existing controls." actions={<span className="status-pill active">Risk console</span>} />
+      <PageHeader eyebrow="Safety console" title="Risk" description="Inspect current exposure, safety controls, and conditions that require operator attention." actions={<span className={`status-pill ${cockpitQuery.data?.valuation_status === 'complete' && cockpitQuery.data?.reconciliation_status === 'complete' ? 'success' : 'warning'}`}>{cockpitQuery.data ? cockpitQuery.data.valuation_status === 'complete' && cockpitQuery.data.reconciliation_status === 'complete' ? 'Risk data complete' : 'Risk data incomplete' : 'Risk data loading'}</span>} />
       <section className="panel">
         <StaleBanner show={realtimeStale || realtime.status === 'disconnected' || realtime.status === 'degraded'} message="Risk console data is read-only and may be stale after realtime risk or execution activity." />
         {verifiedMessage ? <Alert variant="success">{verifiedMessage}</Alert> : null}
@@ -466,7 +466,7 @@ export function RiskPage() {
         <div className="panel-header">
           <div>
             <h2 id="market-controls-heading">Per-market stop and resume</h2>
-            <p className="muted">Stop is C2 with a required reason. Resume is C3/live-gated by policy, but the backend currently exposes no RBAC or resume reason contract; the UI still verifies `/risk/status` before reporting completion.</p>
+            <p className="muted">Stopping a market requires a reason. Resuming removes that safety block and should only be performed by an authorized operator after reviewing current exposure.</p>
           </div>
           {statusQuery.data ? <LastUpdated date={statusQuery.dataUpdatedAt} /> : null}
         </div>
@@ -564,7 +564,7 @@ export function RiskPage() {
             <textarea value={marketReason} onChange={(event) => setMarketReason(event.target.value)} placeholder="Why is this market being stopped?" />
           </label>
         ) : (
-          <p className="inline-alert warning">Resume removes a market-level safety block. Backend RBAC and resume reason support are unresolved, so verify operator authorization outside the UI before proceeding.</p>
+          <p className="inline-alert warning">Resume removes a market-level safety block. Confirm that current exposure and market conditions are safe before proceeding.</p>
         )}
       </ConfirmationDialog>
 
@@ -579,7 +579,7 @@ export function RiskPage() {
         onConfirm={() => { if (!breakerBusy && breakerDialog) breakerMutation.mutate(breakerDialog) }}
       >
         <p><strong>Administrative reset.</strong> This is an L4/C4 action. The admin key is sent once as <code>X-Admin-Key</code>, never stored in app state after completion, and the UI verifies <code>/risk/breakers</code>, <code>/risk/status</code>, and <code>/risk/cockpit</code> before reporting completion.</p>
-        <p className="inline-alert warning">Backend RBAC/step-up authorization and audit visibility remain unresolved; confirm operator authorization outside the UI before proceeding.</p>
+        <p className="inline-alert warning">Deactivation restores order flow. Confirm operator authorization and review the current risk state before proceeding.</p>
         <label>
           Admin key
           <input type="password" autoComplete="off" value={breakerAdminKey} onChange={(event) => setBreakerAdminKey(event.target.value)} placeholder="One-time admin key" />

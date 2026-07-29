@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/polymarketdiscovery"
@@ -14,11 +15,15 @@ import (
 
 // EventMarketProviderSummary is a compact read model for a provider's event-market state.
 type EventMarketProviderSummary struct {
-	Provider         string `json:"provider"`
-	WatchedMarkets   int    `json:"watched_markets"`
-	ActivePaper      int    `json:"active_paper"`
-	LastRunStatus    string `json:"last_run_status"`
-	LiveTradingReady bool   `json:"live_trading_ready"`
+	Provider         string     `json:"provider"`
+	WatchedMarkets   int        `json:"watched_markets"`
+	ActivePaper      int        `json:"active_paper"`
+	LastRunStatus    string     `json:"last_run_status"`
+	LiveTradingReady bool       `json:"live_trading_ready"`
+	DataEnvironment  string     `json:"data_environment,omitempty"`
+	DataStatus       string     `json:"data_status,omitempty"`
+	DataCapturedAt   *time.Time `json:"data_captured_at,omitempty"`
+	DataAgeSeconds   *int64     `json:"data_age_seconds,omitempty"`
 }
 
 // EventMarketsSummaryResponse is the response envelope for the shared event-market summary endpoint.
@@ -56,7 +61,7 @@ func (s *Server) handleGetEventMarketsSummary(w http.ResponseWriter, r *http.Req
 }
 
 func (s *Server) buildKalshiEventMarketSummary(ctx context.Context) (EventMarketProviderSummary, bool, error) {
-	if s.kalshiWatchedRepo == nil || s.kalshiDiscoveryRuns == nil || s.strategies == nil {
+	if s.kalshiWatchedRepo == nil || s.kalshiSnapshotsRepo == nil || s.kalshiDiscoveryRuns == nil || s.strategies == nil {
 		return EventMarketProviderSummary{}, false, nil
 	}
 
@@ -87,6 +92,28 @@ func (s *Server) buildKalshiEventMarketSummary(ctx context.Context) (EventMarket
 	} else if err != nil && !errors.Is(err, repository.ErrNotFound) {
 		return EventMarketProviderSummary{}, true, fmt.Errorf("failed to get active kalshi discovery run: %w", err)
 	}
+	dataEnvironment := "unknown"
+	dataStatus := "unavailable"
+	var dataCapturedAt *time.Time
+	var dataAgeSeconds *int64
+	snapshots, err := s.kalshiSnapshotsRepo.ListRecent(ctx, 1)
+	if err != nil {
+		return EventMarketProviderSummary{}, true, fmt.Errorf("failed to list kalshi market snapshots: %w", err)
+	}
+	if len(snapshots) > 0 {
+		capturedAt := snapshots[0].CapturedAt
+		age := int64(time.Since(capturedAt).Seconds())
+		if age < 0 {
+			age = 0
+		}
+		dataCapturedAt = &capturedAt
+		dataAgeSeconds = &age
+		dataEnvironment = snapshots[0].Environment
+		dataStatus = "current"
+		if age > int64((8 * time.Hour).Seconds()) {
+			dataStatus = "stale"
+		}
+	}
 
 	return EventMarketProviderSummary{
 		Provider:         "kalshi",
@@ -94,6 +121,10 @@ func (s *Server) buildKalshiEventMarketSummary(ctx context.Context) (EventMarket
 		ActivePaper:      activePaper,
 		LastRunStatus:    lastRunStatus,
 		LiveTradingReady: false,
+		DataEnvironment:  dataEnvironment,
+		DataStatus:       dataStatus,
+		DataCapturedAt:   dataCapturedAt,
+		DataAgeSeconds:   dataAgeSeconds,
 	}, true, nil
 }
 

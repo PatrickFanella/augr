@@ -3,17 +3,20 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { useQueryClient } from '@tanstack/react-query'
 
 import { getCurrentUser, login as loginRequest } from '@/shared/api/endpoints'
+import { isApiClientError } from '@/shared/api/errors'
 import { refreshAccessToken, setRefreshFailureHandler } from '@/shared/auth/refresh'
 import { clearTokenSnapshot, getRefreshToken, getTokenSnapshot, setTokenSnapshot } from '@/shared/auth/tokenStore'
 import type { AuthSession, LoginRequest } from '@/shared/types/auth'
 
-type AuthStatus = 'checking' | 'authenticated' | 'anonymous'
+type AuthStatus = 'checking' | 'authenticated' | 'anonymous' | 'unavailable'
 
 type AuthContextValue = {
   status: AuthStatus
   session: AuthSession | null
   login: (request: LoginRequest) => Promise<void>
   logout: () => void
+  retry: () => void
+  reason: 'expired' | null
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -22,17 +25,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient()
   const [status, setStatus] = useState<AuthStatus>('checking')
   const [session, setSession] = useState<AuthSession | null>(null)
+  const [reason, setReason] = useState<'expired' | null>(null)
+  const [bootstrapAttempt, setBootstrapAttempt] = useState(0)
 
-  const cleanup = useCallback(() => {
+  const cleanup = useCallback((nextReason: 'expired' | null = null) => {
     clearTokenSnapshot()
     setSession(null)
+    setReason(nextReason)
     setStatus('anonymous')
     queryClient.cancelQueries()
     queryClient.clear()
   }, [queryClient])
 
   useEffect(() => {
-    setRefreshFailureHandler(cleanup)
+    setRefreshFailureHandler(() => cleanup('expired'))
     return () => setRefreshFailureHandler(null)
   }, [cleanup])
 
@@ -53,15 +59,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!active) return
         setSession({ user, ...tokens })
         setStatus('authenticated')
-      } catch {
-        if (active) cleanup()
+      } catch (error) {
+        if (!active) return
+        if (isApiClientError(error) && ['unauthorized', 'bad_request', 'validation'].includes(error.kind)) {
+          cleanup('expired')
+        } else {
+          setStatus('unavailable')
+        }
       }
     }
     void bootstrap()
     return () => {
       active = false
     }
-  }, [cleanup])
+  }, [bootstrapAttempt, cleanup])
 
   const login = useCallback(async (request: LoginRequest) => {
     const tokens = await loginRequest(request)
@@ -69,6 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const user = await getCurrentUser()
       setSession({ user, ...tokens })
+      setReason(null)
       setStatus('authenticated')
     } catch (error) {
       clearTokenSnapshot()
@@ -76,7 +88,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  const value = useMemo(() => ({ status, session, login, logout: cleanup }), [cleanup, login, session, status])
+  const logout = useCallback(() => cleanup(null), [cleanup])
+  const retry = useCallback(() => {
+    setStatus('checking')
+    setBootstrapAttempt((attempt) => attempt + 1)
+  }, [])
+  const value = useMemo(() => ({ status, session, login, logout, retry, reason }), [login, logout, reason, retry, session, status])
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 
