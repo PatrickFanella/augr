@@ -14,14 +14,14 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/scheduler"
 )
 
-var kalshiSettlementSpec = scheduler.ScheduleSpec{Type: scheduler.ScheduleTypeCron, Cron: "15 * * * *"}
+var kalshiSettlementSpec = scheduler.ScheduleSpec{Type: scheduler.ScheduleTypeCron, Cron: "*/5 * * * *"}
 
 func (o *JobOrchestrator) registerKalshiSettlementJob() {
 	if o.deps.KalshiCatalog == nil || o.deps.PredictionSettler == nil {
 		return
 	}
 	o.Register("kalshi_settlement", "Cash-settle resolved Kalshi paper contracts and journal outcomes", kalshiSettlementSpec, o.kalshiSettlement)
-	_ = o.SetEnabled("kalshi_settlement", false)
+	o.jobs["kalshi_settlement"].Enabled = o.deps.KalshiSettlementEnabled
 }
 
 func (o *JobOrchestrator) kalshiSettlement(ctx context.Context) error {
@@ -33,8 +33,8 @@ func (o *JobOrchestrator) kalshiSettlement(ctx context.Context) error {
 	enabled := job.Enabled
 	job.mu.Unlock()
 	type projectedMarket struct {
-		ticker, winner string
-		count          int
+		ticker, winner, fingerprint string
+		count                       int
 	}
 	var fetched, resolved, wouldSettleMarkets, wouldSettleDecisions int
 	projected := make([]projectedMarket, 0, 8)
@@ -81,27 +81,18 @@ func (o *JobOrchestrator) kalshiSettlement(ctx context.Context) error {
 			wouldSettleMarkets++
 			wouldSettleDecisions += preview.Count
 		}
-		projected = append(projected, projectedMarket{ticker: strings.ToUpper(strings.TrimSpace(market.Ticker)), winner: winner, count: preview.Count})
-		projection = append(projection, settlementPreviewFingerprint(preview, winner))
+		previewFingerprint := settlementPreviewFingerprint(preview, winner)
+		projected = append(projected, projectedMarket{ticker: strings.ToUpper(strings.TrimSpace(market.Ticker)), winner: winner, count: preview.Count, fingerprint: previewFingerprint})
+		projection = append(projection, previewFingerprint)
 	}
 	fingerprint := settlementProjectionFingerprint(projection)
 	if enabled && !o.deps.KalshiSettlementDryRun {
-		gateEligible, err := o.kalshiSettlementGateEligible(ctx)
-		if err != nil {
+		if _, err := o.kalshiSettlementGateEligible(ctx); err != nil {
 			if _, persistErr := o.kalshiSettlementRecordFailure(ctx, threshold, fetched, resolved, wouldSettleMarkets, wouldSettleDecisions, err.Error()); persistErr != nil {
 				return persistErr
 			}
 			o.recordKalshiSettlementMetrics(false, false)
 			return err
-		}
-		job := o.jobs["kalshi_settlement"]
-		if job == nil || job.SettlementGate == nil || !gateEligible || job.SettlementGate.ProjectionFingerprint != fingerprint {
-			mismatch := fmt.Errorf("kalshi_settlement: gate fingerprint mismatch")
-			if _, persistErr := o.kalshiSettlementRecordFailure(ctx, threshold, fetched, resolved, wouldSettleMarkets, wouldSettleDecisions, mismatch.Error()); persistErr != nil {
-				return persistErr
-			}
-			o.recordKalshiSettlementMetrics(false, false)
-			return mismatch
 		}
 		for _, pm := range projected {
 			preview, err := o.deps.PredictionSettler.SettlePreview(ctx, domain.MarketTypeKalshi, pm.ticker)
@@ -111,6 +102,14 @@ func (o *JobOrchestrator) kalshiSettlement(ctx context.Context) error {
 				}
 				o.recordKalshiSettlementMetrics(false, false)
 				return fmt.Errorf("kalshi_settlement: refresh preview market %s: %w", pm.ticker, err)
+			}
+			if preview.Count != pm.count || settlementPreviewFingerprint(preview, pm.winner) != pm.fingerprint {
+				mismatch := fmt.Errorf("kalshi_settlement: preview changed before settlement for %s", pm.ticker)
+				if _, persistErr := o.kalshiSettlementRecordFailure(ctx, threshold, fetched, resolved, wouldSettleMarkets, wouldSettleDecisions, mismatch.Error()); persistErr != nil {
+					return persistErr
+				}
+				o.recordKalshiSettlementMetrics(false, false)
+				return mismatch
 			}
 			if _, err := o.deps.PredictionSettler.SettleDecisions(ctx, domain.MarketTypeKalshi, pm.ticker, pm.winner, time.Now().UTC(), preview.DecisionIDs); err != nil {
 				if _, persistErr := o.kalshiSettlementRecordFailure(ctx, threshold, fetched, resolved, wouldSettleMarkets, wouldSettleDecisions, err.Error()); persistErr != nil {

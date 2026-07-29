@@ -28,18 +28,28 @@ func normalizeMarketType(marketType domain.MarketType) domain.MarketType {
 
 func isUSEquityMarketOpen(t time.Time) bool {
 	et := t.In(newYorkLocation)
-	if et.Weekday() == time.Saturday || et.Weekday() == time.Sunday {
+	minutes := et.Hour()*60 + et.Minute()
+
+	// Alpaca's equities session runs continuously from Sunday 20:00 ET through
+	// Friday 20:00 ET, with a daily 20:00-04:00 overnight session. Keep
+	// Saturday closed and open Sunday only at the overnight boundary.
+	switch et.Weekday() {
+	case time.Saturday:
 		return false
+	case time.Sunday:
+		return minutes >= 20*60
+	case time.Friday:
+		if isNYSEHoliday(et) {
+			return minutes < 4*60
+		}
+		return minutes < 20*60
+	default:
+		if isNYSEHoliday(et) {
+			// The preceding overnight session remains available until 04:00 ET.
+			return minutes < 4*60
+		}
+		return true
 	}
-
-	if isNYSEHoliday(et) {
-		return false
-	}
-
-	open := time.Date(et.Year(), et.Month(), et.Day(), 9, 30, 0, 0, newYorkLocation)
-	marketClose := time.Date(et.Year(), et.Month(), et.Day(), 16, 0, 0, 0, newYorkLocation)
-
-	return !et.Before(open) && et.Before(marketClose)
 }
 
 // IsPreMarket returns true during the pre-market automation window (4:00-9:30 ET).

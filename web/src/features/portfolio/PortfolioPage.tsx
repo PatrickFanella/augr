@@ -59,14 +59,14 @@ function SidePill({ value }: { value: string }) {
 
 function PositionInstrument({ position }: { position: Position }) {
   if (position.asset_class !== 'option') return <>{position.ticker}</>
-  return <>{position.ticker}<br /><span className="muted">{position.underlying_ticker ?? 'Unknown underlying'} · {position.option_type ?? 'unknown type'} {position.strike === undefined ? 'unknown strike' : money(position.strike)} · {position.expiry ? new Date(position.expiry).toLocaleDateString() : 'unknown expiry'} · {position.contract_multiplier ?? 'unknown'}×{position.leg_group_id ? ` · leg ${position.leg_group_id.slice(0, 8)}` : ''}</span></>
+  return <>{position.ticker}<br /><span className="cell-detail">{position.underlying_ticker ?? 'Unknown underlying'} · {position.option_type ?? 'unknown type'} {position.strike === undefined ? 'unknown strike' : money(position.strike)} · {position.expiry ? new Date(position.expiry).toLocaleDateString() : 'unknown expiry'} · {position.contract_multiplier ?? 'unknown'}×{position.leg_group_id ? ` · leg ${position.leg_group_id.slice(0, 8)}` : ''}</span></>
 }
 
 function PositionRows({ positions }: { positions: Position[] }) {
   return (
     <>
       <div className="table-wrap">
-        <table aria-label="Open positions">
+        <table className="operations-table positions-table" aria-label="Open positions">
           <thead><tr><th>Position</th><th>Ticker</th><th>Side</th><th>Quantity</th><th>Average entry</th><th>Current</th><th>Unrealized P/L</th><th>Realized P/L</th><th>Opened</th></tr></thead>
           <tbody>
             {positions.map((position) => (
@@ -79,7 +79,7 @@ function PositionRows({ positions }: { positions: Position[] }) {
                 <td>{money(position.current_price)}</td>
                 <td>{money(position.unrealized_pnl)}</td>
                 <td>{money(position.realized_pnl)}</td>
-                <td>{new Date(position.opened_at).toLocaleString()}</td>
+                <td title={new Date(position.opened_at).toLocaleString()}>{new Date(position.opened_at).toLocaleDateString()}</td>
               </tr>
             ))}
           </tbody>
@@ -320,7 +320,7 @@ export function PortfolioPage() {
 
   return (
     <div className="detail-stack">
-      <PageHeader eyebrow="Paper/live clarity" title="Portfolio" description="Read-only exposure, P/L, and open positions. Broker reconciliation and actions are excluded." actions={<span className="status-pill active">Read-only</span>} />
+      <PageHeader eyebrow="Paper exposure" title="Portfolio" description="Current paper positions and P/L, presented as a read-only operating snapshot." actions={<span className="status-pill active">Read-only</span>} />
       <Breadcrumbs items={[{ label: 'Cockpit', to: '/cockpit' }, { label: 'Portfolio' }]} />
       <section className="panel">
         <StaleBanner show={realtimeStale || realtime.status === 'disconnected' || realtime.status === 'degraded'} message="Portfolio data may be stale after realtime position/order activity. Values are display-only." />
@@ -335,29 +335,18 @@ export function PortfolioPage() {
 
       {activeTab === 'positions' ? <>
 
-      <section className="metrics-grid" aria-label="Portfolio summary">
-        <article className="panel"><p className="eyebrow">Open positions</p><strong>{summaryQuery.data?.open_positions ?? '—'}</strong></article>
-        <article className="panel"><p className="eyebrow">Unrealized P/L</p><strong><span className={`status-pill ${pnlClass(summaryQuery.data?.unrealized_pnl)}`}>{summaryQuery.data ? money(summaryQuery.data.unrealized_pnl) : '—'}</span></strong></article>
-        <article className="panel"><p className="eyebrow">Realized P/L</p><strong><span className={`status-pill ${pnlClass(summaryQuery.data?.realized_pnl)}`}>{summaryQuery.data ? money(summaryQuery.data.realized_pnl) : '—'}</span></strong></article>
+      <section className="operations-metrics panel" aria-label="Portfolio summary">
+        <div><span>Open positions</span><strong>{summaryQuery.data?.open_positions ?? '—'}</strong></div>
+        <div><span>Unrealized P/L</span><strong className={pnlClass(summaryQuery.data?.unrealized_pnl)}>{summaryQuery.data ? money(summaryQuery.data.unrealized_pnl) : '—'}</strong></div>
+        <div><span>Realized P/L</span><strong className={pnlClass(summaryQuery.data?.realized_pnl)}>{summaryQuery.data ? money(summaryQuery.data.realized_pnl) : '—'}</strong></div>
+        <div><span>Total P/L</span><strong className={pnlClass(summaryQuery.data ? summaryQuery.data.unrealized_pnl + summaryQuery.data.realized_pnl : undefined)}>{summaryQuery.data ? money(summaryQuery.data.unrealized_pnl + summaryQuery.data.realized_pnl) : '—'}</strong></div>
       </section>
       {summaryQuery.isLoading ? <LoadingState label="Loading portfolio summary…" /> : null}
       {summaryQuery.error ? <ErrorState error={summaryQuery.error} onRetry={() => void summaryQuery.refetch()} /> : null}
 
-      {summaryQuery.data ? (
-        <section className="panel" aria-labelledby="portfolio-pnl-composition">
-          <h2 id="portfolio-pnl-composition">Current P/L composition</h2>
-          <p className="muted">This API provides a current snapshot, not a historical equity curve. Values below are not presented as a time series.</p>
-          <dl className="kv-grid">
-            <dt>Unrealized</dt><dd>{money(summaryQuery.data.unrealized_pnl)}</dd>
-            <dt>Realized</dt><dd>{money(summaryQuery.data.realized_pnl)}</dd>
-            <dt>Total</dt><dd>{money(summaryQuery.data.unrealized_pnl + summaryQuery.data.realized_pnl)}</dd>
-          </dl>
-        </section>
-      ) : null}
-
       <section className="panel" aria-labelledby="open-positions-heading">
         <div className="panel-header">
-          <div><h2 id="open-positions-heading">Open positions</h2><p className="muted">Backend supports ticker and side filters for this slice.</p>{realtimeStale ? <Alert variant="warning">Data may be stale</Alert> : null}</div>
+          <div><p className="eyebrow">Exposure ledger</p><h2 id="open-positions-heading">Open positions</h2><p className="muted">Inspect current quantity, entry value, and mark-to-market exposure.</p>{realtimeStale ? <Alert variant="warning">Data may be stale</Alert> : null}</div>
           <div className="panel-actions">{positionsQuery.data ? <LastUpdated date={positionsQuery.dataUpdatedAt} /> : null}<button type="button" className="secondary-button" onClick={() => { void summaryQuery.refetch(); void positionsQuery.refetch(); setRealtimeStale(false) }} aria-label="Refresh portfolio data"><RefreshCw size={16} /> Refresh</button></div>
         </div>
         <form className="filter-bar" aria-label="Position filters" onSubmit={(event) => event.preventDefault()} style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>

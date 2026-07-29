@@ -3,6 +3,7 @@ package risk
 import (
 	"context"
 	"math"
+	"strings"
 	"testing"
 	"time"
 
@@ -311,6 +312,34 @@ func TestCheckPositionLimits_MarketExposurePushedOverByQuantity(t *testing.T) {
 	}
 	if reason == "" {
 		t.Fatal("expected non-empty reason")
+	}
+}
+
+func TestCheckPositionLimits_ExceedsAggregateKalshiExposure(t *testing.T) {
+	t.Parallel()
+
+	engine := newTestEngine()
+	engine.limits.MaxKalshiExposurePct = 0.20
+	portfolio := Portfolio{
+		TotalExposurePct:    0.21,
+		ConcurrentPositions: 10,
+		PositionExposureBySymbol: map[string]float64{
+			"KX-NEW:YES": 0.02,
+		},
+		MarketExposurePct: map[domain.MarketType]float64{
+			domain.MarketTypeKalshi: 0.21,
+		},
+	}
+
+	approved, reason, err := engine.CheckPositionLimits(context.Background(), "KX-NEW:YES", 0.02, portfolio)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if approved {
+		t.Fatal("expected aggregate Kalshi exposure to be rejected")
+	}
+	if !strings.Contains(reason, "kalshi market exposure 21.00% exceeds max 20.00%") {
+		t.Fatalf("unexpected rejection reason: %q", reason)
 	}
 }
 

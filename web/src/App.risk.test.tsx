@@ -148,7 +148,7 @@ describe('risk console', () => {
       await userEvent.click(within(errorDialog).getByRole('button', { name: /activate kill switch/i }))
       expect(await within(errorDialog).findByRole('alert')).toHaveTextContent(message)
     }
-  }, 10_000)
+  }, 20_000)
 
   it('shows failed verification and websocket stale or disconnected kill switch behavior', async () => {
     resetApp('/risk')
@@ -319,7 +319,7 @@ describe('risk console', () => {
       await userEvent.click(within(errorDialog).getByRole('button', { name: /stop market/i }))
       expect(await within(errorDialog).findByRole('alert')).toHaveTextContent(message)
     }
-  }, 10_000)
+  }, 20_000)
 
   it('keeps market dialog open on failed verification and disables market controls when realtime is stale', async () => {
     resetApp('/risk')

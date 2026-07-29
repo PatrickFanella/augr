@@ -144,7 +144,7 @@ export function StrategiesListPage() {
         {rows.length > 0 ? (
           <>
             <div className="table-wrap" role="region" aria-label="Strategies table" tabIndex={0}>
-              <table aria-label="Trading strategies">
+              <table className="operations-table" aria-label="Trading strategies">
                 <thead>
                   <tr>
                     <th scope="col">Strategy</th>

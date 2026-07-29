@@ -101,6 +101,7 @@ type OrchestratorDeps struct {
 	KalshiSettlementGateRepo  repository.KalshiSettlementGateRepository
 	KalshiSettlementThreshold int
 	KalshiSettlementDryRun    bool
+	KalshiSettlementEnabled   bool
 	ReportArtifactRepo        *pgrepo.ReportArtifactRepo          // optional; nil = skip report jobs
 	BacktestConfigRepo        repository.BacktestConfigRepository // optional; needed by report jobs
 	BacktestRunRepo           repository.BacktestRunRepository    // optional; needed by report jobs

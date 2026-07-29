@@ -38,6 +38,24 @@ func TestBrokerSubmitOrder_MapsOrderTypes(t *testing.T) {
 			},
 		},
 		{
+			name: "market intent with evaluated price maps to extended limit",
+			order: &domain.Order{
+				Ticker:     "AAPL",
+				Side:       domain.OrderSideBuy,
+				OrderType:  domain.OrderTypeMarket,
+				Quantity:   1,
+				LimitPrice: floatPtr(185.25),
+			},
+			want: map[string]string{
+				"symbol":        "AAPL",
+				"qty":           "1",
+				"side":          "buy",
+				"type":          "limit",
+				"time_in_force": "day",
+				"limit_price":   "185.25",
+			},
+		},
+		{
 			name: "limit",
 			order: &domain.Order{
 				Ticker:     "AAPL",
@@ -174,6 +192,9 @@ func TestBrokerSubmitOrder_MapsOrderTypes(t *testing.T) {
 					if got := request[key]; got != want {
 						t.Fatalf("%s = %v, want %q", key, got, want)
 					}
+				}
+				if (tt.order.OrderType == domain.OrderTypeLimit || (tt.order.OrderType == domain.OrderTypeMarket && tt.order.LimitPrice != nil)) && request["extended_hours"] != true {
+					t.Fatalf("extended_hours = %v, want true for limit order", request["extended_hours"])
 				}
 			case <-time.After(time.Second):
 				t.Fatal("request details were not captured")

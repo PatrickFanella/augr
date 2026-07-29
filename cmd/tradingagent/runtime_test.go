@@ -1310,6 +1310,7 @@ func TestSizingConfigForStrategy_UsesMarketDefaults(t *testing.T) {
 		{name: "stock", market: domain.MarketTypeStock, want: execution.SizingConfig{Method: execution.PositionSizingMethodATR, RiskPct: 0.08, ATRMultiplier: 1.75}},
 		{name: "crypto", market: domain.MarketTypeCrypto, want: execution.SizingConfig{Method: execution.PositionSizingMethodATR, RiskPct: 0.08, ATRMultiplier: 1.75}},
 		{name: "polymarket", market: domain.MarketTypePolymarket, want: execution.SizingConfig{Method: execution.PositionSizingMethodFixedFractional, FractionPct: 0.02}},
+		{name: "kalshi", market: domain.MarketTypeKalshi, want: execution.SizingConfig{Method: execution.PositionSizingMethodFixedFractional, FractionPct: 0.02}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

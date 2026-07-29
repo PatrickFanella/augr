@@ -166,7 +166,7 @@ export function RunsListPage() {
         {rows.length > 0 ? (
           <>
             <div className="table-wrap" role="region" aria-label="Runs table" tabIndex={0}>
-              <table aria-label="Pipeline runs">
+              <table className="operations-table" aria-label="Pipeline runs">
                 <thead>
                   <tr>
                     <th scope="col">Run</th>

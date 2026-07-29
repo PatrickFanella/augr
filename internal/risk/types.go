@@ -85,6 +85,7 @@ type PositionLimits struct {
 	MaxTotalPct             float64  `json:"max_total_pct"`
 	MaxConcurrent           int      `json:"max_concurrent"`
 	MaxPerMarketPct         float64  `json:"max_per_market_pct"`
+	MaxKalshiExposurePct    float64  `json:"max_kalshi_exposure_pct"`
 	CurrentOpenPositions    *int     `json:"current_open_positions,omitempty"`
 	CurrentTotalExposurePct *float64 `json:"current_total_exposure_pct,omitempty"`
 }

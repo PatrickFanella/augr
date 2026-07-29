@@ -19,12 +19,13 @@ func TestIsMarketOpenStockHours(t *testing.T) {
 		at   time.Time
 		want bool
 	}{
-		{name: "before open", at: time.Date(2024, time.January, 8, 9, 29, 0, 0, loc), want: false},
+		{name: "overnight session", at: time.Date(2024, time.January, 8, 2, 0, 0, 0, loc), want: true},
+		{name: "pre market", at: time.Date(2024, time.January, 8, 9, 29, 0, 0, loc), want: true},
 		{name: "opening bell", at: time.Date(2024, time.January, 8, 9, 30, 0, 0, loc), want: true},
 		{name: "opening bell UTC", at: time.Date(2024, time.January, 8, 14, 30, 0, 0, time.UTC), want: true},
 		{name: "mid session", at: time.Date(2024, time.January, 8, 13, 0, 0, 0, loc), want: true},
 		{name: "minute before close", at: time.Date(2024, time.January, 8, 15, 59, 0, 0, loc), want: true},
-		{name: "closing time", at: time.Date(2024, time.January, 8, 16, 0, 0, 0, loc), want: false},
+		{name: "after hours", at: time.Date(2024, time.January, 8, 16, 0, 0, 0, loc), want: true},
 	}
 
 	for _, tc := range tests {
@@ -70,6 +71,22 @@ func TestIsMarketOpenStockWeekendClosed(t *testing.T) {
 	at := time.Date(2024, time.January, 6, 10, 0, 0, 0, loc)
 	if scheduler.IsMarketOpen(at, domain.MarketTypeStock) {
 		t.Errorf("IsMarketOpen(%s, %q) = true, want false", at.Format(time.RFC3339), domain.MarketTypeStock)
+	}
+}
+
+func TestIsMarketOpenStockSundayOvernight(t *testing.T) {
+	loc, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Fatalf("LoadLocation(America/New_York): %v", err)
+	}
+	if scheduler.IsMarketOpen(time.Date(2026, time.July, 26, 19, 59, 0, 0, loc), domain.MarketTypeStock) {
+		t.Fatal("Sunday before 20:00 ET should be closed")
+	}
+	if !scheduler.IsMarketOpen(time.Date(2026, time.July, 26, 20, 0, 0, 0, loc), domain.MarketTypeStock) {
+		t.Fatal("Sunday at 20:00 ET should be open")
+	}
+	if scheduler.IsMarketOpen(time.Date(2026, time.July, 25, 12, 0, 0, 0, loc), domain.MarketTypeStock) {
+		t.Fatal("Saturday should be closed")
 	}
 }
 

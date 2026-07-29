@@ -1324,6 +1324,42 @@ func TestProcessSignal_PolymarketPartialCloseReducesQuantity(t *testing.T) {
 	}
 }
 
+func TestProcessSignal_KalshiExitUsesOwnedQuantityAndClosesPosition(t *testing.T) {
+	strategyID := uuid.New()
+	positionID := uuid.New()
+	orderRepo := &mockOrderRepo{}
+	positionRepo := &mockPositionRepo{
+		getByStrategyFn: func(_ context.Context, gotStrategyID uuid.UUID, filter repository.PositionFilter, _, _ int) ([]domain.Position, error) {
+			if gotStrategyID != strategyID || filter.Ticker != "KX-TEST:YES" || filter.Side != domain.PositionSideLong {
+				t.Fatalf("unexpected ownership query: strategy=%s filter=%+v", gotStrategyID, filter)
+			}
+			return []domain.Position{{ID: positionID, StrategyID: &strategyID, MarketType: domain.MarketTypeKalshi, Ticker: "KX-TEST:YES", Side: domain.PositionSideLong, Quantity: 100, AvgEntry: 0.40, OpenedAt: time.Now()}}, nil
+		},
+	}
+	tradeRepo := &mockTradeRepo{}
+	mgr := newTestOrderManager(&mockBroker{}, &mockRiskEngine{}, orderRepo, positionRepo, tradeRepo, &mockAuditLogRepo{})
+	plan := defaultPlan()
+	plan.MarketType = domain.MarketTypeKalshi
+	plan.Ticker = "KX-TEST"
+	plan.Side = "YES"
+	plan.EntryPrice = 0.50
+	plan.PositionSize = 100
+	plan.Action = domain.PipelineSignalSell
+
+	if err := mgr.ProcessSignal(context.Background(), execution.FinalSignal{Signal: domain.PipelineSignalSell, Confidence: 0.9}, plan, strategyID, uuid.New()); err != nil {
+		t.Fatalf("ProcessSignal() unexpected error: %v", err)
+	}
+	if len(orderRepo.orders) != 1 || orderRepo.orders[0].Side != domain.OrderSideSell || orderRepo.orders[0].Quantity != 100 {
+		t.Fatalf("unexpected Kalshi exit order: %+v", orderRepo.orders)
+	}
+	if len(positionRepo.updates) != 1 || positionRepo.updates[0].Quantity != 0 || positionRepo.updates[0].ClosedAt == nil {
+		t.Fatalf("expected Kalshi position to close: %+v", positionRepo.updates)
+	}
+	if math.Abs(positionRepo.updates[0].RealizedPnL-10) > 1e-9 {
+		t.Fatalf("realized P/L = %v, want 10", positionRepo.updates[0].RealizedPnL)
+	}
+}
+
 func TestProcessSignal_PolymarketSellWithoutMatchingPositionSkipped(t *testing.T) {
 	broker := &mockBroker{
 		submitOrderFn: func(context.Context, *domain.Order) (string, error) {

@@ -301,10 +301,11 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 
 	riskEngine := risk.NewRiskEngine(
 		risk.PositionLimits{
-			MaxPerPositionPct: cfg.Risk.MaxPositionSizePct,
-			MaxTotalPct:       1.0,
-			MaxConcurrent:     cfg.Risk.MaxOpenPositions,
-			MaxPerMarketPct:   0.50,
+			MaxPerPositionPct:    cfg.Risk.MaxPositionSizePct,
+			MaxTotalPct:          1.0,
+			MaxConcurrent:        cfg.Risk.MaxOpenPositions,
+			MaxPerMarketPct:      0.50,
+			MaxKalshiExposurePct: cfg.Risk.MaxKalshiExposurePct,
 		},
 		risk.CircuitBreakerConfig{
 			MaxDailyLossPct:      cfg.Risk.MaxDailyLossPct,
@@ -705,6 +706,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 					KalshiSettlementGateRepo:    pgrepo.NewKalshiSettlementGateRepo(db.Pool),
 					KalshiSettlementThreshold:   cfg.Brokers.Kalshi.SettlementGateThreshold,
 					KalshiSettlementDryRun:      cfg.Brokers.Kalshi.DryRun,
+					KalshiSettlementEnabled:     !cfg.Brokers.Kalshi.DryRun,
 					ReportArtifactRepo:          reportArtifactRepo,
 					BacktestConfigRepo:          backtestConfigRepo,
 					BacktestRunRepo:             backtestRunRepo,

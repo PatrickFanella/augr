@@ -42,11 +42,11 @@ function AutomationActions({ job }: { job: AutomationJobStatus }) {
   const busy = runMutation.isPending || toggleMutation.isPending
 
   return (
-    <div className="header-cluster">
-      <button type="button" disabled={busy || job.running || !job.enabled} onClick={() => runMutation.mutate()}>
+    <div className="table-actions">
+      <button type="button" className="compact-button" disabled={busy || job.running || !job.enabled} onClick={() => runMutation.mutate()}>
         {runMutation.isPending ? 'Running…' : 'Run now'}
       </button>
-      <button type="button" disabled={busy || job.running} onClick={() => toggleMutation.mutate()}>
+      <button type="button" className="compact-button secondary-button" disabled={busy || job.running} onClick={() => toggleMutation.mutate()}>
         {toggleMutation.isPending ? 'Saving…' : job.enabled ? 'Disable' : 'Enable'}
       </button>
     </div>
@@ -57,29 +57,34 @@ export function AutomationPage() {
   const statusQuery = useQuery({ queryKey: queryKeys.automationStatus, queryFn: ({ signal }) => getAutomationStatus(signal), refetchInterval: 30_000 })
   const healthQuery = useQuery({ queryKey: queryKeys.automationHealth, queryFn: ({ signal }) => getAutomationHealth(signal), refetchInterval: 30_000 })
   const jobs = statusQuery.data ?? []
+  const orderedJobs = [...jobs].sort((a, b) => {
+    const priority = (job: AutomationJobStatus) => job.running ? 0 : job.consecutive_failures >= 3 ? 1 : job.consecutive_failures > 0 ? 2 : job.enabled ? 3 : 4
+    return priority(a) - priority(b) || a.name.localeCompare(b.name)
+  })
+  const attentionJobs = orderedJobs.filter((job) => job.running || job.consecutive_failures > 0)
 
   return (
     <div className="detail-stack">
-      <PageHeader eyebrow="Automation" title="Automations" description="Scheduled jobs like deep_scan, hot_scan, reconciles, reports, and portfolio allocation." actions={<LastUpdated date={statusQuery.dataUpdatedAt || undefined} />} />
+      <PageHeader eyebrow="Paper operations" title="Automations" description="What is running, what needs attention, and when each paper-trading job last completed." actions={<LastUpdated date={statusQuery.dataUpdatedAt || undefined} />} />
 
-      <section className="panel">
-
+      <section className="panel operations-hero">
+        <div><p className="eyebrow">Scheduler state</p><h2>{healthQuery.data?.healthy ? 'Automation is operating normally' : 'Automation needs attention'}</h2><p className="muted">{attentionJobs.length > 0 ? `${attentionJobs.length} job${attentionJobs.length === 1 ? '' : 's'} running or reporting failures. They are listed first below.` : 'No running or failed jobs currently require operator attention.'}</p></div>
         {healthQuery.data ? (
-          <div className="metrics-grid">
-            <div className="panel nested-panel"><span>Total jobs</span><strong>{healthQuery.data.total_jobs}</strong></div>
-            <div className="panel nested-panel"><span>Failing</span><strong>{healthQuery.data.failing_jobs}</strong></div>
-            <div className="panel nested-panel"><span>Degraded</span><strong>{healthQuery.data.degraded_jobs}</strong></div>
-            <div className="panel nested-panel"><span>Overall</span><strong>{healthQuery.data.healthy ? 'Healthy' : 'Degraded'}</strong></div>
+          <div className="operations-metrics" aria-label="Automation summary">
+            <div><span>Registered</span><strong>{healthQuery.data.total_jobs}</strong></div><div><span>Failing</span><strong>{healthQuery.data.failing_jobs}</strong></div><div><span>Degraded</span><strong>{healthQuery.data.degraded_jobs}</strong></div><div><span>Overall</span><strong>{healthQuery.data.healthy ? 'Healthy' : 'Degraded'}</strong></div>
           </div>
         ) : null}
+      </section>
 
+      <section className="panel">
+        <div className="panel-header"><div><p className="eyebrow">Execution queue</p><h2>Scheduled jobs</h2><p className="muted">Running and unhealthy jobs are pinned to the top.</p></div></div>
         {statusQuery.isLoading ? <LoadingState label="Loading automation jobs…" /> : null}
         {statusQuery.error ? <ErrorState error={statusQuery.error} onRetry={() => void statusQuery.refetch()} /> : null}
         {!statusQuery.isLoading && !statusQuery.error && jobs.length === 0 ? <EmptyState title="No automations found" message="The automation orchestrator is not reporting any registered jobs." /> : null}
 
         {jobs.length > 0 ? (
           <div className="table-wrap" role="region" aria-label="Automation jobs table" tabIndex={0}>
-            <table aria-label="Automation jobs">
+            <table className="operations-table automation-table" aria-label="Automation jobs">
               <thead>
                 <tr>
                   <th scope="col">Job</th>
@@ -92,13 +97,16 @@ export function AutomationPage() {
                 </tr>
               </thead>
               <tbody>
-                {jobs.map((job) => (
+                {orderedJobs.map((job) => (
                   <tr key={job.name}>
                     <th scope="row">
                       <Link to={`/automation/${encodeURIComponent(job.name)}`}>{job.name}</Link>
-                      <p className="muted">{job.description}</p>
+                      <p className="cell-detail" title={job.description}>{job.description}</p>
                     </th>
-                    <td><JobStatePill job={job} /></td>
+                    <td>
+                      <JobStatePill job={job} />
+                      {job.settlement_gate ? <span className="cell-detail">{job.settlement_gate.eligible ? 'Gate ready' : `Gate ${job.settlement_gate.consecutive_dry_run_successes}/${job.settlement_gate.threshold}`} · {job.settlement_gate.would_settle_decisions} pending</span> : null}
+                    </td>
                     <td>{job.schedule || 'Manual only'}</td>
                     <td>{formatRelativeTime(job.last_run)}</td>
                     <td>{job.run_count}</td>

@@ -188,6 +188,14 @@ func (r *KalshiDiscoveryRunRepo) Create(ctx context.Context, run *domain.KalshiD
 	if run.Status == "" {
 		run.Status = domain.KalshiDiscoveryStatusRunning
 	}
+	if _, err := r.pool.Exec(ctx, `UPDATE kalshi_discovery_runs
+		SET status = 'failed',
+		    errors = errors || '["abandoned discovery run recovered before next start"]'::jsonb,
+		    finished_at = COALESCE(finished_at, NOW()),
+		    updated_at = NOW()
+		WHERE status = 'running' AND updated_at < NOW() - INTERVAL '2 hours'`); err != nil {
+		return fmt.Errorf("postgres: reconcile stale kalshi discovery runs: %w", err)
+	}
 	row := r.pool.QueryRow(ctx, `INSERT INTO kalshi_discovery_runs
 		(id, status, fetched, screened, proposed, deployed, errors, summary, started_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)

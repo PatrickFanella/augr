@@ -21,11 +21,12 @@ type Broker struct {
 }
 
 type submitOrderRequest struct {
-	Symbol      string `json:"symbol"`
-	Qty         string `json:"qty"`
-	Side        string `json:"side"`
-	Type        string `json:"type"`
-	TimeInForce string `json:"time_in_force"`
+	Symbol        string `json:"symbol"`
+	Qty           string `json:"qty"`
+	Side          string `json:"side"`
+	Type          string `json:"type"`
+	TimeInForce   string `json:"time_in_force"`
+	ExtendedHours bool   `json:"extended_hours,omitempty"`
 
 	LimitPrice   string `json:"limit_price,omitempty"`
 	StopPrice    string `json:"stop_price,omitempty"`
@@ -241,12 +242,22 @@ func mapSubmitOrderRequest(order *domain.Order) (submitOrderRequest, error) {
 
 	switch order.OrderType {
 	case domain.OrderTypeMarket:
+		// Alpaca's overnight and extended sessions accept limit/day orders,
+		// not market orders. Pipeline market orders carry their evaluated
+		// entry price as LimitPrice; submit that price as an extended-hours
+		// limit while retaining the internal strategy intent.
+		if order.LimitPrice != nil && *order.LimitPrice > 0 {
+			request.Type = domain.OrderTypeLimit.String()
+			request.LimitPrice = formatFloat(*order.LimitPrice)
+			request.ExtendedHours = true
+		}
 		return request, nil
 	case domain.OrderTypeLimit:
 		if order.LimitPrice == nil {
 			return submitOrderRequest{}, errors.New("alpaca: limit order requires limit price")
 		}
 		request.LimitPrice = formatFloat(*order.LimitPrice)
+		request.ExtendedHours = true
 	case domain.OrderTypeStop:
 		if order.StopPrice == nil {
 			return submitOrderRequest{}, errors.New("alpaca: stop order requires stop price")

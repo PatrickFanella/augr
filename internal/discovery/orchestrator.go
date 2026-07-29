@@ -72,7 +72,7 @@ func RunDiscovery(ctx context.Context, cfg DiscoveryConfig, deps DiscoveryDeps) 
 		cfg.MaxWinners = 3
 	}
 	if cfg.ScheduleCron == "" {
-		cfg.ScheduleCron = "0 */2 * * 1-5"
+		cfg.ScheduleCron = "0 */2 * * *"
 	}
 
 	result := &DiscoveryResult{}

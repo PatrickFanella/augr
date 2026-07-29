@@ -224,7 +224,7 @@ func RunOptionsDiscovery(ctx context.Context, cfg OptionsDiscoveryConfig, deps O
 
 		cron := cfg.ScheduleCron
 		if cron == "" {
-			cron = "0 */2 * * 1-5" // every 2 hours, weekdays
+			cron = "0 */2 * * *" // every 2 hours; the market-session gate enforces Alpaca hours
 		}
 
 		strategy := domain.Strategy{

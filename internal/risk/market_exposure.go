@@ -7,7 +7,10 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 )
 
-const polymarketMaxExposurePct = 0.05
+const (
+	polymarketMaxExposurePct = 0.05
+	kalshiMaxExposurePct     = 0.20
+)
 
 type marketExposurePolicy struct {
 	limits   PositionLimits
@@ -70,6 +73,12 @@ func (p marketExposurePolicy) limitForMarket(market domain.MarketType) float64 {
 			return p.pmLimits.MaxSingleMarketExposurePct
 		}
 		return polymarketMaxExposurePct
+	}
+	if market == domain.MarketTypeKalshi {
+		if p.limits.MaxKalshiExposurePct > 0 {
+			return p.limits.MaxKalshiExposurePct
+		}
+		return kalshiMaxExposurePct
 	}
 	return limit
 }

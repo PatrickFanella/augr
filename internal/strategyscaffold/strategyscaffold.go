@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	defaultPaperScheduleWeekdays = "0 10 * * 1-5"
+	defaultPaperScheduleWeekdays = "0 10 * * *"
 	defaultPaperOptionsSchedule  = "0 11,14 * * 1-5"
 )
 

@@ -789,7 +789,18 @@ func (r *realStrategyRunner) runKalshiNative(ctx context.Context, strategy domai
 		return failRun(fmt.Errorf("kalshi native: fetch snapshot for %s: %w", strategy.Ticker, err))
 	}
 
-	decision, err := kalshiexecution.DeterministicNativeExecutor{}.Execute(ctx, strategy, snapshot)
+	var openPositions []domain.Position
+	if r.cfg.Brokers.Kalshi.AutoExitsEnabled && r.positionRepo != nil {
+		openPositions, err = r.positionRepo.GetByStrategy(ctx, strategy.ID, repository.PositionFilter{}, 10_000, 0)
+		if err != nil {
+			return failRun(fmt.Errorf("kalshi native: load positions for exit evaluation: %w", err))
+		}
+	}
+
+	decision, exit := kalshiexecution.EvaluateExit(strategy, snapshot, openPositions, now)
+	if !exit {
+		decision, err = kalshiexecution.DeterministicNativeExecutor{}.Execute(ctx, strategy, snapshot)
+	}
 	if err != nil {
 		return failRun(fmt.Errorf("kalshi native: execute strategy %s: %w", strategy.Name, err))
 	}
@@ -863,6 +874,7 @@ func kalshiTradingPlan(signal domain.PipelineSignal, snapshot kalshiexecution.Sn
 		Ticker:           ticker,
 		EntryType:        decision.EntryType,
 		EntryPrice:       decision.EntryPrice,
+		PositionSize:     decision.PositionSize,
 		Confidence:       decision.Confidence,
 		Rationale:        decision.Rationale,
 		RiskReward:       decision.RiskReward,

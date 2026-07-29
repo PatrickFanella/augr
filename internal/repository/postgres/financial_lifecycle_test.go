@@ -152,6 +152,53 @@ func TestFinancialLifecycle_SettlePredictionDecisionSingleLotKeepsLinkage(t *tes
 	}
 }
 
+func TestFinancialLifecycle_KalshiEarlyExitClosesOpeningAndExitDecisions(t *testing.T) {
+	ctx := context.Background()
+	pool, cleanup := newFinancialLifecycleIntegrationPool(t, ctx)
+	defer cleanup()
+	repo := &DB{Pool: pool}
+	strategyID := createFinancialLifecycleStrategy(t, ctx, pool)
+	now := time.Date(2026, 7, 26, 16, 0, 0, 0, time.UTC)
+
+	buy := &domain.Order{ID: uuid.New(), StrategyID: &strategyID, Ticker: "KX-TEST", PredictionSide: "YES", MarketType: domain.MarketTypeKalshi, Side: domain.OrderSideBuy, Status: domain.OrderStatusFilled, Quantity: 100, FilledQuantity: 100, FilledAvgPrice: floatPtr(0.40), FilledAt: &now}
+	createFinancialLifecycleOrder(t, ctx, pool, buy)
+	buyResult, err := repo.ApplyOrderFill(ctx, repository.OrderFillInput{IdempotencyKey: "kalshi-buy", Order: buy, FillIntent: repository.OrderFillIntent{Side: domain.OrderSideBuy, Quantity: 100, ExecutionPrice: 0.40}, Now: now, Trade: &domain.Trade{ID: uuid.New()}})
+	if err != nil {
+		t.Fatalf("Kalshi buy error = %v", err)
+	}
+	openDecisionID := uuid.New()
+	if _, err := pool.Exec(ctx, `INSERT INTO trade_decisions (id,strategy_id,paper_order_id,market_type,instrument_key,outcome,status) VALUES ($1,$2,$3,$4,$5,$6,$7)`, openDecisionID, strategyID, buy.ID, domain.MarketTypeKalshi, "KX-TEST", "YES", domain.TradeDecisionStatusPaper); err != nil {
+		t.Fatalf("insert opening decision: %v", err)
+	}
+
+	sellAt := now.Add(time.Hour)
+	sell := &domain.Order{ID: uuid.New(), StrategyID: &strategyID, Ticker: "KX-TEST", PredictionSide: "YES", MarketType: domain.MarketTypeKalshi, Side: domain.OrderSideSell, Status: domain.OrderStatusFilled, Quantity: 100, FilledQuantity: 100, FilledAvgPrice: floatPtr(0.55), FilledAt: &sellAt}
+	createFinancialLifecycleOrder(t, ctx, pool, sell)
+	exitDecisionID := uuid.New()
+	if _, err := pool.Exec(ctx, `INSERT INTO trade_decisions (id,strategy_id,paper_order_id,market_type,instrument_key,outcome,status) VALUES ($1,$2,$3,$4,$5,$6,$7)`, exitDecisionID, strategyID, sell.ID, domain.MarketTypeKalshi, "KX-TEST", "YES", domain.TradeDecisionStatusPaper); err != nil {
+		t.Fatalf("insert exit decision: %v", err)
+	}
+	if _, err := repo.ApplyOrderFill(ctx, repository.OrderFillInput{IdempotencyKey: "kalshi-sell", Order: sell, FillIntent: repository.OrderFillIntent{Side: domain.OrderSideSell, Quantity: 100, ExecutionPrice: 0.55}, Now: sellAt, Trade: &domain.Trade{ID: uuid.New()}}); err != nil {
+		t.Fatalf("Kalshi sell error = %v", err)
+	}
+
+	var quantity, realized float64
+	var closedAt *time.Time
+	if err := pool.QueryRow(ctx, `SELECT quantity::double precision,realized_pnl::double precision,closed_at FROM positions WHERE id=$1`, *buyResult.PositionID).Scan(&quantity, &realized, &closedAt); err != nil {
+		t.Fatalf("load closed position: %v", err)
+	}
+	if quantity != 0 || realized != 15 || closedAt == nil {
+		t.Fatalf("closed position = quantity %v realized %v closed %v", quantity, realized, closedAt)
+	}
+	var closedDecisions int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM trade_decisions WHERE id=ANY($1::uuid[]) AND status=$2`, []uuid.UUID{openDecisionID, exitDecisionID}, domain.TradeDecisionStatusClosed).Scan(&closedDecisions); err != nil {
+		t.Fatalf("count closed decisions: %v", err)
+	}
+	if closedDecisions != 2 {
+		t.Fatalf("closed decisions = %d, want 2", closedDecisions)
+	}
+}
+
 func TestFinancialLifecycle_SettlePredictionDecisionReplayAndRollback(t *testing.T) {
 	ctx := context.Background()
 	pool, cleanup := newFinancialLifecycleSettlementIntegrationPool(t, ctx)

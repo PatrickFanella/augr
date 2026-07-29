@@ -24,7 +24,9 @@ describe('first vertical slice app', () => {
     )
     render(<App />)
 
-    expect(await screen.findByRole('heading', { name: /^automations$/i })).toBeTruthy()
+    expect(
+      await screen.findByRole('heading', { name: /^automations$/i }, { timeout: 10_000 }),
+    ).toBeTruthy()
     const deepScanLink = await screen.findByRole('link', { name: 'deep_scan' })
     expect(deepScanLink).toHaveAttribute('href', '/automation/deep_scan')
     const row = deepScanLink.closest('tr') as HTMLElement

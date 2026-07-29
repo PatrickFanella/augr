@@ -28,14 +28,14 @@ function OrderPill({ value, known }: { value: string; known: string[] }) {
 
 function OrderInstrument({ order }: { order: Order }) {
   if (order.asset_class !== 'option') return <>{order.ticker}</>
-  return <>{order.ticker}<br /><span className="muted">{order.underlying_ticker ?? 'Unknown underlying'} · {order.option_type ?? 'unknown type'} {order.strike === undefined ? 'unknown strike' : money(order.strike)} · {order.expiry ? new Date(order.expiry).toLocaleDateString() : 'unknown expiry'} · {order.contract_multiplier ?? 'unknown'}× · {order.position_intent ?? 'unknown intent'}{order.leg_group_id ? ` · leg ${order.leg_group_id.slice(0, 8)}` : ''}</span></>
+  return <>{order.ticker}<br /><span className="cell-detail">{order.underlying_ticker ?? 'Unknown underlying'} · {order.option_type ?? 'unknown type'} {order.strike === undefined ? 'unknown strike' : money(order.strike)} · {order.expiry ? new Date(order.expiry).toLocaleDateString() : 'unknown expiry'} · {order.contract_multiplier ?? 'unknown'}× · {order.position_intent ?? 'unknown intent'}{order.leg_group_id ? ` · leg ${order.leg_group_id.slice(0, 8)}` : ''}</span></>
 }
 
 function OrdersRows({ orders }: { orders: Order[] }) {
   return (
     <>
       <div className="table-wrap">
-        <table aria-label="Orders">
+        <table className="operations-table orders-table" aria-label="Orders">
           <thead><tr><th>Order</th><th>Ticker</th><th>Side</th><th>Type</th><th>Status</th><th>Quantity</th><th>Filled</th><th>Limit</th><th>Broker</th><th>Created</th></tr></thead>
           <tbody>{orders.map((order) => (
             <tr key={order.id}>
@@ -87,6 +87,10 @@ export function OrdersListPage() {
   const query = useQuery({ queryKey: queryKeys.ordersListFiltered(filters), queryFn: ({ signal }) => getOrders(filters, signal) })
   const orders = query.data?.data ?? []
   const total = query.data?.total
+  const filledCount = orders.filter((order) => order.status === 'filled').length
+  const workingCount = orders.filter((order) => ['pending', 'submitted', 'partial'].includes(order.status)).length
+  const exceptionCount = orders.filter((order) => ['cancelled', 'rejected'].includes(order.status)).length
+  const brokerCount = new Set(orders.map((order) => order.broker)).size
   const currentOffset = filters.offset ?? 0
   const hasNext = total === undefined ? orders.length === pageSize : currentOffset + pageSize < total
 
@@ -119,10 +123,13 @@ export function OrdersListPage() {
   return (
     <div className="detail-stack">
       <Breadcrumbs items={[{ label: 'Cockpit', to: '/cockpit' }, { label: 'Orders' }]} />
-      <PageHeader eyebrow="Read-only execution evidence" title="Orders" description="Browse recent orders and deep-link to strategy/run evidence. Detail, fills, cancel, and replace are excluded." actions={<span className="status-pill active">Read-only</span>} />
+      <PageHeader eyebrow="Paper execution ledger" title="Orders" description="Read-only evidence of what the paper brokers accepted, filled, or rejected." actions={<span className="status-pill active">Read-only</span>} />
       <StaleBanner show={realtimeStale || realtime.status === 'disconnected' || realtime.status === 'degraded'} message="Order rows are read-only and may be stale after realtime order activity." />
+      <section className="operations-metrics panel" aria-label="Orders on this page">
+        <div><span>Filled</span><strong>{query.data ? filledCount : '—'}</strong></div><div><span>Working</span><strong>{query.data ? workingCount : '—'}</strong></div><div><span>Exceptions</span><strong>{query.data ? exceptionCount : '—'}</strong></div><div><span>Brokers</span><strong>{query.data ? brokerCount : '—'}</strong></div>
+      </section>
       <section className="panel" aria-labelledby="orders-heading">
-        <div className="panel-header"><div><h2 id="orders-heading">Recent orders</h2><p className="muted">Backend-supported filters: ticker, broker, market type, status, side, order type. Strategy/run filters are deferred until backend support exists.</p></div>{query.data ? <LastUpdated date={query.dataUpdatedAt} /> : null}</div>
+        <div className="panel-header"><div><p className="eyebrow">Execution evidence</p><h2 id="orders-heading">Recent orders</h2><p className="muted">Filter by instrument or execution state, then open an order to trace its strategy and run.</p></div>{query.data ? <LastUpdated date={query.dataUpdatedAt} /> : null}</div>
         <form className="filter-bar" aria-label="Order filters" onSubmit={(event) => event.preventDefault()}>
           <label>Ticker<input value={searchParams.get('ticker') ?? ''} onChange={(event) => updateFilters({ ticker: event.target.value.toUpperCase() })} placeholder="AUGR" /></label>
           <label>Status<select value={searchParams.get('status') ?? ''} onChange={(event) => updateFilters({ status: event.target.value })}><option value="">All</option><option value="pending">Pending</option><option value="submitted">Submitted</option><option value="partial">Partial</option><option value="filled">Filled</option><option value="cancelled">Cancelled</option><option value="rejected">Rejected</option></select></label>

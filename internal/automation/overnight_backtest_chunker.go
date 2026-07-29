@@ -266,7 +266,7 @@ func (c overnightBacktestChunker) runSweepValidateDeploy(ctx context.Context, ru
 			run.Errors = append(run.Errors, fmt.Sprintf("marshal config %s: %v", ticker, err))
 			continue
 		}
-		strategy := domain.Strategy{ID: uuid.New(), Name: fmt.Sprintf("discovery: %s %s", ticker, scorer.Config.Name), Ticker: ticker, MarketType: domain.MarketTypeStock, IsPaper: true, Status: "active", ScheduleCron: "0 */2 * * 1-5", Config: json.RawMessage(configJSON)}
+		strategy := domain.Strategy{ID: uuid.New(), Name: fmt.Sprintf("discovery: %s %s", ticker, scorer.Config.Name), Ticker: ticker, MarketType: domain.MarketTypeStock, IsPaper: true, Status: "active", ScheduleCron: "0 */2 * * *", Config: json.RawMessage(configJSON)}
 		if _, _, err := discovery.CreateOrReusePaperStrategy(ctx, c.deps.StrategyRepo, strategy); err != nil {
 			run.Errors = append(run.Errors, fmt.Sprintf("deploy %s: %v", ticker, err))
 			continue

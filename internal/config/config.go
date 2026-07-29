@@ -167,6 +167,7 @@ type KalshiConfig struct {
 	MaxBackoff              time.Duration
 	JitterRatio             float64
 	DryRun                  bool
+	AutoExitsEnabled        bool
 	SettlementGateThreshold int
 }
 
@@ -183,6 +184,7 @@ type RiskConfig struct {
 	MaxDailyLossPct         float64
 	MaxDrawdownPct          float64
 	MaxOpenPositions        int
+	MaxKalshiExposurePct    float64
 	CircuitBreakerThreshold float64
 	CircuitBreakerCooldown  time.Duration
 	Polymarket              PolymarketRiskConfig
@@ -416,6 +418,10 @@ func loadFromEnvironment() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	kalshiAutoExitsEnabled, err := getEnvBool("KALSHI_AUTO_EXITS_ENABLED", false)
+	if err != nil {
+		return Config{}, err
+	}
 	kalshiSettlementGateThreshold, err := getEnvInt("KALSHI_SETTLEMENT_GATE_THRESHOLD", 20)
 	if err != nil {
 		return Config{}, err
@@ -437,6 +443,11 @@ func loadFromEnvironment() (Config, error) {
 	}
 
 	maxOpenPositions, err := getEnvInt("RISK_MAX_OPEN_POSITIONS", 10)
+	if err != nil {
+		return Config{}, err
+	}
+
+	maxKalshiExposurePct, err := getEnvFloat64("RISK_MAX_KALSHI_EXPOSURE_PCT", 0.20)
 	if err != nil {
 		return Config{}, err
 	}
@@ -679,6 +690,7 @@ func loadFromEnvironment() (Config, error) {
 				MaxBackoff:              kalshiMaxBackoff,
 				JitterRatio:             kalshiJitterRatio,
 				DryRun:                  kalshiDryRun,
+				AutoExitsEnabled:        kalshiAutoExitsEnabled,
 				SettlementGateThreshold: kalshiSettlementGateThreshold,
 			},
 		},
@@ -687,6 +699,7 @@ func loadFromEnvironment() (Config, error) {
 			MaxDailyLossPct:         maxDailyLossPct,
 			MaxDrawdownPct:          maxDrawdownPct,
 			MaxOpenPositions:        maxOpenPositions,
+			MaxKalshiExposurePct:    maxKalshiExposurePct,
 			CircuitBreakerThreshold: circuitBreakerThreshold,
 			CircuitBreakerCooldown:  circuitBreakerCooldown,
 			Polymarket: PolymarketRiskConfig{

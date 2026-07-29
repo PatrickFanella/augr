@@ -51,6 +51,12 @@ func (s Snapshot) EntryPriceForSide(side string) (float64, bool) {
 	return ask, ok
 }
 
+// ExitPriceForSide returns the executable bid for selling a held contract.
+func (s Snapshot) ExitPriceForSide(side string) (float64, bool) {
+	bid, _, ok := s.quoteForSide(side)
+	return bid, ok
+}
+
 // SpreadForSide returns the bid/ask spread for the selected side when known.
 func (s Snapshot) SpreadForSide(side string) (float64, bool) {
 	bid, ask, ok := s.quoteForSide(side)

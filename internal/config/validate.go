@@ -66,6 +66,10 @@ func Validate(cfg Config) error {
 		errs = append(errs, "RISK_MAX_OPEN_POSITIONS must be greater than 0")
 	}
 
+	if cfg.Risk.MaxKalshiExposurePct < 0 || cfg.Risk.MaxKalshiExposurePct > 1 {
+		errs = append(errs, "RISK_MAX_KALSHI_EXPOSURE_PCT must be between 0 and 1")
+	}
+
 	if cfg.Risk.CircuitBreakerThreshold <= 0 || cfg.Risk.CircuitBreakerThreshold > 1 {
 		errs = append(errs, "RISK_CIRCUIT_BREAKER_THRESHOLD must be between 0 and 1")
 	}

@@ -155,6 +155,7 @@ func (db *DB) ApplyOrderFill(ctx context.Context, input repository.OrderFillInpu
 
 		remaining := input.FillIntent.Quantity
 		updatedIDs := make([]uuid.UUID, 0, len(matchedPositions))
+		closedIDs := make([]uuid.UUID, 0, len(matchedPositions))
 		if len(matchedPositions) == 1 {
 			position = matchedPositions[0]
 			positionID = &position.ID
@@ -171,6 +172,7 @@ func (db *DB) ApplyOrderFill(ctx context.Context, input repository.OrderFillInpu
 			if matchedPosition.Quantity == 0 {
 				closedAt := now
 				matchedPosition.ClosedAt = &closedAt
+				closedIDs = append(closedIDs, matchedPosition.ID)
 			}
 			if _, err := tx.Exec(ctx, `UPDATE positions SET quantity = $1, current_price = $2, realized_pnl = $3, closed_at = $4 WHERE id = $5`, matchedPosition.Quantity, matchedPosition.CurrentPrice, matchedPosition.RealizedPnL, matchedPosition.ClosedAt, matchedPosition.ID); err != nil {
 				return repository.OrderFillResult{}, fmt.Errorf("postgres: update polymarket position: %w", err)
@@ -184,6 +186,15 @@ func (db *DB) ApplyOrderFill(ctx context.Context, input repository.OrderFillInpu
 		if len(updatedIDs) > 1 {
 			position = nil
 			positionID = nil
+		}
+		if _, err := tx.Exec(ctx, `UPDATE trade_decisions SET status = $1, updated_at = $2
+			WHERE status = $3 AND (
+				paper_order_id = $4 OR
+				(cardinality($5::uuid[]) > 0 AND paper_order_id IN (
+					SELECT DISTINCT t.order_id FROM trades t WHERE t.position_id = ANY($5::uuid[])
+				))
+			)`, domain.TradeDecisionStatusClosed, now, domain.TradeDecisionStatusPaper, order.ID, closedIDs); err != nil {
+			return repository.OrderFillResult{}, fmt.Errorf("postgres: close prediction exit decisions: %w", err)
 		}
 	} else {
 		positionSide := domain.PositionSideLong

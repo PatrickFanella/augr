@@ -39,6 +39,9 @@ type NativeDecision struct {
 	EvidenceSources []string              `json:"evidence_sources,omitempty"`
 	Calibration     string                `json:"calibration,omitempty"`
 	GateResults     []string              `json:"gate_results,omitempty"`
+	PositionSize    float64               `json:"position_size,omitempty"`
+	AverageEntry    float64               `json:"average_entry,omitempty"`
+	RealizedPnLPct  float64               `json:"realized_pnl_pct,omitempty"`
 }
 
 // NormalizeOutcomeSide maps arbitrary side strings to the canonical YES/NO

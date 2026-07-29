@@ -112,15 +112,19 @@ func (DeterministicNativeExecutor) Execute(ctx context.Context, strategy domain.
 }
 
 type discoveryMeta struct {
-	Template         string   `json:"template"`
-	Direction        string   `json:"direction"`
-	Confidence       float64  `json:"confidence"`
-	Conviction       float64  `json:"conviction"`
-	TimeHorizon      string   `json:"time_horizon"`
-	EntryPriceMax    float64  `json:"entry_price_max"`
-	PriceCeiling     float64  `json:"price_ceiling"`
-	Summary          string   `json:"summary"`
-	SourceReferences []string `json:"source_references"`
+	Template               string   `json:"template"`
+	Direction              string   `json:"direction"`
+	Confidence             float64  `json:"confidence"`
+	Conviction             float64  `json:"conviction"`
+	TimeHorizon            string   `json:"time_horizon"`
+	EntryPriceMax          float64  `json:"entry_price_max"`
+	PriceCeiling           float64  `json:"price_ceiling"`
+	Summary                string   `json:"summary"`
+	SourceReferences       []string `json:"source_references"`
+	TakeProfitPct          float64  `json:"take_profit_pct"`
+	StopLossPct            float64  `json:"stop_loss_pct"`
+	ExitBeforeCloseMinutes int      `json:"exit_before_close_minutes"`
+	AutoExitsEnabled       bool     `json:"auto_exits_enabled"`
 }
 
 func parseDiscoveryMeta(raw json.RawMessage) (discoveryMeta, bool) {

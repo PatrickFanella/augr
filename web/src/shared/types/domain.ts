@@ -437,6 +437,16 @@ export type AutomationJobStatus = AutomationJobHealth & {
   last_summary?: Record<string, unknown>
   last_error_at?: ISODate
   stuck_for?: number
+  settlement_gate?: {
+    consecutive_dry_run_successes: number
+    threshold: number
+    eligible: boolean
+    would_settle_markets: number
+    would_settle_decisions: number
+    last_outcome?: string
+    last_error?: string
+    last_run_at?: ISODate
+  }
 }
 
 export type AutomationJobRun = {

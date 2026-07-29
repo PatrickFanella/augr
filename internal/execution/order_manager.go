@@ -25,6 +25,11 @@ const (
 	OrderEventRejected  = "order_rejected"
 )
 
+// Kalshi strategies share one paper account. Serialize the complete
+// snapshot-to-fill lifecycle so concurrent strategy runs cannot all approve
+// against the same pre-trade aggregate exposure.
+var kalshiExposureMu sync.Mutex
+
 // FinalSignal stores the extracted pipeline signal and confidence.
 type FinalSignal struct {
 	Signal     domain.PipelineSignal `json:"signal,omitempty"`
@@ -224,7 +229,12 @@ func (m *OrderManager) ProcessSignal(
 	strategyID, runID uuid.UUID,
 ) error {
 	marketType := planMarketType(plan)
-	polymarketExitMaxQuantity := 0.0
+	predictionExitMaxQuantity := 0.0
+
+	if marketType.Normalize() == domain.MarketTypeKalshi {
+		kalshiExposureMu.Lock()
+		defer kalshiExposureMu.Unlock()
+	}
 
 	// Ignore hold signals — nothing to execute.
 	if signal.Signal == domain.PipelineSignalHold {
@@ -286,14 +296,18 @@ func (m *OrderManager) ProcessSignal(
 		}
 	}
 
-	if signal.Signal == domain.PipelineSignalSell && marketType == domain.MarketTypePolymarket {
-		ownedQuantity, err := m.openPolymarketPositionQuantity(ctx, strategyID, plan.Ticker, plan.Side)
+	if signal.Signal == domain.PipelineSignalSell && isPredictionMarket(marketType) {
+		ownedQuantity, err := m.openPredictionPositionQuantity(ctx, strategyID, marketType, plan.Ticker, plan.Side)
 		if err != nil {
 			return err
 		}
 		if ownedQuantity <= 0 {
-			m.logger.InfoContext(ctx, "polymarket sell signal has no open side-qualified position, skipping order", "ticker", plan.Ticker, "prediction_side", plan.Side, "strategy_id", strategyID)
+			m.logger.InfoContext(ctx, "prediction-market sell signal has no open side-qualified position, skipping order", "ticker", plan.Ticker, "prediction_side", plan.Side, "market_type", marketType, "strategy_id", strategyID)
 
+			rejectionReason := "unowned_polymarket_exit_no_open_position"
+			if marketType.Normalize() == domain.MarketTypeKalshi {
+				rejectionReason = "unowned_kalshi_exit_no_open_position"
+			}
 			decision := m.newTradeDecision(
 				strategyID,
 				runID,
@@ -303,11 +317,11 @@ func (m *OrderManager) ProcessSignal(
 				0,
 				0,
 				domain.RiskDecisionRejected,
-				[]string{"unowned_polymarket_exit_no_open_position"},
+				[]string{rejectionReason},
 				domain.TradeDecisionStatusRejected,
 			)
 			decision.Evidence, _ = json.Marshal(map[string]any{
-				"reason":            "unowned_polymarket_exit_no_open_position",
+				"reason":            rejectionReason,
 				"has_open_position": false,
 				"ticker":            plan.Ticker,
 				"prediction_side":   plan.Side,
@@ -330,7 +344,7 @@ func (m *OrderManager) ProcessSignal(
 
 			return nil
 		}
-		polymarketExitMaxQuantity = ownedQuantity
+		predictionExitMaxQuantity = ownedQuantity
 	}
 
 	// 1. Check kill switch via risk engine.
@@ -394,15 +408,18 @@ func (m *OrderManager) ProcessSignal(
 		PricePerShare: plan.EntryPrice,
 		HalfKelly:     m.sizingConfig.HalfKelly,
 	})
-	if marketType.Normalize() == domain.MarketTypePolymarket {
+	if isPredictionMarket(marketType) {
 		quantity = PolymarketPositionSize(PolymarketSizingParams{
 			AccountValue:    balance.Equity,
 			FractionPct:     m.sizingConfig.FractionPct,
 			MaxPositionUSDC: m.sizingConfig.MaxPositionUSDC,
 			EntryPrice:      plan.EntryPrice,
 		})
-		if signal.Signal == domain.PipelineSignalSell && polymarketExitMaxQuantity > 0 && quantity > polymarketExitMaxQuantity {
-			quantity = polymarketExitMaxQuantity
+		if signal.Signal == domain.PipelineSignalSell && predictionExitMaxQuantity > 0 && quantity > predictionExitMaxQuantity {
+			quantity = predictionExitMaxQuantity
+		}
+		if signal.Signal == domain.PipelineSignalSell && plan.PositionSize > 0 {
+			quantity = math.Min(plan.PositionSize, predictionExitMaxQuantity)
 		}
 	}
 
@@ -424,15 +441,18 @@ func (m *OrderManager) ProcessSignal(
 	if err != nil {
 		return fmt.Errorf("order_manager: build risk portfolio: %w", err)
 	}
-	if marketType != "" {
+	if marketType != "" && signal.Signal != domain.PipelineSignalSell {
 		if portfolio.MarketExposurePct == nil {
 			portfolio.MarketExposurePct = make(map[domain.MarketType]float64)
 		}
 		portfolio.MarketExposurePct[marketType] += additionalExposurePct
 	}
-	approved, reason, err := m.riskEngine.CheckPositionLimits(ctx, plan.Ticker, additionalExposurePct, portfolio)
-	if err != nil {
-		return fmt.Errorf("order_manager: check position limits: %w", err)
+	approved, reason := true, ""
+	if signal.Signal != domain.PipelineSignalSell {
+		approved, reason, err = m.riskEngine.CheckPositionLimits(ctx, plan.Ticker, additionalExposurePct, portfolio)
+		if err != nil {
+			return fmt.Errorf("order_manager: check position limits: %w", err)
+		}
 	}
 
 	if !approved {
@@ -778,10 +798,10 @@ func (m *OrderManager) hasOpenLongPosition(ctx context.Context, strategyID uuid.
 	return false, nil
 }
 
-func (m *OrderManager) openPolymarketPositionQuantity(ctx context.Context, strategyID uuid.UUID, slug, side string) (float64, error) {
+func (m *OrderManager) openPredictionPositionQuantity(ctx context.Context, strategyID uuid.UUID, marketType domain.MarketType, slug, side string) (float64, error) {
 	slug = strings.TrimSpace(slug)
 	if slug == "" {
-		return 0, fmt.Errorf("order_manager: polymarket exit ownership check requires ticker")
+		return 0, fmt.Errorf("order_manager: prediction exit ownership check requires ticker")
 	}
 
 	positions, err := m.positionRepo.GetByStrategy(ctx, strategyID, repository.PositionFilter{
@@ -789,7 +809,7 @@ func (m *OrderManager) openPolymarketPositionQuantity(ctx context.Context, strat
 		Side:   domain.PositionSideLong,
 	}, riskSnapshotPositionLimit, 0)
 	if err != nil {
-		return 0, fmt.Errorf("order_manager: get open polymarket position for %s:%s: %w", slug, strings.ToUpper(strings.TrimSpace(side)), err)
+		return 0, fmt.Errorf("order_manager: get open %s position for %s:%s: %w", marketType.Normalize(), slug, strings.ToUpper(strings.TrimSpace(side)), err)
 	}
 
 	total := 0.0
@@ -800,6 +820,11 @@ func (m *OrderManager) openPolymarketPositionQuantity(ctx context.Context, strat
 	}
 
 	return total, nil
+}
+
+func isPredictionMarket(marketType domain.MarketType) bool {
+	normalized := marketType.Normalize()
+	return normalized == domain.MarketTypePolymarket || normalized == domain.MarketTypeKalshi
 }
 
 func polymarketPositionTicker(slug, side string) string {
@@ -931,14 +956,14 @@ func (m *OrderManager) handleFill(
 		}
 		return nil
 	}
-	if marketType == domain.MarketTypePolymarket && order.Side == domain.OrderSideSell {
+	if isPredictionMarket(marketType) && order.Side == domain.OrderSideSell {
 		positionTicker := polymarketPositionTicker(order.Ticker, order.PredictionSide)
 		positions, err := m.positionRepo.GetByStrategy(ctx, *order.StrategyID, repository.PositionFilter{
 			Ticker: positionTicker,
 			Side:   domain.PositionSideLong,
 		}, riskSnapshotPositionLimit, 0)
 		if err != nil {
-			return fmt.Errorf("order_manager: get polymarket exit position for %s: %w", positionTicker, err)
+			return fmt.Errorf("order_manager: get prediction exit position for %s: %w", positionTicker, err)
 		}
 
 		for i := range positions {
@@ -948,7 +973,7 @@ func (m *OrderManager) handleFill(
 			}
 		}
 		if position == nil {
-			return fmt.Errorf("order_manager: polymarket sell fill has no open position for %s", positionTicker)
+			return fmt.Errorf("order_manager: prediction sell fill has no open position for %s", positionTicker)
 		}
 
 		closedQuantity := math.Min(position.Quantity, order.FilledQuantity)
@@ -964,7 +989,7 @@ func (m *OrderManager) handleFill(
 		}
 
 		if err := m.positionRepo.Update(ctx, position); err != nil {
-			return fmt.Errorf("order_manager: update polymarket position: %w", err)
+			return fmt.Errorf("order_manager: update prediction position: %w", err)
 		}
 	} else {
 		positionSide := domain.PositionSideLong

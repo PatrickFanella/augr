@@ -7,8 +7,8 @@ import (
 
 	"github.com/PatrickFanella/get-rich-quick/internal/agent"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
-	"github.com/PatrickFanella/get-rich-quick/internal/execution"
 	"github.com/PatrickFanella/get-rich-quick/internal/eventmarkets"
+	"github.com/PatrickFanella/get-rich-quick/internal/execution"
 	"github.com/PatrickFanella/get-rich-quick/internal/position"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 	"github.com/google/uuid"
@@ -38,7 +38,11 @@ func sizingConfigForStrategy(
 	if strategy.MarketType.Normalize() == domain.MarketTypeKalshi && cfg.Method == "" {
 		fractionPct := position.DefaultPolymarketFractionPct
 		if resolved.RiskConfig.PositionSizePct > 0 {
-			fractionPct = resolved.RiskConfig.PositionSizePct / 100.0
+			// The global position limit is primarily an equity/crypto setting and
+			// can be much larger than is appropriate for binary event contracts.
+			// It may make Kalshi sizing more conservative, but must not increase
+			// the event-market default.
+			fractionPct = math.Min(fractionPct, resolved.RiskConfig.PositionSizePct/100.0)
 		}
 		cfg.Method = execution.PositionSizingMethodFixedFractional
 		cfg.FractionPct = fractionPct
