@@ -1,0 +1,45 @@
+Augr paper-trading observation: kalshi-boundary
+Observed at: 2026-07-26 10:10:00 UTC
+Observed at: 2026-07-26 06:10:00 EDT
+
+Service health
+{"status":"ok","db":"ok","redis":"ok"}
+
+NAME              IMAGE                               COMMAND                  SERVICE    CREATED       STATUS                 PORTS
+augr-app-1        augr-app                            "./tradingagent serve"   app        4 hours ago   Up 4 hours (healthy)   10.0.0.56:3030->8080/tcp
+augr-postgres-1   timescale/timescaledb:2.17.2-pg17   "docker-entrypoint.s…"   postgres   7 hours ago   Up 7 hours (healthy)   5432/tcp
+augr-redis-1      redis:7-alpine                      "docker-entrypoint.s…"   redis      7 hours ago   Up 7 hours (healthy)   6379/tcp
+augr-web-1        augr-web                            "/docker-entrypoint.…"   web        5 hours ago   Up 5 hours             10.0.0.56:3029->80/tcp
+
+Operational database state
+WARNING:  database "tradingagent" has no actual collation version, but a version was recorded
+ market_type | status | count
+-------------+--------+-------
+(0 rows)
+
+ market_type | status | orders | notional
+-------------+--------+--------+----------
+(0 rows)
+
+ open_positions |    gross_notional
+----------------+-----------------------
+              5 | 9999.9999999998300000
+(1 row)
+
+ active_breakers
+-----------------
+               0
+(1 row)
+
+     job_name     | status |          started_at           |         completed_at          | consecutive_failures
+------------------+--------+-------------------------------+-------------------------------+----------------------
+ alpaca_reconcile | ok     | 2026-07-26 10:10:00.014655+00 | 2026-07-26 10:10:00.247518+00 |                    0
+ alpaca_reconcile | ok     | 2026-07-26 10:05:00.007886+00 | 2026-07-26 10:05:00.450469+00 |                    0
+ alpaca_reconcile | ok     | 2026-07-26 10:00:00.00044+00  | 2026-07-26 10:00:00.203235+00 |                    0
+ alpaca_reconcile | ok     | 2026-07-26 09:55:00.007638+00 | 2026-07-26 09:55:00.41867+00  |                    0
+ alpaca_reconcile | ok     | 2026-07-26 09:50:00.014386+00 | 2026-07-26 09:50:00.25865+00  |                    0
+ alpaca_reconcile | ok     | 2026-07-26 09:45:00.014594+00 | 2026-07-26 09:45:00.319057+00 |                    0
+(6 rows)
+
+
+Recent warnings and errors

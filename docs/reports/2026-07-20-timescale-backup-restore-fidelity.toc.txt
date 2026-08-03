@@ -1,0 +1,649 @@
+;
+; Archive created at 2026-07-20 18:57:53 UTC
+;     dbname: tradingagent
+;     TOC Entries: 638
+;     Compression: gzip
+;     Dump Version: 1.16-0
+;     Format: CUSTOM
+;     Integer: 4 bytes
+;     Offset: 8 bytes
+;     Dumped from database version: 17.2
+;     Dumped by pg_dump version: 17.2
+;
+;
+; Selected TOC Entries:
+;
+4; 3079 18586 EXTENSION - timescaledb
+5507; 0 0 COMMENT - EXTENSION timescaledb
+2; 3079 16392 EXTENSION - pgcrypto
+5508; 0 0 COMMENT - EXTENSION pgcrypto
+3; 3079 17248 EXTENSION - vector
+5509; 0 0 COMMENT - EXTENSION vector
+1455; 1247 16470 TYPE public market_type postgres
+1762; 1247 282540 TYPE public order_side postgres
+1446; 1247 16440 TYPE public order_status postgres
+1452; 1247 16460 TYPE public order_type postgres
+1765; 1247 282546 TYPE public pipeline_signal postgres
+1443; 1247 16430 TYPE public pipeline_status postgres
+1458; 1247 16478 TYPE public position_side postgres
+1449; 1247 16454 TYPE public trade_side postgres
+584; 1255 16574 FUNCTION public agent_memories_tsv_trigger() postgres
+673; 1255 16976 FUNCTION public prevent_conversation_message_created_at_update() postgres
+726; 1255 16941 FUNCTION public sync_strategy_status_with_is_active() postgres
+335; 1259 19328 TABLE _timescaledb_internal _compressed_hypertable_3 postgres
+336; 1259 19332 TABLE _timescaledb_internal _compressed_hypertable_4 postgres
+334; 1259 19317 TABLE public polymarket_book_snapshots postgres
+353; 1259 280886 TABLE _timescaledb_internal _hyper_2_10_chunk postgres
+356; 1259 323348 TABLE _timescaledb_internal _hyper_2_11_chunk postgres
+357; 1259 370117 TABLE _timescaledb_internal _hyper_2_12_chunk postgres
+358; 1259 417256 TABLE _timescaledb_internal _hyper_2_13_chunk postgres
+359; 1259 464118 TABLE _timescaledb_internal _hyper_2_14_chunk postgres
+360; 1259 510887 TABLE _timescaledb_internal _hyper_2_15_chunk postgres
+361; 1259 556977 TABLE _timescaledb_internal _hyper_2_16_chunk postgres
+362; 1259 598031 TABLE _timescaledb_internal _hyper_2_17_chunk postgres
+341; 1259 39449 TABLE _timescaledb_internal _hyper_2_1_chunk postgres
+342; 1259 40872 TABLE _timescaledb_internal _hyper_2_2_chunk postgres
+343; 1259 52870 TABLE _timescaledb_internal _hyper_2_3_chunk postgres
+344; 1259 64713 TABLE _timescaledb_internal _hyper_2_4_chunk postgres
+345; 1259 76653 TABLE _timescaledb_internal _hyper_2_5_chunk postgres
+349; 1259 118300 TABLE _timescaledb_internal _hyper_2_6_chunk postgres
+350; 1259 150686 TABLE _timescaledb_internal _hyper_2_7_chunk postgres
+351; 1259 197459 TABLE _timescaledb_internal _hyper_2_8_chunk postgres
+352; 1259 244601 TABLE _timescaledb_internal _hyper_2_9_chunk postgres
+363; 1259 775122 TABLE _timescaledb_internal compress_hyper_4_18_chunk postgres
+364; 1259 775174 TABLE _timescaledb_internal compress_hyper_4_19_chunk postgres
+365; 1259 775411 TABLE _timescaledb_internal compress_hyper_4_20_chunk postgres
+366; 1259 782973 TABLE _timescaledb_internal compress_hyper_4_21_chunk postgres
+367; 1259 783196 TABLE _timescaledb_internal compress_hyper_4_22_chunk postgres
+368; 1259 783317 TABLE _timescaledb_internal compress_hyper_4_23_chunk postgres
+369; 1259 783529 TABLE _timescaledb_internal compress_hyper_4_24_chunk postgres
+370; 1259 784000 TABLE _timescaledb_internal compress_hyper_4_25_chunk postgres
+371; 1259 784185 TABLE _timescaledb_internal compress_hyper_4_26_chunk postgres
+372; 1259 784306 TABLE _timescaledb_internal compress_hyper_4_27_chunk postgres
+373; 1259 784521 TABLE _timescaledb_internal compress_hyper_4_28_chunk postgres
+374; 1259 784625 TABLE _timescaledb_internal compress_hyper_4_29_chunk postgres
+375; 1259 784727 TABLE _timescaledb_internal compress_hyper_4_30_chunk postgres
+376; 1259 784829 TABLE _timescaledb_internal compress_hyper_4_31_chunk postgres
+377; 1259 784931 TABLE _timescaledb_internal compress_hyper_4_32_chunk postgres
+378; 1259 785034 TABLE _timescaledb_internal compress_hyper_4_33_chunk postgres
+379; 1259 785137 TABLE _timescaledb_internal compress_hyper_4_34_chunk postgres
+235; 1259 16505 TABLE public agent_decisions postgres
+245; 1259 16626 TABLE public agent_decisions_2026_q1 postgres
+246; 1259 16635 TABLE public agent_decisions_2026_q2 postgres
+247; 1259 16644 TABLE public agent_decisions_default postgres
+257; 1259 16865 TABLE public agent_events postgres
+258; 1259 16872 TABLE public agent_events_2026_q1 postgres
+259; 1259 16881 TABLE public agent_events_2026_q2 postgres
+260; 1259 16890 TABLE public agent_events_default postgres
+239; 1259 16564 TABLE public agent_memories postgres
+355; 1259 282588 TABLE public allocation_decisions postgres
+255; 1259 16819 TABLE public api_keys postgres
+274; 1259 17164 TABLE public app_settings postgres
+241; 1259 16586 TABLE public audit_log postgres
+248; 1259 16653 TABLE public audit_log_2026_q1 postgres
+249; 1259 16662 TABLE public audit_log_2026_q2 postgres
+250; 1259 16671 TABLE public audit_log_default postgres
+267; 1259 17052 TABLE public automation_job_runs postgres
+253; 1259 16765 TABLE public backtest_configs postgres
+254; 1259 16788 TABLE public backtest_runs postgres
+338; 1259 19353 TABLE public capital_ladder postgres
+263; 1259 16961 TABLE public conversation_messages postgres
+262; 1259 16951 TABLE public conversations postgres
+265; 1259 17018 TABLE public discovery_runs postgres
+380; 1259 833483 TABLE public financial_fill_idempotency postgres
+251; 1259 16744 TABLE public historical_ohlcv postgres
+252; 1259 16752 TABLE public historical_ohlcv_coverage postgres
+269; 1259 17078 TABLE public iv_history postgres
+348; 1259 82044 TABLE public kalshi_discovery_runs postgres
+347; 1259 82024 TABLE public kalshi_market_snapshots postgres
+382; 1259 833541 TABLE public kalshi_settlement_gate postgres
+346; 1259 82009 TABLE public kalshi_watched_markets postgres
+240; 1259 16576 TABLE public market_data_cache postgres
+270; 1259 17091 TABLE public news_feed postgres
+264; 1259 16999 TABLE public option_contracts postgres
+268; 1259 17066 TABLE public options_scan_results postgres
+236; 1259 16512 TABLE public orders postgres
+279; 1259 18407 TABLE public overnight_backtest_runs postgres
+261; 1259 16919 TABLE public pipeline_run_snapshots postgres
+234; 1259 16496 TABLE public pipeline_runs postgres
+242; 1259 16593 TABLE public pipeline_runs_2026_q1 postgres
+243; 1259 16604 TABLE public pipeline_runs_2026_q2 postgres
+244; 1259 16615 TABLE public pipeline_runs_default postgres
+273; 1259 17142 TABLE public polymarket_account_trades postgres
+272; 1259 17124 TABLE public polymarket_accounts postgres
+280; 1259 18522 TABLE public polymarket_discovery_runs postgres
+278; 1259 18104 TABLE public polymarket_resolved_markets postgres
+333; 1259 19312 TABLE public polymarket_ticks postgres
+277; 1259 18094 TABLE public polymarket_watched_markets postgres
+354; 1259 282553 TABLE public portfolio_opportunities postgres
+384; 1259 833575 TABLE public position_provenance postgres
+237; 1259 16528 TABLE public positions postgres
+381; 1259 833506 TABLE public prediction_settlement_idempotency postgres
+383; 1259 833563 TABLE public provider_rate_limit_cooldowns postgres
+340; 1259 28821 TABLE public replay_events postgres
+276; 1259 17219 TABLE public report_artifacts postgres
+337; 1259 19340 TABLE public risk_breaker_state postgres
+275; 1259 17180 TABLE public risk_state postgres
+232; 1259 16385 TABLE public schema_migrations postgres
+271; 1259 17104 TABLE public social_sentiment postgres
+233; 1259 16483 TABLE public strategies postgres
+5510; 0 0 COMMENT public COLUMN strategies.is_active postgres
+339; 1259 28774 TABLE public trade_decisions postgres
+238; 1259 16543 TABLE public trades postgres
+266; 1259 17034 TABLE public universe_tickers postgres
+256; 1259 16841 TABLE public users postgres
+4376; 0 0 TABLE ATTACH public agent_decisions_2026_q1 postgres
+4377; 0 0 TABLE ATTACH public agent_decisions_2026_q2 postgres
+4378; 0 0 TABLE ATTACH public agent_decisions_default postgres
+4382; 0 0 TABLE ATTACH public agent_events_2026_q1 postgres
+4383; 0 0 TABLE ATTACH public agent_events_2026_q2 postgres
+4384; 0 0 TABLE ATTACH public agent_events_default postgres
+4379; 0 0 TABLE ATTACH public audit_log_2026_q1 postgres
+4380; 0 0 TABLE ATTACH public audit_log_2026_q2 postgres
+4381; 0 0 TABLE ATTACH public audit_log_default postgres
+4373; 0 0 TABLE ATTACH public pipeline_runs_2026_q1 postgres
+4374; 0 0 TABLE ATTACH public pipeline_runs_2026_q2 postgres
+4375; 0 0 TABLE ATTACH public pipeline_runs_default postgres
+4346; 0 18607 TABLE DATA _timescaledb_catalog hypertable postgres
+4352; 0 18677 TABLE DATA _timescaledb_catalog chunk postgres
+4357; 0 18736 TABLE DATA _timescaledb_catalog chunk_column_stats postgres
+4348; 0 18643 TABLE DATA _timescaledb_catalog dimension postgres
+4350; 0 18662 TABLE DATA _timescaledb_catalog dimension_slice postgres
+4354; 0 18702 TABLE DATA _timescaledb_catalog chunk_constraint postgres
+4356; 0 18719 TABLE DATA _timescaledb_catalog chunk_index postgres
+4369; 0 18915 TABLE DATA _timescaledb_catalog compression_chunk_size postgres
+4368; 0 18905 TABLE DATA _timescaledb_catalog compression_settings postgres
+4362; 0 18825 TABLE DATA _timescaledb_catalog continuous_agg postgres
+4370; 0 18931 TABLE DATA _timescaledb_catalog continuous_agg_migrate_plan postgres
+4371; 0 18940 TABLE DATA _timescaledb_catalog continuous_agg_migrate_plan_step postgres
+4363; 0 18852 TABLE DATA _timescaledb_catalog continuous_aggs_bucket_function postgres
+4366; 0 18885 TABLE DATA _timescaledb_catalog continuous_aggs_hypertable_invalidation_log postgres
+4364; 0 18865 TABLE DATA _timescaledb_catalog continuous_aggs_invalidation_threshold postgres
+4367; 0 18889 TABLE DATA _timescaledb_catalog continuous_aggs_materialization_invalidation_log postgres
+4365; 0 18875 TABLE DATA _timescaledb_catalog continuous_aggs_watermark postgres
+4361; 0 18812 TABLE DATA _timescaledb_catalog metadata postgres
+4347; 0 18629 TABLE DATA _timescaledb_catalog tablespace postgres
+4360; 0 18756 TABLE DATA _timescaledb_config bgw_job postgres
+5451; 0 19328 TABLE DATA _timescaledb_internal _compressed_hypertable_3 postgres
+5452; 0 19332 TABLE DATA _timescaledb_internal _compressed_hypertable_4 postgres
+5469; 0 280886 TABLE DATA _timescaledb_internal _hyper_2_10_chunk postgres
+5472; 0 323348 TABLE DATA _timescaledb_internal _hyper_2_11_chunk postgres
+5473; 0 370117 TABLE DATA _timescaledb_internal _hyper_2_12_chunk postgres
+5474; 0 417256 TABLE DATA _timescaledb_internal _hyper_2_13_chunk postgres
+5475; 0 464118 TABLE DATA _timescaledb_internal _hyper_2_14_chunk postgres
+5476; 0 510887 TABLE DATA _timescaledb_internal _hyper_2_15_chunk postgres
+5477; 0 556977 TABLE DATA _timescaledb_internal _hyper_2_16_chunk postgres
+5478; 0 598031 TABLE DATA _timescaledb_internal _hyper_2_17_chunk postgres
+5457; 0 39449 TABLE DATA _timescaledb_internal _hyper_2_1_chunk postgres
+5458; 0 40872 TABLE DATA _timescaledb_internal _hyper_2_2_chunk postgres
+5459; 0 52870 TABLE DATA _timescaledb_internal _hyper_2_3_chunk postgres
+5460; 0 64713 TABLE DATA _timescaledb_internal _hyper_2_4_chunk postgres
+5461; 0 76653 TABLE DATA _timescaledb_internal _hyper_2_5_chunk postgres
+5465; 0 118300 TABLE DATA _timescaledb_internal _hyper_2_6_chunk postgres
+5466; 0 150686 TABLE DATA _timescaledb_internal _hyper_2_7_chunk postgres
+5467; 0 197459 TABLE DATA _timescaledb_internal _hyper_2_8_chunk postgres
+5468; 0 244601 TABLE DATA _timescaledb_internal _hyper_2_9_chunk postgres
+5479; 0 775122 TABLE DATA _timescaledb_internal compress_hyper_4_18_chunk postgres
+5480; 0 775174 TABLE DATA _timescaledb_internal compress_hyper_4_19_chunk postgres
+5481; 0 775411 TABLE DATA _timescaledb_internal compress_hyper_4_20_chunk postgres
+5482; 0 782973 TABLE DATA _timescaledb_internal compress_hyper_4_21_chunk postgres
+5483; 0 783196 TABLE DATA _timescaledb_internal compress_hyper_4_22_chunk postgres
+5484; 0 783317 TABLE DATA _timescaledb_internal compress_hyper_4_23_chunk postgres
+5485; 0 783529 TABLE DATA _timescaledb_internal compress_hyper_4_24_chunk postgres
+5486; 0 784000 TABLE DATA _timescaledb_internal compress_hyper_4_25_chunk postgres
+5487; 0 784185 TABLE DATA _timescaledb_internal compress_hyper_4_26_chunk postgres
+5488; 0 784306 TABLE DATA _timescaledb_internal compress_hyper_4_27_chunk postgres
+5489; 0 784521 TABLE DATA _timescaledb_internal compress_hyper_4_28_chunk postgres
+5490; 0 784625 TABLE DATA _timescaledb_internal compress_hyper_4_29_chunk postgres
+5491; 0 784727 TABLE DATA _timescaledb_internal compress_hyper_4_30_chunk postgres
+5492; 0 784829 TABLE DATA _timescaledb_internal compress_hyper_4_31_chunk postgres
+5493; 0 784931 TABLE DATA _timescaledb_internal compress_hyper_4_32_chunk postgres
+5494; 0 785034 TABLE DATA _timescaledb_internal compress_hyper_4_33_chunk postgres
+5495; 0 785137 TABLE DATA _timescaledb_internal compress_hyper_4_34_chunk postgres
+5414; 0 16626 TABLE DATA public agent_decisions_2026_q1 postgres
+5415; 0 16635 TABLE DATA public agent_decisions_2026_q2 postgres
+5416; 0 16644 TABLE DATA public agent_decisions_default postgres
+5426; 0 16872 TABLE DATA public agent_events_2026_q1 postgres
+5427; 0 16881 TABLE DATA public agent_events_2026_q2 postgres
+5428; 0 16890 TABLE DATA public agent_events_default postgres
+5409; 0 16564 TABLE DATA public agent_memories postgres
+5471; 0 282588 TABLE DATA public allocation_decisions postgres
+5424; 0 16819 TABLE DATA public api_keys postgres
+5442; 0 17164 TABLE DATA public app_settings postgres
+5417; 0 16653 TABLE DATA public audit_log_2026_q1 postgres
+5418; 0 16662 TABLE DATA public audit_log_2026_q2 postgres
+5419; 0 16671 TABLE DATA public audit_log_default postgres
+5435; 0 17052 TABLE DATA public automation_job_runs postgres
+5422; 0 16765 TABLE DATA public backtest_configs postgres
+5423; 0 16788 TABLE DATA public backtest_runs postgres
+5454; 0 19353 TABLE DATA public capital_ladder postgres
+5431; 0 16961 TABLE DATA public conversation_messages postgres
+5430; 0 16951 TABLE DATA public conversations postgres
+5433; 0 17018 TABLE DATA public discovery_runs postgres
+5496; 0 833483 TABLE DATA public financial_fill_idempotency postgres
+5420; 0 16744 TABLE DATA public historical_ohlcv postgres
+5421; 0 16752 TABLE DATA public historical_ohlcv_coverage postgres
+5437; 0 17078 TABLE DATA public iv_history postgres
+5464; 0 82044 TABLE DATA public kalshi_discovery_runs postgres
+5463; 0 82024 TABLE DATA public kalshi_market_snapshots postgres
+5498; 0 833541 TABLE DATA public kalshi_settlement_gate postgres
+5462; 0 82009 TABLE DATA public kalshi_watched_markets postgres
+5410; 0 16576 TABLE DATA public market_data_cache postgres
+5438; 0 17091 TABLE DATA public news_feed postgres
+5432; 0 16999 TABLE DATA public option_contracts postgres
+5436; 0 17066 TABLE DATA public options_scan_results postgres
+5406; 0 16512 TABLE DATA public orders postgres
+5447; 0 18407 TABLE DATA public overnight_backtest_runs postgres
+5429; 0 16919 TABLE DATA public pipeline_run_snapshots postgres
+5411; 0 16593 TABLE DATA public pipeline_runs_2026_q1 postgres
+5412; 0 16604 TABLE DATA public pipeline_runs_2026_q2 postgres
+5413; 0 16615 TABLE DATA public pipeline_runs_default postgres
+5441; 0 17142 TABLE DATA public polymarket_account_trades postgres
+5440; 0 17124 TABLE DATA public polymarket_accounts postgres
+5450; 0 19317 TABLE DATA public polymarket_book_snapshots postgres
+5448; 0 18522 TABLE DATA public polymarket_discovery_runs postgres
+5446; 0 18104 TABLE DATA public polymarket_resolved_markets postgres
+5449; 0 19312 TABLE DATA public polymarket_ticks postgres
+5445; 0 18094 TABLE DATA public polymarket_watched_markets postgres
+5470; 0 282553 TABLE DATA public portfolio_opportunities postgres
+5500; 0 833575 TABLE DATA public position_provenance postgres
+5407; 0 16528 TABLE DATA public positions postgres
+5497; 0 833506 TABLE DATA public prediction_settlement_idempotency postgres
+5499; 0 833563 TABLE DATA public provider_rate_limit_cooldowns postgres
+5456; 0 28821 TABLE DATA public replay_events postgres
+5444; 0 17219 TABLE DATA public report_artifacts postgres
+5453; 0 19340 TABLE DATA public risk_breaker_state postgres
+5443; 0 17180 TABLE DATA public risk_state postgres
+5404; 0 16385 TABLE DATA public schema_migrations postgres
+5439; 0 17104 TABLE DATA public social_sentiment postgres
+5405; 0 16483 TABLE DATA public strategies postgres
+5455; 0 28774 TABLE DATA public trade_decisions postgres
+5408; 0 16543 TABLE DATA public trades postgres
+5434; 0 17034 TABLE DATA public universe_tickers postgres
+5425; 0 16841 TABLE DATA public users postgres
+5511; 0 0 SEQUENCE SET _timescaledb_catalog chunk_column_stats_id_seq postgres
+5512; 0 0 SEQUENCE SET _timescaledb_catalog chunk_constraint_name postgres
+5513; 0 0 SEQUENCE SET _timescaledb_catalog chunk_id_seq postgres
+5514; 0 0 SEQUENCE SET _timescaledb_catalog continuous_agg_migrate_plan_step_step_id_seq postgres
+5515; 0 0 SEQUENCE SET _timescaledb_catalog dimension_id_seq postgres
+5516; 0 0 SEQUENCE SET _timescaledb_catalog dimension_slice_id_seq postgres
+5517; 0 0 SEQUENCE SET _timescaledb_catalog hypertable_id_seq postgres
+5518; 0 0 SEQUENCE SET _timescaledb_config bgw_job_id_seq postgres
+4751; 2606 16511 CONSTRAINT public agent_decisions agent_decisions_pkey postgres
+4822; 2606 16632 CONSTRAINT public agent_decisions_2026_q1 agent_decisions_2026_q1_pkey postgres
+4828; 2606 16641 CONSTRAINT public agent_decisions_2026_q2 agent_decisions_2026_q2_pkey postgres
+4834; 2606 16650 CONSTRAINT public agent_decisions_default agent_decisions_default_pkey postgres
+4882; 2606 16871 CONSTRAINT public agent_events agent_events_pkey postgres
+4891; 2606 16878 CONSTRAINT public agent_events_2026_q1 agent_events_2026_q1_pkey postgres
+4897; 2606 16887 CONSTRAINT public agent_events_2026_q2 agent_events_2026_q2_pkey postgres
+4903; 2606 16896 CONSTRAINT public agent_events_default agent_events_default_pkey postgres
+4780; 2606 16573 CONSTRAINT public agent_memories agent_memories_pkey postgres
+5105; 2606 282602 CONSTRAINT public allocation_decisions allocation_decisions_pkey postgres
+4870; 2606 16834 CONSTRAINT public api_keys api_keys_key_hash_key postgres
+4872; 2606 16832 CONSTRAINT public api_keys api_keys_key_prefix_key postgres
+4874; 2606 16830 CONSTRAINT public api_keys api_keys_pkey postgres
+4962; 2606 17175 CONSTRAINT public app_settings app_settings_pkey postgres
+4789; 2606 16592 CONSTRAINT public audit_log audit_log_pkey postgres
+4839; 2606 16659 CONSTRAINT public audit_log_2026_q1 audit_log_2026_q1_pkey postgres
+4844; 2606 16668 CONSTRAINT public audit_log_2026_q2 audit_log_2026_q2_pkey postgres
+4849; 2606 16677 CONSTRAINT public audit_log_default audit_log_default_pkey postgres
+4931; 2606 17060 CONSTRAINT public automation_job_runs automation_job_runs_pkey postgres
+4857; 2606 16776 CONSTRAINT public backtest_configs backtest_configs_pkey postgres
+4861; 2606 16798 CONSTRAINT public backtest_runs backtest_runs_pkey postgres
+5056; 2606 19366 CONSTRAINT public capital_ladder capital_ladder_pkey postgres
+4915; 2606 16970 CONSTRAINT public conversation_messages conversation_messages_pkey postgres
+4910; 2606 16960 CONSTRAINT public conversations conversations_pkey postgres
+4924; 2606 17028 CONSTRAINT public discovery_runs discovery_runs_pkey postgres
+5139; 2606 833490 CONSTRAINT public financial_fill_idempotency financial_fill_idempotency_pkey postgres
+4854; 2606 16759 CONSTRAINT public historical_ohlcv_coverage historical_ohlcv_coverage_pkey postgres
+4851; 2606 16750 CONSTRAINT public historical_ohlcv historical_ohlcv_pkey postgres
+4941; 2606 17085 CONSTRAINT public iv_history iv_history_pkey postgres
+5086; 2606 82060 CONSTRAINT public kalshi_discovery_runs kalshi_discovery_runs_pkey postgres
+5082; 2606 82041 CONSTRAINT public kalshi_market_snapshots kalshi_market_snapshots_pkey postgres
+5145; 2606 833558 CONSTRAINT public kalshi_settlement_gate kalshi_settlement_gate_pkey postgres
+5078; 2606 82022 CONSTRAINT public kalshi_watched_markets kalshi_watched_markets_pkey postgres
+4787; 2606 16585 CONSTRAINT public market_data_cache market_data_cache_pkey postgres
+4948; 2606 17099 CONSTRAINT public news_feed news_feed_pkey postgres
+4922; 2606 17009 CONSTRAINT public option_contracts option_contracts_pkey postgres
+4938; 2606 17074 CONSTRAINT public options_scan_results options_scan_results_pkey postgres
+4764; 2606 16522 CONSTRAINT public orders orders_pkey postgres
+4978; 2606 18424 CONSTRAINT public overnight_backtest_runs overnight_backtest_runs_pkey postgres
+4908; 2606 16928 CONSTRAINT public pipeline_run_snapshots pipeline_run_snapshots_pkey postgres
+4749; 2606 16504 CONSTRAINT public pipeline_runs pipeline_runs_pkey postgres
+4794; 2606 16601 CONSTRAINT public pipeline_runs_2026_q1 pipeline_runs_2026_q1_pkey postgres
+4802; 2606 16612 CONSTRAINT public pipeline_runs_2026_q2 pipeline_runs_2026_q2_pkey postgres
+4810; 2606 16623 CONSTRAINT public pipeline_runs_default pipeline_runs_default_pkey postgres
+4960; 2606 17152 CONSTRAINT public polymarket_account_trades polymarket_account_trades_pkey postgres
+4956; 2606 17140 CONSTRAINT public polymarket_accounts polymarket_accounts_pkey postgres
+4982; 2606 18540 CONSTRAINT public polymarket_discovery_runs polymarket_discovery_runs_pkey postgres
+4974; 2606 18112 CONSTRAINT public polymarket_resolved_markets polymarket_resolved_markets_pkey postgres
+4972; 2606 18102 CONSTRAINT public polymarket_watched_markets polymarket_watched_markets_pkey postgres
+5101; 2606 282579 CONSTRAINT public portfolio_opportunities portfolio_opportunities_dedupe_key_key postgres
+5103; 2606 282577 CONSTRAINT public portfolio_opportunities portfolio_opportunities_pkey postgres
+5149; 2606 833583 CONSTRAINT public position_provenance position_provenance_pkey postgres
+4770; 2606 16537 CONSTRAINT public positions positions_pkey postgres
+5141; 2606 833515 CONSTRAINT public prediction_settlement_idempotency prediction_settlement_idempotency_decision_id_key postgres
+5143; 2606 833513 CONSTRAINT public prediction_settlement_idempotency prediction_settlement_idempotency_pkey postgres
+5147; 2606 833570 CONSTRAINT public provider_rate_limit_cooldowns provider_rate_limit_cooldowns_pkey postgres
+5065; 2606 28832 CONSTRAINT public replay_events replay_events_pkey postgres
+4967; 2606 17235 CONSTRAINT public report_artifacts report_artifacts_pkey postgres
+4969; 2606 17237 CONSTRAINT public report_artifacts report_artifacts_strategy_id_report_type_time_bucket_key postgres
+5054; 2606 19347 CONSTRAINT public risk_breaker_state risk_breaker_state_pkey postgres
+4964; 2606 17191 CONSTRAINT public risk_state risk_state_pkey postgres
+4734; 2606 16389 CONSTRAINT public schema_migrations schema_migrations_pkey postgres
+4953; 2606 17113 CONSTRAINT public social_sentiment social_sentiment_pkey postgres
+4741; 2606 16495 CONSTRAINT public strategies strategies_pkey postgres
+5062; 2606 28798 CONSTRAINT public trade_decisions trade_decisions_pkey postgres
+4778; 2606 16553 CONSTRAINT public trades trades_pkey postgres
+4929; 2606 17045 CONSTRAINT public universe_tickers universe_tickers_pkey postgres
+4878; 2606 16850 CONSTRAINT public users users_pkey postgres
+4880; 2606 16852 CONSTRAINT public users users_username_key postgres
+5095; 1259 280892 INDEX _timescaledb_internal _hyper_2_10_chunk_polymarket_book_snapshots_received_at_idx postgres
+5096; 1259 280893 INDEX _timescaledb_internal _hyper_2_10_chunk_polymarket_book_snapshots_slug_received_at_id postgres
+5107; 1259 323354 INDEX _timescaledb_internal _hyper_2_11_chunk_polymarket_book_snapshots_received_at_idx postgres
+5108; 1259 323355 INDEX _timescaledb_internal _hyper_2_11_chunk_polymarket_book_snapshots_slug_received_at_id postgres
+5109; 1259 370123 INDEX _timescaledb_internal _hyper_2_12_chunk_polymarket_book_snapshots_received_at_idx postgres
+5110; 1259 370124 INDEX _timescaledb_internal _hyper_2_12_chunk_polymarket_book_snapshots_slug_received_at_id postgres
+5111; 1259 417262 INDEX _timescaledb_internal _hyper_2_13_chunk_polymarket_book_snapshots_received_at_idx postgres
+5112; 1259 417263 INDEX _timescaledb_internal _hyper_2_13_chunk_polymarket_book_snapshots_slug_received_at_id postgres
+5113; 1259 464124 INDEX _timescaledb_internal _hyper_2_14_chunk_polymarket_book_snapshots_received_at_idx postgres
+5114; 1259 464125 INDEX _timescaledb_internal _hyper_2_14_chunk_polymarket_book_snapshots_slug_received_at_id postgres
+5115; 1259 510893 INDEX _timescaledb_internal _hyper_2_15_chunk_polymarket_book_snapshots_received_at_idx postgres
+5116; 1259 510894 INDEX _timescaledb_internal _hyper_2_15_chunk_polymarket_book_snapshots_slug_received_at_id postgres
+5117; 1259 556983 INDEX _timescaledb_internal _hyper_2_16_chunk_polymarket_book_snapshots_received_at_idx postgres
+5118; 1259 556984 INDEX _timescaledb_internal _hyper_2_16_chunk_polymarket_book_snapshots_slug_received_at_id postgres
+5119; 1259 598037 INDEX _timescaledb_internal _hyper_2_17_chunk_polymarket_book_snapshots_received_at_idx postgres
+5120; 1259 598038 INDEX _timescaledb_internal _hyper_2_17_chunk_polymarket_book_snapshots_slug_received_at_id postgres
+5066; 1259 39455 INDEX _timescaledb_internal _hyper_2_1_chunk_polymarket_book_snapshots_received_at_idx postgres
+5067; 1259 39456 INDEX _timescaledb_internal _hyper_2_1_chunk_polymarket_book_snapshots_slug_received_at_idx postgres
+5068; 1259 40878 INDEX _timescaledb_internal _hyper_2_2_chunk_polymarket_book_snapshots_received_at_idx postgres
+5069; 1259 40879 INDEX _timescaledb_internal _hyper_2_2_chunk_polymarket_book_snapshots_slug_received_at_idx postgres
+5070; 1259 52876 INDEX _timescaledb_internal _hyper_2_3_chunk_polymarket_book_snapshots_received_at_idx postgres
+5071; 1259 52877 INDEX _timescaledb_internal _hyper_2_3_chunk_polymarket_book_snapshots_slug_received_at_idx postgres
+5072; 1259 64719 INDEX _timescaledb_internal _hyper_2_4_chunk_polymarket_book_snapshots_received_at_idx postgres
+5073; 1259 64720 INDEX _timescaledb_internal _hyper_2_4_chunk_polymarket_book_snapshots_slug_received_at_idx postgres
+5074; 1259 76659 INDEX _timescaledb_internal _hyper_2_5_chunk_polymarket_book_snapshots_received_at_idx postgres
+5075; 1259 76660 INDEX _timescaledb_internal _hyper_2_5_chunk_polymarket_book_snapshots_slug_received_at_idx postgres
+5087; 1259 118306 INDEX _timescaledb_internal _hyper_2_6_chunk_polymarket_book_snapshots_received_at_idx postgres
+5088; 1259 118307 INDEX _timescaledb_internal _hyper_2_6_chunk_polymarket_book_snapshots_slug_received_at_idx postgres
+5089; 1259 150692 INDEX _timescaledb_internal _hyper_2_7_chunk_polymarket_book_snapshots_received_at_idx postgres
+5090; 1259 150693 INDEX _timescaledb_internal _hyper_2_7_chunk_polymarket_book_snapshots_slug_received_at_idx postgres
+5091; 1259 197465 INDEX _timescaledb_internal _hyper_2_8_chunk_polymarket_book_snapshots_received_at_idx postgres
+5092; 1259 197466 INDEX _timescaledb_internal _hyper_2_8_chunk_polymarket_book_snapshots_slug_received_at_idx postgres
+5093; 1259 244607 INDEX _timescaledb_internal _hyper_2_9_chunk_polymarket_book_snapshots_received_at_idx postgres
+5094; 1259 244608 INDEX _timescaledb_internal _hyper_2_9_chunk_polymarket_book_snapshots_slug_received_at_idx postgres
+5121; 1259 775127 INDEX _timescaledb_internal compress_hyper_4_18_chunk_slug__ts_meta_min_1__ts_meta_max__idx postgres
+5122; 1259 775179 INDEX _timescaledb_internal compress_hyper_4_19_chunk_slug__ts_meta_min_1__ts_meta_max__idx postgres
+5123; 1259 775416 INDEX _timescaledb_internal compress_hyper_4_20_chunk_slug__ts_meta_min_1__ts_meta_max__idx postgres
+5124; 1259 782978 INDEX _timescaledb_internal compress_hyper_4_21_chunk_slug__ts_meta_min_1__ts_meta_max__idx postgres
+5125; 1259 783201 INDEX _timescaledb_internal compress_hyper_4_22_chunk_slug__ts_meta_min_1__ts_meta_max__idx postgres
+5126; 1259 783322 INDEX _timescaledb_internal compress_hyper_4_23_chunk_slug__ts_meta_min_1__ts_meta_max__idx postgres
+5127; 1259 783534 INDEX _timescaledb_internal compress_hyper_4_24_chunk_slug__ts_meta_min_1__ts_meta_max__idx postgres
+5128; 1259 784005 INDEX _timescaledb_internal compress_hyper_4_25_chunk_slug__ts_meta_min_1__ts_meta_max__idx postgres
+5129; 1259 784190 INDEX _timescaledb_internal compress_hyper_4_26_chunk_slug__ts_meta_min_1__ts_meta_max__idx postgres
+5130; 1259 784311 INDEX _timescaledb_internal compress_hyper_4_27_chunk_slug__ts_meta_min_1__ts_meta_max__idx postgres
+5131; 1259 784526 INDEX _timescaledb_internal compress_hyper_4_28_chunk_slug__ts_meta_min_1__ts_meta_max__idx postgres
+5132; 1259 784630 INDEX _timescaledb_internal compress_hyper_4_29_chunk_slug__ts_meta_min_1__ts_meta_max__idx postgres
+5133; 1259 784732 INDEX _timescaledb_internal compress_hyper_4_30_chunk_slug__ts_meta_min_1__ts_meta_max__idx postgres
+5134; 1259 784834 INDEX _timescaledb_internal compress_hyper_4_31_chunk_slug__ts_meta_min_1__ts_meta_max__idx postgres
+5135; 1259 784936 INDEX _timescaledb_internal compress_hyper_4_32_chunk_slug__ts_meta_min_1__ts_meta_max__idx postgres
+5136; 1259 785039 INDEX _timescaledb_internal compress_hyper_4_33_chunk_slug__ts_meta_min_1__ts_meta_max__idx postgres
+5137; 1259 785142 INDEX _timescaledb_internal compress_hyper_4_34_chunk_slug__ts_meta_min_1__ts_meta_max__idx postgres
+4752; 1259 16703 INDEX public idx_agent_decisions_agent_role postgres
+4817; 1259 16704 INDEX public agent_decisions_2026_q1_agent_role_idx postgres
+4753; 1259 16707 INDEX public idx_agent_decisions_created_at postgres
+4818; 1259 16708 INDEX public agent_decisions_2026_q1_created_at_idx postgres
+4754; 1259 16699 INDEX public idx_agent_decisions_pipeline_run_id postgres
+4819; 1259 16700 INDEX public agent_decisions_2026_q1_pipeline_run_id_idx postgres
+4755; 1259 17206 INDEX public idx_agent_decisions_run_id postgres
+4820; 1259 17207 INDEX public agent_decisions_2026_q1_pipeline_run_id_idx1 postgres
+4823; 1259 16705 INDEX public agent_decisions_2026_q2_agent_role_idx postgres
+4824; 1259 16709 INDEX public agent_decisions_2026_q2_created_at_idx postgres
+4825; 1259 16701 INDEX public agent_decisions_2026_q2_pipeline_run_id_idx postgres
+4826; 1259 17208 INDEX public agent_decisions_2026_q2_pipeline_run_id_idx1 postgres
+4829; 1259 16706 INDEX public agent_decisions_default_agent_role_idx postgres
+4830; 1259 16710 INDEX public agent_decisions_default_created_at_idx postgres
+4831; 1259 16702 INDEX public agent_decisions_default_pipeline_run_id_idx postgres
+4832; 1259 17209 INDEX public agent_decisions_default_pipeline_run_id_idx1 postgres
+4883; 1259 16907 INDEX public idx_agent_events_created_at postgres
+4887; 1259 16908 INDEX public agent_events_2026_q1_created_at_idx postgres
+4884; 1259 16903 INDEX public idx_agent_events_event_kind postgres
+4888; 1259 16904 INDEX public agent_events_2026_q1_event_kind_idx postgres
+4885; 1259 16899 INDEX public idx_agent_events_pipeline_run_id postgres
+4889; 1259 16900 INDEX public agent_events_2026_q1_pipeline_run_id_idx postgres
+4886; 1259 16911 INDEX public idx_agent_events_tags_gin postgres
+4892; 1259 16912 INDEX public agent_events_2026_q1_tags_idx postgres
+4893; 1259 16909 INDEX public agent_events_2026_q2_created_at_idx postgres
+4894; 1259 16905 INDEX public agent_events_2026_q2_event_kind_idx postgres
+4895; 1259 16901 INDEX public agent_events_2026_q2_pipeline_run_id_idx postgres
+4898; 1259 16913 INDEX public agent_events_2026_q2_tags_idx postgres
+4899; 1259 16910 INDEX public agent_events_default_created_at_idx postgres
+4900; 1259 16906 INDEX public agent_events_default_event_kind_idx postgres
+4901; 1259 16902 INDEX public agent_events_default_pipeline_run_id_idx postgres
+4904; 1259 16914 INDEX public agent_events_default_tags_idx postgres
+4790; 1259 16736 INDEX public idx_audit_log_created_at postgres
+4835; 1259 16737 INDEX public audit_log_2026_q1_created_at_idx postgres
+4791; 1259 16732 INDEX public idx_audit_log_entity postgres
+4836; 1259 16733 INDEX public audit_log_2026_q1_entity_type_entity_id_idx postgres
+4792; 1259 16728 INDEX public idx_audit_log_event_type postgres
+4837; 1259 16729 INDEX public audit_log_2026_q1_event_type_idx postgres
+4840; 1259 16738 INDEX public audit_log_2026_q2_created_at_idx postgres
+4841; 1259 16734 INDEX public audit_log_2026_q2_entity_type_entity_id_idx postgres
+4842; 1259 16730 INDEX public audit_log_2026_q2_event_type_idx postgres
+4845; 1259 16739 INDEX public audit_log_default_created_at_idx postgres
+4846; 1259 16735 INDEX public audit_log_default_entity_type_entity_id_idx postgres
+4847; 1259 16731 INDEX public audit_log_default_event_type_idx postgres
+4781; 1259 16724 INDEX public idx_agent_memories_agent_role postgres
+4782; 1259 16725 INDEX public idx_agent_memories_pipeline_run_id postgres
+4783; 1259 16723 INDEX public idx_agent_memories_situation_tsv postgres
+5106; 1259 282618 INDEX public idx_allocation_decisions_mode_action_created_at postgres
+4875; 1259 16835 INDEX public idx_api_keys_created_at postgres
+4876; 1259 16836 INDEX public idx_api_keys_revoked_at postgres
+4932; 1259 17205 INDEX public idx_automation_job_runs_job_name_started postgres
+4858; 1259 16783 INDEX public idx_backtest_configs_created_at postgres
+4859; 1259 16782 INDEX public idx_backtest_configs_strategy_id postgres
+4862; 1259 16809 INDEX public idx_backtest_runs_config_prompt_hash_run_ts_id postgres
+4863; 1259 16808 INDEX public idx_backtest_runs_config_prompt_run_ts_id postgres
+4864; 1259 16807 INDEX public idx_backtest_runs_config_run_ts_id postgres
+4865; 1259 792098 INDEX public idx_backtest_runs_input_hash postgres
+4866; 1259 16805 INDEX public idx_backtest_runs_prompt_version postgres
+4867; 1259 16806 INDEX public idx_backtest_runs_prompt_version_hash postgres
+4868; 1259 16804 INDEX public idx_backtest_runs_run_timestamp postgres
+5057; 1259 19367 INDEX public idx_capital_ladder_updated_at postgres
+4916; 1259 16981 INDEX public idx_conversation_messages_conversation_id postgres
+4917; 1259 16983 INDEX public idx_conversation_messages_conversation_id_created_at_id postgres
+4918; 1259 16982 INDEX public idx_conversation_messages_created_at postgres
+4911; 1259 16979 INDEX public idx_conversations_created_at postgres
+4912; 1259 16978 INDEX public idx_conversations_pipeline_run_id postgres
+4913; 1259 16980 INDEX public idx_conversations_pipeline_run_id_created_at_id postgres
+4925; 1259 17029 INDEX public idx_discovery_runs_started postgres
+4855; 1259 16760 INDEX public idx_historical_ohlcv_coverage_ticker_provider_timeframe_range postgres
+4852; 1259 16751 INDEX public idx_historical_ohlcv_ticker_provider_timeframe_bar_time postgres
+4939; 1259 17086 INDEX public idx_iv_history_ticker postgres
+4933; 1259 17061 INDEX public idx_job_runs_name_started postgres
+5083; 1259 82062 INDEX public idx_kalshi_discovery_runs_started_at postgres
+5084; 1259 82061 INDEX public idx_kalshi_discovery_runs_status_updated_at postgres
+5079; 1259 82043 INDEX public idx_kalshi_market_snapshots_captured_at postgres
+5080; 1259 82042 INDEX public idx_kalshi_market_snapshots_ticker_captured_at postgres
+5076; 1259 82023 INDEX public idx_kalshi_watched_markets_enabled_added_at postgres
+4784; 1259 16727 INDEX public idx_market_data_cache_expires_at postgres
+4785; 1259 16726 INDEX public idx_market_data_cache_ticker_provider postgres
+4942; 1259 17103 INDEX public idx_news_feed_category postgres
+4943; 1259 17576 INDEX public idx_news_feed_embedding postgres
+4944; 1259 17100 INDEX public idx_news_feed_guid postgres
+4945; 1259 17101 INDEX public idx_news_feed_published postgres
+4946; 1259 17102 INDEX public idx_news_feed_tickers postgres
+4919; 1259 17011 INDEX public idx_option_contracts_expiry postgres
+4920; 1259 17010 INDEX public idx_option_contracts_underlying postgres
+4934; 1259 17075 INDEX public idx_options_scan_date postgres
+4935; 1259 17076 INDEX public idx_options_scan_ticker postgres
+4936; 1259 17077 INDEX public idx_options_scan_unique postgres
+4756; 1259 16715 INDEX public idx_orders_external_id postgres
+4757; 1259 17012 INDEX public idx_orders_leg_group postgres
+4758; 1259 30900 INDEX public idx_orders_market_type_created postgres
+4759; 1259 16712 INDEX public idx_orders_pipeline_run_id postgres
+4760; 1259 16714 INDEX public idx_orders_status postgres
+4761; 1259 16711 INDEX public idx_orders_strategy_id postgres
+4762; 1259 16713 INDEX public idx_orders_ticker postgres
+4975; 1259 18425 INDEX public idx_overnight_backtest_runs_active postgres
+4976; 1259 18426 INDEX public idx_overnight_backtest_runs_started_at postgres
+4905; 1259 16929 INDEX public idx_pipeline_run_snapshots_pipeline_run_id postgres
+4906; 1259 16934 INDEX public idx_pipeline_run_snapshots_pipeline_run_id_created_at_id postgres
+4742; 1259 16691 INDEX public idx_pipeline_runs_status postgres
+4743; 1259 17201 INDEX public idx_pipeline_runs_status_started postgres
+4744; 1259 16683 INDEX public idx_pipeline_runs_strategy_id postgres
+4745; 1259 30891 INDEX public idx_pipeline_runs_strategy_started_id postgres
+4746; 1259 16687 INDEX public idx_pipeline_runs_ticker postgres
+4747; 1259 16695 INDEX public idx_pipeline_runs_trade_date postgres
+4957; 1259 17158 INDEX public idx_pm_account_trades_address postgres
+4958; 1259 17159 INDEX public idx_pm_account_trades_market postgres
+4970; 1259 18103 INDEX public idx_pm_watched_enabled postgres
+4954; 1259 17141 INDEX public idx_polymarket_accounts_tracked_win_rate postgres
+4979; 1259 18541 INDEX public idx_polymarket_discovery_runs_active postgres
+4980; 1259 18542 INDEX public idx_polymarket_discovery_runs_started_at postgres
+5097; 1259 282587 INDEX public idx_portfolio_opportunities_market_type_ticker postgres
+5098; 1259 282585 INDEX public idx_portfolio_opportunities_status_expires_at postgres
+5099; 1259 282586 INDEX public idx_portfolio_opportunities_strategy_id postgres
+4765; 1259 16718 INDEX public idx_positions_closed_at postgres
+4766; 1259 17013 INDEX public idx_positions_leg_group postgres
+4767; 1259 16716 INDEX public idx_positions_strategy_id postgres
+4768; 1259 16717 INDEX public idx_positions_ticker postgres
+5063; 1259 28838 INDEX public idx_replay_events_trade_decision_occurred postgres
+4965; 1259 17243 INDEX public idx_report_artifacts_strategy_type postgres
+5052; 1259 19348 INDEX public idx_risk_breaker_state_tripped_at postgres
+4949; 1259 17577 INDEX public idx_social_sentiment_embedding postgres
+4950; 1259 17115 INDEX public idx_social_sentiment_source postgres
+4951; 1259 17114 INDEX public idx_social_sentiment_ticker postgres
+4735; 1259 17587 INDEX public idx_strategies_discovery_unique postgres
+4736; 1259 16682 INDEX public idx_strategies_is_active postgres
+4737; 1259 16681 INDEX public idx_strategies_market_type postgres
+4738; 1259 36674 INDEX public idx_strategies_polymarket_paper_active_slug postgres
+4739; 1259 16680 INDEX public idx_strategies_ticker postgres
+5058; 1259 28815 INDEX public idx_trade_decisions_market_created postgres
+5059; 1259 28816 INDEX public idx_trade_decisions_status_created postgres
+5060; 1259 28814 INDEX public idx_trade_decisions_strategy_created postgres
+4771; 1259 16722 INDEX public idx_trades_executed_at postgres
+4772; 1259 17592 INDEX public idx_trades_external_id postgres
+4773; 1259 833536 INDEX public idx_trades_external_id_unique postgres
+4774; 1259 16719 INDEX public idx_trades_order_id postgres
+4775; 1259 16720 INDEX public idx_trades_position_id postgres
+4776; 1259 16721 INDEX public idx_trades_ticker postgres
+4926; 1259 17047 INDEX public idx_universe_index_group postgres
+4927; 1259 17046 INDEX public idx_universe_watch_score postgres
+4795; 1259 16692 INDEX public pipeline_runs_2026_q1_status_idx postgres
+4796; 1259 17202 INDEX public pipeline_runs_2026_q1_status_started_at_idx postgres
+4797; 1259 16684 INDEX public pipeline_runs_2026_q1_strategy_id_idx postgres
+4798; 1259 30892 INDEX public pipeline_runs_2026_q1_strategy_id_started_at_id_idx postgres
+4799; 1259 16688 INDEX public pipeline_runs_2026_q1_ticker_idx postgres
+4800; 1259 16696 INDEX public pipeline_runs_2026_q1_trade_date_idx postgres
+4803; 1259 16693 INDEX public pipeline_runs_2026_q2_status_idx postgres
+4804; 1259 17203 INDEX public pipeline_runs_2026_q2_status_started_at_idx postgres
+4805; 1259 16685 INDEX public pipeline_runs_2026_q2_strategy_id_idx postgres
+4806; 1259 30893 INDEX public pipeline_runs_2026_q2_strategy_id_started_at_id_idx postgres
+4807; 1259 16689 INDEX public pipeline_runs_2026_q2_ticker_idx postgres
+4808; 1259 16697 INDEX public pipeline_runs_2026_q2_trade_date_idx postgres
+4811; 1259 16694 INDEX public pipeline_runs_default_status_idx postgres
+4812; 1259 17204 INDEX public pipeline_runs_default_status_started_at_idx postgres
+4813; 1259 16686 INDEX public pipeline_runs_default_strategy_id_idx postgres
+4814; 1259 30894 INDEX public pipeline_runs_default_strategy_id_started_at_id_idx postgres
+4815; 1259 16690 INDEX public pipeline_runs_default_ticker_idx postgres
+4816; 1259 16698 INDEX public pipeline_runs_default_trade_date_idx postgres
+5050; 1259 19324 INDEX public polymarket_book_snapshots_received_at_idx postgres
+5051; 1259 19327 INDEX public polymarket_book_snapshots_slug_received_at_idx postgres
+5048; 1259 19322 INDEX public polymarket_ticks_received_at_idx postgres
+5049; 1259 19326 INDEX public polymarket_ticks_slug_received_at_idx postgres
+5171; 0 0 INDEX ATTACH public agent_decisions_2026_q1_agent_role_idx postgres
+5172; 0 0 INDEX ATTACH public agent_decisions_2026_q1_created_at_idx postgres
+5173; 0 0 INDEX ATTACH public agent_decisions_2026_q1_pipeline_run_id_idx postgres
+5174; 0 0 INDEX ATTACH public agent_decisions_2026_q1_pipeline_run_id_idx1 postgres
+5175; 0 0 INDEX ATTACH public agent_decisions_2026_q1_pkey postgres
+5176; 0 0 INDEX ATTACH public agent_decisions_2026_q2_agent_role_idx postgres
+5177; 0 0 INDEX ATTACH public agent_decisions_2026_q2_created_at_idx postgres
+5178; 0 0 INDEX ATTACH public agent_decisions_2026_q2_pipeline_run_id_idx postgres
+5179; 0 0 INDEX ATTACH public agent_decisions_2026_q2_pipeline_run_id_idx1 postgres
+5180; 0 0 INDEX ATTACH public agent_decisions_2026_q2_pkey postgres
+5181; 0 0 INDEX ATTACH public agent_decisions_default_agent_role_idx postgres
+5182; 0 0 INDEX ATTACH public agent_decisions_default_created_at_idx postgres
+5183; 0 0 INDEX ATTACH public agent_decisions_default_pipeline_run_id_idx postgres
+5184; 0 0 INDEX ATTACH public agent_decisions_default_pipeline_run_id_idx1 postgres
+5185; 0 0 INDEX ATTACH public agent_decisions_default_pkey postgres
+5198; 0 0 INDEX ATTACH public agent_events_2026_q1_created_at_idx postgres
+5199; 0 0 INDEX ATTACH public agent_events_2026_q1_event_kind_idx postgres
+5200; 0 0 INDEX ATTACH public agent_events_2026_q1_pipeline_run_id_idx postgres
+5201; 0 0 INDEX ATTACH public agent_events_2026_q1_pkey postgres
+5202; 0 0 INDEX ATTACH public agent_events_2026_q1_tags_idx postgres
+5203; 0 0 INDEX ATTACH public agent_events_2026_q2_created_at_idx postgres
+5204; 0 0 INDEX ATTACH public agent_events_2026_q2_event_kind_idx postgres
+5205; 0 0 INDEX ATTACH public agent_events_2026_q2_pipeline_run_id_idx postgres
+5206; 0 0 INDEX ATTACH public agent_events_2026_q2_pkey postgres
+5207; 0 0 INDEX ATTACH public agent_events_2026_q2_tags_idx postgres
+5208; 0 0 INDEX ATTACH public agent_events_default_created_at_idx postgres
+5209; 0 0 INDEX ATTACH public agent_events_default_event_kind_idx postgres
+5210; 0 0 INDEX ATTACH public agent_events_default_pipeline_run_id_idx postgres
+5211; 0 0 INDEX ATTACH public agent_events_default_pkey postgres
+5212; 0 0 INDEX ATTACH public agent_events_default_tags_idx postgres
+5186; 0 0 INDEX ATTACH public audit_log_2026_q1_created_at_idx postgres
+5187; 0 0 INDEX ATTACH public audit_log_2026_q1_entity_type_entity_id_idx postgres
+5188; 0 0 INDEX ATTACH public audit_log_2026_q1_event_type_idx postgres
+5189; 0 0 INDEX ATTACH public audit_log_2026_q1_pkey postgres
+5190; 0 0 INDEX ATTACH public audit_log_2026_q2_created_at_idx postgres
+5191; 0 0 INDEX ATTACH public audit_log_2026_q2_entity_type_entity_id_idx postgres
+5192; 0 0 INDEX ATTACH public audit_log_2026_q2_event_type_idx postgres
+5193; 0 0 INDEX ATTACH public audit_log_2026_q2_pkey postgres
+5194; 0 0 INDEX ATTACH public audit_log_default_created_at_idx postgres
+5195; 0 0 INDEX ATTACH public audit_log_default_entity_type_entity_id_idx postgres
+5196; 0 0 INDEX ATTACH public audit_log_default_event_type_idx postgres
+5197; 0 0 INDEX ATTACH public audit_log_default_pkey postgres
+5150; 0 0 INDEX ATTACH public pipeline_runs_2026_q1_pkey postgres
+5151; 0 0 INDEX ATTACH public pipeline_runs_2026_q1_status_idx postgres
+5152; 0 0 INDEX ATTACH public pipeline_runs_2026_q1_status_started_at_idx postgres
+5153; 0 0 INDEX ATTACH public pipeline_runs_2026_q1_strategy_id_idx postgres
+5154; 0 0 INDEX ATTACH public pipeline_runs_2026_q1_strategy_id_started_at_id_idx postgres
+5155; 0 0 INDEX ATTACH public pipeline_runs_2026_q1_ticker_idx postgres
+5156; 0 0 INDEX ATTACH public pipeline_runs_2026_q1_trade_date_idx postgres
+5157; 0 0 INDEX ATTACH public pipeline_runs_2026_q2_pkey postgres
+5158; 0 0 INDEX ATTACH public pipeline_runs_2026_q2_status_idx postgres
+5159; 0 0 INDEX ATTACH public pipeline_runs_2026_q2_status_started_at_idx postgres
+5160; 0 0 INDEX ATTACH public pipeline_runs_2026_q2_strategy_id_idx postgres
+5161; 0 0 INDEX ATTACH public pipeline_runs_2026_q2_strategy_id_started_at_id_idx postgres
+5162; 0 0 INDEX ATTACH public pipeline_runs_2026_q2_ticker_idx postgres
+5163; 0 0 INDEX ATTACH public pipeline_runs_2026_q2_trade_date_idx postgres
+5164; 0 0 INDEX ATTACH public pipeline_runs_default_pkey postgres
+5165; 0 0 INDEX ATTACH public pipeline_runs_default_status_idx postgres
+5166; 0 0 INDEX ATTACH public pipeline_runs_default_status_started_at_idx postgres
+5167; 0 0 INDEX ATTACH public pipeline_runs_default_strategy_id_idx postgres
+5168; 0 0 INDEX ATTACH public pipeline_runs_default_strategy_id_started_at_id_idx postgres
+5169; 0 0 INDEX ATTACH public pipeline_runs_default_ticker_idx postgres
+5170; 0 0 INDEX ATTACH public pipeline_runs_default_trade_date_idx postgres
+5243; 2620 19331 TRIGGER _timescaledb_internal _compressed_hypertable_3 ts_insert_blocker postgres
+5244; 2620 19335 TRIGGER _timescaledb_internal _compressed_hypertable_4 ts_insert_blocker postgres
+5239; 2620 16575 TRIGGER public agent_memories trg_agent_memories_tsv postgres
+5240; 2620 16977 TRIGGER public conversation_messages trg_conversation_messages_created_at_immutable postgres
+5238; 2620 16942 TRIGGER public strategies trg_strategies_sync_status_with_is_active postgres
+5242; 2620 19325 TRIGGER public polymarket_book_snapshots ts_insert_blocker postgres
+5241; 2620 19323 TRIGGER public polymarket_ticks ts_insert_blocker postgres
+5227; 2606 282613 FK CONSTRAINT public allocation_decisions allocation_decisions_created_order_id_fkey postgres
+5228; 2606 282603 FK CONSTRAINT public allocation_decisions allocation_decisions_opportunity_id_fkey postgres
+5229; 2606 282608 FK CONSTRAINT public allocation_decisions allocation_decisions_strategy_id_fkey postgres
+5217; 2606 16777 FK CONSTRAINT public backtest_configs backtest_configs_strategy_id_fkey postgres
+5218; 2606 16799 FK CONSTRAINT public backtest_runs backtest_runs_backtest_config_id_fkey postgres
+5219; 2606 16971 FK CONSTRAINT public conversation_messages conversation_messages_conversation_id_fkey postgres
+5230; 2606 833491 FK CONSTRAINT public financial_fill_idempotency financial_fill_idempotency_order_id_fkey postgres
+5231; 2606 833496 FK CONSTRAINT public financial_fill_idempotency financial_fill_idempotency_position_id_fkey postgres
+5232; 2606 833501 FK CONSTRAINT public financial_fill_idempotency financial_fill_idempotency_trade_id_fkey postgres
+5213; 2606 16523 FK CONSTRAINT public orders orders_strategy_id_fkey postgres
+5220; 2606 17153 FK CONSTRAINT public polymarket_account_trades polymarket_account_trades_account_address_fkey postgres
+5226; 2606 282580 FK CONSTRAINT public portfolio_opportunities portfolio_opportunities_strategy_id_fkey postgres
+5237; 2606 833584 FK CONSTRAINT public position_provenance position_provenance_position_id_fkey postgres
+5214; 2606 16538 FK CONSTRAINT public positions positions_strategy_id_fkey postgres
+5233; 2606 833516 FK CONSTRAINT public prediction_settlement_idempotency prediction_settlement_idempotency_decision_id_fkey postgres
+5234; 2606 833521 FK CONSTRAINT public prediction_settlement_idempotency prediction_settlement_idempotency_position_id_fkey postgres
+5235; 2606 833531 FK CONSTRAINT public prediction_settlement_idempotency prediction_settlement_idempotency_replay_event_id_fkey postgres
+5236; 2606 833526 FK CONSTRAINT public prediction_settlement_idempotency prediction_settlement_idempotency_trade_id_fkey postgres
+5225; 2606 28833 FK CONSTRAINT public replay_events replay_events_trade_decision_id_fkey postgres
+5221; 2606 17238 FK CONSTRAINT public report_artifacts report_artifacts_strategy_id_fkey postgres
+5222; 2606 28809 FK CONSTRAINT public trade_decisions trade_decisions_live_order_id_fkey postgres
+5223; 2606 28804 FK CONSTRAINT public trade_decisions trade_decisions_paper_order_id_fkey postgres
+5224; 2606 28799 FK CONSTRAINT public trade_decisions trade_decisions_strategy_id_fkey postgres
+5215; 2606 16554 FK CONSTRAINT public trades trades_order_id_fkey postgres
+5216; 2606 16559 FK CONSTRAINT public trades trades_position_id_fkey postgres

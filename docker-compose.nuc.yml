@@ -59,10 +59,15 @@ services:
       - backend
 
   app:
+    image: ${AUGR_APP_IMAGE:-augr-app:local}
     build:
       context: .
       dockerfile: Dockerfile
       target: production
+      args:
+        BUILD_VERSION: ${BUILD_VERSION:-development}
+        BUILD_COMMIT: ${BUILD_COMMIT:-unknown}
+        BUILD_TIME: ${BUILD_TIME:-unknown}
     env_file:
       - .env
     environment:
@@ -101,6 +106,7 @@ services:
           - augr-api
 
   web:
+    image: ${AUGR_WEB_IMAGE:-augr-web:local}
     build:
       context: .
       dockerfile: Dockerfile.web

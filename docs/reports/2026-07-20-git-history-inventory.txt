@@ -1,0 +1,61 @@
+a27692c fix(automation): close stale Alpaca positions
+303c9ec fix(api): include closed realized PnL in portfolio summary
+59ba6fb fix(api): exclude open positions from realized PnL
+28debe7 fix(portfolio): use account balance in allocator diagnostics
+2d9ce06 Merge remote-tracking branch 'origin/main'
+c118aaf docs: establish remediation delivery plan
+ccc0aa5 fix(discovery): recover structured LLM responses
+501ebb4 fix(reddit): coordinate provider-wide cooldowns
+6c45245 fix(web): restore lint and refresh safety
+7b60bff fix(web): stabilize operational state handling
+018dcf6 feat(observability): expose discovery outcomes and freshness
+155a049 test(providers): cover external data seams
+04ba070 test(web): split operational suites and repair CI gates
+bb92153 fix(web): make operational state and charts truthful
+21a3794 fix(web): correct mobile navigation semantics
+a403a26 fix(web): finish responsive design reconciliation
+60250a2 feat(web): recover readiness and event-market surfaces
+ec30291 feat(web): restore options chain research
+4114364 feat(web): restore backtest evidence surface
+e8be605 feat(web): restore decision journal and replay
+ce88125 docs(web): close product-surface recovery matrix
+70d2ced fix(options): enforce contract and risk boundaries
+c326320 feat(options): add deterministic paper contract fills
+b8d2eb4 fix(options): persist contract lifecycle metadata
+266d8ab feat(options): persist immediate paper fills
+22c8cb6 feat(options): wire paper contract selection runtime
+ba8344f feat(options): persist paper position closures
+49f2134 fix(options): apply multiplier-aware exposure limits
+0946c1c fix(options): preflight spreads before persistence
+0fcbdce test(web): stabilize risk control readiness
+1903a7a feat(web): expose options lifecycle metadata
+df7dd3e feat(options): execute atomic paper debit spreads
+8835ffb feat(options): settle expired paper positions
+8f1b856 feat(options): enforce portfolio Greek limits
+0a52da9 feat(options): reconcile durable lifecycle state
+a194b9b feat(options): close paper spreads atomically
+c78b7d0 feat(options): restore paper account after restart
+a367c3f docs(options): close dedicated paper runtime phase
+c2f944b feat(prediction): persist replayable order lifecycle
+b04f4fd feat(prediction): journal deterministic probability gates
+e6b4761 feat(prediction): settle paper event contracts
+9e5dfc6 docs(prediction): close deterministic runtime phase
+da5d498 feat(backtest): version simulation assumptions
+9140c44 fix(backtest): prevent same-bar lookahead fills
+4318797 feat(backtest): measure fills divergence and calibration
+27f57a9 docs(backtest): close decision quality phase
+826cd72 feat(operations): add capability release gate
+c1681dd docs(operations): close paper release readiness phase
+bbba200 docs(audit): verify nine-phase remediation
+bb4eacf feat(web): refine operational UI experience
+9b94fb0 feat(operations): prepare weekly paper evaluation
+01aeac8 fix(automation): guard missing universe dependency
+d03603f fix(automation): tolerate Kalshi discovery throttling
+5916e6d fix(agent): bound debate prompt capacity
+8546967 fix(execution): complete Kalshi paper fills
+25c55c5 fix(portfolio): advance opportunity lifecycle
+24490e8 docs(operations): sequence production stabilization
+0a0c163 feat: harden trading lifecycle and reconciliation
+6fef66d docs(ops): record P1 and P2 stabilization
+6d60ad5 fix(api): aggregate enum market types
+87aba28 (HEAD -> main) fix(data): reject legacy cancelled paper decisions

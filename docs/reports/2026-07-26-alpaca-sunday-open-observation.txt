@@ -1,0 +1,77 @@
+Augr paper-trading observation: alpaca-sunday-open
+Observed at: 2026-07-27 00:20:00 UTC
+Observed at: 2026-07-26 20:20:00 EDT
+
+Service health
+{"status":"ok","db":"ok","redis":"ok"}
+
+NAME              IMAGE                               COMMAND                  SERVICE    CREATED        STATUS                  PORTS
+augr-app-1        augr-app                            "./tradingagent serve"   app        7 hours ago    Up 7 hours (healthy)    10.0.0.56:3030->8080/tcp
+augr-postgres-1   timescale/timescaledb:2.17.2-pg17   "docker-entrypoint.s…"   postgres   21 hours ago   Up 21 hours (healthy)   5432/tcp
+augr-redis-1      redis:7-alpine                      "docker-entrypoint.s…"   redis      21 hours ago   Up 21 hours (healthy)   6379/tcp
+augr-web-1        augr-web                            "/docker-entrypoint.…"   web        8 hours ago    Up 8 hours              10.0.0.56:3029->80/tcp
+
+Operational database state
+WARNING:  database "tradingagent" has no actual collation version, but a version was recorded
+ market_type |  status   | count
+-------------+-----------+-------
+ stock       | completed |     2
+(1 row)
+
+ market_type | status | orders | notional
+-------------+--------+--------+----------
+(0 rows)
+
+ open_positions |     gross_notional
+----------------+------------------------
+              9 | 17995.2941176472000000
+(1 row)
+
+ active_breakers
+-----------------
+               0
+(1 row)
+
+     job_name      | status |          started_at           |         completed_at          | consecutive_failures
+-------------------+--------+-------------------------------+-------------------------------+----------------------
+ alpaca_reconcile  | ok     | 2026-07-27 00:20:00.002883+00 | 2026-07-27 00:20:00.239779+00 |                    0
+ alpaca_reconcile  | ok     | 2026-07-27 00:15:00.001231+00 | 2026-07-27 00:15:00.250045+00 |                    0
+ kalshi_settlement | ok     | 2026-07-27 00:15:00.001052+00 | 2026-07-27 00:15:00.734505+00 |                    0
+ kalshi_settlement | ok     | 2026-07-27 00:10:00.001229+00 | 2026-07-27 00:10:00.663031+00 |                    0
+ alpaca_reconcile  | ok     | 2026-07-27 00:10:00.000936+00 | 2026-07-27 00:10:00.300442+00 |                    0
+ kalshi_settlement | ok     | 2026-07-27 00:05:00.007104+00 | 2026-07-27 00:05:00.622341+00 |                    0
+ alpaca_reconcile  | ok     | 2026-07-27 00:05:00.00521+00  | 2026-07-27 00:05:00.277007+00 |                    0
+ kalshi_settlement | ok     | 2026-07-27 00:00:00.004937+00 | 2026-07-27 00:00:00.70771+00  |                    0
+ alpaca_reconcile  | ok     | 2026-07-27 00:00:00.00461+00  | 2026-07-27 00:00:00.33954+00  |                    0
+ kalshi_settlement | ok     | 2026-07-26 23:55:00.001429+00 | 2026-07-26 23:55:00.528332+00 |                    0
+ alpaca_reconcile  | ok     | 2026-07-26 23:55:00.0014+00   | 2026-07-26 23:55:00.253777+00 |                    0
+(11 rows)
+
+
+Recent warnings and errors
+app-1  | {"time":"2026-07-27T00:00:00.385033173Z","level":"WARN","msg":"data provider failed, trying next","method":"GetFundamentals","ticker":"KEYS","error":"yahoo: GetFundamentals: data: not implemented"}
+app-1  | {"time":"2026-07-27T00:00:00.3856792Z","level":"WARN","msg":"data provider failed, trying next","method":"GetFundamentals","ticker":"KEYS","error":"polygon: GetFundamentals: data: not implemented"}
+app-1  | {"time":"2026-07-27T00:00:00.417035768Z","level":"WARN","msg":"data provider failed, trying next","method":"GetFundamentals","ticker":"RTX","error":"yahoo: GetFundamentals: data: not implemented"}
+app-1  | {"time":"2026-07-27T00:00:00.417086494Z","level":"WARN","msg":"data provider failed, trying next","method":"GetFundamentals","ticker":"RTX","error":"polygon: GetFundamentals: data: not implemented"}
+app-1  | {"time":"2026-07-27T00:00:01.416036438Z","level":"WARN","msg":"fmp: non-success response","status":403,"error":"fmp: Legacy Endpoint : Due to Legacy endpoints being no longer supported - This endpoint is only available for legacy users who have valid subscriptions prior August 31, 2025. Please visit our documentation page https://site.financialmodelingprep.com/developer/docs for our current APIs. (status=403)"}
+app-1  | {"time":"2026-07-27T00:00:01.416123955Z","level":"WARN","msg":"data provider failed, trying next","method":"GetFundamentals","ticker":"RTX","error":"fmp: GetFundamentals: fmp: Legacy Endpoint : Due to Legacy endpoints being no longer supported - This endpoint is only available for legacy users who have valid subscriptions prior August 31, 2025. Please visit our documentation page https://site.financialmodelingprep.com/developer/docs for our current APIs. (status=403)"}
+app-1  | {"time":"2026-07-27T00:00:01.949517046Z","level":"WARN","msg":"fmp: non-success response","status":403,"error":"fmp: Legacy Endpoint : Due to Legacy endpoints being no longer supported - This endpoint is only available for legacy users who have valid subscriptions prior August 31, 2025. Please visit our documentation page https://site.financialmodelingprep.com/developer/docs for our current APIs. (status=403)"}
+app-1  | {"time":"2026-07-27T00:00:01.949543487Z","level":"WARN","msg":"data provider failed, trying next","method":"GetFundamentals","ticker":"KEYS","error":"fmp: GetFundamentals: fmp: Legacy Endpoint : Due to Legacy endpoints being no longer supported - This endpoint is only available for legacy users who have valid subscriptions prior August 31, 2025. Please visit our documentation page https://site.financialmodelingprep.com/developer/docs for our current APIs. (status=403)"}
+app-1  | {"time":"2026-07-27T00:00:02.142963307Z","level":"WARN","msg":"alphavantage: non-success response","status":400,"error":"alphavantage: Thank you for using Alpha Vantage! Please consider spreading out your free API requests more sparingly (1 request per second). You may subscribe to any of the premium plans at https://www.alphavantage.co/premium/ to lift the free key rate limit (25 requests per day), raise the per-second burst limit, and instantly unlock all premium endpoints (status=400)"}
+app-1  | {"time":"2026-07-27T00:00:02.143060921Z","level":"WARN","msg":"data provider failed, trying next","method":"GetFundamentals","ticker":"RTX","error":"alphavantage: GetFundamentals: income statement request: alphavantage: Thank you for using Alpha Vantage! Please consider spreading out your free API requests more sparingly (1 request per second). You may subscribe to any of the premium plans at https://www.alphavantage.co/premium/ to lift the free key rate limit (25 requests per day), raise the per-second burst limit, and instantly unlock all premium endpoints (status=400)"}
+app-1  | {"time":"2026-07-27T00:00:02.143110177Z","level":"WARN","msg":"data provider failed, trying next","method":"GetFundamentals","ticker":"RTX","error":"newsapi: GetFundamentals: data: not implemented"}
+app-1  | {"time":"2026-07-27T00:00:02.425149641Z","level":"WARN","msg":"alphavantage: non-success response","status":400,"error":"alphavantage: Thank you for using Alpha Vantage! Please consider spreading out your free API requests more sparingly (1 request per second). You may subscribe to any of the premium plans at https://www.alphavantage.co/premium/ to lift the free key rate limit (25 requests per day), raise the per-second burst limit, and instantly unlock all premium endpoints (status=400)"}
+app-1  | {"time":"2026-07-27T00:00:02.425264962Z","level":"WARN","msg":"data provider failed, trying next","method":"GetFundamentals","ticker":"KEYS","error":"alphavantage: GetFundamentals: overview request: alphavantage: Thank you for using Alpha Vantage! Please consider spreading out your free API requests more sparingly (1 request per second). You may subscribe to any of the premium plans at https://www.alphavantage.co/premium/ to lift the free key rate limit (25 requests per day), raise the per-second burst limit, and instantly unlock all premium endpoints (status=400)"}
+app-1  | {"time":"2026-07-27T00:00:02.425355493Z","level":"WARN","msg":"data provider failed, trying next","method":"GetFundamentals","ticker":"KEYS","error":"newsapi: GetFundamentals: data: not implemented"}
+app-1  | {"time":"2026-07-27T00:00:03.727064587Z","level":"WARN","msg":"finnhub: non-success response","status":403,"error":"finnhub: You don't have access to this resource. (status=403)"}
+app-1  | {"time":"2026-07-27T00:00:03.732495995Z","level":"WARN","msg":"finnhub: non-success response","status":403,"error":"finnhub: You don't have access to this resource. (status=403)"}
+app-1  | {"time":"2026-07-27T00:00:12.465355066Z","level":"WARN","msg":"reddit/sentiment: failed to parse LLM response","batch":1,"total_batches":3,"attempt":1,"content":"**Assessing RTX mentions in posts**\n**Deciding RTX mention criteria for posts**\n**Finalizing JSON output structure**\n[{\"mentions_ticker\":false,\"sentiment\":\"neutral\"},{\"mentions_ticker\":false,\"sentimen"}
+app-1  | {"time":"2026-07-27T00:00:21.396466239Z","level":"WARN","msg":"reddit/sentiment: failed to parse LLM response","batch":2,"total_batches":3,"attempt":1,"content":"**Defining RTX ticker classification criteria**\n**Setting neutral sentiment for false mentions**\n[{\"mentions_ticker\":false,\"sentiment\":\"neutral\"},{\"mentions_ticker\":false,\"sentiment\":\"neutral\"},{\"ment"}
+app-1  | {"time":"2026-07-27T00:00:25.603241227Z","level":"WARN","msg":"reddit/sentiment: failed to parse LLM response","batch":3,"total_batches":3,"attempt":1,"content":"**Finalizing JSON output format**\n[{\"mentions_ticker\":false,\"sentiment\":\"neutral\"},{\"mentions_ticker\":false,\"sentiment\":\"neutral\"},{\"mentions_ticker\":false,\"sentiment\":\"neutral\"},{\"mentions_ticker\":fa"}
+app-1  | {"time":"2026-07-27T00:04:54.872692272Z","level":"WARN","msg":"debate prompt compacted","role":"bear_researcher","phase":"research_debate","original_bytes":64820,"final_bytes":57086,"dropped_rounds":0,"truncated_reports":0}
+app-1  | {"time":"2026-07-27T00:05:29.616711721Z","level":"WARN","msg":"debate prompt compacted","role":"invest_judge","phase":"research_debate","original_bytes":69908,"final_bytes":51071,"dropped_rounds":1,"truncated_reports":0}
+app-1  | {"time":"2026-07-27T00:05:42.633911033Z","level":"WARN","msg":"research_manager: failed to parse structured output; storing raw content","error":"failed to parse JSON: invalid character '*' looking for beginning of value"}
+app-1  | {"time":"2026-07-27T00:05:49.978836097Z","level":"WARN","msg":"trader: failed to parse structured output; storing default hold plan","error":"failed to parse JSON: invalid character '*' looking for beginning of value"}
+app-1  | {"time":"2026-07-27T00:05:50.715849717Z","level":"WARN","msg":"debate prompt compacted","role":"invest_judge","phase":"research_debate","original_bytes":78267,"final_bytes":60690,"dropped_rounds":1,"truncated_reports":0}
+app-1  | {"time":"2026-07-27T00:06:01.945701584Z","level":"WARN","msg":"research_manager: failed to parse structured output; storing raw content","error":"failed to parse JSON: invalid character '*' looking for beginning of value"}
+app-1  | {"time":"2026-07-27T00:06:10.686436449Z","level":"WARN","msg":"trader: failed to parse structured output; storing default hold plan","error":"failed to parse JSON: invalid character '*' looking for beginning of value"}
