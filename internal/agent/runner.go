@@ -374,6 +374,7 @@ func (r *Runner) Run(ctx context.Context, prepared PreparedRun) (result *RunResu
 		{"research_debate", PhaseResearchDebate, r.runResearchDebate},
 		{"trading", PhaseTrading, r.runTrading},
 		{"risk_debate", PhaseRiskDebate, r.runRiskDebate},
+		{"execution_gate", PhaseExecutionGate, r.runExecutionGate},
 	}
 
 	for _, phase := range phases {
@@ -462,6 +463,31 @@ func (r *Runner) Run(ctx context.Context, prepared PreparedRun) (result *RunResu
 	result = &RunResult{Run: run, Signal: r.canonicalSignal(state), State: snapshotState(state), Warnings: warnings}
 	runErr = nil
 	return
+}
+
+func (r *Runner) runExecutionGate(_ context.Context, state *PipelineState, prepared PreparedRun, _ *[]RunWarning, _ *sync.Mutex) error {
+	signal := r.canonicalSignal(state)
+	if state == nil {
+		return nil
+	}
+	// A risk-manager signal is later and therefore canonical. Use its confidence
+	// when present instead of accidentally validating the earlier trader score.
+	if state.FinalSignal.Signal != "" {
+		state.TradingPlan.Confidence = state.FinalSignal.Confidence
+	}
+	if signal != domain.PipelineSignalHold && state.TradingPlan.Confidence < prepared.Config.RiskConfig.MinConfidence {
+		state.FinalSignal.Signal = domain.PipelineSignalHold
+		state.FinalSignal.Confidence = state.TradingPlan.Confidence
+		state.TradingPlan.Action = domain.PipelineSignalHold
+		state.TradingPlan.PositionSize = 0
+		state.TradingPlan.Rationale = appendRationale(state.TradingPlan.Rationale, fmt.Sprintf(
+			"Execution gate converted signal to HOLD because confidence %.2f was below minimum %.2f.",
+			state.TradingPlan.Confidence,
+			prepared.Config.RiskConfig.MinConfidence,
+		))
+		signal = domain.PipelineSignalHold
+	}
+	return ValidateExecutablePlan(state.TradingPlan, signal, prepared.Config.RiskConfig)
 }
 
 func applyInitialStateSeed(state *PipelineState, seed InitialStateSeed) {
@@ -604,11 +630,13 @@ func (r *Runner) runTrading(ctx context.Context, state *PipelineState, prepared 
 	}
 	r.helper.persistStructuredEvent(phaseCtx, r.helper.newStructuredEvent(state.PipelineRunID, state.StrategyID, AgentEventKindAgentStarted, trader.Role(), trader.Name(), "", map[string]any{"phase": PhaseTrading.String(), "agent_role": trader.Role().String()}, []string{"agent", PhaseTrading.String()}))
 	output, err := trader.Trade(phaseCtx, tradingInputFromState(state))
-	if err != nil {
-		return err
+	if output.StoredOutput != "" {
+		applyTradingOutput(state, output)
+		if persistErr := r.persistDecision(phaseCtx, state.PipelineRunID, trader.Name(), trader.Role(), PhaseTrading, nil, output.StoredOutput, output.LLMResponse); persistErr != nil {
+			return persistErr
+		}
 	}
-	applyTradingOutput(state, output)
-	if err := r.persistDecision(phaseCtx, state.PipelineRunID, trader.Name(), trader.Role(), PhaseTrading, nil, output.StoredOutput, output.LLMResponse); err != nil {
+	if err != nil {
 		return err
 	}
 	r.helper.persistStructuredEvent(phaseCtx, r.helper.newStructuredEvent(state.PipelineRunID, state.StrategyID, AgentEventKindAgentCompleted, trader.Role(), trader.Name(), "", map[string]any{"phase": PhaseTrading.String(), "agent_role": trader.Role().String()}, []string{"agent", PhaseTrading.String()}))
@@ -698,11 +726,13 @@ func (r *Runner) runDebateJudge(ctx context.Context, state *PipelineState, phase
 	case ResearchJudge:
 		r.helper.persistStructuredEvent(ctx, r.helper.newStructuredEvent(state.PipelineRunID, state.StrategyID, AgentEventKindAgentStarted, participant.Role(), participant.Name(), "", map[string]any{"phase": phase.String(), "agent_role": participant.Role().String()}, []string{"agent", phase.String()}))
 		output, err := participant.JudgeResearch(ctx, researchJudgeInputFromState(state))
-		if err != nil {
-			return err
+		if output.InvestmentPlan != "" {
+			applyResearchJudgeOutput(state, output)
+			if persistErr := r.persistDecision(ctx, state.PipelineRunID, participant.Name(), participant.Role(), phase, nil, output.InvestmentPlan, output.LLMResponse); persistErr != nil {
+				return persistErr
+			}
 		}
-		applyResearchJudgeOutput(state, output)
-		if err := r.persistDecision(ctx, state.PipelineRunID, participant.Name(), participant.Role(), phase, nil, output.InvestmentPlan, output.LLMResponse); err != nil {
+		if err != nil {
 			return err
 		}
 		r.helper.persistStructuredEvent(ctx, r.helper.newStructuredEvent(state.PipelineRunID, state.StrategyID, AgentEventKindAgentCompleted, participant.Role(), participant.Name(), "", map[string]any{"phase": phase.String(), "agent_role": participant.Role().String()}, []string{"agent", phase.String()}))
@@ -710,11 +740,13 @@ func (r *Runner) runDebateJudge(ctx context.Context, state *PipelineState, phase
 	case RiskJudge:
 		r.helper.persistStructuredEvent(ctx, r.helper.newStructuredEvent(state.PipelineRunID, state.StrategyID, AgentEventKindAgentStarted, participant.Role(), participant.Name(), "", map[string]any{"phase": phase.String(), "agent_role": participant.Role().String()}, []string{"agent", phase.String()}))
 		output, err := participant.JudgeRisk(ctx, riskJudgeInputFromState(state))
-		if err != nil {
-			return err
+		if output.StoredSignal != "" {
+			applyRiskJudgeOutput(state, output)
+			if persistErr := r.persistDecision(ctx, state.PipelineRunID, participant.Name(), participant.Role(), phase, nil, output.StoredSignal, output.LLMResponse); persistErr != nil {
+				return persistErr
+			}
 		}
-		applyRiskJudgeOutput(state, output)
-		if err := r.persistDecision(ctx, state.PipelineRunID, participant.Name(), participant.Role(), phase, nil, output.StoredSignal, output.LLMResponse); err != nil {
+		if err != nil {
 			return err
 		}
 		r.helper.persistStructuredEvent(ctx, r.helper.newStructuredEvent(state.PipelineRunID, state.StrategyID, AgentEventKindAgentCompleted, participant.Role(), participant.Name(), "", map[string]any{"phase": phase.String(), "agent_role": participant.Role().String()}, []string{"agent", phase.String()}))

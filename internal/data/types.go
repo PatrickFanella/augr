@@ -41,12 +41,14 @@ type Fundamentals struct {
 
 // NewsArticle represents a single news item relevant to a ticker.
 type NewsArticle struct {
-	Title       string    `json:"title"`
-	Summary     string    `json:"summary"`
-	URL         string    `json:"url"`
-	Source      string    `json:"source"`
-	PublishedAt time.Time `json:"published_at"`
-	Sentiment   float64   `json:"sentiment"`
+	Title          string    `json:"title"`
+	Summary        string    `json:"summary"`
+	URL            string    `json:"url"`
+	Source         string    `json:"source"`
+	PublishedAt    time.Time `json:"published_at"`
+	Sentiment      float64   `json:"sentiment"`
+	RelatedTickers []string  `json:"related_tickers,omitempty"`
+	Relevance      float64   `json:"relevance,omitempty"`
 }
 
 // SocialSentiment aggregates social-media sentiment signals for a ticker.

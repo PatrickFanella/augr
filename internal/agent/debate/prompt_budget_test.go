@@ -1,6 +1,7 @@
 package debate
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -43,6 +44,37 @@ func TestBuildBudgetedDebateMessagesKeepsSingleNineKiBReportUnderBudget(t *testi
 	}
 	if !strings.Contains(messages[1].Content, strings.Repeat("r", 9*1024)) {
 		t.Fatal("expected 9KiB report to remain unchanged")
+	}
+}
+
+func TestBuildBudgetedDebateMessagesPreservesThreeRepresentativeRounds(t *testing.T) {
+	rounds := make([]agent.DebateRound, 3)
+	for i := range rounds {
+		rounds[i] = agent.DebateRound{
+			Number: i + 1,
+			Contributions: map[agent.AgentRole]string{
+				agent.AgentRoleBullResearcher: strings.Repeat("bull ", 1700),
+				agent.AgentRoleBearResearcher: strings.Repeat("bear ", 1700),
+			},
+		}
+	}
+	reports := map[agent.AgentRole]string{
+		agent.AgentRoleMarketAnalyst:       strings.Repeat("market ", 1200),
+		agent.AgentRoleFundamentalsAnalyst: strings.Repeat("fundamentals ", 700),
+		agent.AgentRoleNewsAnalyst:         strings.Repeat("news ", 1200),
+	}
+
+	messages, stats, err := buildBudgetedDebateMessages("research prompt", rounds, reports)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.DroppedRounds != 0 {
+		t.Fatalf("DroppedRounds = %d, want 0 for representative three-round debate", stats.DroppedRounds)
+	}
+	for round := 1; round <= 3; round++ {
+		if !strings.Contains(messages[1].Content, fmt.Sprintf("Round %d:", round)) {
+			t.Fatalf("expected Round %d to be preserved", round)
+		}
 	}
 }
 

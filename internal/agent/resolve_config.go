@@ -16,6 +16,12 @@ const (
 	defaultMinConfidence          = 0.65
 )
 
+var defaultRequiredAnalystRoles = []AgentRole{
+	AgentRoleMarketAnalyst,
+	AgentRoleFundamentalsAnalyst,
+	AgentRoleNewsAnalyst,
+}
+
 // GlobalSettings holds optional system-wide defaults for strategy execution.
 // Fields use the same pointer-based convention as StrategyConfig: a nil pointer
 // means "no global setting; fall through to the hardcoded default".
@@ -29,6 +35,8 @@ type GlobalSettings struct {
 	// AnalystSelection restricts which analyst roles run across all strategies.
 	// A nil slice means all analysts are enabled.
 	AnalystSelection []AgentRole
+	// RequiredAnalystRoles declares which selected roles must have usable data.
+	RequiredAnalystRoles []AgentRole
 	// PromptOverrides provides system-wide prompt replacements for specific roles.
 	// A nil map means no system-wide overrides are applied.
 	PromptOverrides map[AgentRole]string
@@ -78,6 +86,8 @@ type ResolvedConfig struct {
 	// AnalystSelection lists which analyst roles run in the pipeline.
 	// A nil slice means all analysts are enabled.
 	AnalystSelection []AgentRole
+	// RequiredAnalystRoles declares which selected roles must have usable data.
+	RequiredAnalystRoles []AgentRole
 	// PromptOverrides maps agent roles to their overridden system prompts.
 	// A nil map means no overrides are applied.
 	PromptOverrides map[AgentRole]string
@@ -137,9 +147,34 @@ func ResolveConfig(strategyConfig *StrategyConfig, globalSettings GlobalSettings
 			TakeProfitMultiplier: resolveFloat64Ptr(sRisk.TakeProfitMultiplier, gRisk.TakeProfitMultiplier, defaultTakeProfitMultiplier),
 			MinConfidence:        resolveFloat64Ptr(sRisk.MinConfidence, gRisk.MinConfidence, defaultMinConfidence),
 		},
-		AnalystSelection: resolveAgentRoles(s.AnalystSelection, globalSettings.AnalystSelection),
-		PromptOverrides:  resolvePromptOverrides(s.PromptOverrides, globalSettings.PromptOverrides),
+		AnalystSelection:     resolveAgentRoles(s.AnalystSelection, globalSettings.AnalystSelection),
+		RequiredAnalystRoles: resolveRequiredAgentRoles(s.RequiredAnalystRoles, globalSettings.RequiredAnalystRoles, resolveAgentRoles(s.AnalystSelection, globalSettings.AnalystSelection)),
+		PromptOverrides:      resolvePromptOverrides(s.PromptOverrides, globalSettings.PromptOverrides),
 	}
+}
+
+func resolveRequiredAgentRoles(strategy, global, selected []AgentRole) []AgentRole {
+	if strategy != nil {
+		return cloneAgentRoles(strategy)
+	}
+	if global != nil {
+		return cloneAgentRoles(global)
+	}
+	defaults := defaultRequiredAnalystRoles
+	if selected == nil {
+		return cloneAgentRoles(defaults)
+	}
+	enabled := make(map[AgentRole]bool, len(selected))
+	for _, role := range selected {
+		enabled[role] = true
+	}
+	resolved := make([]AgentRole, 0, len(defaults))
+	for _, role := range defaults {
+		if enabled[role] {
+			resolved = append(resolved, role)
+		}
+	}
+	return resolved
 }
 
 // ValidateResolvedConfig checks that a ResolvedConfig has sensible values.
@@ -166,6 +201,26 @@ func ValidateResolvedConfig(rc ResolvedConfig) error {
 	}
 	if rc.RiskConfig.MinConfidence < 0 || rc.RiskConfig.MinConfidence > 1 {
 		return fmt.Errorf("resolved config: min confidence must be in [0, 1], got %v", rc.RiskConfig.MinConfidence)
+	}
+	selected := make(map[AgentRole]bool, len(rc.AnalystSelection))
+	for _, role := range rc.AnalystSelection {
+		if !isAnalysisAgentRole(role) {
+			return fmt.Errorf("resolved config: analyst selection contains non-analysis role %q", role)
+		}
+		selected[role] = true
+	}
+	seenRequired := make(map[AgentRole]bool, len(rc.RequiredAnalystRoles))
+	for _, role := range rc.RequiredAnalystRoles {
+		if !isAnalysisAgentRole(role) {
+			return fmt.Errorf("resolved config: required analyst roles contains non-analysis role %q", role)
+		}
+		if seenRequired[role] {
+			return fmt.Errorf("resolved config: required analyst roles contains duplicate role %q", role)
+		}
+		seenRequired[role] = true
+		if rc.AnalystSelection != nil && !selected[role] {
+			return fmt.Errorf("resolved config: required analyst role %q is not selected", role)
+		}
 	}
 	return nil
 }

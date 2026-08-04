@@ -119,13 +119,15 @@ func (r *RiskManager) Execute(ctx context.Context, state *agent.PipelineState) e
 		TradingPlan: state.TradingPlan,
 	}
 	output, err := r.JudgeRisk(ctx, input)
+	if output.StoredSignal != "" {
+		state.FinalSignal = output.FinalSignal
+		state.TradingPlan = output.TradingPlan
+		state.RiskDebate.FinalSignal = output.StoredSignal
+		state.RecordDecision(agent.AgentRoleRiskManager, agent.PhaseRiskDebate, nil, output.StoredSignal, output.LLMResponse)
+	}
 	if err != nil {
 		return err
 	}
-	state.FinalSignal = output.FinalSignal
-	state.TradingPlan = output.TradingPlan
-	state.RiskDebate.FinalSignal = output.StoredSignal
-	state.RecordDecision(agent.AgentRoleRiskManager, agent.PhaseRiskDebate, nil, output.StoredSignal, output.LLMResponse)
 	return nil
 }
 
@@ -158,12 +160,12 @@ func (r *RiskManager) JudgeRisk(ctx context.Context, input agent.RiskJudgeInput)
 	var finalSignal agent.FinalSignal
 	tradingPlan := input.TradingPlan
 
-	// Attempt to parse the structured output. When parsing succeeds we
-	// store a clean, re-marshaled JSON string and update the pipeline
-	// state. On failure we fall back to the raw LLM content so the
-	// pipeline can still proceed.
+	// Attempt to parse the structured output. When parsing succeeds we store a
+	// clean, re-marshaled JSON string and update pipeline state. On failure we
+	// retain the raw response for diagnosis and fail the run at this boundary.
 	storedSignal := content
 	signal, parseErr := ParseFinalSignal(content)
+	structured := agent.BuildDecisionIntegrityEnvelope("risk_signal/v1", signal, parseErr, parseErr == nil, parseErr != nil)
 	if parseErr != nil {
 		r.logger.Warn("risk_manager: failed to parse structured output; storing raw content",
 			slog.String("error", parseErr.Error()),
@@ -201,20 +203,25 @@ func (r *RiskManager) JudgeRisk(ctx context.Context, input agent.RiskJudgeInput)
 		}
 	}
 
-	return agent.RiskJudgeOutput{
+	output := agent.RiskJudgeOutput{
 		FinalSignal:  finalSignal,
 		StoredSignal: storedSignal,
 		TradingPlan:  tradingPlan,
 		LLMResponse: &agent.DecisionLLMResponse{
-			Provider:   r.providerName,
-			PromptText: promptText,
+			Provider:         r.providerName,
+			PromptText:       promptText,
+			OutputStructured: structured,
 			Response: &llm.CompletionResponse{
 				Content: content,
 				Model:   r.Model(),
 				Usage:   usage,
 			},
 		},
-	}, nil
+	}
+	if parseErr != nil {
+		return output, fmt.Errorf("risk_manager: invalid structured output: %w", parseErr)
+	}
+	return output, nil
 }
 
 // ParseFinalSignal attempts to parse the LLM response content into a

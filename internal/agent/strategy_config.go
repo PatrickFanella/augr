@@ -117,6 +117,11 @@ type StrategyConfig struct {
 	// AnalystSelection restricts which analyst roles run in the pipeline.
 	// A nil slice means all analysts are enabled.
 	AnalystSelection []AgentRole `json:"analyst_selection,omitempty"`
+	// RequiredAnalystRoles declares which selected analyst roles must receive
+	// usable, fresh input data. Missing required input fails the run before any
+	// LLM call. Nil uses the conservative market/fundamentals/news default;
+	// an explicit empty array makes every selected analyst optional.
+	RequiredAnalystRoles []AgentRole `json:"required_analyst_roles"`
 	// PromptOverrides replaces the default system prompt for specific roles.
 	// A nil map means no overrides are applied.
 	PromptOverrides map[AgentRole]string `json:"prompt_overrides,omitempty"`
@@ -140,8 +145,25 @@ func ValidateStrategyConfig(cfg StrategyConfig) error {
 		return err
 	}
 	for i, role := range cfg.AnalystSelection {
-		if !role.IsValid() {
+		if !role.IsValid() || !isAnalysisAgentRole(role) {
 			return fmt.Errorf("analyst_selection[%d]: unknown agent role %q", i, role)
+		}
+	}
+	selected := make(map[AgentRole]bool, len(cfg.AnalystSelection))
+	for _, role := range cfg.AnalystSelection {
+		selected[role] = true
+	}
+	seenRequired := make(map[AgentRole]bool, len(cfg.RequiredAnalystRoles))
+	for i, role := range cfg.RequiredAnalystRoles {
+		if !role.IsValid() || !isAnalysisAgentRole(role) {
+			return fmt.Errorf("required_analyst_roles[%d]: unknown analysis role %q", i, role)
+		}
+		if seenRequired[role] {
+			return fmt.Errorf("required_analyst_roles[%d]: duplicate role %q", i, role)
+		}
+		seenRequired[role] = true
+		if cfg.AnalystSelection != nil && !selected[role] {
+			return fmt.Errorf("required_analyst_roles[%d]: role %q is not enabled in analyst_selection", i, role)
 		}
 	}
 	for role := range cfg.PromptOverrides {
@@ -150,6 +172,15 @@ func ValidateStrategyConfig(cfg StrategyConfig) error {
 		}
 	}
 	return nil
+}
+
+func isAnalysisAgentRole(role AgentRole) bool {
+	switch role {
+	case AgentRoleMarketAnalyst, AgentRoleFundamentalsAnalyst, AgentRoleNewsAnalyst, AgentRoleSocialMediaAnalyst:
+		return true
+	default:
+		return false
+	}
 }
 
 func validateLLMConfig(c *StrategyLLMConfig) error {

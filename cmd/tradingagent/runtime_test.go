@@ -763,6 +763,18 @@ func (captureProvider) Complete(_ context.Context, request llm.CompletionRequest
 		content = request.Messages[0].Content
 	}
 
+	// These tests exercise prompt wiring through the complete production runner.
+	// Return role-appropriate structured output now that judge parse failures are
+	// intentionally fatal instead of being converted into implicit HOLDs.
+	switch {
+	case strings.Contains(content, "custom invest judge prompt"), strings.Contains(content, "key_evidence"):
+		content = `{"direction":"hold","conviction":5,"key_evidence":["test evidence"],"acknowledged_risks":["test risk"],"rationale":"test hold"}`
+	case strings.Contains(content, "custom risk manager prompt"), strings.Contains(content, "adjusted_position_size"):
+		content = `{"action":"HOLD","confidence":5,"adjusted_position_size":0,"adjusted_stop_loss":0,"reasoning":"test hold"}`
+	case strings.Contains(content, "custom trader prompt"), strings.Contains(content, "entry_type"):
+		content = `{"action":"hold","ticker":"AAPL","confidence":0.5,"rationale":"test hold"}`
+	}
+
 	return &llm.CompletionResponse{
 		Content: content,
 		Model:   request.Model,
@@ -1175,7 +1187,7 @@ func TestRealStrategyRunnerLoadInitialState_PopulatesSeededInputs(t *testing.T) 
 		logger: slogDiscardLogger(),
 	}
 
-	seed, err := runner.loadInitialState(context.Background(), domain.Strategy{Ticker: "AAPL", MarketType: domain.MarketTypeStock})
+	seed, err := runner.loadInitialState(context.Background(), domain.Strategy{Ticker: "AAPL", MarketType: domain.MarketTypeStock}, agent.ResolvedConfig{RequiredAnalystRoles: []agent.AgentRole{}})
 	if err != nil {
 		t.Fatalf("loadInitialState() error = %v", err)
 	}
@@ -1220,7 +1232,7 @@ func TestRealStrategyRunnerLoadInitialState_DoesNotEmitDebugProgressAtInfo(t *te
 		logger: slogDiscardLogger(),
 	}
 
-	if _, err := runner.loadInitialState(context.Background(), domain.Strategy{Ticker: "AAPL", MarketType: domain.MarketTypeStock}); err != nil {
+	if _, err := runner.loadInitialState(context.Background(), domain.Strategy{Ticker: "AAPL", MarketType: domain.MarketTypeStock}, agent.ResolvedConfig{RequiredAnalystRoles: []agent.AgentRole{}}); err != nil {
 		t.Fatalf("loadInitialState() error = %v", err)
 	}
 	if got := logs.String(); strings.Contains(got, `msg="DEBUG:`) {

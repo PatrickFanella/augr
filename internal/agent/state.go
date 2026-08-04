@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"encoding/json"
 	"sync"
 
 	"github.com/google/uuid"
@@ -44,6 +45,7 @@ const (
 	PhaseResearchDebate = domain.PhaseResearchDebate
 	PhaseTrading        = domain.PhaseTrading
 	PhaseRiskDebate     = domain.PhaseRiskDebate
+	PhaseExecutionGate  = domain.PhaseExecutionGate
 )
 
 type PipelineSignal = domain.PipelineSignal
@@ -107,9 +109,45 @@ func (s *PipelineState) GetAnalystReport(role AgentRole) string {
 
 // DecisionLLMResponse captures the persisted LLM metadata for a node decision.
 type DecisionLLMResponse struct {
-	Provider   string                  `json:"provider,omitempty"`
-	PromptText string                  `json:"prompt_text,omitempty"`
-	Response   *llm.CompletionResponse `json:"response,omitempty"`
+	Provider         string                  `json:"provider,omitempty"`
+	PromptText       string                  `json:"prompt_text,omitempty"`
+	Response         *llm.CompletionResponse `json:"response,omitempty"`
+	OutputStructured json.RawMessage         `json:"output_structured,omitempty"`
+}
+
+// DecisionIntegrityEnvelope is persisted in agent_decisions.output_structured.
+// It keeps the normalized value and the structured-output boundary status
+// together so a fallback can never be mistaken for a parsed model decision.
+type DecisionIntegrityEnvelope struct {
+	Schema          string          `json:"schema"`
+	ParseStatus     string          `json:"parse_status"`
+	FallbackUsed    bool            `json:"fallback_used"`
+	Canonical       bool            `json:"canonical"`
+	ValidationError string          `json:"validation_error,omitempty"`
+	Value           json.RawMessage `json:"value,omitempty"`
+}
+
+// BuildDecisionIntegrityEnvelope creates queryable decision-lineage metadata.
+func BuildDecisionIntegrityEnvelope(schema string, value any, parseErr error, canonical, fallbackUsed bool) json.RawMessage {
+	envelope := DecisionIntegrityEnvelope{
+		Schema:       schema,
+		ParseStatus:  "parsed",
+		FallbackUsed: fallbackUsed,
+		Canonical:    canonical,
+	}
+	if parseErr != nil {
+		envelope.ParseStatus = "failed"
+		envelope.ValidationError = parseErr.Error()
+	} else if value != nil {
+		if normalized, err := json.Marshal(value); err == nil {
+			envelope.Value = normalized
+		}
+	}
+	payload, err := json.Marshal(envelope)
+	if err != nil {
+		return nil
+	}
+	return payload
 }
 
 // NodeDecision stores a node's output text and optional LLM metadata.

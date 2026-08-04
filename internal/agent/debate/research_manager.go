@@ -111,11 +111,13 @@ func (r *ResearchManager) Execute(ctx context.Context, state *agent.PipelineStat
 		Rounds:         state.ResearchDebate.Rounds,
 		ContextReports: state.AnalystReports,
 	})
+	if output.InvestmentPlan != "" {
+		state.ResearchDebate.InvestmentPlan = output.InvestmentPlan
+		state.RecordDecision(agent.AgentRoleInvestJudge, agent.PhaseResearchDebate, nil, output.InvestmentPlan, output.LLMResponse)
+	}
 	if err != nil {
 		return err
 	}
-	state.ResearchDebate.InvestmentPlan = output.InvestmentPlan
-	state.RecordDecision(agent.AgentRoleInvestJudge, agent.PhaseResearchDebate, nil, output.InvestmentPlan, output.LLMResponse)
 	return nil
 }
 
@@ -133,6 +135,7 @@ func (r *ResearchManager) JudgeResearch(ctx context.Context, input agent.DebateI
 
 	storedPlan := content
 	plan, parseErr := ParseInvestmentPlan(content)
+	structured := agent.BuildDecisionIntegrityEnvelope("investment_plan/v1", plan, parseErr, false, false)
 	if parseErr != nil {
 		r.logger.Warn("research_manager: failed to parse structured output; storing raw content",
 			slog.String("error", parseErr.Error()),
@@ -147,18 +150,23 @@ func (r *ResearchManager) JudgeResearch(ctx context.Context, input agent.DebateI
 		}
 	}
 
-	return agent.ResearchJudgeOutput{
+	output := agent.ResearchJudgeOutput{
 		InvestmentPlan: storedPlan,
 		LLMResponse: &agent.DecisionLLMResponse{
-			Provider:   r.providerName,
-			PromptText: promptText,
+			Provider:         r.providerName,
+			PromptText:       promptText,
+			OutputStructured: structured,
 			Response: &llm.CompletionResponse{
 				Content: content,
 				Model:   r.model,
 				Usage:   usage,
 			},
 		},
-	}, nil
+	}
+	if parseErr != nil {
+		return output, fmt.Errorf("research_manager: invalid structured output: %w", parseErr)
+	}
+	return output, nil
 }
 
 // ParseInvestmentPlan attempts to parse the LLM response content into a

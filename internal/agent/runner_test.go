@@ -413,7 +413,7 @@ func TestRunnerRun_PhaseOrdering(t *testing.T) {
 		},
 		Trader: stubTradeAgent{name: "trader", role: AgentRoleTrader, fn: func(_ context.Context, input TradingInput) (TradingOutput, error) {
 			recordPhase("trading")
-			plan := TradingPlan{Action: PipelineSignalBuy, Ticker: input.Ticker, EntryType: "market", EntryPrice: 100}
+			plan := TradingPlan{Action: PipelineSignalBuy, Ticker: input.Ticker, EntryType: "market", EntryPrice: 100, PositionSize: 10, StopLoss: 90, TakeProfit: 120, Confidence: 0.8}
 			payload, _ := json.Marshal(plan)
 			return TradingOutput{Plan: plan, StoredOutput: string(payload)}, nil
 		}},

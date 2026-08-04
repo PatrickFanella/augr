@@ -14,6 +14,7 @@ import (
 
 	"github.com/PatrickFanella/get-rich-quick/internal/agent"
 	"github.com/PatrickFanella/get-rich-quick/internal/config"
+	"github.com/PatrickFanella/get-rich-quick/internal/data"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	kalshiexecution "github.com/PatrickFanella/get-rich-quick/internal/execution/kalshi"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution/paper"
@@ -593,3 +594,58 @@ func (r *stubAgentDecisionRepository) CountByRun(context.Context, uuid.UUID, rep
 }
 
 var _ repository.AgentDecisionRepository = (*stubAgentDecisionRepository)(nil)
+
+func TestValidateDailyBarFreshnessPostCloseGrace(t *testing.T) {
+	prior := []domain.OHLCV{{Timestamp: time.Date(2026, 8, 3, 13, 30, 0, 0, time.UTC), Close: 100}}
+	beforeGrace := time.Date(2026, 8, 4, 20, 20, 0, 0, time.UTC) // 4:20 PM ET
+	if err := validateDailyBarFreshness(domain.MarketTypeStock, beforeGrace, prior); err != nil {
+		t.Fatalf("before grace rejected: %v", err)
+	}
+	afterGrace := time.Date(2026, 8, 4, 20, 31, 0, 0, time.UTC) // 4:31 PM ET
+	if err := validateDailyBarFreshness(domain.MarketTypeStock, afterGrace, prior); err == nil || !strings.Contains(err.Error(), "stale after 4:30 PM ET") {
+		t.Fatalf("after grace error = %v, want stale error", err)
+	}
+	current := []domain.OHLCV{{Timestamp: time.Date(2026, 8, 4, 13, 30, 0, 0, time.UTC), Close: 101}}
+	if err := validateDailyBarFreshness(domain.MarketTypeStock, afterGrace, current); err != nil {
+		t.Fatalf("current post-close bar rejected: %v", err)
+	}
+}
+
+func TestValidateRequiredAnalysisInputs(t *testing.T) {
+	now := time.Date(2026, 8, 4, 18, 0, 0, 0, time.UTC)
+	seed := agent.InitialStateSeed{
+		Market:       &agent.MarketData{Bars: []domain.OHLCV{{Timestamp: time.Date(2026, 8, 3, 13, 30, 0, 0, time.UTC), Close: 100}}},
+		Fundamentals: &data.Fundamentals{Ticker: "AAPL", MarketCap: 1, PERatio: 20, RevenueGrowthYoY: 0.1, FetchedAt: now},
+		News: []data.NewsArticle{
+			{Relevance: 1, PublishedAt: now.Add(-time.Hour)},
+			{Relevance: 1, PublishedAt: now.Add(-2 * time.Hour)},
+			{Relevance: 0.85, PublishedAt: now.Add(-3 * time.Hour)},
+		},
+	}
+	required := []agent.AgentRole{agent.AgentRoleMarketAnalyst, agent.AgentRoleFundamentalsAnalyst, agent.AgentRoleNewsAnalyst}
+	strategy := domain.Strategy{Ticker: "AAPL", MarketType: domain.MarketTypeStock}
+	if err := validateRequiredAnalysisInputs(strategy, required, seed, now); err != nil {
+		t.Fatalf("valid required inputs rejected: %v", err)
+	}
+	seed.News = seed.News[:2]
+	if err := validateRequiredAnalysisInputs(strategy, required, seed, now); err == nil || !strings.Contains(err.Error(), "direct news coverage below threshold") {
+		t.Fatalf("news threshold error = %v", err)
+	}
+}
+
+func TestValidateFundamentalsInputUsesProviderMissingFieldMetadata(t *testing.T) {
+	now := time.Date(2026, 8, 4, 18, 0, 0, 0, time.UTC)
+	fundamentals := &data.Fundamentals{
+		Ticker: "LOSS", FetchedAt: now,
+		RevenueGrowthYoY: -0.2,
+		GrossMargin:      0,
+		DebtToEquity:     -1,
+		MissingFields: data.MissingFundamentalFields(
+			data.FundamentalFieldMarketCap,
+			data.FundamentalFieldPERatio,
+		),
+	}
+	if err := validateFundamentalsInput("LOSS", fundamentals, now); err != nil {
+		t.Fatalf("valid negative and zero metrics rejected: %v", err)
+	}
+}

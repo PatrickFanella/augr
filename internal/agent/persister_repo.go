@@ -115,6 +115,7 @@ func (p *RepoPersister) PersistDecision(
 	if llmResponse != nil {
 		decision.LLMProvider = llmResponse.Provider
 		decision.PromptText = llmResponse.PromptText
+		decision.OutputStructured = append(json.RawMessage(nil), llmResponse.OutputStructured...)
 		if llmResponse.Response != nil {
 			decision.LLMModel = llmResponse.Response.Model
 			decision.PromptTokens = llmResponse.Response.Usage.PromptTokens

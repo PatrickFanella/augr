@@ -11,8 +11,12 @@ import (
 )
 
 const (
-	maxDebatePromptBytes  = 60 * 1024
-	maxAnalystReportBytes = 8 * 1024
+	// 96 KiB preserves the three configured debate rounds in observed
+	// production prompts while retaining a firm bound well below the configured
+	// deep model's context window. Reports remain individually bounded so one
+	// analyst cannot crowd out the debate history.
+	maxDebatePromptBytes  = 96 * 1024
+	maxAnalystReportBytes = 12 * 1024
 )
 
 type promptCompactionStats struct {

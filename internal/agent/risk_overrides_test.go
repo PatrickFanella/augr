@@ -1,6 +1,9 @@
 package agent
 
 import (
+	"context"
+	"strings"
+	"sync"
 	"testing"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
@@ -106,6 +109,33 @@ func TestApplyStrategyRiskOverrides_ConfidenceGate(t *testing.T) {
 				t.Errorf("rationale changed: got %v, want %v (rationale=%q)", hasRationale, tc.wantRationale, state.TradingPlan.Rationale)
 			}
 		})
+	}
+}
+
+func TestRunnerExecutionGateUsesCanonicalRiskConfidenceAndHolds(t *testing.T) {
+	t.Parallel()
+	state := &PipelineState{
+		FinalSignal: FinalSignal{Signal: PipelineSignalBuy, Confidence: 0.55},
+		TradingPlan: TradingPlan{
+			Action: PipelineSignalBuy, Ticker: "AAPL", EntryPrice: 100,
+			PositionSize: 10, StopLoss: 95, TakeProfit: 110,
+			Confidence: 0.95, Rationale: "trader plan",
+		},
+	}
+	prepared := PreparedRun{Config: ResolvedConfig{RiskConfig: ResolvedRiskConfig{MinConfidence: 0.65}}}
+	var warnings []RunWarning
+	var warningsMu sync.Mutex
+	if err := (&Runner{}).runExecutionGate(context.Background(), state, prepared, &warnings, &warningsMu); err != nil {
+		t.Fatal(err)
+	}
+	if state.FinalSignal.Signal != PipelineSignalHold || state.TradingPlan.Action != PipelineSignalHold {
+		t.Fatalf("signals = %q/%q, want HOLD/HOLD", state.FinalSignal.Signal, state.TradingPlan.Action)
+	}
+	if state.TradingPlan.Confidence != 0.55 || state.TradingPlan.PositionSize != 0 {
+		t.Fatalf("plan = %+v, want canonical confidence 0.55 and zero size", state.TradingPlan)
+	}
+	if !strings.Contains(state.TradingPlan.Rationale, "Execution gate converted signal to HOLD") {
+		t.Fatalf("rationale = %q, want audit explanation", state.TradingPlan.Rationale)
 	}
 }
 
@@ -257,5 +287,35 @@ func TestAppendRationale(t *testing.T) {
 		if got != tc.want {
 			t.Errorf("appendRationale(%q, %q) = %q, want %q", tc.existing, tc.addition, got, tc.want)
 		}
+	}
+}
+
+func TestValidateExecutablePlan(t *testing.T) {
+	cfg := ResolvedRiskConfig{MinConfidence: 0.65}
+	validBuy := TradingPlan{Ticker: "AAPL", EntryPrice: 100, PositionSize: 10, StopLoss: 90, TakeProfit: 120, Confidence: 0.8}
+	if err := ValidateExecutablePlan(validBuy, domain.PipelineSignalBuy, cfg); err != nil {
+		t.Fatalf("valid buy rejected: %v", err)
+	}
+	if err := ValidateExecutablePlan(TradingPlan{}, domain.PipelineSignalHold, cfg); err != nil {
+		t.Fatalf("hold rejected: %v", err)
+	}
+
+	tests := []struct {
+		name string
+		plan TradingPlan
+		want string
+	}{
+		{name: "confidence", plan: func() TradingPlan { p := validBuy; p.Confidence = 0.5; return p }(), want: "below minimum"},
+		{name: "position", plan: func() TradingPlan { p := validBuy; p.PositionSize = 0; return p }(), want: "positive entry price and position size"},
+		{name: "levels", plan: func() TradingPlan { p := validBuy; p.StopLoss = 110; return p }(), want: "stop_loss < entry_price"},
+		{name: "risk reward", plan: func() TradingPlan { p := validBuy; p.TakeProfit = 110; return p }(), want: "risk/reward"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateExecutablePlan(tt.plan, domain.PipelineSignalBuy, cfg)
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("error = %v, want containing %q", err, tt.want)
+			}
+		})
 	}
 }

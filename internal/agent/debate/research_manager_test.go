@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"testing"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/agent"
@@ -149,9 +150,9 @@ func TestResearchManagerExecuteMalformedOutputStillStoresContent(t *testing.T) {
 		},
 	}
 
-	// Execute should not return an error even with malformed output.
-	if err := rm.Execute(context.Background(), state); err != nil {
-		t.Fatalf("Execute() error = %v, want nil", err)
+	// Malformed structured output is persisted but must fail the run boundary.
+	if err := rm.Execute(context.Background(), state); err == nil {
+		t.Fatal("Execute() error = nil, want structured-output error")
 	}
 
 	// Raw content should still be stored.
@@ -166,6 +167,9 @@ func TestResearchManagerExecuteMalformedOutputStillStoresContent(t *testing.T) {
 	}
 	if decision.OutputText != malformedContent {
 		t.Fatalf("decision output = %q, want %q", decision.OutputText, malformedContent)
+	}
+	if decision.LLMResponse == nil || !strings.Contains(string(decision.LLMResponse.OutputStructured), `"parse_status":"failed"`) {
+		t.Fatalf("integrity envelope = %s, want failed status", decision.LLMResponse.OutputStructured)
 	}
 }
 

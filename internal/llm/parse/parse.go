@@ -132,8 +132,10 @@ func ExtractJSONObject(content string) (string, error) {
 // runs the supplied validation function. It returns the parsed value or a
 // descriptive error.
 func Parse[T any](content string, validate func(*T) error) (*T, error) {
-	cleaned := StripThinkingTags(content)
-	cleaned = StripCodeFences(cleaned)
+	cleaned, err := ExtractJSONObject(content)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse JSON: %w", err)
+	}
 
 	var result T
 	if err := json.Unmarshal([]byte(cleaned), &result); err != nil {

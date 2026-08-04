@@ -1,6 +1,7 @@
 package agent_test
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -28,6 +29,10 @@ func validStrategyConfig() agent.StrategyConfig {
 			MinConfidence:        float64Ptr(0.65),
 		},
 		AnalystSelection: []agent.AgentRole{
+			agent.AgentRoleMarketAnalyst,
+			agent.AgentRoleFundamentalsAnalyst,
+		},
+		RequiredAnalystRoles: []agent.AgentRole{
 			agent.AgentRoleMarketAnalyst,
 			agent.AgentRoleFundamentalsAnalyst,
 		},
@@ -167,6 +172,37 @@ func TestValidateStrategyConfig_UnknownAnalystRole(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "not_a_real_role") {
 		t.Fatalf("error should include the bad role name, got: %v", err)
+	}
+}
+
+func TestValidateStrategyConfig_RequiredAnalystRoles(t *testing.T) {
+	tests := []struct {
+		name     string
+		required []agent.AgentRole
+	}{
+		{name: "non-analysis role", required: []agent.AgentRole{agent.AgentRoleTrader}},
+		{name: "duplicate", required: []agent.AgentRole{agent.AgentRoleMarketAnalyst, agent.AgentRoleMarketAnalyst}},
+		{name: "not selected", required: []agent.AgentRole{agent.AgentRoleNewsAnalyst}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := validStrategyConfig()
+			cfg.RequiredAnalystRoles = tc.required
+			err := agent.ValidateStrategyConfig(cfg)
+			if err == nil || !strings.Contains(err.Error(), "required_analyst_roles") {
+				t.Fatalf("ValidateStrategyConfig() error = %v, want required_analyst_roles error", err)
+			}
+		})
+	}
+}
+
+func TestStrategyConfigPreservesExplicitEmptyRequiredAnalystRoles(t *testing.T) {
+	payload, err := json.Marshal(agent.StrategyConfig{RequiredAnalystRoles: []agent.AgentRole{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(payload), `"required_analyst_roles":[]`) {
+		t.Fatalf("Marshal() = %s, want explicit empty required_analyst_roles", payload)
 	}
 }
 

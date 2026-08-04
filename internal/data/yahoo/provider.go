@@ -44,10 +44,11 @@ type searchResponse struct {
 }
 
 type searchNewsItem struct {
-	Title               string `json:"title"`
-	Link                string `json:"link"`
-	Publisher           string `json:"publisher"`
-	ProviderPublishTime int    `json:"providerPublishTime"`
+	Title               string   `json:"title"`
+	Link                string   `json:"link"`
+	Publisher           string   `json:"publisher"`
+	ProviderPublishTime int      `json:"providerPublishTime"`
+	RelatedTickers      []string `json:"relatedTickers"`
 }
 
 // ── Chart response types ────────────────────────────────────────────────
@@ -254,8 +255,8 @@ func (p *Provider) GetNews(ctx context.Context, ticker string, from, to time.Tim
 	p.api.SetHTTPClient(p.httpClient)
 
 	params := url.Values{
-		"q":         []string{ticker},
-		"newsCount": []string{"20"},
+		"q":           []string{ticker},
+		"newsCount":   []string{"20"},
 		"quotesCount": []string{"0"},
 	}
 
@@ -286,10 +287,11 @@ func (p *Provider) GetNews(ctx context.Context, ticker string, from, to time.Tim
 			continue
 		}
 		articles = append(articles, data.NewsArticle{
-			Title:       item.Title,
-			URL:         item.Link,
-			Source:      item.Publisher,
-			PublishedAt: publishedAt,
+			Title:          item.Title,
+			URL:            item.Link,
+			Source:         item.Publisher,
+			PublishedAt:    publishedAt,
+			RelatedTickers: append([]string(nil), item.RelatedTickers...),
 		})
 	}
 

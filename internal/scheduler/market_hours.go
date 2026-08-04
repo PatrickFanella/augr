@@ -11,6 +11,13 @@ import (
 
 var newYorkLocation = mustLoadLocation("America/New_York")
 
+// IsNYSETradingDay reports whether regular-session US equity trading is
+// scheduled for the supplied date.
+func IsNYSETradingDay(t time.Time) bool {
+	et := t.In(newYorkLocation)
+	return et.Weekday() != time.Saturday && et.Weekday() != time.Sunday && !isNYSEHoliday(et)
+}
+
 // IsMarketOpen reports whether the given market is open at the provided time.
 func IsMarketOpen(t time.Time, marketType domain.MarketType) bool {
 	switch normalizeMarketType(marketType) {

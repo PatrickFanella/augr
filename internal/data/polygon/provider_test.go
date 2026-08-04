@@ -324,20 +324,22 @@ func TestProviderGetNews(t *testing.T) {
 
 	want := []data.NewsArticle{
 		{
-			Title:       "Apple jumps on earnings",
-			Summary:     "Apple reported strong quarterly revenue.",
-			URL:         "https://example.com/aapl-1",
-			Source:      "Reuters",
-			PublishedAt: time.Date(2024, time.January, 1, 14, 30, 0, 0, time.UTC),
-			Sentiment:   1,
+			Title:          "Apple jumps on earnings",
+			Summary:        "Apple reported strong quarterly revenue.",
+			URL:            "https://example.com/aapl-1",
+			Source:         "Reuters",
+			PublishedAt:    time.Date(2024, time.January, 1, 14, 30, 0, 0, time.UTC),
+			Sentiment:      1,
+			RelatedTickers: []string{"AAPL", "MSFT"},
 		},
 		{
-			Title:       "Apple supply chain update",
-			Summary:     "Suppliers expect steady demand.",
-			URL:         "https://example.com/aapl-2",
-			Source:      "Bloomberg",
-			PublishedAt: time.Date(2024, time.January, 2, 15, 45, 0, 0, time.UTC),
-			Sentiment:   -1,
+			Title:          "Apple supply chain update",
+			Summary:        "Suppliers expect steady demand.",
+			URL:            "https://example.com/aapl-2",
+			Source:         "Bloomberg",
+			PublishedAt:    time.Date(2024, time.January, 2, 15, 45, 0, 0, time.UTC),
+			Sentiment:      -1,
+			RelatedTickers: []string{"AAPL"},
 		},
 	}
 	if !reflect.DeepEqual(got, want) {

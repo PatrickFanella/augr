@@ -150,15 +150,17 @@ func (t *Trader) Execute(ctx context.Context, state *agent.PipelineState) error 
 		AnalystReports: state.AnalystReports,
 	}
 	output, err := t.Trade(ctx, input)
+	if output.StoredOutput != "" {
+		state.TradingPlan = output.Plan
+		state.RecordDecision(agent.AgentRoleTrader, agent.PhaseTrading, nil, output.StoredOutput, output.LLMResponse)
+	}
 	if err != nil {
 		return err
 	}
-	state.TradingPlan = output.Plan
 	if output.Thesis != nil {
 		output.Thesis.PipelineRunID = state.PipelineRunID
 		state.ActiveThesis = output.Thesis
 	}
-	state.RecordDecision(agent.AgentRoleTrader, agent.PhaseTrading, nil, output.StoredOutput, output.LLMResponse)
 	return nil
 }
 
@@ -198,6 +200,7 @@ func (t *Trader) Trade(ctx context.Context, input agent.TradingInput) (agent.Tra
 	storedOutput := content
 	var tradingPlan agent.TradingPlan
 	plan, parseErr := ParseTradingPlan(content)
+	structured := agent.BuildDecisionIntegrityEnvelope("trading_plan/v1", plan, parseErr, parseErr == nil, parseErr != nil)
 	if parseErr != nil {
 		t.logger.Warn("trader: failed to parse structured output; storing default hold plan",
 			slog.String("error", parseErr.Error()),
@@ -233,20 +236,25 @@ func (t *Trader) Trade(ctx context.Context, input agent.TradingInput) (agent.Tra
 		thesis = mapToThesis(plan)
 	}
 
-	return agent.TradingOutput{
+	output := agent.TradingOutput{
 		Plan:         tradingPlan,
 		Thesis:       thesis,
 		StoredOutput: storedOutput,
 		LLMResponse: &agent.DecisionLLMResponse{
-			Provider:   t.providerName,
-			PromptText: promptText,
+			Provider:         t.providerName,
+			PromptText:       promptText,
+			OutputStructured: structured,
 			Response: &llm.CompletionResponse{
 				Content: content,
 				Model:   resp.Model,
 				Usage:   usage,
 			},
 		},
-	}, nil
+	}
+	if parseErr != nil {
+		return output, fmt.Errorf("trader (trading): invalid structured output: %w", parseErr)
+	}
+	return output, nil
 }
 
 // buildUserPromptFromInput constructs the user message from a TradingInput,

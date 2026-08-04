@@ -202,12 +202,13 @@ func (p *Provider) GetNews(ctx context.Context, ticker string, from, to time.Tim
 			}
 
 			articles = append(articles, data.NewsArticle{
-				Title:       result.Title,
-				Summary:     result.Description,
-				URL:         result.ArticleURL,
-				Source:      result.Publisher.Name,
-				PublishedAt: publishedAt.UTC(),
-				Sentiment:   mapNewsSentiment(ticker, result.Insights),
+				Title:          result.Title,
+				Summary:        result.Description,
+				URL:            result.ArticleURL,
+				Source:         result.Publisher.Name,
+				PublishedAt:    publishedAt.UTC(),
+				Sentiment:      mapNewsSentiment(ticker, result.Insights),
+				RelatedTickers: insightTickers(result.Insights),
 			})
 		}
 
@@ -222,6 +223,20 @@ func (p *Provider) GetNews(ctx context.Context, ticker string, from, to time.Tim
 	}
 
 	return articles, nil
+}
+
+func insightTickers(insights []newsInsight) []string {
+	seen := make(map[string]bool, len(insights))
+	result := make([]string, 0, len(insights))
+	for _, insight := range insights {
+		ticker := strings.ToUpper(strings.TrimSpace(insight.Ticker))
+		if ticker == "" || seen[ticker] {
+			continue
+		}
+		seen[ticker] = true
+		result = append(result, ticker)
+	}
+	return result
 }
 
 // GetSocialSentiment is not supported by the Polygon provider yet.

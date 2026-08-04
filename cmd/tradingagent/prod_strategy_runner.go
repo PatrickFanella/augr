@@ -38,12 +38,16 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/portfolio"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 	"github.com/PatrickFanella/get-rich-quick/internal/risk"
+	"github.com/PatrickFanella/get-rich-quick/internal/scheduler"
 )
 
 const (
 	strategyMarketLookback = 400 * 24 * time.Hour
 	strategyNewsLookback   = 7 * 24 * time.Hour
 	strategySocialLookback = 7 * 24 * time.Hour
+	postCloseDataGrace     = 30 * time.Minute
+	requiredNewsMaxAge     = 36 * time.Hour
+	requiredNewsMinDirect  = 3
 	localPaperBuyingPower  = 100_000.0
 )
 
@@ -1181,7 +1185,7 @@ func (r *realStrategyRunner) prepareStrategyRun(ctx context.Context, strategy do
 		return nil, agent.PreparedRun{}, nil, nil, err
 	}
 
-	prepared.InitialState, err = r.loadInitialState(ctx, strategy)
+	prepared.InitialState, err = r.loadInitialState(ctx, strategy, resolved)
 	if err != nil {
 		return nil, agent.PreparedRun{}, nil, nil, err
 	}
@@ -1190,7 +1194,7 @@ func (r *realStrategyRunner) prepareStrategyRun(ctx context.Context, strategy do
 	return runner, prepared, strategyConfig, eventsCh, nil
 }
 
-func (r *realStrategyRunner) loadInitialState(ctx context.Context, strategy domain.Strategy) (agent.InitialStateSeed, error) {
+func (r *realStrategyRunner) loadInitialState(ctx context.Context, strategy domain.Strategy, resolved agent.ResolvedConfig) (agent.InitialStateSeed, error) {
 	if r.dataService == nil {
 		return agent.InitialStateSeed{}, errors.New("market data service is required")
 	}
@@ -1228,7 +1232,7 @@ func (r *realStrategyRunner) loadInitialState(ctx context.Context, strategy doma
 	r.logger.Debug("loadInitialState after fundamentals")
 	newsFrom := to.Add(-strategyNewsLookback)
 	if articles, err := r.dataService.GetNews(ctx, strategy.MarketType, strategy.Ticker, newsFrom, to); err == nil {
-		seed.News = articles
+		seed.News = data.RankRelevantNews(strategy.Ticker, articles, 10)
 	} else if ctxErr := contextErr(err); ctxErr != nil {
 		return agent.InitialStateSeed{}, ctxErr
 	} else {
@@ -1257,6 +1261,9 @@ func (r *realStrategyRunner) loadInitialState(ctx context.Context, strategy doma
 	}
 
 	r.logger.Debug("loadInitialState after social sentiment")
+	if err := validateRequiredAnalysisInputs(strategy, resolved.RequiredAnalystRoles, seed, to); err != nil {
+		return agent.InitialStateSeed{}, err
+	}
 	// Polymarket: load prediction market metadata for the market slug.
 	if strategy.MarketType.Normalize() == domain.MarketTypePolymarket && r.polymarketClient != nil {
 		pm, err := r.polymarketClient.GetMarketData(ctx, strategy.Ticker)
@@ -1272,6 +1279,129 @@ func (r *realStrategyRunner) loadInitialState(ctx context.Context, strategy doma
 
 	r.logger.Debug("loadInitialState returning seed")
 	return seed, nil
+}
+
+func validateRequiredAnalysisInputs(strategy domain.Strategy, required []agent.AgentRole, seed agent.InitialStateSeed, now time.Time) error {
+	for _, role := range required {
+		switch role {
+		case agent.AgentRoleMarketAnalyst:
+			if seed.Market == nil || len(seed.Market.Bars) == 0 {
+				return fmt.Errorf("required analyst role %s: market bars unavailable", role)
+			}
+			if err := validateDailyBarFreshness(strategy.MarketType, now, seed.Market.Bars); err != nil {
+				return fmt.Errorf("required analyst role %s: %w", role, err)
+			}
+		case agent.AgentRoleFundamentalsAnalyst:
+			if err := validateFundamentalsInput(strategy.Ticker, seed.Fundamentals, now); err != nil {
+				return fmt.Errorf("required analyst role %s: %w", role, err)
+			}
+		case agent.AgentRoleNewsAnalyst:
+			if err := validateNewsInput(seed.News, now); err != nil {
+				return fmt.Errorf("required analyst role %s: %w", role, err)
+			}
+		case agent.AgentRoleSocialMediaAnalyst:
+			if seed.Social == nil || seed.Social.PostCount+seed.Social.CommentCount == 0 {
+				return fmt.Errorf("required analyst role %s: social sentiment unavailable or empty", role)
+			}
+			if seed.Social.MeasuredAt.IsZero() || now.Sub(seed.Social.MeasuredAt) > 24*time.Hour {
+				return fmt.Errorf("required analyst role %s: social sentiment is older than 24h", role)
+			}
+		}
+	}
+	return nil
+}
+
+func validateDailyBarFreshness(marketType domain.MarketType, now time.Time, bars []domain.OHLCV) error {
+	if marketType.Normalize() != domain.MarketTypeStock || len(bars) == 0 {
+		return nil
+	}
+	latest := bars[0]
+	for _, bar := range bars[1:] {
+		if bar.Timestamp.After(latest.Timestamp) {
+			latest = bar
+		}
+	}
+	if latest.Close <= 0 {
+		return errors.New("latest daily bar has a non-positive close")
+	}
+	et, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		return fmt.Errorf("load exchange timezone: %w", err)
+	}
+	localNow := now.In(et)
+	refreshDeadline := time.Date(localNow.Year(), localNow.Month(), localNow.Day(), 16, 0, 0, 0, et).Add(postCloseDataGrace)
+	if !scheduler.IsNYSETradingDay(now) || localNow.Before(refreshDeadline) {
+		return nil
+	}
+	localBar := latest.Timestamp.In(et)
+	if localBar.Year() != localNow.Year() || localBar.YearDay() != localNow.YearDay() {
+		return fmt.Errorf("daily market data stale after 4:30 PM ET: latest bar %s", localBar.Format("2006-01-02"))
+	}
+	return nil
+}
+
+func validateFundamentalsInput(ticker string, fundamentals *data.Fundamentals, now time.Time) error {
+	if fundamentals == nil {
+		return errors.New("fundamentals unavailable")
+	}
+	if !strings.EqualFold(strings.TrimSpace(fundamentals.Ticker), strings.TrimSpace(ticker)) {
+		return fmt.Errorf("fundamentals ticker %q does not match strategy ticker %q", fundamentals.Ticker, ticker)
+	}
+	if fundamentals.FetchedAt.IsZero() || now.Sub(fundamentals.FetchedAt) > 24*time.Hour {
+		return errors.New("fundamentals snapshot is older than 24h")
+	}
+	coreMetrics := []struct {
+		name  string
+		value float64
+	}{
+		{name: data.FundamentalFieldMarketCap, value: fundamentals.MarketCap},
+		{name: data.FundamentalFieldPERatio, value: fundamentals.PERatio},
+		{name: data.FundamentalFieldRevenueGrowthYoY, value: fundamentals.RevenueGrowthYoY},
+		{name: data.FundamentalFieldGrossMargin, value: fundamentals.GrossMargin},
+		{name: data.FundamentalFieldDebtToEquity, value: fundamentals.DebtToEquity},
+	}
+	available := 0
+	for _, metric := range coreMetrics {
+		if math.IsNaN(metric.value) || math.IsInf(metric.value, 0) {
+			continue
+		}
+		// Current providers explicitly identify missing fields, which lets valid
+		// zero and negative observations count. Preserve compatibility with older
+		// cached snapshots by treating zero as missing only when no field metadata
+		// exists at all.
+		if len(fundamentals.MissingFields) > 0 {
+			if !data.IsFundamentalFieldMissing(*fundamentals, metric.name) {
+				available++
+			}
+		} else if metric.value != 0 {
+			available++
+		}
+	}
+	if available < 3 {
+		return fmt.Errorf("fundamentals completeness below threshold: %d of 5 core metrics available", available)
+	}
+	return nil
+}
+
+func validateNewsInput(articles []data.NewsArticle, now time.Time) error {
+	direct := 0
+	newest := time.Time{}
+	for _, article := range articles {
+		if article.Relevance < 0.85 {
+			continue
+		}
+		direct++
+		if article.PublishedAt.After(newest) {
+			newest = article.PublishedAt
+		}
+	}
+	if direct < requiredNewsMinDirect {
+		return fmt.Errorf("direct news coverage below threshold: %d articles, require %d", direct, requiredNewsMinDirect)
+	}
+	if newest.IsZero() || now.Sub(newest) > requiredNewsMaxAge {
+		return fmt.Errorf("newest direct news article is older than %s", requiredNewsMaxAge)
+	}
+	return nil
 }
 
 func usesStockOHLCVAnalysis(strategy domain.Strategy) bool {

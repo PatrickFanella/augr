@@ -108,3 +108,48 @@ func appendRationale(existing, addition string) string {
 	}
 	return existing + " " + addition
 }
+
+// ValidateExecutablePlan is the deterministic final authority for actionable
+// LLM signals. It prevents an incomplete or internally inconsistent plan from
+// reaching an order manager even when the risk-debate phase is disabled.
+func ValidateExecutablePlan(plan TradingPlan, signal domain.PipelineSignal, cfg ResolvedRiskConfig) error {
+	if signal == "" || signal == domain.PipelineSignalHold {
+		return nil
+	}
+	if signal != domain.PipelineSignalBuy && signal != domain.PipelineSignalSell {
+		return fmt.Errorf("execution gate: invalid signal %q", signal)
+	}
+	if strings.TrimSpace(plan.Ticker) == "" {
+		return fmt.Errorf("execution gate: actionable plan requires ticker")
+	}
+	confidence := plan.Confidence
+	if confidence < cfg.MinConfidence {
+		return fmt.Errorf("execution gate: confidence %.2f below minimum %.2f", confidence, cfg.MinConfidence)
+	}
+	if plan.EntryPrice <= 0 || plan.PositionSize <= 0 {
+		return fmt.Errorf("execution gate: actionable plan requires positive entry price and position size")
+	}
+	if plan.StopLoss <= 0 || plan.TakeProfit <= 0 {
+		return fmt.Errorf("execution gate: actionable plan requires positive stop-loss and take-profit")
+	}
+	var riskDistance, rewardDistance float64
+	switch signal {
+	case domain.PipelineSignalBuy:
+		if !(plan.StopLoss < plan.EntryPrice && plan.EntryPrice < plan.TakeProfit) {
+			return fmt.Errorf("execution gate: buy levels must satisfy stop_loss < entry_price < take_profit")
+		}
+		riskDistance = plan.EntryPrice - plan.StopLoss
+		rewardDistance = plan.TakeProfit - plan.EntryPrice
+	case domain.PipelineSignalSell:
+		if !(plan.TakeProfit < plan.EntryPrice && plan.EntryPrice < plan.StopLoss) {
+			return fmt.Errorf("execution gate: sell levels must satisfy take_profit < entry_price < stop_loss")
+		}
+		riskDistance = plan.StopLoss - plan.EntryPrice
+		rewardDistance = plan.EntryPrice - plan.TakeProfit
+	}
+	const minimumRiskReward = 1.5
+	if riskDistance <= 0 || rewardDistance/riskDistance < minimumRiskReward {
+		return fmt.Errorf("execution gate: risk/reward %.2f below minimum %.2f", rewardDistance/riskDistance, minimumRiskReward)
+	}
+	return nil
+}

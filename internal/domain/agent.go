@@ -41,6 +41,7 @@ const (
 	PhaseResearchDebate Phase = "research_debate"
 	PhaseTrading        Phase = "trading"
 	PhaseRiskDebate     Phase = "risk_debate"
+	PhaseExecutionGate  Phase = "execution_gate"
 )
 
 // String returns the string representation of a Phase.
@@ -78,6 +79,7 @@ var ValidPhases = map[Phase]bool{
 	PhaseResearchDebate: true,
 	PhaseTrading:        true,
 	PhaseRiskDebate:     true,
+	PhaseExecutionGate:  true,
 }
 
 // IsValid returns true if the phase is a defined Phase constant.

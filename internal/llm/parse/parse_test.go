@@ -203,6 +203,18 @@ func TestParseWithCodeFences(t *testing.T) {
 	}
 }
 
+func TestParseWithProsePrefixedProductionShape(t *testing.T) {
+	input := "**Finalizing the decision**\nThe requested object follows.\n" +
+		`{"name":"production","value":73}` + "\nThis trailing explanation is ignored."
+	result, err := Parse[testPayload](input, nil)
+	if err != nil {
+		t.Fatalf("Parse() error = %v, want nil", err)
+	}
+	if result.Name != "production" || result.Value != 73 {
+		t.Fatalf("Parse() = %+v, want {Name:production Value:73}", result)
+	}
+}
+
 func TestParseInvalidJSON(t *testing.T) {
 	input := "this is not json"
 	_, err := Parse[testPayload](input, nil)

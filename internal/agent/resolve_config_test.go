@@ -641,6 +641,34 @@ func TestValidateResolvedConfig_Defaults(t *testing.T) {
 	}
 }
 
+func TestResolveConfig_RequiredAnalystRoles(t *testing.T) {
+	t.Run("conservative default", func(t *testing.T) {
+		got := agent.ResolveConfig(nil, agent.GlobalSettings{})
+		want := []agent.AgentRole{agent.AgentRoleMarketAnalyst, agent.AgentRoleFundamentalsAnalyst, agent.AgentRoleNewsAnalyst}
+		if !reflect.DeepEqual(got.RequiredAnalystRoles, want) {
+			t.Fatalf("RequiredAnalystRoles = %v, want %v", got.RequiredAnalystRoles, want)
+		}
+	})
+
+	t.Run("strategy declaration wins", func(t *testing.T) {
+		got := agent.ResolveConfig(&agent.StrategyConfig{
+			AnalystSelection:     []agent.AgentRole{agent.AgentRoleMarketAnalyst, agent.AgentRoleNewsAnalyst},
+			RequiredAnalystRoles: []agent.AgentRole{agent.AgentRoleNewsAnalyst},
+		}, agent.GlobalSettings{RequiredAnalystRoles: []agent.AgentRole{agent.AgentRoleMarketAnalyst}})
+		want := []agent.AgentRole{agent.AgentRoleNewsAnalyst}
+		if !reflect.DeepEqual(got.RequiredAnalystRoles, want) {
+			t.Fatalf("RequiredAnalystRoles = %v, want %v", got.RequiredAnalystRoles, want)
+		}
+	})
+
+	t.Run("explicit empty makes all optional", func(t *testing.T) {
+		got := agent.ResolveConfig(&agent.StrategyConfig{RequiredAnalystRoles: []agent.AgentRole{}}, agent.GlobalSettings{})
+		if got.RequiredAnalystRoles == nil || len(got.RequiredAnalystRoles) != 0 {
+			t.Fatalf("RequiredAnalystRoles = %#v, want explicit empty slice", got.RequiredAnalystRoles)
+		}
+	})
+}
+
 func TestValidateResolvedConfig_Failures(t *testing.T) {
 	valid := agent.ResolveConfig(nil, agent.GlobalSettings{})
 
@@ -682,6 +710,13 @@ func TestValidateResolvedConfig_Failures(t *testing.T) {
 		{
 			name:   "min confidence over 1",
 			modify: func(rc *agent.ResolvedConfig) { rc.RiskConfig.MinConfidence = 1.1 },
+		},
+		{
+			name: "required analyst not selected",
+			modify: func(rc *agent.ResolvedConfig) {
+				rc.AnalystSelection = []agent.AgentRole{agent.AgentRoleMarketAnalyst}
+				rc.RequiredAnalystRoles = []agent.AgentRole{agent.AgentRoleNewsAnalyst}
+			},
 		},
 	}
 

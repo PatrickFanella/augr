@@ -114,7 +114,7 @@ func TestDataServiceGetOHLCVCacheHitReturnsCachedData(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetOHLCV() error = %v", err)
 	}
-	if len(got) != len(want) || got[0] != want[0] {
+	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("GetOHLCV() = %#v, want %#v", got, want)
 	}
 	if provider.ohlcvCalls != 0 {
@@ -237,7 +237,7 @@ func TestDataServiceGetOHLCVCacheNotFoundDoesNotWarn(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetOHLCV() error = %v", err)
 	}
-	if len(got) != len(want) || got[0] != want[0] {
+	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("GetOHLCV() = %#v, want %#v", got, want)
 	}
 	if provider.ohlcvCalls != 1 {
@@ -359,7 +359,7 @@ func TestDataServiceGetNewsCacheHitReturnsCachedData(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetNews() error = %v", err)
 	}
-	if len(got) != len(want) || got[0] != want[0] {
+	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("GetNews() = %#v, want %#v", got, want)
 	}
 	if provider.newsCalls != 0 {
@@ -394,7 +394,7 @@ func TestDataServiceGetNewsCacheMissCallsChainAndCachesResult(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetNews() error = %v", err)
 	}
-	if len(got) != len(want) || got[0] != want[0] {
+	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("GetNews() = %#v, want %#v", got, want)
 	}
 	if provider.newsCalls != 1 {

@@ -294,7 +294,8 @@ func TestProviderGetNews(t *testing.T) {
 					"title": "Apple earnings beat",
 					"link": "https://example.com/1",
 					"publisher": "Reuters",
-					"providerPublishTime": 1776038400
+					"providerPublishTime": 1776038400,
+					"relatedTickers": ["AAPL"]
 				},
 				{
 					"title": "Old article",
@@ -318,6 +319,9 @@ func TestProviderGetNews(t *testing.T) {
 	// Only the article within the time range should be returned.
 	if len(articles) != 1 {
 		t.Fatalf("expected 1 article, got %d", len(articles))
+	}
+	if len(articles[0].RelatedTickers) != 1 || articles[0].RelatedTickers[0] != "AAPL" {
+		t.Fatalf("RelatedTickers = %#v, want [AAPL]", articles[0].RelatedTickers)
 	}
 	if articles[0].Title != "Apple earnings beat" {
 		t.Fatalf("expected title 'Apple earnings beat', got %q", articles[0].Title)
