@@ -46,12 +46,6 @@ type StatusUpdate struct {
 	Message     string `json:"message"` // error detail when status is "ollama_unavailable"
 }
 
-// isBrokerStatus reports whether a parsed StatusUpdate is a broker heartbeat or error,
-// not an actual ollama response payload.
-func isBrokerStatus(u StatusUpdate) bool {
-	return u.Status == "queued" || u.Status == "ollama_unavailable" || u.Status == "running"
-}
-
 // brokerErrorBody builds an OpenAI-format error JSON string from a broker StatusUpdate.
 func brokerErrorBody(u StatusUpdate) string {
 	detail := u.Status
@@ -176,4 +170,3 @@ func StripBrokerHeartbeatsReadCloser(rc io.ReadCloser) io.ReadCloser {
 	}
 	return readCloser{Reader: StripBrokerHeartbeats(rc), Closer: rc}
 }
-

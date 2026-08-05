@@ -33,11 +33,11 @@ func (r *KalshiSettlementGateRepo) Get(ctx context.Context, jobName string) (*do
 	return state, nil
 }
 
-func (r *KalshiSettlementGateRepo) RecordSuccess(ctx context.Context, jobName string, threshold int, fetched, resolved, wouldSettleMarkets, wouldSettleDecisions int, projectionFingerprint string, lastRunAt time.Time) (*domain.KalshiSettlementGateState, error) {
+func (r *KalshiSettlementGateRepo) RecordSuccess(ctx context.Context, jobName string, threshold, fetched, resolved, wouldSettleMarkets, wouldSettleDecisions int, projectionFingerprint string, lastRunAt time.Time) (*domain.KalshiSettlementGateState, error) {
 	return r.upsert(ctx, jobName, threshold, fetched, resolved, wouldSettleMarkets, wouldSettleDecisions, projectionFingerprint, lastRunAt, "success", "", true)
 }
 
-func (r *KalshiSettlementGateRepo) RecordFailure(ctx context.Context, jobName string, threshold int, fetched, resolved, wouldSettleMarkets, wouldSettleDecisions int, lastRunAt time.Time, lastError string) (*domain.KalshiSettlementGateState, error) {
+func (r *KalshiSettlementGateRepo) RecordFailure(ctx context.Context, jobName string, threshold, fetched, resolved, wouldSettleMarkets, wouldSettleDecisions int, lastRunAt time.Time, lastError string) (*domain.KalshiSettlementGateState, error) {
 	return r.upsert(ctx, jobName, threshold, fetched, resolved, wouldSettleMarkets, wouldSettleDecisions, "", lastRunAt, "failure", lastError, false)
 }
 

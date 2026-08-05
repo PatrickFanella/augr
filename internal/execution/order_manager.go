@@ -241,12 +241,12 @@ func (m *OrderManager) ProcessSignal(
 		m.logger.InfoContext(ctx, "hold signal received, skipping order", "ticker", plan.Ticker)
 		return nil
 	}
-	if normalizedTicker, normalizedSide, err := NormalizePredictionOrderTicker(marketType, plan.Ticker, plan.Side); err != nil {
+	normalizedTicker, normalizedSide, err := NormalizePredictionOrderTicker(marketType, plan.Ticker, plan.Side)
+	if err != nil {
 		return fmt.Errorf("order_manager: normalize prediction order ticker: %w", err)
-	} else {
-		plan.Ticker = normalizedTicker
-		plan.Side = normalizedSide
 	}
+	plan.Ticker = normalizedTicker
+	plan.Side = normalizedSide
 
 	// A stock SELL signal only makes sense as an exit for a position this
 	// strategy already owns. Do not turn discovery sell signals for unowned stock

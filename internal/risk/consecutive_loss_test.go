@@ -13,13 +13,14 @@ type fakeBreaker struct {
 	tripScopes, tripReasons, resetScopes, allowScopes []string
 }
 
-func (f *fakeBreaker) Allow(ctx context.Context, scope string) error {
+func (f *fakeBreaker) Allow(_ context.Context, scope string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.allowScopes = append(f.allowScopes, scope)
 	return nil
 }
-func (f *fakeBreaker) Trip(ctx context.Context, scope, reason string) error {
+
+func (f *fakeBreaker) Trip(_ context.Context, scope, reason string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.trips++
@@ -27,7 +28,8 @@ func (f *fakeBreaker) Trip(ctx context.Context, scope, reason string) error {
 	f.tripReasons = append(f.tripReasons, reason)
 	return nil
 }
-func (f *fakeBreaker) Reset(ctx context.Context, scope string) error {
+
+func (f *fakeBreaker) Reset(_ context.Context, scope string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.resets++
@@ -47,6 +49,7 @@ func TestConsecutiveLossBreaker_WinsResetStreak(t *testing.T) {
 		t.Fatalf("trips=%d", fb.trips)
 	}
 }
+
 func TestConsecutiveLossBreaker_TripsOnThreshold(t *testing.T) {
 	fb := &fakeBreaker{}
 	b := NewConsecutiveLossBreaker(ConsecutiveLossConfig{Threshold: 3, Windows: 2}, fb)
@@ -63,6 +66,7 @@ func TestConsecutiveLossBreaker_TripsOnThreshold(t *testing.T) {
 		t.Fatalf("reason=%q", fb.tripReasons[0])
 	}
 }
+
 func TestConsecutiveLossBreaker_TripsAndBlocksWindows(t *testing.T) {
 	fb := &fakeBreaker{}
 	b := NewConsecutiveLossBreaker(ConsecutiveLossConfig{Threshold: 1, Windows: 4}, fb)
@@ -71,6 +75,7 @@ func TestConsecutiveLossBreaker_TripsAndBlocksWindows(t *testing.T) {
 		t.Fatalf("blocked=%d", got)
 	}
 }
+
 func TestConsecutiveLossBreaker_WinAfterTripResetsCounter(t *testing.T) {
 	fb := &fakeBreaker{}
 	b := NewConsecutiveLossBreaker(ConsecutiveLossConfig{Threshold: 1, Windows: 4}, fb)
@@ -80,6 +85,7 @@ func TestConsecutiveLossBreaker_WinAfterTripResetsCounter(t *testing.T) {
 		t.Fatalf("blocked=%d", got)
 	}
 }
+
 func TestConsecutiveLossBreaker_UnblockExpiredDecrementsAndResets(t *testing.T) {
 	fb := &fakeBreaker{}
 	b := NewConsecutiveLossBreaker(ConsecutiveLossConfig{Threshold: 1, Windows: 2}, fb)
@@ -93,7 +99,8 @@ func TestConsecutiveLossBreaker_UnblockExpiredDecrementsAndResets(t *testing.T) 
 		t.Fatalf("blocked=%d", got)
 	}
 }
-func TestConsecutiveLossBreaker_ConcurrentRecordResult(t *testing.T) {
+
+func TestConsecutiveLossBreaker_ConcurrentRecordResult(*testing.T) {
 	fb := &fakeBreaker{}
 	b := NewConsecutiveLossBreaker(ConsecutiveLossConfig{}, fb)
 	var wg sync.WaitGroup
@@ -103,6 +110,7 @@ func TestConsecutiveLossBreaker_ConcurrentRecordResult(t *testing.T) {
 	}
 	wg.Wait()
 }
+
 func TestConsecutiveLossBreaker_DefaultsAppliedWhenZero(t *testing.T) {
 	b := NewConsecutiveLossBreaker(ConsecutiveLossConfig{}, &fakeBreaker{})
 	if b.cfg.Threshold != 3 || b.cfg.Windows != 5 {

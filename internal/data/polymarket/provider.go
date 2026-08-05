@@ -113,7 +113,7 @@ func (p *Provider) resolvePriceHistoryMarketID(ctx context.Context, slug string)
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("markets HTTP %d", resp.StatusCode)
@@ -177,7 +177,7 @@ func (p *Provider) fetchPriceHistory(ctx context.Context, marketID string, tf da
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("prices-history HTTP %d", resp.StatusCode)

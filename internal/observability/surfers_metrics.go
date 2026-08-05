@@ -44,9 +44,11 @@ func (m *SurfersMetrics) FeedMetrics() polymarketmd.Metrics { return feedMetrics
 func (m *SurfersMetrics) RecorderMetrics() recorder.RecorderMetrics {
 	return recorderMetricsAdapter{m: m}
 }
+
 func (m *SurfersMetrics) IncBreakerTripped(scope, reason string) {
 	m.breakerTripped.WithLabelValues(scope, reason).Inc()
 }
+
 func (m *SurfersMetrics) SetFillRate(strategy string, rate float64) {
 	m.fillRate.WithLabelValues(strategy).Set(rate)
 }
@@ -77,10 +79,12 @@ type recorderMetricsAdapter struct{ m *SurfersMetrics }
 func (a recorderMetricsAdapter) IncInserted(kind string, n int) {
 	a.m.recorderInserted.WithLabelValues(kind).Add(float64(n))
 }
+
 func (a recorderMetricsAdapter) ObserveLagSeconds(_ string, sec float64) {
 	a.m.recorderLag.Set(sec)
 	a.m.recorderLagValue.Store(math.Float64bits(sec))
 }
+
 func (a recorderMetricsAdapter) IncDropped(kind string, n int) {
 	a.m.wsTicksDropped.WithLabelValues(kind, "backpressure").Add(float64(n))
 }

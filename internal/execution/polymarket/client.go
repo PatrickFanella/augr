@@ -269,14 +269,6 @@ func (c *Client) do(ctx context.Context, method, requestPath string, params url.
 	return responseBody, nil
 }
 
-func marshalRequestBody(body any) (io.Reader, error) {
-	bodyBytes, err := marshalRequestBodyBytes(body)
-	if err != nil {
-		return nil, err
-	}
-	return bytes.NewReader(bodyBytes), nil
-}
-
 func marshalRequestBodyBytes(body any) ([]byte, error) {
 	if body == nil {
 		return nil, nil

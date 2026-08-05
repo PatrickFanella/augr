@@ -22,12 +22,12 @@ type fakeBreaker struct {
 	allowCalls int
 }
 
-func (f *fakeBreaker) Allow(ctx context.Context, scope string) error {
+func (f *fakeBreaker) Allow(_ context.Context, _ string) error {
 	f.allowCalls++
 	return f.allowErr
 }
-func (f *fakeBreaker) Trip(ctx context.Context, scope, reason string) error { return nil }
-func (f *fakeBreaker) Reset(ctx context.Context, scope string) error        { return nil }
+func (f *fakeBreaker) Trip(_ context.Context, _, _ string) error { return nil }
+func (f *fakeBreaker) Reset(_ context.Context, _ string) error   { return nil }
 
 type fakeOfficialCLOBClient struct {
 	calls    int
@@ -35,7 +35,7 @@ type fakeOfficialCLOBClient struct {
 	err      error
 }
 
-func (f *fakeOfficialCLOBClient) GetOrderBook(ctx context.Context, tokenID string) (domain.PolymarketBookSnapshot, error) {
+func (f *fakeOfficialCLOBClient) GetOrderBook(_ context.Context, _ string) (domain.PolymarketBookSnapshot, error) {
 	f.calls++
 	return f.snapshot, f.err
 }
@@ -133,7 +133,7 @@ func TestBrokerSendTemplate_UsesBreakerScopes(t *testing.T) {
 	t.Parallel()
 
 	var requests int
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		requests++
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"id":"poly-order-1"}`))
@@ -659,7 +659,7 @@ func TestBrokerSubmitOrder_RespectsBreaker(t *testing.T) {
 
 func TestBrokerSubmitOrder_NilBreakerNoEffect(t *testing.T) {
 	requests := make(chan struct{}, 1)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		requests <- struct{}{}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"id":"poly-order-3"}`))
@@ -683,7 +683,7 @@ func TestBrokerSubmitOrder_StrategyScopeBreaker(t *testing.T) {
 	strategyID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
 	br := &fakeBreaker{}
 	client := newTestClient()
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"id":"poly-order-1"}`))
 	}))

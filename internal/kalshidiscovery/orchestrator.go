@@ -187,7 +187,7 @@ func Run(ctx context.Context, cfg Config, deps Deps) (res *Result, err error) {
 		if len(res.Deployed) >= cfg.MaxDeployments {
 			break
 		}
-		proposal, buildErr := buildDeterministicProposal(candidate, cfg)
+		proposal, buildErr := buildDeterministicProposal(candidate)
 		if buildErr != nil {
 			res.Errors = append(res.Errors, fmt.Sprintf("proposal %s: %v", candidate.Ticker, buildErr))
 			continue
@@ -296,7 +296,7 @@ func DeployStrategy(
 	return out, nil
 }
 
-func buildDeterministicProposal(candidate MarketCandidate, cfg Config) (Proposal, error) {
+func buildDeterministicProposal(candidate MarketCandidate) (Proposal, error) {
 	if strings.TrimSpace(candidate.Ticker) == "" {
 		return Proposal{}, fmt.Errorf("missing ticker")
 	}
@@ -346,7 +346,7 @@ func buildDeterministicProposal(candidate MarketCandidate, cfg Config) (Proposal
 	return proposal, nil
 }
 
-func chooseKalshiDirection(candidate MarketCandidate) (direction string, ask float64, bid float64) {
+func chooseKalshiDirection(candidate MarketCandidate) (direction string, ask, bid float64) {
 	if candidate.NoAsk > 0 && (candidate.YesAsk <= 0 || candidate.NoAsk < candidate.YesAsk) {
 		return "NO", candidate.NoAsk, candidate.NoBid
 	}
@@ -382,12 +382,12 @@ func mustJSON(v any) json.RawMessage {
 
 func ptrTime(t time.Time) *time.Time { return &t }
 
-func clamp(v, min, max float64) float64 {
-	if v < min {
-		return min
+func clamp(v, minimum, maximum float64) float64 {
+	if v < minimum {
+		return minimum
 	}
-	if v > max {
-		return max
+	if v > maximum {
+		return maximum
 	}
 	return v
 }

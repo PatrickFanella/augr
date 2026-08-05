@@ -72,7 +72,7 @@ func (c *CLOBHTTPClient) GetOrderBook(ctx context.Context, tokenID string) (doma
 	if err != nil {
 		return domain.PolymarketBookSnapshot{}, fmt.Errorf("polymarket: clob get order book: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return domain.PolymarketBookSnapshot{}, fmt.Errorf("polymarket: clob book HTTP %d", resp.StatusCode)

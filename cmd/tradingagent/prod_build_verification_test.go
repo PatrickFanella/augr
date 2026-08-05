@@ -50,7 +50,7 @@ func TestProductionBuildVerificationScriptContainsExpectedSteps(t *testing.T) {
 	if migrationsIdx == -1 || schemaAssertIdx == -1 || healthWaitIdx == -1 {
 		t.Fatal("verify-prod-build.sh missing migration/schema/health ordering anchors")
 	}
-	if !(migrationsIdx < schemaAssertIdx && schemaAssertIdx < healthWaitIdx) {
+	if migrationsIdx >= schemaAssertIdx || schemaAssertIdx >= healthWaitIdx {
 		t.Fatalf("verify-prod-build.sh expected migrations -> schema assertion -> health wait ordering, got migration=%d schema=%d health=%d", migrationsIdx, schemaAssertIdx, healthWaitIdx)
 	}
 }

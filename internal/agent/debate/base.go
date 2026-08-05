@@ -92,6 +92,7 @@ func (b BaseDebater) CallWithContext(
 
 	return resp.Content, promptText, resp.Usage, nil
 }
+
 func formatRoundsForPrompt(rounds []agent.DebateRound) string {
 	if len(rounds) == 0 {
 		return "No previous debate rounds."

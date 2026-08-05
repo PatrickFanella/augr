@@ -12,18 +12,6 @@ const (
 	FundamentalFieldDividendYield    = "dividend_yield"
 )
 
-var allFundamentalFields = []string{
-	FundamentalFieldMarketCap,
-	FundamentalFieldPERatio,
-	FundamentalFieldEPS,
-	FundamentalFieldRevenue,
-	FundamentalFieldRevenueGrowthYoY,
-	FundamentalFieldGrossMargin,
-	FundamentalFieldDebtToEquity,
-	FundamentalFieldFreeCashFlow,
-	FundamentalFieldDividendYield,
-}
-
 func IsFundamentalFieldMissing(f Fundamentals, field string) bool {
 	for _, missing := range f.MissingFields {
 		if missing == field {

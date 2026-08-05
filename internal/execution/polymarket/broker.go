@@ -76,6 +76,8 @@ type createOrderResponse struct {
 	ID string `json:"id"`
 }
 
+type CreateOrderResponse = createOrderResponse
+
 type getOrderResponse struct {
 	Order retailOrder `json:"order"`
 }
@@ -96,10 +98,6 @@ type retailOrder struct {
 	} `json:"marketMetadata,omitempty"`
 }
 
-type openOrdersResponse struct {
-	Orders []retailOrder `json:"orders"`
-}
-
 type accountBalancesResponse struct {
 	Balances []struct {
 		CurrentBalance float64 `json:"currentBalance"`
@@ -107,21 +105,6 @@ type accountBalancesResponse struct {
 		BuyingPower    float64 `json:"buyingPower"`
 		AssetNotional  float64 `json:"assetNotional"`
 	} `json:"balances"`
-}
-
-type userPositionsResponse struct {
-	Positions map[string]userPosition `json:"positions"`
-}
-
-type userPosition struct {
-	NetPosition    string  `json:"netPosition"`
-	QtyAvailable   string  `json:"qtyAvailable"`
-	Cost           *amount `json:"cost,omitempty"`
-	MarketMetadata *struct {
-		Slug    string `json:"slug"`
-		Outcome string `json:"outcome"`
-		Title   string `json:"title"`
-	} `json:"marketMetadata,omitempty"`
 }
 
 type dataAPIPosition struct {
@@ -247,7 +230,7 @@ func (b *Broker) PrepareTemplate(order *domain.Order) (*OrderTemplate, error) {
 }
 
 // SendTemplate sends a pre-built order template.
-func (b *Broker) SendTemplate(ctx context.Context, tmpl *OrderTemplate) (*createOrderResponse, error) {
+func (b *Broker) SendTemplate(ctx context.Context, tmpl *OrderTemplate) (*CreateOrderResponse, error) {
 	if b == nil || b.client == nil {
 		return nil, errors.New("polymarket: broker client is required")
 	}
@@ -278,7 +261,7 @@ func (b *Broker) SendTemplate(ctx context.Context, tmpl *OrderTemplate) (*create
 	if err != nil {
 		return nil, fmt.Errorf("polymarket: do templated request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("polymarket: read templated response body: %w", err)
@@ -374,7 +357,7 @@ func (b *Broker) GetPositions(ctx context.Context) ([]domain.Position, error) {
 	if err != nil {
 		return nil, fmt.Errorf("polymarket: get positions: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("polymarket: read positions response: %w", err)
@@ -555,54 +538,6 @@ func mapOrderStatus(rawStatus string) (domain.OrderStatus, error) {
 	}
 }
 
-func mapPosition(slug string, response userPosition) (domain.Position, error) {
-	ticker := strings.TrimSpace(slug)
-	if ticker == "" && response.MarketMetadata != nil {
-		ticker = strings.TrimSpace(response.MarketMetadata.Slug)
-	}
-	if ticker == "" {
-		return domain.Position{}, errors.New("polymarket: position market slug is required")
-	}
-
-	quantityString := strings.TrimSpace(response.QtyAvailable)
-	if quantityString == "" {
-		quantityString = strings.TrimSpace(response.NetPosition)
-	}
-	quantity, err := parseRequiredFloat("netPosition", quantityString)
-	if err != nil {
-		return domain.Position{}, err
-	}
-	if quantity < 0 {
-		quantity = -quantity
-	}
-
-	avgPrice := 0.0
-	if response.Cost != nil {
-		avgPrice, err = parseRequiredFloat("cost", response.Cost.Value)
-		if err != nil {
-			return domain.Position{}, err
-		}
-	}
-	if avgPrice <= 0 {
-		avgPrice = 0.5
-	}
-
-	positionSide := domain.PositionSideLong
-	if strings.TrimSpace(response.NetPosition) != "" {
-		netPosition, err := parseRequiredFloat("netPosition", response.NetPosition)
-		if err == nil && netPosition < 0 {
-			positionSide = domain.PositionSideShort
-		}
-	}
-
-	return domain.Position{
-		Ticker:   ticker,
-		Side:     positionSide,
-		Quantity: quantity,
-		AvgEntry: avgPrice,
-	}, nil
-}
-
 func formatFloat(value float64) string {
 	return strconv.FormatFloat(value, 'f', -1, 64)
 }
@@ -613,18 +548,4 @@ func hasDryRunQuery(rawURL string) bool {
 		return false
 	}
 	return parsed.Query().Get(dryRunParamName) == "1"
-}
-
-func parseRequiredFloat(fieldName, value string) (float64, error) {
-	trimmedValue := strings.TrimSpace(value)
-	if trimmedValue == "" {
-		return 0, fmt.Errorf("polymarket: %s is required", fieldName)
-	}
-
-	parsedValue, err := strconv.ParseFloat(trimmedValue, 64)
-	if err != nil {
-		return 0, fmt.Errorf("polymarket: parse %s: %w", fieldName, err)
-	}
-
-	return parsedValue, nil
 }

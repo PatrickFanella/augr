@@ -255,11 +255,11 @@ func (o *JobOrchestrator) optionsScan(ctx context.Context) error {
 			if err != nil || len(bars) == 0 {
 				continue
 			}
-			close_ := bars[len(bars)-1].Close
-			if close_ < 5.0 {
+			closePrice := bars[len(bars)-1].Close
+			if closePrice < 5.0 {
 				continue
 			}
-			candidates = append(candidates, optionable{ticker: ticker, close: close_})
+			candidates = append(candidates, optionable{ticker: ticker, close: closePrice})
 		} else {
 			candidates = append(candidates, optionable{ticker: ticker})
 		}
@@ -297,7 +297,7 @@ func (o *JobOrchestrator) optionsScan(ctx context.Context) error {
 			slog.Int("contracts", len(chain)),
 		)
 
-		result := analyzeChain(candidate.ticker, chain, now)
+		result := analyzeChain(chain)
 		if result == nil {
 			continue
 		}
@@ -352,7 +352,7 @@ type chainAnalysis struct {
 
 // analyzeChain evaluates an options chain for actionable setups.
 // Returns nil if nothing interesting is found.
-func analyzeChain(ticker string, chain []domain.OptionSnapshot, now time.Time) *chainAnalysis {
+func analyzeChain(chain []domain.OptionSnapshot) *chainAnalysis {
 	if len(chain) == 0 {
 		return nil
 	}

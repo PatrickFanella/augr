@@ -111,6 +111,6 @@ func TestDeterministicNativeExecutor_HoldsWhenEvaluatorErrors(t *testing.T) {
 
 type errorEvaluator struct{ err error }
 
-func (e errorEvaluator) Evaluate(ctx context.Context, strategy domain.Strategy, snapshot Snapshot) (NativeEvaluation, error) {
+func (e errorEvaluator) Evaluate(_ context.Context, _ domain.Strategy, _ Snapshot) (NativeEvaluation, error) {
 	return NativeEvaluation{}, e.err
 }

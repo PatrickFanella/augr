@@ -261,9 +261,9 @@ func TestParseSentimentResponse(t *testing.T) {
 			wantResult: SentimentResult{Mentions: 1, Neutral: 1},
 		},
 		{
-			name:   "invalid JSON",
+			name:    "invalid JSON",
 			content: "not json",
-			wantOK: false,
+			wantOK:  false,
 		},
 	}
 

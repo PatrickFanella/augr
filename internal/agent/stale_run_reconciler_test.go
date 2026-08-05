@@ -24,9 +24,11 @@ func (s *staleRunRepoStub) Create(context.Context, *domain.PipelineRun) error { 
 func (s *staleRunRepoStub) GetByID(context.Context, uuid.UUID) (*domain.PipelineRun, error) {
 	return nil, repository.ErrNotFound
 }
+
 func (s *staleRunRepoStub) Get(context.Context, uuid.UUID, time.Time) (*domain.PipelineRun, error) {
 	return nil, repository.ErrNotFound
 }
+
 func (s *staleRunRepoStub) List(_ context.Context, filter repository.PipelineRunFilter, _, _ int) ([]domain.PipelineRun, error) {
 	s.filter = filter
 	if s.err != nil {
@@ -34,9 +36,11 @@ func (s *staleRunRepoStub) List(_ context.Context, filter repository.PipelineRun
 	}
 	return s.runs, nil
 }
+
 func (s *staleRunRepoStub) Count(context.Context, repository.PipelineRunFilter) (int, error) {
 	return len(s.runs), nil
 }
+
 func (s *staleRunRepoStub) UpdateStatus(_ context.Context, id uuid.UUID, _ time.Time, update repository.PipelineRunStatusUpdate) error {
 	s.ids = append(s.ids, id)
 	s.updates = append(s.updates, update)
@@ -55,9 +59,11 @@ func (s *staleAuditLogStub) Create(_ context.Context, entry *domain.AuditLogEntr
 	s.entries = append(s.entries, entry)
 	return nil
 }
+
 func (s *staleAuditLogStub) Query(context.Context, repository.AuditLogFilter, int, int) ([]domain.AuditLogEntry, error) {
 	return nil, nil
 }
+
 func (s *staleAuditLogStub) Count(context.Context, repository.AuditLogFilter) (int, error) {
 	return len(s.entries), nil
 }

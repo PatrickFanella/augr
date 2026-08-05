@@ -337,7 +337,7 @@ func (r *mockPositionRepo) GetOpen(ctx context.Context, filter repository.Positi
 	return nil, nil
 }
 
-func (r *mockPositionRepo) ListOpenAlpacaOwned(_ context.Context, _ int, _ int) ([]domain.Position, error) {
+func (r *mockPositionRepo) ListOpenAlpacaOwned(_ context.Context, _, _ int) ([]domain.Position, error) {
 	return nil, nil
 }
 
@@ -658,7 +658,7 @@ func TestOrderManager_CarriesKalshiReferencePriceToBroker(t *testing.T) {
 	filledAt := time.Date(2026, 7, 19, 12, 0, 0, 0, time.UTC)
 	var submitted *domain.Order
 	broker := &mockBroker{
-		submitOrderFn: func(ctx context.Context, order *domain.Order) (string, error) {
+		submitOrderFn: func(_ context.Context, order *domain.Order) (string, error) {
 			submitted = order
 			if order.ReferencePrice == nil || *order.ReferencePrice != reference {
 				t.Fatalf("broker ReferencePrice = %v, want %v", order.ReferencePrice, reference)
@@ -949,7 +949,7 @@ func TestProcessSignal_PredictionMixedCaseSuffixBuyAndSellReuseNormalizedIdentit
 		t.Fatalf("buy order prediction side = %q, want YES", got)
 	}
 
-	positionRepo.getByStrategyFn = func(ctx context.Context, gotStrategyID uuid.UUID, filter repository.PositionFilter, limit, offset int) ([]domain.Position, error) {
+	positionRepo.getByStrategyFn = func(_ context.Context, gotStrategyID uuid.UUID, filter repository.PositionFilter, _, _ int) ([]domain.Position, error) {
 		if gotStrategyID != strategyID {
 			t.Fatalf("strategyID = %s, want %s", gotStrategyID, strategyID)
 		}
@@ -1031,7 +1031,7 @@ func TestProcessSignal_PredictionQualifiedTickerNormalizesBeforePersistence(t *t
 	tradeRepo := &mockTradeRepo{}
 	var submitCalls int
 	broker := &mockBroker{
-		submitOrderFn: func(ctx context.Context, order *domain.Order) (string, error) {
+		submitOrderFn: func(_ context.Context, order *domain.Order) (string, error) {
 			submitCalls++
 			if order.Ticker != "WILL-EXAMPLE-HAPPEN" {
 				t.Fatalf("submitted ticker = %q, want base ticker", order.Ticker)
@@ -1149,7 +1149,7 @@ func TestProcessSignal_PolymarketExitClosesSideQualifiedPosition(t *testing.T) {
 	}
 	orderRepo := &mockOrderRepo{}
 	positionRepo := &mockPositionRepo{
-		getByStrategyFn: func(ctx context.Context, gotStrategyID uuid.UUID, filter repository.PositionFilter, limit, offset int) ([]domain.Position, error) {
+		getByStrategyFn: func(_ context.Context, gotStrategyID uuid.UUID, filter repository.PositionFilter, _, _ int) ([]domain.Position, error) {
 			if gotStrategyID != strategyID {
 				t.Fatalf("strategyID = %s, want %s", gotStrategyID, strategyID)
 			}
@@ -1220,7 +1220,7 @@ func TestProcessSignal_PolymarketExitQuantityCappedToOwnedPosition(t *testing.T)
 	}
 	orderRepo := &mockOrderRepo{}
 	positionRepo := &mockPositionRepo{
-		getByStrategyFn: func(ctx context.Context, gotStrategyID uuid.UUID, filter repository.PositionFilter, limit, offset int) ([]domain.Position, error) {
+		getByStrategyFn: func(_ context.Context, gotStrategyID uuid.UUID, filter repository.PositionFilter, _, _ int) ([]domain.Position, error) {
 			if gotStrategyID != strategyID {
 				t.Fatalf("strategyID = %s, want %s", gotStrategyID, strategyID)
 			}
@@ -1272,7 +1272,7 @@ func TestProcessSignal_PolymarketPartialCloseReducesQuantity(t *testing.T) {
 	}
 	orderRepo := &mockOrderRepo{}
 	positionRepo := &mockPositionRepo{
-		getByStrategyFn: func(ctx context.Context, gotStrategyID uuid.UUID, filter repository.PositionFilter, limit, offset int) ([]domain.Position, error) {
+		getByStrategyFn: func(_ context.Context, gotStrategyID uuid.UUID, filter repository.PositionFilter, _, _ int) ([]domain.Position, error) {
 			if gotStrategyID != strategyID {
 				t.Fatalf("strategyID = %s, want %s", gotStrategyID, strategyID)
 			}
@@ -1405,7 +1405,7 @@ func TestProcessSignal_PolymarketExitClosesNoPosition(t *testing.T) {
 	}
 	orderRepo := &mockOrderRepo{}
 	positionRepo := &mockPositionRepo{
-		getByStrategyFn: func(ctx context.Context, gotStrategyID uuid.UUID, filter repository.PositionFilter, limit, offset int) ([]domain.Position, error) {
+		getByStrategyFn: func(_ context.Context, gotStrategyID uuid.UUID, filter repository.PositionFilter, _, _ int) ([]domain.Position, error) {
 			if gotStrategyID != strategyID {
 				t.Fatalf("strategyID = %s, want %s", gotStrategyID, strategyID)
 			}
@@ -2113,7 +2113,7 @@ func TestProcessSignal_SellSignal(t *testing.T) {
 	orderRepo := &mockOrderRepo{}
 	strategyID := uuid.New()
 	positionRepo := &mockPositionRepo{
-		getByStrategyFn: func(ctx context.Context, gotStrategyID uuid.UUID, filter repository.PositionFilter, limit, offset int) ([]domain.Position, error) {
+		getByStrategyFn: func(_ context.Context, gotStrategyID uuid.UUID, filter repository.PositionFilter, _, _ int) ([]domain.Position, error) {
 			if gotStrategyID != strategyID {
 				t.Fatalf("strategyID = %s, want %s", gotStrategyID, strategyID)
 			}
@@ -2174,7 +2174,7 @@ func TestProcessSignal_SellSignal(t *testing.T) {
 
 func TestProcessSignal_SellSignalWithoutOpenLongPositionSkipped(t *testing.T) {
 	broker := &mockBroker{
-		submitOrderFn: func(ctx context.Context, order *domain.Order) (string, error) {
+		submitOrderFn: func(_ context.Context, _ *domain.Order) (string, error) {
 			t.Fatal("SubmitOrder should not be called for unowned sell signal")
 			return "", nil
 		},
@@ -2287,7 +2287,7 @@ func TestProcessSignal_NonStockSellWithoutOpenLongIsNotStockGuarded(t *testing.T
 
 func TestProcessSignal_StockSellRequiresTickerForOwnershipCheck(t *testing.T) {
 	broker := &mockBroker{
-		submitOrderFn: func(ctx context.Context, order *domain.Order) (string, error) {
+		submitOrderFn: func(_ context.Context, _ *domain.Order) (string, error) {
 			t.Fatal("SubmitOrder should not be called when stock sell ticker is empty")
 			return "", nil
 		},

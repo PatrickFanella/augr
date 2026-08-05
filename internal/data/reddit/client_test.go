@@ -45,7 +45,7 @@ func TestClientFetchSubredditsStartsCooldownOn429(t *testing.T) {
 	client := NewClient(nil)
 	client.limiter = &redditlimit.Coordinator{}
 	var calls int
-	client.client = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+	client.client = &http.Client{Transport: roundTripFunc(func(_ *http.Request) (*http.Response, error) {
 		calls++
 		return &http.Response{StatusCode: http.StatusTooManyRequests, Body: io.NopCloser(strings.NewReader("rate limited")), Header: http.Header{"Retry-After": []string{"120"}}}, nil
 	})}

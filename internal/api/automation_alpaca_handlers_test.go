@@ -18,16 +18,16 @@ type stubAlpacaAdminReconciler struct {
 	calls    int
 }
 
-func (s *stubAlpacaAdminReconciler) Reconcile(ctx context.Context) (automation.AlpacaReconcileSummary, error) {
+func (s *stubAlpacaAdminReconciler) Reconcile(_ context.Context) (automation.AlpacaReconcileSummary, error) {
 	s.calls++
 	return s.summary, s.err
 }
 
-func (s *stubAlpacaAdminReconciler) Verify(ctx context.Context) (automation.AlpacaVerificationReport, error) {
+func (s *stubAlpacaAdminReconciler) Verify(_ context.Context) (automation.AlpacaVerificationReport, error) {
 	return s.report, s.err
 }
 
-func (s *stubAlpacaAdminReconciler) ReconciliationReport(ctx context.Context) (automation.AlpacaPLReconciliationReport, error) {
+func (s *stubAlpacaAdminReconciler) ReconciliationReport(_ context.Context) (automation.AlpacaPLReconciliationReport, error) {
 	return s.plReport, s.err
 }
 

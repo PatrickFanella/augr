@@ -77,45 +77,6 @@ func (r *UniverseRepo) UpsertBatch(ctx context.Context, tickers []universe.Track
 	return nil
 }
 
-func (r *UniverseRepo) upsertChunk(ctx context.Context, tickers []universe.TrackedTicker) error {
-	var b strings.Builder
-	args := make([]any, 0, len(tickers)*8)
-	argIdx := 0
-
-	b.WriteString(`WITH input (ticker, name, exchange, index_group, watch_score, last_scanned, active, ord) AS (VALUES `)
-
-	for i, t := range tickers {
-		if i > 0 {
-			b.WriteString(", ")
-		}
-		fmt.Fprintf(&b, "($%d::text, $%d::text, $%d::text, $%d::text, $%d::numeric, $%d::timestamptz, $%d::boolean, $%d::int)",
-			argIdx+1, argIdx+2, argIdx+3, argIdx+4, argIdx+5, argIdx+6, argIdx+7, argIdx+8)
-		args = append(args, strings.ToUpper(strings.TrimSpace(t.Ticker)), t.Name, t.Exchange, t.IndexGroup, t.WatchScore, t.LastScanned, t.Active, i)
-		argIdx += 8
-	}
-
-	b.WriteString(`), dedup AS (
-		SELECT DISTINCT ON (ticker) ticker, name, exchange, index_group, watch_score, last_scanned, active
-		FROM input
-		WHERE ticker <> ''
-		ORDER BY ticker, ord DESC
-	)
-	INSERT INTO universe_tickers (ticker, name, exchange, index_group, watch_score, last_scanned, active)
-	SELECT ticker, name, exchange, index_group, watch_score::numeric, last_scanned::timestamptz, active::boolean FROM dedup
-	ON CONFLICT (ticker) DO UPDATE SET
-		name         = EXCLUDED.name,
-		exchange     = EXCLUDED.exchange,
-		index_group  = EXCLUDED.index_group,
-		active       = EXCLUDED.active,
-		updated_at   = NOW()`)
-
-	_, err := r.pool.Exec(ctx, b.String(), args...)
-	if err != nil {
-		return fmt.Errorf("postgres: upsert universe batch: %w", err)
-	}
-	return nil
-}
-
 // List returns tracked tickers matching the provided filter with pagination.
 func (r *UniverseRepo) List(ctx context.Context, filter universe.ListFilter, limit, offset int) ([]universe.TrackedTicker, error) {
 	query, args := buildUniverseListQuery(filter, limit, offset)

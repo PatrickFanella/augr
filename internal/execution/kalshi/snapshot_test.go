@@ -43,7 +43,7 @@ func TestSnapshotValidateExecutableSide(t *testing.T) {
 		{name: "nil close time", side: "YES", mod: func(s *Snapshot) { s.CloseTime = time.Time{} }},
 		{name: "past close time", side: "YES", mod: func(s *Snapshot) { past := now.Add(-time.Minute); s.CloseTime = past }},
 		{name: "low liquidity", side: "YES", mod: func(s *Snapshot) { s.Volume = 10; s.OpenInterest = 5 }},
-		{name: "invalid side", side: "MAYBE", mod: func(s *Snapshot) {}},
+		{name: "invalid side", side: "MAYBE", mod: func(*Snapshot) {}},
 		{name: "malformed yes quotes", side: "YES", mod: func(s *Snapshot) { s.BestBidYes = 0.5; s.BestAskYes = 0.4 }},
 		{name: "malformed no quotes", side: "NO", mod: func(s *Snapshot) { s.BestBidNo = 0.6; s.BestAskNo = 0.5 }},
 		{name: "missing no quote", side: "NO", mod: func(s *Snapshot) { s.BestBidNo = 0; s.BestAskNo = 0 }},

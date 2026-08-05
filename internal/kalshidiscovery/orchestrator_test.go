@@ -22,7 +22,7 @@ func TestDeployStrategyCreatesActivePaperKalshiStrategyWithMetadata(t *testing.T
 	ctx := context.Background()
 	repo := newKalshiStrategyRepo()
 	candidate := newKalshiCandidate("KX-TEST", "EVT-TEST", "Will test happen?", 0.41, 0.45, 0.55, 0.59, 2500, 1500, 7*24*time.Hour)
-	proposal, err := buildDeterministicProposal(candidate, Config{})
+	proposal, err := buildDeterministicProposal(candidate)
 	if err != nil {
 		t.Fatalf("buildDeterministicProposal() error = %v", err)
 	}
@@ -69,7 +69,7 @@ func TestDeployStrategyDryRunDoesNotPersistStrategy(t *testing.T) {
 	t.Parallel()
 
 	candidate := newKalshiCandidate("KX-DRY", "EVT-DRY", "Dry run market?", 0.40, 0.43, 0.56, 0.60, 2000, 1500, 10*24*time.Hour)
-	proposal, err := buildDeterministicProposal(candidate, Config{})
+	proposal, err := buildDeterministicProposal(candidate)
 	if err != nil {
 		t.Fatalf("buildDeterministicProposal() error = %v", err)
 	}
@@ -90,7 +90,7 @@ func TestDeployStrategyRejectsInvalidProposalAndWrongSourceReference(t *testing.
 	t.Parallel()
 
 	candidate := newKalshiCandidate("KX-ERR", "EVT-ERR", "Will error?", 0.42, 0.45, 0.55, 0.58, 2000, 1500, 10*24*time.Hour)
-	proposal, err := buildDeterministicProposal(candidate, Config{})
+	proposal, err := buildDeterministicProposal(candidate)
 	if err != nil {
 		t.Fatalf("buildDeterministicProposal() error = %v", err)
 	}
@@ -120,7 +120,7 @@ func TestDeployStrategyReusesExistingPaperStrategyForSameMarketTicker(t *testing
 	ctx := context.Background()
 	repo := newKalshiStrategyRepo()
 	candidate := newKalshiCandidate("KX-REUSE", "EVT-REUSE", "Reuse market?", 0.43, 0.46, 0.54, 0.57, 2100, 1600, 9*24*time.Hour)
-	proposal, err := buildDeterministicProposal(candidate, Config{})
+	proposal, err := buildDeterministicProposal(candidate)
 	if err != nil {
 		t.Fatalf("buildDeterministicProposal() error = %v", err)
 	}
@@ -226,7 +226,7 @@ func TestBuildDeterministicProposalChoosesTighterSide(t *testing.T) {
 	t.Parallel()
 
 	candidate := newKalshiCandidate("KX-SIDE", "EVT-SIDE", "Side market?", 0.42, 0.51, 0.39, 0.44, 2000, 1200, 6*24*time.Hour)
-	proposal, err := buildDeterministicProposal(candidate, Config{})
+	proposal, err := buildDeterministicProposal(candidate)
 	if err != nil {
 		t.Fatalf("buildDeterministicProposal() error = %v", err)
 	}
@@ -287,8 +287,8 @@ func (r *fakeKalshiStrategyRepo) Create(_ context.Context, strategy *domain.Stra
 func (r *fakeKalshiStrategyRepo) Get(_ context.Context, id uuid.UUID) (*domain.Strategy, error) {
 	for i := range r.created {
 		if r.created[i].ID == id {
-			copy := r.created[i]
-			return &copy, nil
+			cloned := r.created[i]
+			return &cloned, nil
 		}
 	}
 	return nil, repository.ErrNotFound
@@ -373,8 +373,8 @@ type fakeKalshiDiscoveryRunRepo struct {
 
 func (r *fakeKalshiDiscoveryRunRepo) Create(_ context.Context, run *domain.KalshiDiscoveryRun) error {
 	r.created++
-	copy := *run
-	r.lastCreated = &copy
+	cloned := *run
+	r.lastCreated = &cloned
 	return nil
 }
 
@@ -384,8 +384,8 @@ func (r *fakeKalshiDiscoveryRunRepo) GetActive(context.Context) (*domain.KalshiD
 
 func (r *fakeKalshiDiscoveryRunRepo) Finish(_ context.Context, run *domain.KalshiDiscoveryRun) error {
 	r.finished++
-	copy := *run
-	r.lastFinished = &copy
+	cloned := *run
+	r.lastFinished = &cloned
 	return nil
 }
 
@@ -414,9 +414,11 @@ func (r *fakeKalshiSnapshotsRepo) Create(_ context.Context, snapshot *domain.Kal
 	r.tickers = append(r.tickers, snapshot.Ticker)
 	return nil
 }
+
 func (r *fakeKalshiSnapshotsRepo) ListLatestByTicker(context.Context, string, int) ([]domain.KalshiMarketSnapshot, error) {
 	return nil, nil
 }
+
 func (r *fakeKalshiSnapshotsRepo) ListRecent(context.Context, int) ([]domain.KalshiMarketSnapshot, error) {
 	return nil, nil
 }

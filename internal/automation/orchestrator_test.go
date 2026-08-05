@@ -172,21 +172,25 @@ func (m *stubAutomationMetrics) RecordAlpacaReconcileRun(result string) {
 	}
 	m.alpacaRuns[result]++
 }
+
 func (m *stubAutomationMetrics) RecordKalshiReconcileRun(result string) {
 	m.RecordAlpacaReconcileRun("kalshi_" + result)
 }
+
 func (m *stubAutomationMetrics) RecordKalshiSettlementDryRun(result string) {
 	if m.kalshiDryRuns == nil {
 		m.kalshiDryRuns = make(map[string]int)
 	}
 	m.kalshiDryRuns[result]++
 }
+
 func (m *stubAutomationMetrics) RecordKalshiSettlementOutcome(result string) {
 	if m.kalshiOutcomes == nil {
 		m.kalshiOutcomes = make(map[string]int)
 	}
 	m.kalshiOutcomes[result]++
 }
+
 func (m *stubAutomationMetrics) RecordKalshiSettlementTransition(from, to string) {
 	m.transitions = append(m.transitions, from+"->"+to)
 }
@@ -375,12 +379,14 @@ type kalshiSettlementGateStub struct {
 func (s *kalshiSettlementGateStub) Get(context.Context, string) (*domain.KalshiSettlementGateState, error) {
 	return s.state, s.err
 }
+
 func (s *kalshiSettlementGateStub) RecordSuccess(context.Context, string, int, int, int, int, int, string, time.Time) (*domain.KalshiSettlementGateState, error) {
 	if s.failPersist {
 		return nil, errors.New("persist failed")
 	}
 	return s.state, nil
 }
+
 func (s *kalshiSettlementGateStub) RecordFailure(context.Context, string, int, int, int, int, int, time.Time, string) (*domain.KalshiSettlementGateState, error) {
 	if s.failPersist {
 		return nil, errors.New("persist failed")
@@ -515,6 +521,7 @@ type kalshiCatalogStub struct{}
 func (kalshiCatalogStub) ListMarkets(context.Context, kalshidiscovery.ListOptions) ([]kalshidiscovery.MarketCandidate, string, error) {
 	return nil, "", nil
 }
+
 func (kalshiCatalogStub) GetMarket(context.Context, string) (*kalshidiscovery.MarketCandidate, error) {
 	return nil, nil
 }
@@ -527,9 +534,11 @@ func (s *kalshiStrategyRepoStub) Create(context.Context, *domain.Strategy) error
 func (s *kalshiStrategyRepoStub) Get(context.Context, uuid.UUID) (*domain.Strategy, error) {
 	return nil, repository.ErrNotFound
 }
+
 func (s *kalshiStrategyRepoStub) List(context.Context, repository.StrategyFilter, int, int) ([]domain.Strategy, error) {
 	return append([]domain.Strategy(nil), s.strategies...), nil
 }
+
 func (s *kalshiStrategyRepoStub) Count(context.Context, repository.StrategyFilter) (int, error) {
 	return 0, nil
 }
@@ -538,6 +547,7 @@ func (s *kalshiStrategyRepoStub) Delete(context.Context, uuid.UUID) error       
 func (s *kalshiStrategyRepoStub) UpdateThesis(context.Context, uuid.UUID, json.RawMessage) error {
 	return nil
 }
+
 func (s *kalshiStrategyRepoStub) GetThesisRaw(context.Context, uuid.UUID) (json.RawMessage, error) {
 	return nil, nil
 }
@@ -557,9 +567,11 @@ type kalshiSnapshotsRepoStub struct{}
 func (s *kalshiSnapshotsRepoStub) Create(context.Context, *domain.KalshiMarketSnapshot) error {
 	return nil
 }
+
 func (s *kalshiSnapshotsRepoStub) ListLatestByTicker(context.Context, string, int) ([]domain.KalshiMarketSnapshot, error) {
 	return nil, nil
 }
+
 func (s *kalshiSnapshotsRepoStub) ListRecent(context.Context, int) ([]domain.KalshiMarketSnapshot, error) {
 	return nil, nil
 }
@@ -569,12 +581,15 @@ type kalshiDiscoveryRunsRepoStub struct{}
 func (s *kalshiDiscoveryRunsRepoStub) Create(context.Context, *domain.KalshiDiscoveryRun) error {
 	return nil
 }
+
 func (s *kalshiDiscoveryRunsRepoStub) GetActive(context.Context) (*domain.KalshiDiscoveryRun, error) {
 	return nil, repository.ErrNotFound
 }
+
 func (s *kalshiDiscoveryRunsRepoStub) Finish(context.Context, *domain.KalshiDiscoveryRun) error {
 	return nil
 }
+
 func (s *kalshiDiscoveryRunsRepoStub) ListLatest(context.Context, int) ([]domain.KalshiDiscoveryRun, error) {
 	return nil, nil
 }
@@ -609,12 +624,15 @@ func (s *polymarketPositionRepoStub) Create(context.Context, *domain.Position) e
 func (s *polymarketPositionRepoStub) CreateAlpacaOwned(context.Context, *domain.Position) error {
 	return nil
 }
+
 func (s *polymarketPositionRepoStub) Get(context.Context, uuid.UUID) (*domain.Position, error) {
 	return nil, repository.ErrNotFound
 }
+
 func (s *polymarketPositionRepoStub) List(context.Context, repository.PositionFilter, int, int) ([]domain.Position, error) {
 	return nil, nil
 }
+
 func (s *polymarketPositionRepoStub) Count(context.Context, repository.PositionFilter) (int, error) {
 	return 0, nil
 }
@@ -623,12 +641,15 @@ func (s *polymarketPositionRepoStub) Delete(context.Context, uuid.UUID) error   
 func (s *polymarketPositionRepoStub) GetOpen(context.Context, repository.PositionFilter, int, int) ([]domain.Position, error) {
 	return append([]domain.Position(nil), s.positions...), nil
 }
+
 func (s *polymarketPositionRepoStub) ListOpenAlpacaOwned(context.Context, int, int) ([]domain.Position, error) {
 	return nil, nil
 }
+
 func (s *polymarketPositionRepoStub) CountOpen(context.Context, repository.PositionFilter) (int, error) {
 	return len(s.positions), nil
 }
+
 func (s *polymarketPositionRepoStub) GetByStrategy(context.Context, uuid.UUID, repository.PositionFilter, int, int) ([]domain.Position, error) {
 	return nil, nil
 }
@@ -639,6 +660,7 @@ func (s *polymarketAuditRepoStub) Create(context.Context, *domain.AuditLogEntry)
 func (s *polymarketAuditRepoStub) Query(context.Context, repository.AuditLogFilter, int, int) ([]domain.AuditLogEntry, error) {
 	return nil, nil
 }
+
 func (s *polymarketAuditRepoStub) Count(context.Context, repository.AuditLogFilter) (int, error) {
 	return 0, nil
 }

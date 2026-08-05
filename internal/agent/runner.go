@@ -421,7 +421,7 @@ func (r *Runner) Run(ctx context.Context, prepared PreparedRun) (result *RunResu
 			run.ErrorMessage = err.Error()
 			result = &RunResult{Run: run, Signal: r.canonicalSignal(state), State: snapshotState(state), Warnings: warnings}
 			runErr = err
-			return
+			return result, runErr
 		}
 		phaseTimings[phase.name+"_ms"] = time.Since(phaseStart).Milliseconds()
 		r.helper.persistStructuredEvent(ctx, r.helper.newStructuredEvent(
@@ -462,7 +462,7 @@ func (r *Runner) Run(ctx context.Context, prepared PreparedRun) (result *RunResu
 
 	result = &RunResult{Run: run, Signal: r.canonicalSignal(state), State: snapshotState(state), Warnings: warnings}
 	runErr = nil
-	return
+	return result, runErr
 }
 
 func (r *Runner) runExecutionGate(_ context.Context, state *PipelineState, prepared PreparedRun, _ *[]RunWarning, _ *sync.Mutex) error {

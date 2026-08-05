@@ -3,7 +3,6 @@ package polymarket
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -68,7 +67,7 @@ func (c *connection) Run(ctx context.Context) error {
 			return err
 		}
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 
 	sub := map[string]any{"type": "market", "assets_ids": c.assetIDs, "custom_feature_enabled": true}
 	if err := c.conn.WriteJSON(sub); err != nil {
@@ -285,5 +284,3 @@ func (c *connection) addDropped() {
 		c.dropped.Add(1)
 	}
 }
-
-var errUnsupported = errors.New("unsupported")

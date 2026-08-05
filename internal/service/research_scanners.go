@@ -236,6 +236,7 @@ func (req PolymarketOpportunityRequest) querySnapshot(now time.Time) (domain.Pol
 	}
 	return book, polymarketresearch.BinaryProbabilityEstimate{Probability: *req.Probability}, true
 }
+
 func buildOptionsCandidates(chain []domain.OptionSnapshot, underlyingPrice float64, optionType domain.OptionType) []optionCandidate {
 	filtered := dedupeAndSortOptions(chain)
 	var out []optionCandidate

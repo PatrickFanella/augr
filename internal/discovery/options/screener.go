@@ -69,11 +69,6 @@ func ScreenOptions(
 	from := now.AddDate(0, -3, 0) // 3 months for ADV + indicators
 	targetExpiry := now.AddDate(0, 0, cfg.TargetDTE)
 
-	type result struct {
-		res OptionsScreenResult
-		ok  bool
-	}
-
 	var (
 		mu      sync.Mutex
 		results []OptionsScreenResult
@@ -100,8 +95,8 @@ func ScreenOptions(
 			}
 
 			// Compute ADV and close price.
-			close_ := bars[len(bars)-1].Close
-			if close_ < cfg.MinPrice {
+			closePrice := bars[len(bars)-1].Close
+			if closePrice < cfg.MinPrice {
 				return
 			}
 
@@ -110,7 +105,7 @@ func ScreenOptions(
 			for _, b := range bars[len(bars)-lookback:] {
 				volSum += b.Volume
 			}
-			adv := volSum / float64(lookback) * close_
+			adv := volSum / float64(lookback) * closePrice
 			if adv < cfg.MinADV {
 				return
 			}
@@ -128,7 +123,7 @@ func ScreenOptions(
 				if snap.Contract.OptionType != domain.OptionTypeCall {
 					continue
 				}
-				dist := math.Abs(snap.Contract.Strike - close_)
+				dist := math.Abs(snap.Contract.Strike - closePrice)
 				if dist < bestDist {
 					bestDist = dist
 					atmOI = snap.OpenInterest
@@ -145,7 +140,7 @@ func ScreenOptions(
 				Ticker:     ticker,
 				Bars:       bars,
 				Indicators: indicators,
-				Close:      close_,
+				Close:      closePrice,
 				ADV:        adv,
 				ChainDepth: len(chain),
 				ATMOI:      atmOI,
@@ -155,7 +150,7 @@ func ScreenOptions(
 
 			logger.Info("options/screen: passed",
 				slog.String("ticker", ticker),
-				slog.Float64("close", close_),
+				slog.Float64("close", closePrice),
 				slog.Float64("adv", adv),
 				slog.Int("chain_depth", len(chain)),
 				slog.Float64("atm_oi", atmOI),

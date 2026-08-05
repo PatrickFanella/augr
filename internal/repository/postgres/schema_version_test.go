@@ -41,7 +41,7 @@ func TestCompareSchemaVersion(t *testing.T) {
 		name     string
 		current  int
 		required int
-		want     schemaVersionState
+		want     SchemaVersionState
 	}{
 		{name: "behind", current: 28, required: RequiredSchemaVersion, want: schemaVersionBehind},
 		{name: "match", current: RequiredSchemaVersion, required: RequiredSchemaVersion, want: schemaVersionMatch},

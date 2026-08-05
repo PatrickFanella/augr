@@ -964,7 +964,7 @@ func fetchPolymarketAssetIDsBySlug(ctx context.Context, slug string) ([]string, 
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode/100 != 2 {
 		return nil, fmt.Errorf("gamma status %d", resp.StatusCode)
 	}

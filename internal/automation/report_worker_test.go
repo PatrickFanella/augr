@@ -29,8 +29,8 @@ func (s *stubReportStrategyRepo) Create(_ context.Context, _ *domain.Strategy) e
 func (s *stubReportStrategyRepo) Get(_ context.Context, id uuid.UUID) (*domain.Strategy, error) {
 	if s.byID != nil {
 		if strat, ok := s.byID[id]; ok {
-			copy := strat
-			return &copy, nil
+			cloned := strat
+			return &cloned, nil
 		}
 	}
 	for i := range s.strategies {
@@ -63,6 +63,7 @@ func (s *stubReportStrategyRepo) Delete(_ context.Context, _ uuid.UUID) error   
 func (s *stubReportStrategyRepo) UpdateThesis(_ context.Context, _ uuid.UUID, _ json.RawMessage) error {
 	return nil
 }
+
 func (s *stubReportStrategyRepo) GetThesisRaw(_ context.Context, _ uuid.UUID) (json.RawMessage, error) {
 	return nil, nil
 }
@@ -75,6 +76,7 @@ type stubReportBacktestConfigRepo struct {
 func (s *stubReportBacktestConfigRepo) Create(_ context.Context, _ *domain.BacktestConfig) error {
 	return nil
 }
+
 func (s *stubReportBacktestConfigRepo) Get(_ context.Context, id uuid.UUID) (*domain.BacktestConfig, error) {
 	for _, configs := range s.byStrategy {
 		for i := range configs {
@@ -85,6 +87,7 @@ func (s *stubReportBacktestConfigRepo) Get(_ context.Context, id uuid.UUID) (*do
 	}
 	return nil, repository.ErrNotFound
 }
+
 func (s *stubReportBacktestConfigRepo) List(_ context.Context, filter repository.BacktestConfigFilter, _, _ int) ([]domain.BacktestConfig, error) {
 	s.lastFilter = filter
 	if filter.StrategyID != nil {
@@ -96,6 +99,7 @@ func (s *stubReportBacktestConfigRepo) List(_ context.Context, filter repository
 	}
 	return out, nil
 }
+
 func (s *stubReportBacktestConfigRepo) Count(_ context.Context, _ repository.BacktestConfigFilter) (int, error) {
 	count := 0
 	for _, configs := range s.byStrategy {
@@ -103,6 +107,7 @@ func (s *stubReportBacktestConfigRepo) Count(_ context.Context, _ repository.Bac
 	}
 	return count, nil
 }
+
 func (s *stubReportBacktestConfigRepo) Update(_ context.Context, _ *domain.BacktestConfig) error {
 	return nil
 }
@@ -116,6 +121,7 @@ type stubReportBacktestRunRepo struct {
 func (s *stubReportBacktestRunRepo) Create(_ context.Context, _ *domain.BacktestRun) error {
 	return nil
 }
+
 func (s *stubReportBacktestRunRepo) Get(_ context.Context, id uuid.UUID) (*domain.BacktestRun, error) {
 	for _, runs := range s.byConfig {
 		for i := range runs {
@@ -126,6 +132,7 @@ func (s *stubReportBacktestRunRepo) Get(_ context.Context, id uuid.UUID) (*domai
 	}
 	return nil, repository.ErrNotFound
 }
+
 func (s *stubReportBacktestRunRepo) List(_ context.Context, filter repository.BacktestRunFilter, _, _ int) ([]domain.BacktestRun, error) {
 	s.lastFilter = filter
 	if filter.BacktestConfigID != nil {
@@ -137,6 +144,7 @@ func (s *stubReportBacktestRunRepo) List(_ context.Context, filter repository.Ba
 	}
 	return out, nil
 }
+
 func (s *stubReportBacktestRunRepo) Count(_ context.Context, _ repository.BacktestRunFilter) (int, error) {
 	count := 0
 	for _, runs := range s.byConfig {
@@ -150,11 +158,11 @@ type stubReportArtifactRepo struct {
 }
 
 func (s *stubReportArtifactRepo) Upsert(_ context.Context, a *pgrepo.ReportArtifact) error {
-	copy := *a
+	cloned := *a
 	if a.ReportJSON != nil {
-		copy.ReportJSON = append(json.RawMessage(nil), a.ReportJSON...)
+		cloned.ReportJSON = append(json.RawMessage(nil), a.ReportJSON...)
 	}
-	s.artifacts = append(s.artifacts, copy)
+	s.artifacts = append(s.artifacts, cloned)
 	return nil
 }
 

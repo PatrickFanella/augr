@@ -57,6 +57,7 @@ func (s *stubTradeDecisionJournalRepo) Count(context.Context, repository.TradeDe
 func (s *stubTradeDecisionJournalRepo) AttachPaperOrder(context.Context, uuid.UUID, uuid.UUID) error {
 	return nil
 }
+
 func (s *stubTradeDecisionJournalRepo) AttachLiveOrder(context.Context, uuid.UUID, uuid.UUID) error {
 	return nil
 }

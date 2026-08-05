@@ -12,11 +12,11 @@ import (
 )
 
 const (
-	sentimentBatchSize    = 10
-	sentimentMaxTokens    = 4096
-	sentimentConcurrency  = 1  // Serialize batches to reduce ollama contention with other consumers.
-	sentimentMaxRetries   = 1
-	sentimentMaxPosts     = 30 // Cap total posts to keep LLM work within analysis timeout.
+	sentimentBatchSize   = 10
+	sentimentMaxTokens   = 4096
+	sentimentConcurrency = 1 // Serialize batches to reduce ollama contention with other consumers.
+	sentimentMaxRetries  = 1
+	sentimentMaxPosts    = 30 // Cap total posts to keep LLM work within analysis timeout.
 )
 
 // SentimentResult aggregates LLM-derived sentiment for a ticker from Reddit posts.

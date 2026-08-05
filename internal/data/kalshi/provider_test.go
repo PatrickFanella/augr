@@ -23,7 +23,7 @@ func TestProviderLoadSnapshotMapsMarketPayload(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/trade-api/v2/markets/" + ticker:
-			fmt.Fprint(w, `{"market":{"ticker":"KXTEST-YESNO","title":"Will test happen?","status":"active","yes_bid":45,"yes_ask":47,"no_bid":53,"no_ask":55,"volume":1000,"open_interest":500,"close_time":"2026-12-31T23:59:59Z"}}`)
+			_, _ = fmt.Fprint(w, `{"market":{"ticker":"KXTEST-YESNO","title":"Will test happen?","status":"active","yes_bid":45,"yes_ask":47,"no_bid":53,"no_ask":55,"volume":1000,"open_interest":500,"close_time":"2026-12-31T23:59:59Z"}}`)
 		case "/trade-api/v2/markets/" + ticker + "/orderbook":
 			t.Fatal("orderbook endpoint should not be needed when market payload has full book")
 		default:
@@ -83,7 +83,7 @@ func TestProviderLoadSnapshotMapsCentQuoteEdges(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/trade-api/v2/markets/" + ticker:
-			fmt.Fprint(w, `{"market":{"ticker":"KXEDGE-YESNO","title":"Edge cents?","status":"active","yes_bid":1,"yes_ask":99,"no_bid":99,"no_ask":100,"volume":1000,"open_interest":500,"close_time":"2026-12-31T23:59:59Z"}}`)
+			_, _ = fmt.Fprint(w, `{"market":{"ticker":"KXEDGE-YESNO","title":"Edge cents?","status":"active","yes_bid":1,"yes_ask":99,"no_bid":99,"no_ask":100,"volume":1000,"open_interest":500,"close_time":"2026-12-31T23:59:59Z"}}`)
 		default:
 			t.Fatalf("unexpected path %q", r.URL.Path)
 		}
@@ -109,7 +109,7 @@ func TestProviderLoadSnapshotTreatsLegacyZeroQuotesAsPresent(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/trade-api/v2/markets/" + ticker:
-			fmt.Fprint(w, `{"market":{"ticker":"KXZERO-YESNO","title":"Zero quotes?","status":"active","yes_bid":0,"yes_ask":1,"no_bid":99,"no_ask":100,"volume":1000,"open_interest":500,"close_time":"2026-12-31T23:59:59Z"}}`)
+			_, _ = fmt.Fprint(w, `{"market":{"ticker":"KXZERO-YESNO","title":"Zero quotes?","status":"active","yes_bid":0,"yes_ask":1,"no_bid":99,"no_ask":100,"volume":1000,"open_interest":500,"close_time":"2026-12-31T23:59:59Z"}}`)
 		case "/trade-api/v2/markets/" + ticker + "/orderbook":
 			t.Fatal("orderbook endpoint should not be needed when legacy zero quote fields are present")
 		default:
@@ -137,7 +137,7 @@ func TestProviderLoadSnapshotMapsCurrentDollarFields(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/trade-api/v2/markets/" + ticker:
-			fmt.Fprint(w, `{"market":{"ticker":"KXDOLLAR-YESNO","title":"Dollar fields?","status":"active","yes_bid_dollars":"0.12","yes_ask_dollars":"0.14","no_bid_dollars":"0.86","no_ask_dollars":"0.88","volume_fp":"123.45","open_interest_fp":"678.9","close_time":"2026-12-31T23:59:59Z"}}`)
+			_, _ = fmt.Fprint(w, `{"market":{"ticker":"KXDOLLAR-YESNO","title":"Dollar fields?","status":"active","yes_bid_dollars":"0.12","yes_ask_dollars":"0.14","no_bid_dollars":"0.86","no_ask_dollars":"0.88","volume_fp":"123.45","open_interest_fp":"678.9","close_time":"2026-12-31T23:59:59Z"}}`)
 		default:
 			t.Fatalf("unexpected path %q", r.URL.Path)
 		}
@@ -166,7 +166,7 @@ func TestProviderLoadSnapshotRejectsOutOfRangeQuoteCents(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/trade-api/v2/markets/" + ticker:
-			fmt.Fprint(w, `{"market":{"ticker":"KXBADCENTS-YESNO","title":"Bad cents?","status":"active","yes_bid":101,"yes_ask":99,"no_bid":1,"no_ask":100,"volume":1000,"open_interest":500,"close_time":"2026-12-31T23:59:59Z"}}`)
+			_, _ = fmt.Fprint(w, `{"market":{"ticker":"KXBADCENTS-YESNO","title":"Bad cents?","status":"active","yes_bid":101,"yes_ask":99,"no_bid":1,"no_ask":100,"volume":1000,"open_interest":500,"close_time":"2026-12-31T23:59:59Z"}}`)
 		default:
 			t.Fatalf("unexpected path %q", r.URL.Path)
 		}

@@ -161,7 +161,7 @@ func (s Scanner) Scan(in Input) Result {
 			return s.rejectedDecision(in, reasons, modelPrice, execPrice, grossEdge, netEdge, thetaExposure, underlyingExposure, proposedSize)
 		}
 
-		decision := s.acceptedDecision(in, resolvedLegs, modelPrice, execPrice, grossEdge, netEdge, kelly, proposedSize, proposedSize, thetaExposure, underlyingExposure, openInterest, volume, spreadWidth)
+		decision := s.acceptedDecision(in, resolvedLegs, modelPrice, execPrice, grossEdge, netEdge, kelly, proposedSize, proposedSize, openInterest, volume, spreadWidth)
 		return Result{
 			Accepted:           true,
 			Decision:           decision,
@@ -279,7 +279,7 @@ func (s Scanner) priceSpread(in Input, legs []resolvedLeg) (modelPrice, execPric
 	return modelPrice, execPrice, delta, theta, openInterest, volume, spreadWidth, true
 }
 
-func (s Scanner) acceptedDecision(in Input, legs []resolvedLeg, modelPrice, execPrice, grossEdge, netEdge, kelly, proposedSize, approvedSize, thetaExposure, underlyingExposure, openInterest, volume, spreadWidth float64) domain.TradeDecision {
+func (s Scanner) acceptedDecision(in Input, legs []resolvedLeg, modelPrice, execPrice, grossEdge, netEdge, kelly, proposedSize, approvedSize, openInterest, volume, spreadWidth float64) domain.TradeDecision {
 	return domain.TradeDecision{
 		ID:              uuid.New(),
 		StrategyID:      in.StrategyID,

@@ -155,9 +155,7 @@ func (c polymarketDiscoveryChunker) runPropose(ctx context.Context, run *domain.
 					run.Errors = append(run.Errors, fmt.Sprintf("propose %s: %v", cand.Slug, err))
 				} else {
 					run.Summary.Proposed++
-					if prop.Skip {
-						run.Summary.Skipped++
-					} else if prop.Conviction < cfg.MinConviction {
+					if prop.Skip || prop.Conviction < cfg.MinConviction {
 						run.Summary.Skipped++
 					} else {
 						raw, err := json.Marshal(prop)

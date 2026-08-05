@@ -132,12 +132,9 @@ func (c *Cleaner) handleTick(tk Tick) {
 		}
 		if st.warmupCount >= c.cfg.WarmupMinClean && now.Sub(st.firstSeen) >= c.cfg.WarmupDuration && !st.warmupJumpSeen {
 			st.ready = true
-			c.mu.Unlock()
-			return
-		} else {
-			c.mu.Unlock()
-			return
 		}
+		c.mu.Unlock()
+		return
 	}
 	lastClean := st.lastClean
 	c.mu.Unlock()
@@ -146,10 +143,6 @@ func (c *Cleaner) handleTick(tk Tick) {
 		c.incDrop("delta")
 		return
 	}
-	if tk.Price == lastClean && tk.Side != "" {
-		// keep exact duplicates eligible for TTL dedupe, but don't reject here
-	}
-
 	key := dedupeKey(tk)
 	now = time.Now().UTC()
 	if c.isDuplicate(key, now) {

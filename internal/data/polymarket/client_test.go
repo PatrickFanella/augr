@@ -187,9 +187,9 @@ func TestClients_RejectEmptyInputsBeforeHTTP(t *testing.T) {
 	t.Parallel()
 
 	var gammaHits, clobHits int
-	gamma := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { gammaHits++; t.Fatal("gamma should not be called") }))
+	gamma := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { gammaHits++; t.Fatal("gamma should not be called") }))
 	defer gamma.Close()
-	clob := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { clobHits++; t.Fatal("clob should not be called") }))
+	clob := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { clobHits++; t.Fatal("clob should not be called") }))
 	defer clob.Close()
 
 	if _, err := NewGammaClient(gamma.URL, gamma.Client()).GetMarket(context.Background(), "   "); err == nil {

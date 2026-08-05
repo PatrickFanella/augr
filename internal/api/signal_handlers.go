@@ -61,7 +61,7 @@ func (s *Server) handleListTriggerLog(w http.ResponseWriter, r *http.Request) {
 // handleListWatchTerms returns the current watch index terms.
 //
 // GET /api/v1/signals/watchlist
-func (s *Server) handleListWatchTerms(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleListWatchTerms(w http.ResponseWriter, _ *http.Request) {
 	if s.watchIndex == nil {
 		respondJSON(w, http.StatusOK, map[string]any{"data": []any{}})
 		return

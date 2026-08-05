@@ -36,7 +36,6 @@ type kalshiGateRepoStub struct {
 	state       *domain.KalshiSettlementGateState
 	gets        int
 	failPersist bool
-	saves       []string
 }
 
 type kalshiPendingSettlerStub struct {
@@ -50,6 +49,7 @@ type kalshiPendingSettlerStub struct {
 func (s *kalshiPendingSettlerStub) PendingMarkets(context.Context, domain.MarketType) ([]string, error) {
 	return append([]string(nil), s.pending...), nil
 }
+
 func (s *kalshiPendingSettlerStub) PreviewMarket(_ context.Context, _ domain.MarketType, ticker string) (int, error) {
 	if s.previewErr != nil {
 		if err := s.previewErr[strings.ToUpper(strings.TrimSpace(ticker))]; err != nil {
@@ -61,6 +61,7 @@ func (s *kalshiPendingSettlerStub) PreviewMarket(_ context.Context, _ domain.Mar
 	}
 	return s.preview[strings.ToUpper(strings.TrimSpace(ticker))], nil
 }
+
 func (s *kalshiPendingSettlerStub) SettlePreview(_ context.Context, _ domain.MarketType, ticker string) (*prediction.SettlementPreview, error) {
 	count, err := s.PreviewMarket(context.Background(), domain.MarketTypeKalshi, ticker)
 	if err != nil {
@@ -75,9 +76,11 @@ func (s *kalshiPendingSettlerStub) SettlePreview(_ context.Context, _ domain.Mar
 	}
 	return &prediction.SettlementPreview{Instrument: strings.ToUpper(strings.TrimSpace(ticker)), Count: count, DecisionIDs: ids}, nil
 }
+
 func (s *kalshiPendingSettlerStub) SettleDecisions(context.Context, domain.MarketType, string, string, time.Time, []uuid.UUID) (int, error) {
 	return 1, nil
 }
+
 func (s *kalshiPendingSettlerStub) SettleMarket(_ context.Context, _ domain.MarketType, ticker, winner string, _ time.Time) (int, error) {
 	s.settle = append(s.settle, ticker+":"+winner)
 	return 1, nil
@@ -87,6 +90,7 @@ func (s *kalshiGateRepoStub) Get(context.Context, string) (*domain.KalshiSettlem
 	s.gets++
 	return s.state, nil
 }
+
 func (s *kalshiGateRepoStub) RecordSuccess(context.Context, string, int, int, int, int, int, string, time.Time) (*domain.KalshiSettlementGateState, error) {
 	if s.failPersist {
 		return nil, errors.New("persist failed")
@@ -97,6 +101,7 @@ func (s *kalshiGateRepoStub) RecordSuccess(context.Context, string, int, int, in
 	s.state.ConsecutiveSuccesses++
 	return s.state, nil
 }
+
 func (s *kalshiGateRepoStub) RecordFailure(context.Context, string, int, int, int, int, int, time.Time, string) (*domain.KalshiSettlementGateState, error) {
 	if s.failPersist {
 		return nil, errors.New("persist failed")
@@ -186,7 +191,7 @@ func TestKalshiSettlementFailureResetsGateAndEmitsFailureMetrics(t *testing.T) {
 func TestKalshiSettlementLiveSuccessDoesNotRecordGateSuccess(t *testing.T) {
 	cat := &kalshiSettlementCatalogStub{getMarkets: map[string]*kalshidiscovery.MarketCandidate{"KX-A": {Ticker: "KX-A", Result: "yes"}}}
 	decisionID := uuid.MustParse("00000000-0000-0000-0000-0000000000aa")
-	settler := &kalshiPendingSettlerStub{pending: []string{"KX-A"}, preview: map[string]int{"KX-A": 1}, previewIDs: map[string][]uuid.UUID{"KX-A": []uuid.UUID{decisionID}}, settle: []string{}}
+	settler := &kalshiPendingSettlerStub{pending: []string{"KX-A"}, preview: map[string]int{"KX-A": 1}, previewIDs: map[string][]uuid.UUID{"KX-A": {decisionID}}, settle: []string{}}
 	fingerprint := settlementProjectionFingerprint([]string{settlementPreviewFingerprint(&prediction.SettlementPreview{Instrument: "KX-A", Count: 1, DecisionIDs: []uuid.UUID{decisionID}}, "YES")})
 	gate := &kalshiGateRepoStub{state: &domain.KalshiSettlementGateState{Threshold: 1, Eligible: true, ProjectionFingerprint: fingerprint}}
 	orch := NewJobOrchestrator(OrchestratorDeps{KalshiCatalog: cat, PredictionSettler: settler, KalshiSettlementGateRepo: gate, KalshiSettlementDryRun: false})

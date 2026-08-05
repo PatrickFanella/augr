@@ -366,7 +366,7 @@ func (p *PolymarketSource) fetchGammaMarket(ctx context.Context, slug string) (c
 	if err != nil {
 		return clobMarketSummary{}, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return clobMarketSummary{}, fmt.Errorf("gamma markets HTTP %d", resp.StatusCode)
 	}
@@ -413,7 +413,7 @@ func (p *PolymarketSource) fetchClobMarket(ctx context.Context, slug string) (cl
 	if err != nil {
 		return clobMarketSummary{}, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return clobMarketSummary{}, fmt.Errorf("markets HTTP %d", resp.StatusCode)
 	}
@@ -478,7 +478,7 @@ func (p *PolymarketSource) fetchYesPrice(ctx context.Context, conditionID string
 	if err != nil {
 		return 0, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return 0, fmt.Errorf("price HTTP %d", resp.StatusCode)
 	}

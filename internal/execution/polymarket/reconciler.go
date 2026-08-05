@@ -14,8 +14,10 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 )
 
-const polymarketPositionDriftEventType = "polymarket_position_drift"
-const reconcilePositionPageSize = 1000
+const (
+	polymarketPositionDriftEventType = "polymarket_position_drift"
+	reconcilePositionPageSize        = 1000
+)
 
 type ReconcilerMetrics interface {
 	IncDrift(driftType string)

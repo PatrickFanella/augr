@@ -25,10 +25,6 @@ func (p *trackingProvider) Complete(_ context.Context, _ llm.CompletionRequest) 
 	return p.response, p.err
 }
 
-type stubFallbackMetrics struct{ reasons []string }
-
-func (s *stubFallbackMetrics) RecordLLMFallback(reason string) { s.reasons = append(s.reasons, reason) }
-
 type stubCacheMetrics struct {
 	hits   atomic.Int32
 	misses atomic.Int32
@@ -197,7 +193,6 @@ func TestProviderChain_WithRetry(t *testing.T) {
 	t.Parallel()
 
 	// Fail once with 429, succeed on retry
-	calls := &atomic.Int32{}
 	retryable := &httpError{code: 429, msg: "rate limited"}
 	want := &llm.CompletionResponse{Content: "retried", Usage: llm.CompletionUsage{PromptTokens: 2}}
 
@@ -205,8 +200,6 @@ func TestProviderChain_WithRetry(t *testing.T) {
 		[]*llm.CompletionResponse{nil, want},
 		[]error{retryable, nil},
 	)
-	calls = &mock.calls
-
 	chain := llm.NewProviderChain(mock, discardLogger(),
 		llm.WithRetry(3),
 		llm.WithRetryBaseDelay(1*time.Millisecond),
@@ -219,8 +212,8 @@ func TestProviderChain_WithRetry(t *testing.T) {
 	if got.Content != "retried" {
 		t.Errorf("content = %q, want %q", got.Content, "retried")
 	}
-	if calls.Load() != 2 {
-		t.Errorf("calls = %d, want 2", calls.Load())
+	if mock.calls.Load() != 2 {
+		t.Errorf("calls = %d, want 2", mock.calls.Load())
 	}
 }
 
@@ -228,7 +221,7 @@ func TestProviderChain_WithRetryMetrics(t *testing.T) {
 	t.Parallel()
 
 	mock := newMockProvider(
-		[]*llm.CompletionResponse{nil, &llm.CompletionResponse{Content: "ok"}},
+		[]*llm.CompletionResponse{nil, {Content: "ok"}},
 		[]error{&httpError{code: 500, msg: "transient"}, nil},
 	)
 	retryStub := &stubRetryMetrics{}

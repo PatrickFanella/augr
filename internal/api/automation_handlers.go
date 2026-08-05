@@ -31,7 +31,7 @@ type AutomationHealthResponse struct {
 
 // handleGetAutomationStatus returns status for all registered jobs.
 // GET /api/v1/automation/status
-func (s *Server) handleGetAutomationStatus(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleGetAutomationStatus(w http.ResponseWriter, _ *http.Request) {
 	if s.automation == nil {
 		respondError(w, http.StatusServiceUnavailable, "automation not configured", ErrCodeInternal)
 		return
@@ -41,7 +41,7 @@ func (s *Server) handleGetAutomationStatus(w http.ResponseWriter, r *http.Reques
 
 // handleGetAutomationHealth returns health status for all registered jobs.
 // GET /api/v1/automation/health
-func (s *Server) handleGetAutomationHealth(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleGetAutomationHealth(w http.ResponseWriter, _ *http.Request) {
 	if s.automation == nil {
 		respondError(w, http.StatusServiceUnavailable, "automation not configured", ErrCodeInternal)
 		return

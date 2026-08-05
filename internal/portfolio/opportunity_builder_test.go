@@ -36,7 +36,6 @@ func TestBuildOpportunityBuyStock(t *testing.T) {
 		ProposedNotional:  250,
 		Reason:            "good setup",
 	}, OpportunityBuilderConfig{Now: func() time.Time { return now }})
-
 	if err != nil {
 		t.Fatalf("BuildOpportunity() error = %v", err)
 	}
@@ -87,7 +86,6 @@ func TestBuildOpportunityHold(t *testing.T) {
 		},
 		Signal: domain.PipelineSignalHold,
 	}, OpportunityBuilderConfig{})
-
 	if err != nil {
 		t.Fatalf("BuildOpportunity() error = %v", err)
 	}
@@ -112,7 +110,6 @@ func TestBuildOpportunityKalshiTTL(t *testing.T) {
 		},
 		Signal: domain.PipelineSignalSell,
 	}, OpportunityBuilderConfig{Now: func() time.Time { return now }})
-
 	if err != nil {
 		t.Fatalf("BuildOpportunity() error = %v", err)
 	}
@@ -167,7 +164,6 @@ func TestBuildOpportunityDecisionSideOverridesSignal(t *testing.T) {
 		Decision: &domain.TradeDecision{Side: domain.OrderSideSell},
 		Signal:   domain.PipelineSignalBuy,
 	}, OpportunityBuilderConfig{})
-
 	if err != nil {
 		t.Fatalf("BuildOpportunity() error = %v", err)
 	}
@@ -203,7 +199,6 @@ func TestBuildOpportunityClampsNegativeMetrics(t *testing.T) {
 		ProposedNotional:  -6,
 		Evidence:          nil,
 	}, OpportunityBuilderConfig{})
-
 	if err != nil {
 		t.Fatalf("BuildOpportunity() error = %v", err)
 	}

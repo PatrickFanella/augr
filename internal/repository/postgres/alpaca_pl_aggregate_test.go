@@ -138,7 +138,7 @@ func markPositionProvenance(t *testing.T, ctx context.Context, pool *pgxpool.Poo
 	}
 }
 
-func attachAlpacaTrade(t *testing.T, ctx context.Context, pool *pgxpool.Pool, strategyID uuid.UUID, positionID uuid.UUID, fee float64) {
+func attachAlpacaTrade(t *testing.T, ctx context.Context, pool *pgxpool.Pool, strategyID, positionID uuid.UUID, fee float64) {
 	t.Helper()
 	orderID := uuid.New()
 	if _, err := pool.Exec(ctx, `INSERT INTO orders (id, strategy_id, ticker, side, order_type, quantity, filled_quantity, status, broker, submitted_at, filled_at)
@@ -151,7 +151,7 @@ func attachAlpacaTrade(t *testing.T, ctx context.Context, pool *pgxpool.Pool, st
 	}
 }
 
-func attachNonAlpacaTrade(t *testing.T, ctx context.Context, pool *pgxpool.Pool, strategyID uuid.UUID, positionID uuid.UUID) {
+func attachNonAlpacaTrade(t *testing.T, ctx context.Context, pool *pgxpool.Pool, strategyID, positionID uuid.UUID) {
 	t.Helper()
 	orderID := uuid.New()
 	if _, err := pool.Exec(ctx, `INSERT INTO orders (id, strategy_id, ticker, side, order_type, quantity, filled_quantity, status, broker, submitted_at, filled_at)

@@ -23,20 +23,23 @@ type fakeOvernightBacktestRunRepo struct {
 	failOnCancelledUpdateCtx bool
 }
 
-func (f *fakeOvernightBacktestRunRepo) Create(ctx context.Context, run *domain.OvernightBacktestRun) error {
+func (f *fakeOvernightBacktestRunRepo) Create(_ context.Context, run *domain.OvernightBacktestRun) error {
 	f.run = run
 	f.created = true
 	return nil
 }
-func (f *fakeOvernightBacktestRunRepo) Get(ctx context.Context, id uuid.UUID) (*domain.OvernightBacktestRun, error) {
+
+func (f *fakeOvernightBacktestRunRepo) Get(_ context.Context, _ uuid.UUID) (*domain.OvernightBacktestRun, error) {
 	return f.run, nil
 }
-func (f *fakeOvernightBacktestRunRepo) GetActive(ctx context.Context) (*domain.OvernightBacktestRun, error) {
+
+func (f *fakeOvernightBacktestRunRepo) GetActive(_ context.Context) (*domain.OvernightBacktestRun, error) {
 	if f.getActive != nil {
 		return nil, f.getActive
 	}
 	return f.run, nil
 }
+
 func (f *fakeOvernightBacktestRunRepo) Update(ctx context.Context, run *domain.OvernightBacktestRun) error {
 	if f.failOnCancelledUpdateCtx {
 		if err := ctx.Err(); err != nil {
@@ -51,11 +54,12 @@ func (f *fakeOvernightBacktestRunRepo) Update(ctx context.Context, run *domain.O
 
 type blockingOvernightBacktestLLMProvider struct{}
 
-func (blockingOvernightBacktestLLMProvider) Complete(ctx context.Context, request llm.CompletionRequest) (*llm.CompletionResponse, error) {
+func (blockingOvernightBacktestLLMProvider) Complete(ctx context.Context, _ llm.CompletionRequest) (*llm.CompletionResponse, error) {
 	<-ctx.Done()
 	return nil, ctx.Err()
 }
-func (f *fakeOvernightBacktestRunRepo) ListLatest(ctx context.Context, limit int) ([]domain.OvernightBacktestRun, error) {
+
+func (f *fakeOvernightBacktestRunRepo) ListLatest(_ context.Context, _ int) ([]domain.OvernightBacktestRun, error) {
 	return nil, nil
 }
 

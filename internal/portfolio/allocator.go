@@ -558,19 +558,19 @@ func isOpenTicker(open map[string]bool, ticker string) bool {
 }
 
 func minPositive(values ...float64) float64 {
-	min := math.Inf(1)
+	minimum := math.Inf(1)
 	for _, v := range values {
 		if v <= 0 || math.IsNaN(v) {
 			return 0
 		}
-		if v < min {
-			min = v
+		if v < minimum {
+			minimum = v
 		}
 	}
-	if math.IsInf(min, 1) {
+	if math.IsInf(minimum, 1) {
 		return 0
 	}
-	return min
+	return minimum
 }
 
 func uniqueStrings(values []string) []string {

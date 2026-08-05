@@ -479,10 +479,6 @@ func positionKey(position *domain.Position) string {
 	return canonicalPositionKey(position.MarketType, position.Ticker, "")
 }
 
-func marketTypeFromPosition(position *domain.Position) domain.MarketType {
-	return position.MarketType
-}
-
 func mergeRestoredPositions(a, b *domain.Position) (*domain.Position, error) {
 	if a == nil || b == nil {
 		return nil, errors.New("paper: restored position is required")

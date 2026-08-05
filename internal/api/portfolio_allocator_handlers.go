@@ -348,17 +348,3 @@ func decodeDiagnosticEvidence(raw json.RawMessage) map[string]any {
 	}
 	return out
 }
-
-func positionExposure(position domain.Position) float64 {
-	price := position.CurrentPrice
-	if price == nil || *price <= 0 {
-		if position.AvgEntry > 0 {
-			p := position.AvgEntry
-			price = &p
-		}
-	}
-	if price == nil || *price <= 0 || position.Quantity <= 0 {
-		return 0
-	}
-	return position.Quantity * *price
-}

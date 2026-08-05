@@ -42,7 +42,7 @@ type Position struct {
 
 type templateSender interface {
 	PrepareTemplate(order *domain.Order) (*OrderTemplate, error)
-	SendTemplate(ctx context.Context, tmpl *OrderTemplate) (*createOrderResponse, error)
+	SendTemplate(ctx context.Context, tmpl *OrderTemplate) (*CreateOrderResponse, error)
 }
 
 type guardState int32
@@ -120,11 +120,12 @@ func (g *StopGuard) RegisterEntry(pos Position) error {
 		return fmt.Errorf("polymarket: unsupported outcome side %q", pos.OutcomeSide)
 	}
 	intent := "ORDER_INTENT_SELL_LONG"
-	if outcome == "NO" && long {
+	switch {
+	case outcome == "NO" && long:
 		intent = "ORDER_INTENT_SELL_SHORT"
-	} else if outcome == "NO" && short {
+	case outcome == "NO" && short:
 		intent = "ORDER_INTENT_BUY_SHORT"
-	} else if short {
+	case short:
 		intent = "ORDER_INTENT_BUY_SHORT"
 	}
 	side := "BUY"
@@ -269,11 +270,6 @@ func (g *StopGuard) OnTick(ctx context.Context, t marketdata.Tick) {
 		entry.state.Store(int32(guardFired))
 		g.Cancel(entry.positionID)
 	}
-}
-
-func polymarketPositionSlug(ticker string) (string, error) {
-	slug, _, err := polymarketPositionParts(ticker)
-	return slug, err
 }
 
 func polymarketPositionParts(ticker string) (string, string, error) {

@@ -33,8 +33,8 @@ func (f *fakeRiskBreakerLister) ListTripped(_ context.Context) ([]domain.RiskBre
 	return f.items, nil
 }
 
-func (f *fakeRiskBreaker) Allow(_ context.Context, _ string) error            { return nil }
-func (f *fakeRiskBreaker) Trip(_ context.Context, scope, reason string) error { return nil }
+func (f *fakeRiskBreaker) Allow(_ context.Context, _ string) error   { return nil }
+func (f *fakeRiskBreaker) Trip(_ context.Context, _, _ string) error { return nil }
 func (f *fakeRiskBreaker) Reset(_ context.Context, scope string) error {
 	f.resetCalls = append(f.resetCalls, scope)
 	return f.resetErr
@@ -43,9 +43,11 @@ func (f *fakeRiskBreaker) Reset(_ context.Context, scope string) error {
 func (f *fakeKillSwitchRiskEngine) CheckPreTrade(context.Context, *domain.Order, risk.Portfolio) (bool, string, error) {
 	return true, "", nil
 }
+
 func (f *fakeKillSwitchRiskEngine) CheckPositionLimits(context.Context, string, float64, risk.Portfolio) (bool, string, error) {
 	return true, "", nil
 }
+
 func (f *fakeKillSwitchRiskEngine) GetStatus(context.Context) (risk.EngineStatus, error) {
 	if f.verificationTime.IsZero() {
 		f.verificationTime = time.Date(2026, 1, 15, 12, 0, 0, 0, time.UTC)
@@ -63,26 +65,32 @@ func (*fakeKillSwitchRiskEngine) ResetCircuitBreaker(context.Context) error     
 func (f *fakeKillSwitchRiskEngine) IsKillSwitchActive(context.Context) (bool, error) {
 	return f.active, nil
 }
+
 func (f *fakeKillSwitchRiskEngine) ActivateKillSwitch(_ context.Context, reason string) error {
 	f.active = true
 	f.reason = reason
 	f.activateReasons = append(f.activateReasons, reason)
 	return nil
 }
+
 func (f *fakeKillSwitchRiskEngine) DeactivateKillSwitch(context.Context) error {
 	f.active = false
 	f.deactivateCalls++
 	return nil
 }
+
 func (*fakeKillSwitchRiskEngine) IsMarketKillSwitchActive(context.Context, domain.MarketType) (bool, error) {
 	return false, nil
 }
+
 func (*fakeKillSwitchRiskEngine) ActivateMarketKillSwitch(context.Context, domain.MarketType, string) error {
 	return nil
 }
+
 func (*fakeKillSwitchRiskEngine) DeactivateMarketKillSwitch(context.Context, domain.MarketType) error {
 	return nil
 }
+
 func (*fakeKillSwitchRiskEngine) UpdateMetrics(context.Context, float64, float64, int) error {
 	return nil
 }
@@ -248,7 +256,7 @@ func TestHandleRiskBreakerReset(t *testing.T) {
 				t.Fatalf("status=%d want %d body=%s", rr.Code, tt.wantStatus, rr.Body.String())
 			}
 			var got, want map[string]any
-			_ = json.Unmarshal([]byte(rr.Body.String()), &got)
+			_ = json.Unmarshal(rr.Body.Bytes(), &got)
 			_ = json.Unmarshal([]byte(tt.wantBody), &want)
 			for k, v := range want {
 				if got[k] != v {

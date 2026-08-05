@@ -633,8 +633,8 @@ func TestGetStatus_IncludesRestoredMarketKillSwitches(t *testing.T) {
 	persister := &memoryRiskPersister{state: PersistedRiskState{
 		KillSwitch: KillSwitchStatus{Active: true, Reason: "persisted halt"},
 		MarketKillSwitches: map[domain.MarketType]KillSwitchStatus{
-			domain.MarketTypePolymarket: KillSwitchStatus{Active: true, Reason: "market persisted halt"},
-			domain.MarketTypeCrypto:     KillSwitchStatus{Active: false, Reason: "ignored"},
+			domain.MarketTypePolymarket: {Active: true, Reason: "market persisted halt"},
+			domain.MarketTypeCrypto:     {Active: false, Reason: "ignored"},
 		},
 	}}
 	engine.WithStatePersister(context.Background(), persister)

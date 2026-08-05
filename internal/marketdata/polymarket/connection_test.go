@@ -14,7 +14,7 @@ import (
 )
 
 func TestConnectionSendsMarketSubscribeAndHeartbeat(t *testing.T) {
-	upgrader := websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
+	upgrader := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
 	gotSubscribe := make(chan map[string]any, 1)
 	gotPing := make(chan struct{}, 1)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -22,7 +22,7 @@ func TestConnectionSendsMarketSubscribeAndHeartbeat(t *testing.T) {
 		if err != nil {
 			t.Fatalf("upgrade: %v", err)
 		}
-		defer c.Close()
+		defer func() { _ = c.Close() }()
 
 		_, payload, err := c.ReadMessage()
 		if err != nil {
@@ -86,13 +86,13 @@ func TestConnectionSendsMarketSubscribeAndHeartbeat(t *testing.T) {
 }
 
 func TestConnectionParsesMarketEvents(t *testing.T) {
-	upgrader := websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
+	upgrader := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		c, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
 			t.Fatalf("upgrade: %v", err)
 		}
-		defer c.Close()
+		defer func() { _ = c.Close() }()
 		_, _, _ = c.ReadMessage()
 		msgs := []any{
 			map[string]any{"event_type": "book", "asset_id": "asset-1", "bids": [][]string{{"0.40", "1.0"}}, "asks": [][]string{{"0.60", "2.0"}}},
@@ -116,7 +116,7 @@ func TestConnectionParsesMarketEvents(t *testing.T) {
 	if err := c.Dial(context.Background()); err != nil {
 		t.Fatalf("dial: %v", err)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 
 	if err := c.Run(context.Background()); err == nil {
 		t.Fatal("expected error from closed server")

@@ -54,12 +54,15 @@ type fakePaperAccountRepo struct {
 func (f fakePaperAccountRepo) ListPaperTrades(context.Context, int, int) ([]domain.Trade, error) {
 	return f.trades, nil
 }
+
 func (f fakePaperAccountRepo) GetOpenPaperPositions(context.Context, int, int) ([]domain.Position, error) {
 	return f.positions, nil
 }
+
 func (f fakePaperAccountRepo) ListOpenPaperOrders(context.Context, int, int) ([]domain.Order, error) {
 	return f.orders, nil
 }
+
 func (f fakePaperAccountRepo) GetMaxPaperExternalIDSequence(context.Context) (uint64, error) {
 	return f.max, nil
 }

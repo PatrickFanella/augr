@@ -186,7 +186,7 @@ func normalizeScoreConfig(cfg ScoreConfig) normalizedScoreConfig {
 	return nc
 }
 
-func scoreRealizedROI(v float64, clampWidth float64) (float64, string) {
+func scoreRealizedROI(v, clampWidth float64) (float64, string) {
 	if !isFiniteFloat(v) {
 		return 0, "invalid_realized_roi"
 	}
@@ -318,12 +318,12 @@ func uniqueStrings(values []string) []string {
 	return out
 }
 
-func clamp(v, min, max float64) float64 {
-	if v < min {
-		return min
+func clamp(v, minimum, maximum float64) float64 {
+	if v < minimum {
+		return minimum
 	}
-	if v > max {
-		return max
+	if v > maximum {
+		return maximum
 	}
 	return v
 }

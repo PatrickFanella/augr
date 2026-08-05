@@ -38,20 +38,23 @@ func (s *alpacaPLAggregateStub) ClosedRealizedPnL(context.Context) (float64, err
 	s.calls = append(s.calls, "closed")
 	return s.closed, nil
 }
+
 func (s *alpacaPLAggregateStub) OpenUnrealizedPnL(context.Context) (float64, error) {
 	s.calls = append(s.calls, "open")
 	return s.open, nil
 }
+
 func (s *alpacaPLAggregateStub) TradeCount(context.Context) (int, error) {
 	s.calls = append(s.calls, "count")
 	return s.trades, nil
 }
+
 func (s *alpacaPLAggregateStub) FeeTotal(context.Context) (float64, error) {
 	s.calls = append(s.calls, "fees")
 	return s.fees, nil
 }
 
-func (s *alpacaReconciliationBrokerStub) GetPositions(ctx context.Context) ([]domain.Position, error) {
+func (s *alpacaReconciliationBrokerStub) GetPositions(_ context.Context) ([]domain.Position, error) {
 	if s.positionsErr != nil {
 		return nil, s.positionsErr
 	}
@@ -60,7 +63,7 @@ func (s *alpacaReconciliationBrokerStub) GetPositions(ctx context.Context) ([]do
 	return out, nil
 }
 
-func (s *alpacaReconciliationBrokerStub) ListOrders(ctx context.Context) ([]BrokerOrderSnapshot, error) {
+func (s *alpacaReconciliationBrokerStub) ListOrders(_ context.Context) ([]BrokerOrderSnapshot, error) {
 	if s.ordersErr != nil {
 		return nil, s.ordersErr
 	}
@@ -69,7 +72,7 @@ func (s *alpacaReconciliationBrokerStub) ListOrders(ctx context.Context) ([]Brok
 	return out, nil
 }
 
-func (s *alpacaReconciliationBrokerStub) ListFills(ctx context.Context) ([]BrokerFillSnapshot, error) {
+func (s *alpacaReconciliationBrokerStub) ListFills(_ context.Context) ([]BrokerFillSnapshot, error) {
 	if s.fillsErr != nil {
 		return nil, s.fillsErr
 	}
@@ -78,7 +81,7 @@ func (s *alpacaReconciliationBrokerStub) ListFills(ctx context.Context) ([]Broke
 	return out, nil
 }
 
-func (s *alpacaReconciliationBrokerStub) GetAccountSnapshot(ctx context.Context) (BrokerAccountSnapshot, error) {
+func (s *alpacaReconciliationBrokerStub) GetAccountSnapshot(_ context.Context) (BrokerAccountSnapshot, error) {
 	return s.account, nil
 }
 
@@ -91,6 +94,7 @@ func (r *recordingStrategyRepo) Create(context.Context, *domain.Strategy) error 
 func (r *recordingStrategyRepo) Get(context.Context, uuid.UUID) (*domain.Strategy, error) {
 	return nil, repository.ErrNotFound
 }
+
 func (r *recordingStrategyRepo) List(context.Context, repository.StrategyFilter, int, int) ([]domain.Strategy, error) {
 	if r.err != nil {
 		return nil, r.err
@@ -99,6 +103,7 @@ func (r *recordingStrategyRepo) List(context.Context, repository.StrategyFilter,
 	copy(out, r.list)
 	return out, nil
 }
+
 func (r *recordingStrategyRepo) Count(context.Context, repository.StrategyFilter) (int, error) {
 	return len(r.list), nil
 }
@@ -107,15 +112,19 @@ func (r *recordingStrategyRepo) Delete(context.Context, uuid.UUID) error        
 func (r *recordingStrategyRepo) ValidateConfig(context.Context, domain.MarketType, []byte) error {
 	return nil
 }
+
 func (r *recordingStrategyRepo) GetByTicker(context.Context, string, repository.StrategyFilter, int, int) ([]domain.Strategy, error) {
 	return nil, nil
 }
+
 func (r *recordingStrategyRepo) CountByTicker(context.Context, string, repository.StrategyFilter) (int, error) {
 	return 0, nil
 }
+
 func (r *recordingStrategyRepo) UpdateThesis(context.Context, uuid.UUID, json.RawMessage) error {
 	return nil
 }
+
 func (r *recordingStrategyRepo) GetThesisRaw(context.Context, uuid.UUID) (json.RawMessage, error) {
 	return nil, nil
 }
@@ -203,10 +212,11 @@ func (r *recordingOrderRepo) Update(_ context.Context, order *domain.Order) erro
 	return repository.ErrNotFound
 }
 
-func (r *recordingOrderRepo) Delete(_ context.Context, id uuid.UUID) error { return nil }
+func (r *recordingOrderRepo) Delete(_ context.Context, _ uuid.UUID) error { return nil }
 func (r *recordingOrderRepo) GetByStrategy(_ context.Context, _ uuid.UUID, _ repository.OrderFilter, _, _ int) ([]domain.Order, error) {
 	return nil, nil
 }
+
 func (r *recordingOrderRepo) GetByRun(_ context.Context, _ uuid.UUID, _ repository.OrderFilter, _, _ int) ([]domain.Order, error) {
 	return nil, nil
 }
@@ -240,7 +250,7 @@ func (r *recordingPositionRepo) Create(_ context.Context, position *domain.Posit
 	return nil
 }
 
-func (r *recordingPositionRepo) CreateAlpacaOwned(ctx context.Context, position *domain.Position) error {
+func (r *recordingPositionRepo) CreateAlpacaOwned(_ context.Context, position *domain.Position) error {
 	cloned := clonePosition(position)
 	if cloned.ID == uuid.Nil {
 		cloned.ID = uuid.New()
@@ -337,6 +347,7 @@ func (r *recordingPositionRepo) CountOpen(ctx context.Context, filter repository
 	}
 	return len(positions), nil
 }
+
 func (r *recordingPositionRepo) GetByStrategy(_ context.Context, _ uuid.UUID, _ repository.PositionFilter, _, _ int) ([]domain.Position, error) {
 	return nil, nil
 }
@@ -425,6 +436,7 @@ func (r *auditLogRepoStub) Create(_ context.Context, entry *domain.AuditLogEntry
 	r.entries = append(r.entries, &cloned)
 	return nil
 }
+
 func (r *auditLogRepoStub) Query(context.Context, repository.AuditLogFilter, int, int) ([]domain.AuditLogEntry, error) {
 	var out []domain.AuditLogEntry
 	for _, entry := range r.entries {
@@ -432,6 +444,7 @@ func (r *auditLogRepoStub) Query(context.Context, repository.AuditLogFilter, int
 	}
 	return out, nil
 }
+
 func (r *auditLogRepoStub) Count(context.Context, repository.AuditLogFilter) (int, error) {
 	return len(r.entries), nil
 }
@@ -654,7 +667,7 @@ func TestAlpacaReconcilerReconcile_UpdatesExistingRecordsAndSkipsKnownFills(t *t
 	}}}
 	orders := newRecordingOrderRepo(existingOrder)
 	positions := newRecordingPositionRepo(existingPosition)
-	positions.proven = map[uuid.UUID]struct{}{existingPositionID: struct{}{}}
+	positions.proven = map[uuid.UUID]struct{}{existingPositionID: {}}
 	trades := newRecordingTradeRepo(orders)
 	trades.seedOrderExternalID("existing-order", &domain.Trade{
 		ID:         uuid.New(),
@@ -797,7 +810,7 @@ func TestAlpacaReconcilerReconcile_ClosesLocalAlpacaPositionsMissingFromBroker(t
 	}
 	orders := newRecordingOrderRepo()
 	positions := newRecordingPositionRepo(stalePosition, polymarketPosition)
-	positions.proven = map[uuid.UUID]struct{}{stalePosition.ID: struct{}{}}
+	positions.proven = map[uuid.UUID]struct{}{stalePosition.ID: {}}
 	audit := &auditLogRepoStub{}
 	reconciler := NewAlpacaReconciler(AlpacaReconcilerDeps{
 		Broker:       &alpacaReconciliationBrokerStub{},
@@ -871,7 +884,7 @@ func TestAlpacaReconcilerReconcile_OnlyClosesProvenAlpacaPositions(t *testing.T)
 	proven := &domain.Position{ID: uuid.New(), MarketType: domain.MarketTypeStock, Ticker: "AAPL", Side: domain.PositionSideLong, Quantity: 10, AvgEntry: 100, UnrealizedPnL: float64Ptr(5)}
 	localPaper := &domain.Position{ID: uuid.New(), MarketType: domain.MarketTypeStock, Ticker: "MSFT", Side: domain.PositionSideLong, Quantity: 5, AvgEntry: 200, UnrealizedPnL: float64Ptr(7)}
 	positions := newRecordingPositionRepo(proven, localPaper)
-	positions.proven = map[uuid.UUID]struct{}{proven.ID: struct{}{}}
+	positions.proven = map[uuid.UUID]struct{}{proven.ID: {}}
 	reconciler := NewAlpacaReconciler(AlpacaReconcilerDeps{Broker: &alpacaReconciliationBrokerStub{}, OrderRepo: newRecordingOrderRepo(), PositionRepo: positions, TradeRepo: newRecordingTradeRepo(newRecordingOrderRepo()), Logger: slog.New(slog.NewTextHandler(testWriter{t}, nil))})
 
 	summary, err := reconciler.Reconcile(context.Background())

@@ -47,6 +47,21 @@ func TestBuildBudgetedDebateMessagesKeepsSingleNineKiBReportUnderBudget(t *testi
 	}
 }
 
+func TestBuildBudgetedDebateMessagesBoundsEachAnalystReport(t *testing.T) {
+	t.Parallel()
+	report := strings.Repeat("r", 20*1024)
+	messages, stats, err := buildBudgetedDebateMessages("research prompt", nil, map[agent.AgentRole]string{agent.AgentRoleMarketAnalyst: report})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.TruncatedReports != 1 || stats.FinalBytes >= stats.OriginalBytes {
+		t.Fatalf("stats = %+v, want one bounded report", stats)
+	}
+	if strings.Contains(messages[1].Content, strings.Repeat("r", maxAnalystReportBytes+1)) || !strings.Contains(messages[1].Content, "[truncated]") {
+		t.Fatal("analyst report did not honor its individual byte budget")
+	}
+}
+
 func TestBuildBudgetedDebateMessagesPreservesThreeRepresentativeRounds(t *testing.T) {
 	rounds := make([]agent.DebateRound, 3)
 	for i := range rounds {

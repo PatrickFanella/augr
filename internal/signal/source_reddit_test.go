@@ -45,7 +45,7 @@ func TestRedditSourceFetchAllStartsCooldownOn429(t *testing.T) {
 	source := NewRedditSource([]string{"polymarket"}, 0, nil)
 	source.limiter = &redditlimit.Coordinator{}
 	var calls int
-	source.client = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+	source.client = &http.Client{Transport: roundTripFunc(func(_ *http.Request) (*http.Response, error) {
 		calls++
 		return &http.Response{StatusCode: http.StatusTooManyRequests, Body: io.NopCloser(strings.NewReader("rate limited")), Header: http.Header{"Retry-After": []string{"120"}}}, nil
 	})}

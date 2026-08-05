@@ -17,12 +17,15 @@ func (s *decisionJournalStub) Create(_ context.Context, decision *domain.TradeDe
 	s.created = decision
 	return nil
 }
+
 func (*decisionJournalStub) Get(context.Context, uuid.UUID) (*domain.TradeDecision, error) {
 	return nil, nil
 }
+
 func (*decisionJournalStub) List(context.Context, repository.TradeDecisionFilter, int, int) ([]domain.TradeDecision, error) {
 	return nil, nil
 }
+
 func (*decisionJournalStub) Count(context.Context, repository.TradeDecisionFilter) (int, error) {
 	return 0, nil
 }
@@ -35,6 +38,7 @@ func (s *replayEventStub) CreateReplayEvent(_ context.Context, event *domain.Rep
 	s.events = append(s.events, *event)
 	return nil
 }
+
 func (*replayEventStub) ListReplayEvents(context.Context, uuid.UUID) ([]domain.ReplayEvent, error) {
 	return nil, nil
 }

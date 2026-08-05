@@ -15,22 +15,25 @@ type fakeRiskRepo struct {
 	tripCalls int
 }
 
-func (f *fakeRiskRepo) Trip(ctx context.Context, scope, reason string, trippedAt time.Time) error {
+func (f *fakeRiskRepo) Trip(_ context.Context, scope, reason string, trippedAt time.Time) error {
 	f.tripCalls++
 	f.state = &domain.RiskBreakerState{Scope: scope, Reason: reason, TrippedAt: trippedAt}
 	return nil
 }
-func (f *fakeRiskRepo) Reset(ctx context.Context, scope string, resetAt time.Time) error {
+
+func (f *fakeRiskRepo) Reset(_ context.Context, _ string, _ time.Time) error {
 	f.state = nil
 	return nil
 }
-func (f *fakeRiskRepo) Get(ctx context.Context, scope string) (*domain.RiskBreakerState, error) {
+
+func (f *fakeRiskRepo) Get(_ context.Context, scope string) (*domain.RiskBreakerState, error) {
 	if f.state == nil || f.state.Scope != scope {
 		return nil, repository.ErrNotFound
 	}
 	return f.state, nil
 }
-func (f *fakeRiskRepo) ListTripped(ctx context.Context) ([]domain.RiskBreakerState, error) {
+
+func (f *fakeRiskRepo) ListTripped(context.Context) ([]domain.RiskBreakerState, error) {
 	if f.state == nil {
 		return nil, nil
 	}
@@ -53,7 +56,7 @@ func TestDrawdownBreaker_AllowAndCheck(t *testing.T) {
 		t.Fatalf("tripCalls=%d want 1", repo.tripCalls)
 	}
 	tripCalled := false
-	b.OnTrip = func(scope, reason string) { tripCalled = true }
+	b.OnTrip = func(_, _ string) { tripCalled = true }
 	if err := b.CheckDrawdown(context.Background(), -150); err != nil {
 		t.Fatal(err)
 	}

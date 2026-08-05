@@ -194,7 +194,9 @@ func TestAutomationStatusIncludesAlpacaReconcileLastSummary(t *testing.T) {
 func TestAutomationEnableRejectsKalshiGateErrorsAsBadRequest(t *testing.T) {
 	o := automation.NewJobOrchestrator(automation.OrchestratorDeps{})
 	o.Register("kalshi_settlement", "test", scheduler.ScheduleSpec{Cron: "0 * * * *"}, func(context.Context) error { return nil })
-	o.SetEnabled("kalshi_settlement", false)
+	if err := o.SetEnabled("kalshi_settlement", false); err != nil {
+		t.Fatal(err)
+	}
 	if err := o.SetEnabled("kalshi_settlement", true); err == nil || !strings.Contains(err.Error(), "gate unavailable") {
 		t.Fatalf("expected gate unavailable error, got %v", err)
 	}

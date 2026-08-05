@@ -140,10 +140,8 @@ func TestDeterministicNativeEvaluator_GatesKnownTemplates(t *testing.T) {
 				if decision.FairProbability <= 0 || decision.NetEdge <= 0 || decision.Calibration == "" || len(decision.GateResults) == 0 {
 					t.Fatalf("decision lacks replayable probability evidence: %+v", decision)
 				}
-			} else {
-				if decision.Signal != domain.PipelineSignalHold || decision.Action != "hold" {
-					t.Fatalf("decision = %+v, want hold", decision)
-				}
+			} else if decision.Signal != domain.PipelineSignalHold || decision.Action != "hold" {
+				t.Fatalf("decision = %+v, want hold", decision)
 			}
 		})
 	}

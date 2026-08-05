@@ -381,12 +381,14 @@ func createFinancialLifecycleStrategy(t *testing.T, ctx context.Context, pool *p
 	}
 	return id
 }
+
 func createFinancialLifecycleOrder(t *testing.T, ctx context.Context, pool *pgxpool.Pool, order *domain.Order) {
 	t.Helper()
 	if _, err := pool.Exec(ctx, `INSERT INTO orders (id, strategy_id, ticker, market_type, side, status, quantity, filled_quantity, filled_avg_price, filled_at, prediction_side) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`, order.ID, order.StrategyID, order.Ticker, order.MarketType, order.Side, order.Status, order.Quantity, order.FilledQuantity, order.FilledAvgPrice, order.FilledAt, order.PredictionSide); err != nil {
 		t.Fatalf("failed to create order: %v", err)
 	}
 }
+
 func createFinancialLifecyclePosition(t *testing.T, ctx context.Context, pool *pgxpool.Pool, strategyID uuid.UUID, ticker string, side domain.PositionSide, qty, avg float64) uuid.UUID {
 	t.Helper()
 	var id uuid.UUID
@@ -395,6 +397,7 @@ func createFinancialLifecyclePosition(t *testing.T, ctx context.Context, pool *p
 	}
 	return id
 }
+
 func testFinancialLifecyclePositionCreate(t *testing.T, ctx context.Context, repo *DB, strategyID uuid.UUID) (*domain.Position, uuid.UUID) {
 	t.Helper()
 	now := time.Date(2026, 3, 21, 10, 0, 0, 0, time.UTC)
@@ -407,5 +410,4 @@ func testFinancialLifecyclePositionCreate(t *testing.T, ctx context.Context, rep
 	}
 	return &domain.Position{ID: *res.PositionID}, res.TradeID
 }
-func floatPtr(v float64) *float64    { return &v }
-func ptrTime(t time.Time) *time.Time { return &t }
+func floatPtr(v float64) *float64 { return &v }

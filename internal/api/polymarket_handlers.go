@@ -158,8 +158,8 @@ func (s *Server) handleListPolymarketRecentSignals(w http.ResponseWriter, r *htt
 }
 
 func (s *Server) handleGetPolymarketMarket(w http.ResponseWriter, r *http.Request) {
-	fetcher, ok := s.polymarketClient.(PolymarketMarketDataFetcher)
-	if !ok || fetcher == nil {
+	fetcher := s.polymarketClient
+	if fetcher == nil {
 		respondError(w, http.StatusServiceUnavailable, "polymarket client not configured", ErrCodeNotImplemented)
 		return
 	}
@@ -224,7 +224,7 @@ func (s *Server) handlePatchPolymarketWatched(w http.ResponseWriter, r *http.Req
 	respondJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
-func (s *Server) handleGetPolymarketJobsStatus(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleGetPolymarketJobsStatus(w http.ResponseWriter, _ *http.Request) {
 	if s.automation == nil {
 		respondError(w, http.StatusServiceUnavailable, "automation not configured", ErrCodeNotImplemented)
 		return

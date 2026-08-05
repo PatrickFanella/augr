@@ -353,7 +353,7 @@ func (s fakeTradeDecisionScanner) Scan(dest ...any) error {
 
 func assignScanValue(dst, src any) error {
 	dv := reflect.ValueOf(dst)
-	if dv.Kind() != reflect.Ptr || dv.IsNil() {
+	if dv.Kind() != reflect.Pointer || dv.IsNil() {
 		return fmt.Errorf("destination must be a non-nil pointer")
 	}
 	dv = dv.Elem()

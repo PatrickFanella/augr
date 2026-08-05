@@ -81,7 +81,7 @@ func (p *OptionsProvider) ensureCrumb(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("yahoo/options: cookie request: %w", err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// Step 2: fetch crumb using the session cookies.
 	req, err = http.NewRequestWithContext(ctx, http.MethodGet, crumbURL, nil)
@@ -93,7 +93,7 @@ func (p *OptionsProvider) ensureCrumb(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("yahoo/options: crumb request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusTooManyRequests {
 		p.rateLimited = time.Now().Add(2 * time.Minute)
@@ -150,7 +150,7 @@ func (p *OptionsProvider) fetchOptions(ctx context.Context, path string, params 
 	if err != nil {
 		return nil, fmt.Errorf("yahoo/options: request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -185,7 +185,7 @@ func (p *OptionsProvider) fetchOptions(ctx context.Context, path string, params 
 		if err != nil {
 			return nil, fmt.Errorf("yahoo/options: retry request failed: %w", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		body, err = io.ReadAll(resp.Body)
 		if err != nil {
 			return nil, fmt.Errorf("yahoo/options: read retry body: %w", err)

@@ -83,7 +83,7 @@ func TestClientListMarkets_DecodesWrappedResponse(t *testing.T) {
 func TestClientListMarkets_DecodesArrayResponse(t *testing.T) {
 	t.Parallel()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`[{"ticker":"KAL-2","yes_bid":100,"yes_ask":1,"no_bid":0,"no_ask":99,"volume":1,"open_interest":2}]`))
 	}))
@@ -217,7 +217,7 @@ func TestQuoteCentsToProbability(t *testing.T) {
 func TestClientListMarkets_DecodesCurrentDollarFields(t *testing.T) {
 	t.Parallel()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"markets":[{"ticker":"KAL-DOLLAR","event_ticker":"EVT-DOLLAR","title":"Dollar fields?","status":"settled","result":"yes","yes_bid_dollars":"0.12","yes_ask_dollars":"0.14","no_bid_dollars":"0.86","no_ask_dollars":"0.88","volume_fp":"123.45","open_interest_fp":"678.9","close_time":"2026-06-18T12:30:00Z"}]}`))
 	}))
@@ -258,7 +258,7 @@ func TestClientGetMarket_DecodesNakedAndWrappedResponses(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				_, _ = w.Write([]byte(tt.body))
 			}))
@@ -285,7 +285,7 @@ func TestClientGetMarket_DecodesNakedAndWrappedResponses(t *testing.T) {
 func TestClientListMarkets_PrefersCurrentLiquidityFields(t *testing.T) {
 	t.Parallel()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"markets":[{"ticker":"KAL-LIQ","yes_bid":50,"yes_ask":51,"no_bid":49,"no_ask":50,"volume":1,"volume_fp":"123.45","open_interest":2,"open_interest_fp":"678.9"}]}`))
 	}))
@@ -313,7 +313,7 @@ func TestClientListMarkets_PrefersCurrentLiquidityFields(t *testing.T) {
 func TestClientListMarkets_RejectsOutOfRangeDollarFields(t *testing.T) {
 	t.Parallel()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"markets":[{"ticker":"KAL-BAD","yes_bid_dollars":"1.01"}]}`))
 	}))
@@ -362,5 +362,7 @@ func (r *fakeWatchedRepo) ListEnabled(context.Context) ([]domain.KalshiWatchedMa
 	return nil, nil
 }
 
-var _ repository.KalshiMarketSnapshotsRepository = (*fakeSnapshotRepo)(nil)
-var _ repository.KalshiWatchedMarketsRepository = (*fakeWatchedRepo)(nil)
+var (
+	_ repository.KalshiMarketSnapshotsRepository = (*fakeSnapshotRepo)(nil)
+	_ repository.KalshiWatchedMarketsRepository  = (*fakeWatchedRepo)(nil)
+)

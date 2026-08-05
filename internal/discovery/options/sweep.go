@@ -53,11 +53,8 @@ func RunOptionsSweep(
 	baseConfig rules.OptionsRulesConfig,
 	cfg OptionsSweepConfig,
 	scoring discovery.ScoringConfig,
-	logger *slog.Logger,
+	_ *slog.Logger,
 ) ([]OptionsSweepResult, error) {
-	if logger == nil {
-		logger = slog.Default()
-	}
 	if cfg.Variations <= 0 {
 		cfg.Variations = 20
 	}
@@ -167,7 +164,7 @@ func runOptionsBacktest(
 
 		dte := avgDTE(config.LegSelection)
 		chain := backtest.SynthesizeChain(bar.Close, realizedVol, dte, bar.Timestamp, chainCfg)
-		optSnap := rules.NewOptionsSnapshot(snap, chain, nil, bar.Timestamp)
+		optSnap := rules.NewOptionsSnapshot(snap, chain, nil)
 
 		marketValue := 0.0
 		unrealizedPnL := 0.0
@@ -565,7 +562,7 @@ func mutateOptionsConfig(base rules.OptionsRulesConfig, rng *rand.Rand) rules.Op
 	}
 
 	if cfg.PositionSizing.MaxRiskUSD > 0 {
-		cfg.PositionSizing.MaxRiskUSD = cfg.PositionSizing.MaxRiskUSD * (0.7 + rng.Float64()*0.6)
+		cfg.PositionSizing.MaxRiskUSD *= 0.7 + rng.Float64()*0.6
 	}
 
 	cfg.Entry = mutateConditionGroup(base.Entry, rng)

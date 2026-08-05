@@ -581,7 +581,7 @@ func TestDataServiceGetSocialSentimentCacheMissCallsChainAndCachesResult(t *test
 func TestDataServiceGetOHLCVUnsupportedMarketType(t *testing.T) {
 	service := &DataService{
 		logger: discardLogger(),
-		now:    func() time.Time { return time.Now() },
+		now:    time.Now,
 	}
 
 	_, err := service.GetOHLCV(context.Background(), "forex", "EURUSD", Timeframe1d, time.Now().Add(-time.Hour), time.Now())

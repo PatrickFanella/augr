@@ -238,12 +238,15 @@ type stubDataProvider struct {
 func (s *stubDataProvider) GetOHLCV(context.Context, string, data.Timeframe, time.Time, time.Time) ([]domain.OHLCV, error) {
 	return append([]domain.OHLCV(nil), s.bars...), nil
 }
+
 func (s *stubDataProvider) GetFundamentals(context.Context, string) (data.Fundamentals, error) {
 	return data.Fundamentals{}, data.ErrNotImplemented
 }
+
 func (s *stubDataProvider) GetNews(context.Context, string, time.Time, time.Time) ([]data.NewsArticle, error) {
 	return nil, data.ErrNotImplemented
 }
+
 func (s *stubDataProvider) GetSocialSentiment(context.Context, string, time.Time, time.Time) ([]data.SocialSentiment, error) {
 	return nil, data.ErrNotImplemented
 }
@@ -259,9 +262,11 @@ func (s *stubMarketDataRepo) Set(context.Context, *domain.MarketData) error { re
 func (s *stubMarketDataRepo) Expire(context.Context, repository.MarketDataCacheExpireFilter) error {
 	return nil
 }
+
 func (s *stubMarketDataRepo) UpsertHistoricalOHLCV(context.Context, []domain.HistoricalOHLCV) error {
 	return nil
 }
+
 func (s *stubMarketDataRepo) ListHistoricalOHLCV(context.Context, repository.HistoricalOHLCVFilter) ([]domain.HistoricalOHLCV, error) {
 	result := make([]domain.HistoricalOHLCV, 0, len(s.bars))
 	for _, bar := range s.bars {
@@ -279,9 +284,11 @@ func (s *stubMarketDataRepo) ListHistoricalOHLCV(context.Context, repository.His
 	}
 	return result, nil
 }
+
 func (s *stubMarketDataRepo) UpsertHistoricalOHLCVCoverage(context.Context, domain.HistoricalOHLCVCoverage) error {
 	return nil
 }
+
 func (s *stubMarketDataRepo) ListHistoricalOHLCVCoverage(context.Context, repository.HistoricalOHLCVCoverageFilter) ([]domain.HistoricalOHLCVCoverage, error) {
 	return nil, nil
 }

@@ -18,7 +18,7 @@ type LadderRung struct {
 	ExpectedFreq float64
 }
 
-func Compute(buckets BucketCents, marketProb float64, baseSize float64) []LadderRung {
+func Compute(buckets BucketCents, marketProb, baseSize float64) []LadderRung {
 	if len(buckets) == 0 || math.IsNaN(marketProb) || marketProb < 0 || marketProb > 1 {
 		return nil
 	}

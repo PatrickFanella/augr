@@ -55,15 +55,16 @@ func EvaluateCondition(cond Condition, snap Snapshot, prev *Snapshot) bool {
 	}
 
 	var threshold float64
-	if cond.Ref != "" {
+	switch {
+	case cond.Ref != "":
 		refVal, ok := snap.Values[cond.Ref]
 		if !ok || math.IsNaN(refVal) {
 			return false
 		}
 		threshold = refVal
-	} else if cond.Value != nil {
+	case cond.Value != nil:
 		threshold = *cond.Value
-	} else {
+	default:
 		return false
 	}
 

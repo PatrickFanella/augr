@@ -60,7 +60,7 @@ func TestClassifyDryRunError_Other(t *testing.T) {
 func TestBroker_DryRunReturnsRejectedError(t *testing.T) {
 	t.Parallel()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		_, _ = w.Write([]byte("insufficient balance"))
 	}))
@@ -85,7 +85,7 @@ func TestBroker_DryRunHonorsBreaker(t *testing.T) {
 	t.Parallel()
 
 	var hits int
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { hits++; t.Fatal("server should not be hit") }))
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) { hits++; t.Fatal("server should not be hit") }))
 	defer server.Close()
 
 	client := newTestClient()
@@ -106,7 +106,7 @@ func TestBroker_DryRunHonorsBreaker(t *testing.T) {
 func TestBroker_DryRunRespectsContextTimeout(t *testing.T) {
 	t.Parallel()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { time.Sleep(10 * time.Millisecond) }))
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) { time.Sleep(10 * time.Millisecond) }))
 	defer server.Close()
 
 	client := newTestClient()

@@ -42,7 +42,7 @@ type stubDebaterNode struct {
 func (n *stubDebaterNode) Name() string    { return n.name }
 func (n *stubDebaterNode) Role() AgentRole { return n.role }
 func (n *stubDebaterNode) Phase() Phase    { return n.phase }
-func (n *stubDebaterNode) Execute(ctx context.Context, state *PipelineState) error {
+func (n *stubDebaterNode) Execute(_ context.Context, _ *PipelineState) error {
 	return nil
 }
 

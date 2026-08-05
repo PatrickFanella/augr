@@ -109,18 +109,22 @@ type eventMarketSummaryStrategyRepoStub struct {
 func (s *eventMarketSummaryStrategyRepoStub) Create(context.Context, *domain.Strategy) error {
 	return nil
 }
+
 func (s *eventMarketSummaryStrategyRepoStub) Get(context.Context, uuid.UUID) (*domain.Strategy, error) {
 	return nil, repository.ErrNotFound
 }
+
 func (s *eventMarketSummaryStrategyRepoStub) List(context.Context, repository.StrategyFilter, int, int) ([]domain.Strategy, error) {
 	return nil, nil
 }
+
 func (s *eventMarketSummaryStrategyRepoStub) Count(_ context.Context, filter repository.StrategyFilter) (int, error) {
 	if filter.Status != domain.StrategyStatusActive || filter.IsPaper == nil || !*filter.IsPaper {
 		return 0, nil
 	}
 	return s.counts[filter.MarketType], nil
 }
+
 func (s *eventMarketSummaryStrategyRepoStub) Update(context.Context, *domain.Strategy) error {
 	return nil
 }
@@ -128,6 +132,7 @@ func (s *eventMarketSummaryStrategyRepoStub) Delete(context.Context, uuid.UUID) 
 func (s *eventMarketSummaryStrategyRepoStub) UpdateThesis(context.Context, uuid.UUID, json.RawMessage) error {
 	return nil
 }
+
 func (s *eventMarketSummaryStrategyRepoStub) GetThesisRaw(context.Context, uuid.UUID) (json.RawMessage, error) {
 	return nil, nil
 }
@@ -139,9 +144,11 @@ type eventMarketSummaryKalshiWatchedRepoStub struct {
 func (s *eventMarketSummaryKalshiWatchedRepoStub) Upsert(context.Context, *domain.KalshiWatchedMarket) error {
 	return nil
 }
+
 func (s *eventMarketSummaryKalshiWatchedRepoStub) SetEnabled(context.Context, string, bool) error {
 	return nil
 }
+
 func (s *eventMarketSummaryKalshiWatchedRepoStub) ListEnabled(context.Context) ([]domain.KalshiWatchedMarket, error) {
 	return s.markets, nil
 }
@@ -153,12 +160,15 @@ type eventMarketSummaryKalshiDiscoveryRunsRepoStub struct {
 func (s *eventMarketSummaryKalshiDiscoveryRunsRepoStub) Create(context.Context, *domain.KalshiDiscoveryRun) error {
 	return nil
 }
+
 func (s *eventMarketSummaryKalshiDiscoveryRunsRepoStub) GetActive(context.Context) (*domain.KalshiDiscoveryRun, error) {
 	return nil, repository.ErrNotFound
 }
+
 func (s *eventMarketSummaryKalshiDiscoveryRunsRepoStub) Finish(context.Context, *domain.KalshiDiscoveryRun) error {
 	return nil
 }
+
 func (s *eventMarketSummaryKalshiDiscoveryRunsRepoStub) ListLatest(context.Context, int) ([]domain.KalshiDiscoveryRun, error) {
 	return s.runs, nil
 }
@@ -170,12 +180,15 @@ type eventMarketSummaryPolymarketWatchedRepoStub struct {
 func (s *eventMarketSummaryPolymarketWatchedRepoStub) List(context.Context, bool) ([]domain.PolymarketWatchedMarket, error) {
 	return s.markets, nil
 }
+
 func (s *eventMarketSummaryPolymarketWatchedRepoStub) Add(context.Context, *domain.PolymarketWatchedMarket) error {
 	return nil
 }
+
 func (s *eventMarketSummaryPolymarketWatchedRepoStub) Remove(context.Context, string) error {
 	return nil
 }
+
 func (s *eventMarketSummaryPolymarketWatchedRepoStub) SetEnabled(context.Context, string, bool) error {
 	return nil
 }

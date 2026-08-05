@@ -283,7 +283,7 @@ func (p *Provider) GetSocialSentiment(ctx context.Context, ticker string, from, 
 		return nil, errors.New("finnhub: provider is nil")
 	}
 
-	days, err := p.client.GetSocialSentiment(ctx, ticker, from, to)
+	days, err := p.client.getSocialSentiment(ctx, ticker, from, to)
 	if err != nil {
 		var finnhubErr *ErrorResponse
 		if errors.As(err, &finnhubErr) && finnhubErr.StatusCode() == 403 {

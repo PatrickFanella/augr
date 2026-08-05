@@ -28,6 +28,7 @@ func (s *settlementDecisionStub) Get(_ context.Context, id uuid.UUID) (*domain.T
 	}
 	return nil, nil
 }
+
 func (s *settlementDecisionStub) List(_ context.Context, f repository.TradeDecisionFilter, limit, _ int) ([]domain.TradeDecision, error) {
 	s.lastFilter = f
 	s.lastLimit = limit
@@ -42,6 +43,7 @@ func (s *settlementDecisionStub) List(_ context.Context, f repository.TradeDecis
 	}
 	return out, nil
 }
+
 func (s *settlementDecisionStub) ResolvePredictionOutcome(_ context.Context, id uuid.UUID) error {
 	s.resolved = append(s.resolved, id)
 	for i := range s.decisions {
@@ -58,6 +60,7 @@ func (s *settlementPositionStub) Create(context.Context, *domain.Position) error
 func (s *settlementPositionStub) CreateAlpacaOwned(context.Context, *domain.Position) error {
 	return nil
 }
+
 func (s *settlementPositionStub) Get(context.Context, uuid.UUID) (*domain.Position, error) {
 	if s.position.ID != uuid.Nil {
 		p := s.position
@@ -65,12 +68,15 @@ func (s *settlementPositionStub) Get(context.Context, uuid.UUID) (*domain.Positi
 	}
 	return nil, nil
 }
+
 func (s *settlementPositionStub) List(context.Context, repository.PositionFilter, int, int) ([]domain.Position, error) {
 	return nil, nil
 }
+
 func (s *settlementPositionStub) Count(context.Context, repository.PositionFilter) (int, error) {
 	return 0, nil
 }
+
 func (s *settlementPositionStub) Update(_ context.Context, p *domain.Position) error {
 	s.position = *p
 	return nil
@@ -79,12 +85,15 @@ func (s *settlementPositionStub) Delete(context.Context, uuid.UUID) error { retu
 func (s *settlementPositionStub) GetOpen(context.Context, repository.PositionFilter, int, int) ([]domain.Position, error) {
 	return nil, nil
 }
+
 func (s *settlementPositionStub) ListOpenAlpacaOwned(context.Context, int, int) ([]domain.Position, error) {
 	return nil, nil
 }
+
 func (s *settlementPositionStub) CountOpen(context.Context, repository.PositionFilter) (int, error) {
 	return 0, nil
 }
+
 func (s *settlementPositionStub) GetByStrategy(_ context.Context, _ uuid.UUID, f repository.PositionFilter, _, _ int) ([]domain.Position, error) {
 	if s.position.Ticker == f.Ticker && s.position.ClosedAt == nil {
 		return []domain.Position{s.position}, nil
@@ -98,12 +107,15 @@ func (s *settlementTradeStub) Create(_ context.Context, trade *domain.Trade) err
 	s.trades = append(s.trades, *trade)
 	return nil
 }
+
 func (*settlementTradeStub) List(context.Context, repository.TradeFilter, int, int) ([]domain.Trade, error) {
 	return nil, nil
 }
+
 func (*settlementTradeStub) Count(context.Context, repository.TradeFilter) (int, error) {
 	return 0, nil
 }
+
 func (s *settlementTradeStub) GetByOrder(_ context.Context, orderID uuid.UUID, _ repository.TradeFilter, _, _ int) ([]domain.Trade, error) {
 	var out []domain.Trade
 	for _, trade := range s.trades {
@@ -113,6 +125,7 @@ func (s *settlementTradeStub) GetByOrder(_ context.Context, orderID uuid.UUID, _
 	}
 	return out, nil
 }
+
 func (*settlementTradeStub) GetByPosition(context.Context, uuid.UUID, repository.TradeFilter, int, int) ([]domain.Trade, error) {
 	return nil, nil
 }
@@ -123,6 +136,7 @@ func (s *settlementReplayStub) CreateReplayEvent(_ context.Context, e *domain.Re
 	s.events = append(s.events, *e)
 	return nil
 }
+
 func (*settlementReplayStub) ListReplayEvents(context.Context, uuid.UUID) ([]domain.ReplayEvent, error) {
 	return nil, nil
 }
@@ -158,6 +172,7 @@ func (s *atomicLifecycleStub) ApplyOrderFill(context.Context, repository.OrderFi
 	s.called++
 	return repository.OrderFillResult{}, nil
 }
+
 func (s *atomicLifecycleStub) SettlePredictionDecision(context.Context, repository.PredictionDecisionSettlementInput) (repository.PredictionDecisionSettlementResult, error) {
 	s.called++
 	return repository.PredictionDecisionSettlementResult{DecisionID: uuid.New()}, nil

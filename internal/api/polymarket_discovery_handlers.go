@@ -7,7 +7,7 @@ import (
 )
 
 // handleGetPolymarketDiscoveryLast returns the most recent discovery run result.
-func (s *Server) handleGetPolymarketDiscoveryLast(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleGetPolymarketDiscoveryLast(w http.ResponseWriter, _ *http.Request) {
 	res := polymarketdiscovery.LastResult()
 	if res == nil {
 		respondJSON(w, http.StatusOK, map[string]any{"last": nil})

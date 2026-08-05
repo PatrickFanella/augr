@@ -72,7 +72,9 @@ func TestRunOptionsSweepReturnsTradesAndEquityCurve(t *testing.T) {
 	if len(results) == 0 {
 		t.Fatal("RunOptionsSweep() returned no results")
 	}
-	if len(results) != 1 { t.Fatalf("base-only results = %d, want 1 deterministic config", len(results)) }
+	if len(results) != 1 {
+		t.Fatalf("base-only results = %d, want 1 deterministic config", len(results))
+	}
 
 	best := results[0]
 	if len(best.Trades) == 0 {

@@ -11,12 +11,12 @@ import (
 // RequiredSchemaVersion is the minimum schema version this runtime requires.
 const RequiredSchemaVersion = 60
 
-type schemaVersionState string
+type SchemaVersionState string
 
 const (
-	schemaVersionBehind schemaVersionState = "behind"
-	schemaVersionMatch  schemaVersionState = "match"
-	schemaVersionAhead  schemaVersionState = "ahead"
+	schemaVersionBehind SchemaVersionState = "behind"
+	schemaVersionMatch  SchemaVersionState = "match"
+	schemaVersionAhead  SchemaVersionState = "ahead"
 )
 
 type schemaVersionRow interface {
@@ -54,7 +54,7 @@ func currentSchemaVersion(ctx context.Context, querier schemaVersionQuerier) (in
 }
 
 // CompareSchemaVersion compares current against required.
-func CompareSchemaVersion(current, required int) schemaVersionState {
+func CompareSchemaVersion(current, required int) SchemaVersionState {
 	switch {
 	case current < required:
 		return schemaVersionBehind

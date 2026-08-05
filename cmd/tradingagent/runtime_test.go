@@ -44,7 +44,6 @@ type roundTripperFunc func(*http.Request) (*http.Response, error)
 func (f roundTripperFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
 func TestNewAPIServerSchemaBehindFailsFast(t *testing.T) {
-
 	origNewDB := runtimeNewDB
 	origCurrentSchemaVersion := runtimeCurrentSchemaVersion
 	origNewPaperAccountRepo := runtimeNewPaperAccountRepo
@@ -106,7 +105,6 @@ func TestNewAPIServerSchemaBehindFailsFast(t *testing.T) {
 }
 
 func TestNewAPIServerSchemaAheadFailsFast(t *testing.T) {
-
 	origNewDB := runtimeNewDB
 	origCurrentSchemaVersion := runtimeCurrentSchemaVersion
 	origNewPaperAccountRepo := runtimeNewPaperAccountRepo
@@ -167,7 +165,6 @@ func TestNewAPIServerSchemaAheadFailsFast(t *testing.T) {
 }
 
 func TestNewAPIServerSchemaMatchSucceeds(t *testing.T) {
-
 	origNewDB := runtimeNewDB
 	origCurrentSchemaVersion := runtimeCurrentSchemaVersion
 	origNewPaperAccountRepo := runtimeNewPaperAccountRepo
@@ -236,7 +233,6 @@ func TestNewAPIServerSchemaMatchSucceeds(t *testing.T) {
 }
 
 func TestNewAPIServerSchemaDBUnreachableFailsBeforeSchemaGate(t *testing.T) {
-
 	origNewDB := runtimeNewDB
 	origCurrentSchemaVersion := runtimeCurrentSchemaVersion
 	origNewPaperAccountRepo := runtimeNewPaperAccountRepo
@@ -1022,6 +1018,7 @@ func (stubPositionRepo) Delete(context.Context, uuid.UUID) error        { return
 func (stubPositionRepo) GetOpen(context.Context, repository.PositionFilter, int, int) ([]domain.Position, error) {
 	return nil, nil
 }
+
 func (stubPositionRepo) ListOpenAlpacaOwned(context.Context, int, int) ([]domain.Position, error) {
 	return nil, nil
 }
@@ -1080,6 +1077,7 @@ func (m metricPositionRepo) CreateAlpacaOwned(context.Context, *domain.Position)
 func (m metricPositionRepo) Get(context.Context, uuid.UUID) (*domain.Position, error) {
 	return nil, repository.ErrNotFound
 }
+
 func (m metricPositionRepo) List(context.Context, repository.PositionFilter, int, int) ([]domain.Position, error) {
 	return nil, nil
 }
@@ -1088,21 +1086,27 @@ func (m metricPositionRepo) Delete(context.Context, uuid.UUID) error        { re
 func (m metricPositionRepo) GetOpen(context.Context, repository.PositionFilter, int, int) ([]domain.Position, error) {
 	return nil, nil
 }
+
 func (m metricPositionRepo) ListOpenAlpacaOwned(context.Context, int, int) ([]domain.Position, error) {
 	return nil, nil
 }
+
 func (m metricPositionRepo) GetByStrategy(context.Context, uuid.UUID, repository.PositionFilter, int, int) ([]domain.Position, error) {
 	return nil, nil
 }
+
 func (m metricPositionRepo) Count(context.Context, repository.PositionFilter) (int, error) {
 	return m.count, nil
 }
+
 func (m metricPositionRepo) CountOpen(context.Context, repository.PositionFilter) (int, error) {
 	return m.count, nil
 }
+
 func (m metricPositionRepo) CountOpenByMarket(context.Context, repository.PositionFilter) (map[domain.MarketType]int, error) {
 	return map[domain.MarketType]int{}, nil
 }
+
 func (m metricPositionRepo) GrossExposureOpen(context.Context, repository.PositionFilter) (float64, error) {
 	return 0, nil
 }
@@ -1120,12 +1124,15 @@ func (r *bootstrapPolymarketPositionRepoStub) GetOpen(context.Context, repositor
 	}
 	return append([]domain.Position(nil), r.pages[idx]...), nil
 }
+
 func (r *bootstrapPolymarketPositionRepoStub) ListOpenAlpacaOwned(context.Context, int, int) ([]domain.Position, error) {
 	return nil, nil
 }
+
 func (r *bootstrapPolymarketPositionRepoStub) CountOpenByMarket(context.Context, repository.PositionFilter) (map[domain.MarketType]int, error) {
 	return map[domain.MarketType]int{}, nil
 }
+
 func (r *bootstrapPolymarketPositionRepoStub) GrossExposureOpen(context.Context, repository.PositionFilter) (float64, error) {
 	return 0, nil
 }

@@ -35,22 +35,26 @@ func (r *inMemoryPolymarketDiscoveryRunRepo) clone(run *domain.PolymarketDiscove
 	cp.Errors = append([]string(nil), run.Errors...)
 	return &cp
 }
-func (r *inMemoryPolymarketDiscoveryRunRepo) Create(ctx context.Context, run *domain.PolymarketDiscoveryRun) error {
+
+func (r *inMemoryPolymarketDiscoveryRunRepo) Create(_ context.Context, run *domain.PolymarketDiscoveryRun) error {
 	r.run = r.clone(run)
 	return nil
 }
-func (r *inMemoryPolymarketDiscoveryRunRepo) Get(ctx context.Context, id uuid.UUID) (*domain.PolymarketDiscoveryRun, error) {
+
+func (r *inMemoryPolymarketDiscoveryRunRepo) Get(_ context.Context, id uuid.UUID) (*domain.PolymarketDiscoveryRun, error) {
 	if r.run == nil || r.run.ID != id {
 		return nil, repository.ErrNotFound
 	}
 	return r.clone(r.run), nil
 }
-func (r *inMemoryPolymarketDiscoveryRunRepo) GetActive(ctx context.Context) (*domain.PolymarketDiscoveryRun, error) {
+
+func (r *inMemoryPolymarketDiscoveryRunRepo) GetActive(_ context.Context) (*domain.PolymarketDiscoveryRun, error) {
 	if r.run == nil || r.run.Status != domain.PolymarketDiscoveryStatusRunning {
 		return nil, repository.ErrNotFound
 	}
 	return r.clone(r.run), nil
 }
+
 func (r *inMemoryPolymarketDiscoveryRunRepo) Update(ctx context.Context, run *domain.PolymarketDiscoveryRun) error {
 	if r.failOnCancelledUpdateCtx {
 		if err := ctx.Err(); err != nil {
@@ -61,7 +65,8 @@ func (r *inMemoryPolymarketDiscoveryRunRepo) Update(ctx context.Context, run *do
 	r.run = r.clone(run)
 	return nil
 }
-func (r *inMemoryPolymarketDiscoveryRunRepo) ListLatest(ctx context.Context, limit int) ([]domain.PolymarketDiscoveryRun, error) {
+
+func (r *inMemoryPolymarketDiscoveryRunRepo) ListLatest(_ context.Context, _ int) ([]domain.PolymarketDiscoveryRun, error) {
 	if r.run == nil {
 		return nil, nil
 	}
@@ -71,11 +76,11 @@ func (r *inMemoryPolymarketDiscoveryRunRepo) ListLatest(ctx context.Context, lim
 func TestPolymarketDiscoveryChunkerProposeBudget(t *testing.T) {
 	defer restoreDiscoverySeams()
 	repo := &inMemoryPolymarketDiscoveryRunRepo{run: &domain.PolymarketDiscoveryRun{ID: uuid.New(), Status: domain.PolymarketDiscoveryStatusRunning, Phase: domain.PolymarketDiscoveryPhasePropose, Candidates: makeCandidates(5)}}
-	polymarketDiscoveryGenerateProposal = func(ctx context.Context, cfg polymarketdiscovery.GeneratorConfig, mc polymarketdiscovery.MarketContext, logger *slog.Logger) (*polymarketdiscovery.Proposal, error) {
+	polymarketDiscoveryGenerateProposal = func(_ context.Context, _ polymarketdiscovery.GeneratorConfig, mc polymarketdiscovery.MarketContext, _ *slog.Logger) (*polymarketdiscovery.Proposal, error) {
 		return &polymarketdiscovery.Proposal{Conviction: 0.9, Name: mc.Market.Slug}, nil
 	}
 	deployed := 0
-	polymarketDiscoveryDeployStrategy = func(ctx context.Context, cfg polymarketdiscovery.Config, deps polymarketdiscovery.Deps, mc polymarketdiscovery.MarketContext, prop polymarketdiscovery.Proposal) (polymarketdiscovery.DeployedStrategy, error) {
+	polymarketDiscoveryDeployStrategy = func(_ context.Context, _ polymarketdiscovery.Config, _ polymarketdiscovery.Deps, mc polymarketdiscovery.MarketContext, prop polymarketdiscovery.Proposal) (polymarketdiscovery.DeployedStrategy, error) {
 		deployed++
 		return polymarketdiscovery.DeployedStrategy{StrategyID: uuid.New(), Slug: mc.Market.Slug, Name: prop.Name, Direction: prop.Direction, Conviction: prop.Conviction}, nil
 	}
@@ -92,10 +97,10 @@ func TestPolymarketDiscoveryChunkerReplacesStaleRun(t *testing.T) {
 	defer restoreDiscoverySeams()
 	staleID := uuid.New()
 	repo := &inMemoryPolymarketDiscoveryRunRepo{run: &domain.PolymarketDiscoveryRun{ID: staleID, Status: domain.PolymarketDiscoveryStatusRunning, Phase: domain.PolymarketDiscoveryPhasePropose, StartedAt: time.Now().Add(-polymarketDiscoveryMaxRunAge - time.Hour), Candidates: makeCandidates(1)}}
-	polymarketDiscoveryFetchOpenMarkets = func(ctx context.Context, baseURL string, limit int) ([]polymarketdiscovery.GammaMarket, error) {
+	polymarketDiscoveryFetchOpenMarkets = func(_ context.Context, _ string, _ int) ([]polymarketdiscovery.GammaMarket, error) {
 		return []polymarketdiscovery.GammaMarket{{Slug: "fresh", Question: "Will fresh happen?", Active: true, AcceptingOrders: true}}, nil
 	}
-	polymarketDiscoveryScreenMarkets = func(markets []polymarketdiscovery.GammaMarket, cfg polymarketdiscovery.ScreenerConfig) []polymarketdiscovery.GammaMarket {
+	polymarketDiscoveryScreenMarkets = func(markets []polymarketdiscovery.GammaMarket, _ polymarketdiscovery.ScreenerConfig) []polymarketdiscovery.GammaMarket {
 		return markets
 	}
 
@@ -117,10 +122,10 @@ func TestPolymarketDiscoveryChunkerReplacesStaleRun(t *testing.T) {
 func TestPolymarketDiscoveryChunkerStopsAtMaxDeployments(t *testing.T) {
 	defer restoreDiscoverySeams()
 	repo := &inMemoryPolymarketDiscoveryRunRepo{run: &domain.PolymarketDiscoveryRun{ID: uuid.New(), Status: domain.PolymarketDiscoveryStatusRunning, Phase: domain.PolymarketDiscoveryPhasePropose, Candidates: makeCandidates(5)}}
-	polymarketDiscoveryGenerateProposal = func(ctx context.Context, cfg polymarketdiscovery.GeneratorConfig, mc polymarketdiscovery.MarketContext, logger *slog.Logger) (*polymarketdiscovery.Proposal, error) {
+	polymarketDiscoveryGenerateProposal = func(_ context.Context, _ polymarketdiscovery.GeneratorConfig, mc polymarketdiscovery.MarketContext, _ *slog.Logger) (*polymarketdiscovery.Proposal, error) {
 		return &polymarketdiscovery.Proposal{Conviction: 0.9, Name: mc.Market.Slug}, nil
 	}
-	polymarketDiscoveryDeployStrategy = func(ctx context.Context, cfg polymarketdiscovery.Config, deps polymarketdiscovery.Deps, mc polymarketdiscovery.MarketContext, prop polymarketdiscovery.Proposal) (polymarketdiscovery.DeployedStrategy, error) {
+	polymarketDiscoveryDeployStrategy = func(_ context.Context, _ polymarketdiscovery.Config, _ polymarketdiscovery.Deps, mc polymarketdiscovery.MarketContext, prop polymarketdiscovery.Proposal) (polymarketdiscovery.DeployedStrategy, error) {
 		return polymarketdiscovery.DeployedStrategy{StrategyID: uuid.New(), Slug: mc.Market.Slug, Name: prop.Name, Direction: prop.Direction, Conviction: prop.Conviction}, nil
 	}
 	c := polymarketDiscoveryChunker{progress: repo, deps: OrchestratorDeps{LLMProvider: llm.ProviderFunc(func(context.Context, llm.CompletionRequest) (*llm.CompletionResponse, error) { return nil, nil })}, proposePerChunk: 5}
@@ -143,14 +148,14 @@ func TestPolymarketDiscoveryChunkerUsesFiveProposalChunks(t *testing.T) {
 func TestPolymarketDiscoveryChunkerDeploysAcceptedProposalImmediately(t *testing.T) {
 	defer restoreDiscoverySeams()
 	repo := &inMemoryPolymarketDiscoveryRunRepo{run: &domain.PolymarketDiscoveryRun{ID: uuid.New(), Status: domain.PolymarketDiscoveryStatusRunning, Phase: domain.PolymarketDiscoveryPhasePropose, Candidates: makeCandidates(1)}}
-	polymarketDiscoveryBuildContext = func(ctx context.Context, m polymarketdiscovery.GammaMarket, repo repository.PolymarketAccountRepository) (polymarketdiscovery.MarketContext, error) {
+	polymarketDiscoveryBuildContext = func(_ context.Context, m polymarketdiscovery.GammaMarket, _ repository.PolymarketAccountRepository) (polymarketdiscovery.MarketContext, error) {
 		return polymarketdiscovery.MarketContext{Market: m}, nil
 	}
-	polymarketDiscoveryGenerateProposal = func(ctx context.Context, cfg polymarketdiscovery.GeneratorConfig, mc polymarketdiscovery.MarketContext, logger *slog.Logger) (*polymarketdiscovery.Proposal, error) {
+	polymarketDiscoveryGenerateProposal = func(_ context.Context, _ polymarketdiscovery.GeneratorConfig, mc polymarketdiscovery.MarketContext, _ *slog.Logger) (*polymarketdiscovery.Proposal, error) {
 		return &polymarketdiscovery.Proposal{Conviction: 0.9, Name: mc.Market.Slug}, nil
 	}
 	deployed := 0
-	polymarketDiscoveryDeployStrategy = func(ctx context.Context, cfg polymarketdiscovery.Config, deps polymarketdiscovery.Deps, mc polymarketdiscovery.MarketContext, prop polymarketdiscovery.Proposal) (polymarketdiscovery.DeployedStrategy, error) {
+	polymarketDiscoveryDeployStrategy = func(_ context.Context, _ polymarketdiscovery.Config, _ polymarketdiscovery.Deps, mc polymarketdiscovery.MarketContext, prop polymarketdiscovery.Proposal) (polymarketdiscovery.DeployedStrategy, error) {
 		deployed++
 		return polymarketdiscovery.DeployedStrategy{StrategyID: uuid.New(), Slug: mc.Market.Slug, Name: prop.Name, Direction: prop.Direction, Conviction: prop.Conviction}, nil
 	}
@@ -172,7 +177,7 @@ func TestPolymarketDiscoveryChunkerDeploysAcceptedProposalImmediately(t *testing
 func TestPolymarketDiscoveryChunkerAdvancesOnErrorsAndSkips(t *testing.T) {
 	defer restoreDiscoverySeams()
 	repo := &inMemoryPolymarketDiscoveryRunRepo{run: &domain.PolymarketDiscoveryRun{ID: uuid.New(), Status: domain.PolymarketDiscoveryStatusRunning, Phase: domain.PolymarketDiscoveryPhasePropose, Candidates: []domain.PolymarketDiscoveryCandidate{{Slug: "bad-context"}, {Slug: "skip"}, {Slug: "low"}, {Slug: "ok"}}}}
-	polymarketDiscoveryGenerateProposal = func(ctx context.Context, cfg polymarketdiscovery.GeneratorConfig, mc polymarketdiscovery.MarketContext, logger *slog.Logger) (*polymarketdiscovery.Proposal, error) {
+	polymarketDiscoveryGenerateProposal = func(_ context.Context, _ polymarketdiscovery.GeneratorConfig, mc polymarketdiscovery.MarketContext, _ *slog.Logger) (*polymarketdiscovery.Proposal, error) {
 		switch mc.Market.Slug {
 		case "skip":
 			return &polymarketdiscovery.Proposal{Skip: true}, nil
@@ -182,10 +187,10 @@ func TestPolymarketDiscoveryChunkerAdvancesOnErrorsAndSkips(t *testing.T) {
 			return &polymarketdiscovery.Proposal{Conviction: 0.9, Name: mc.Market.Slug}, nil
 		}
 	}
-	polymarketDiscoveryDeployStrategy = func(ctx context.Context, cfg polymarketdiscovery.Config, deps polymarketdiscovery.Deps, mc polymarketdiscovery.MarketContext, prop polymarketdiscovery.Proposal) (polymarketdiscovery.DeployedStrategy, error) {
+	polymarketDiscoveryDeployStrategy = func(_ context.Context, _ polymarketdiscovery.Config, _ polymarketdiscovery.Deps, mc polymarketdiscovery.MarketContext, prop polymarketdiscovery.Proposal) (polymarketdiscovery.DeployedStrategy, error) {
 		return polymarketdiscovery.DeployedStrategy{StrategyID: uuid.New(), Slug: mc.Market.Slug, Name: prop.Name, Direction: prop.Direction, Conviction: prop.Conviction}, nil
 	}
-	polymarketDiscoveryBuildContext = func(ctx context.Context, m polymarketdiscovery.GammaMarket, repo repository.PolymarketAccountRepository) (polymarketdiscovery.MarketContext, error) {
+	polymarketDiscoveryBuildContext = func(_ context.Context, m polymarketdiscovery.GammaMarket, _ repository.PolymarketAccountRepository) (polymarketdiscovery.MarketContext, error) {
 		if m.Slug == "bad-context" {
 			return polymarketdiscovery.MarketContext{}, errors.New("boom")
 		}
@@ -210,7 +215,7 @@ func TestPolymarketDiscoveryChunkerDeployCompletesAndStoresResult(t *testing.T) 
 	defer restoreDiscoverySeams()
 	repo := &inMemoryPolymarketDiscoveryRunRepo{run: &domain.PolymarketDiscoveryRun{ID: uuid.New(), Status: domain.PolymarketDiscoveryStatusRunning, Phase: domain.PolymarketDiscoveryPhaseDeploy, StartedAt: time.Now().Add(-time.Minute), Accepted: []domain.PolymarketDiscoveryAccepted{{Candidate: domain.PolymarketDiscoveryCandidate{Slug: "aaa"}, Proposal: json.RawMessage(`{"conviction":0.9,"name":"aaa"}`)}}}}
 	var stored *polymarketdiscovery.Result
-	polymarketDiscoveryDeployStrategy = func(ctx context.Context, cfg polymarketdiscovery.Config, deps polymarketdiscovery.Deps, mc polymarketdiscovery.MarketContext, prop polymarketdiscovery.Proposal) (polymarketdiscovery.DeployedStrategy, error) {
+	polymarketDiscoveryDeployStrategy = func(_ context.Context, _ polymarketdiscovery.Config, _ polymarketdiscovery.Deps, mc polymarketdiscovery.MarketContext, prop polymarketdiscovery.Proposal) (polymarketdiscovery.DeployedStrategy, error) {
 		return polymarketdiscovery.DeployedStrategy{StrategyID: uuid.New(), Slug: mc.Market.Slug, Name: prop.Name, Direction: prop.Direction, Conviction: prop.Conviction}, nil
 	}
 	polymarketDiscoveryStoreLastResult = func(r *polymarketdiscovery.Result) { stored = r }
@@ -255,7 +260,7 @@ func TestDiscoveryCandidateToMarketContextPreservesNumericFields(t *testing.T) {
 func TestPolymarketDiscoveryChunkerPersistsCandidateErrorsPerAttempt(t *testing.T) {
 	defer restoreDiscoverySeams()
 	repo := &inMemoryPolymarketDiscoveryRunRepo{run: &domain.PolymarketDiscoveryRun{ID: uuid.New(), Status: domain.PolymarketDiscoveryStatusRunning, Phase: domain.PolymarketDiscoveryPhasePropose, Candidates: []domain.PolymarketDiscoveryCandidate{{Slug: "bad"}}}}
-	polymarketDiscoveryBuildContext = func(ctx context.Context, m polymarketdiscovery.GammaMarket, repo repository.PolymarketAccountRepository) (polymarketdiscovery.MarketContext, error) {
+	polymarketDiscoveryBuildContext = func(_ context.Context, _ polymarketdiscovery.GammaMarket, _ repository.PolymarketAccountRepository) (polymarketdiscovery.MarketContext, error) {
 		return polymarketdiscovery.MarketContext{}, errors.New("boom")
 	}
 	c := polymarketDiscoveryChunker{progress: repo, deps: OrchestratorDeps{LLMProvider: llm.ProviderFunc(func(context.Context, llm.CompletionRequest) (*llm.CompletionResponse, error) { return nil, nil })}, proposePerChunk: 1}
@@ -278,7 +283,7 @@ func TestPolymarketDiscoveryChunkerPersistsProgressAfterProposalTimeout(t *testi
 		},
 		failOnCancelledUpdateCtx: true,
 	}
-	polymarketDiscoveryGenerateProposal = func(ctx context.Context, cfg polymarketdiscovery.GeneratorConfig, mc polymarketdiscovery.MarketContext, logger *slog.Logger) (*polymarketdiscovery.Proposal, error) {
+	polymarketDiscoveryGenerateProposal = func(ctx context.Context, _ polymarketdiscovery.GeneratorConfig, _ polymarketdiscovery.MarketContext, _ *slog.Logger) (*polymarketdiscovery.Proposal, error) {
 		<-ctx.Done()
 		return nil, ctx.Err()
 	}
@@ -307,7 +312,7 @@ func TestPolymarketDiscoveryChunkerDeploySkipsAlreadyDeployed(t *testing.T) {
 	defer restoreDiscoverySeams()
 	repo := &inMemoryPolymarketDiscoveryRunRepo{run: &domain.PolymarketDiscoveryRun{ID: uuid.New(), Status: domain.PolymarketDiscoveryStatusRunning, Phase: domain.PolymarketDiscoveryPhaseDeploy, StartedAt: time.Now().Add(-time.Minute), Accepted: []domain.PolymarketDiscoveryAccepted{{Candidate: domain.PolymarketDiscoveryCandidate{Slug: "aaa"}, Proposal: json.RawMessage(`{"conviction":0.9,"name":"aaa"}`)}}, Deployed: []domain.PolymarketDiscoveryDeployed{{StrategyID: uuid.NewString(), Slug: "aaa"}}, Summary: domain.PolymarketDiscoverySummary{Deployed: 1}}}
 	called := 0
-	polymarketDiscoveryDeployStrategy = func(ctx context.Context, cfg polymarketdiscovery.Config, deps polymarketdiscovery.Deps, mc polymarketdiscovery.MarketContext, prop polymarketdiscovery.Proposal) (polymarketdiscovery.DeployedStrategy, error) {
+	polymarketDiscoveryDeployStrategy = func(_ context.Context, _ polymarketdiscovery.Config, _ polymarketdiscovery.Deps, _ polymarketdiscovery.MarketContext, _ polymarketdiscovery.Proposal) (polymarketdiscovery.DeployedStrategy, error) {
 		called++
 		return polymarketdiscovery.DeployedStrategy{}, nil
 	}
@@ -325,10 +330,10 @@ func TestPolymarketDiscoveryChunkerMaxAgeFailsRunAndStartsReplacement(t *testing
 	started := time.Now().Add(-(polymarketDiscoveryMaxRunAge + time.Minute))
 	staleID := uuid.New()
 	repo := &inMemoryPolymarketDiscoveryRunRepo{run: &domain.PolymarketDiscoveryRun{ID: staleID, Status: domain.PolymarketDiscoveryStatusRunning, Phase: domain.PolymarketDiscoveryPhasePropose, StartedAt: started}}
-	polymarketDiscoveryFetchOpenMarkets = func(ctx context.Context, baseURL string, limit int) ([]polymarketdiscovery.GammaMarket, error) {
+	polymarketDiscoveryFetchOpenMarkets = func(_ context.Context, _ string, _ int) ([]polymarketdiscovery.GammaMarket, error) {
 		return []polymarketdiscovery.GammaMarket{{Slug: "fresh", Question: "Will fresh happen?", Active: true, AcceptingOrders: true}}, nil
 	}
-	polymarketDiscoveryScreenMarkets = func(markets []polymarketdiscovery.GammaMarket, cfg polymarketdiscovery.ScreenerConfig) []polymarketdiscovery.GammaMarket {
+	polymarketDiscoveryScreenMarkets = func(markets []polymarketdiscovery.GammaMarket, _ polymarketdiscovery.ScreenerConfig) []polymarketdiscovery.GammaMarket {
 		return markets
 	}
 	c := polymarketDiscoveryChunker{progress: repo, deps: OrchestratorDeps{LLMProvider: llm.ProviderFunc(func(context.Context, llm.CompletionRequest) (*llm.CompletionResponse, error) { return nil, nil })}, logger: slog.Default()}
@@ -379,6 +384,7 @@ func makeCandidates(n int) []domain.PolymarketDiscoveryCandidate {
 	}
 	return out
 }
+
 func contains(ss []string, want string) bool {
 	for _, s := range ss {
 		if s == want || strings.Contains(s, want) {

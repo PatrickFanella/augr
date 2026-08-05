@@ -15,11 +15,13 @@ var (
 	ErrLadderAtMax    = errors.New("capital ladder already at max step")
 )
 
-type CapitalLadderConfig struct{ Step, MaxStep, Tolerance float64 }
-type CapitalLadder struct {
-	cfg  CapitalLadderConfig
-	repo repository.CapitalLadderRepository
-}
+type (
+	CapitalLadderConfig struct{ Step, MaxStep, Tolerance float64 }
+	CapitalLadder       struct {
+		cfg  CapitalLadderConfig
+		repo repository.CapitalLadderRepository
+	}
+)
 
 func NewCapitalLadder(cfg CapitalLadderConfig, repo repository.CapitalLadderRepository) *CapitalLadder {
 	if cfg.Step == 0 {

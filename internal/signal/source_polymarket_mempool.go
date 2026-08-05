@@ -89,7 +89,7 @@ func (p *PolygonMempoolSource) runOnce(ctx context.Context, out chan<- RawSignal
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	if err := conn.WriteJSON(map[string]any{"id": 1, "jsonrpc": "2.0", "method": "eth_subscribe", "params": []any{"newPendingTransactions"}}); err != nil {
 		return err
 	}
@@ -160,7 +160,7 @@ func (p *PolygonMempoolSource) fetchTx(ctx context.Context, hash string) (*polyg
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
@@ -213,6 +213,7 @@ func shortHash(h string) string {
 	}
 	return h
 }
+
 func shortAddr(a string) string {
 	if len(a) > 10 {
 		return a[:10]

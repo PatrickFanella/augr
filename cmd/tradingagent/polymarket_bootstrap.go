@@ -42,7 +42,7 @@ func bootstrapPolymarketStopGuards(ctx context.Context, runner *realStrategyRunn
 			filtered = append(filtered, position)
 		}
 		if len(filtered) > 0 {
-			if err := runner.registerPolymarketPositions(ctx, filtered); err != nil {
+			if err := runner.registerPolymarketPositions(filtered); err != nil {
 				if firstErr == nil {
 					firstErr = fmt.Errorf("bootstrap polymarket stop guards: register positions: %w", err)
 				}

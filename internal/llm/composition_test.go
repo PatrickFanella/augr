@@ -12,7 +12,9 @@ import (
 
 type labelRecordingMetrics struct{ labels []string }
 
-func (m *labelRecordingMetrics) RecordLLMRetry(provider string) { m.labels = append(m.labels, provider) }
+func (m *labelRecordingMetrics) RecordLLMRetry(provider string) {
+	m.labels = append(m.labels, provider)
+}
 
 func TestComposerBuildProviderForSelection_ResolvesModelOverride(t *testing.T) {
 	t.Parallel()
@@ -116,12 +118,12 @@ func TestComposerBuildProviderForSelection_SupportsAliases(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := config.LLMConfig{
 				Providers: config.LLMProviderConfigs{
-					OpenAI: config.LLMProviderConfig{APIKey: "k", Model: "gpt-5-mini"},
-					Anthropic: config.LLMProviderConfig{APIKey: "k", Model: "claude-haiku-4-5"},
-					Google: config.LLMProviderConfig{APIKey: "k", Model: "gemini-3.1-flash"},
+					OpenAI:     config.LLMProviderConfig{APIKey: "k", Model: "gpt-5-mini"},
+					Anthropic:  config.LLMProviderConfig{APIKey: "k", Model: "claude-haiku-4-5"},
+					Google:     config.LLMProviderConfig{APIKey: "k", Model: "gemini-3.1-flash"},
 					OpenRouter: config.LLMProviderConfig{APIKey: "k", Model: "openrouter-model"},
-					XAI: config.LLMProviderConfig{APIKey: "k", Model: "grok-3-mini"},
-					Ollama: config.OllamaConfig{BaseURL: "http://localhost:11434/v1", APIKey: "k", Model: "llama3.2"},
+					XAI:        config.LLMProviderConfig{APIKey: "k", Model: "grok-3-mini"},
+					Ollama:     config.OllamaConfig{BaseURL: "http://localhost:11434/v1", APIKey: "k", Model: "llama3.2"},
 				},
 			}
 
@@ -210,7 +212,7 @@ func TestComposerWrapProviderChain_RetryMetricsBinding(t *testing.T) {
 
 	metrics := &labelRecordingMetrics{}
 	mock := newMockProvider(
-		[]*llm.CompletionResponse{nil, &llm.CompletionResponse{Content: "retried"}},
+		[]*llm.CompletionResponse{nil, {Content: "retried"}},
 		[]error{&httpError{code: 429, msg: "rate limited"}, nil},
 	)
 
@@ -249,10 +251,10 @@ func TestADR002TwoTierDefaults_AreRegistered(t *testing.T) {
 	}
 
 	checks := []struct {
-		name string
+		name     string
 		provider string
-		tier llm.ModelTier
-		want string
+		tier     llm.ModelTier
+		want     string
 	}{
 		{name: "openai deep", provider: "openai", tier: llm.ModelTierDeepThink, want: "gpt-5.2"},
 		{name: "openai quick", provider: "openai", tier: llm.ModelTierQuickThink, want: "gpt-5-mini"},

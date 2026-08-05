@@ -24,7 +24,6 @@ type member struct {
 	books      chan BookSnapshot
 	jitterMS   float64
 	lastTickAt time.Time
-	dropped    uint64
 	cancel     context.CancelFunc
 }
 
@@ -125,7 +124,7 @@ func (p *Pool) startMember(ctx context.Context) error {
 }
 
 func (p *Pool) runMember(ctx context.Context, m *member) {
-	defer m.conn.Close()
+	defer func() { _ = m.conn.Close() }()
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -297,11 +296,4 @@ func (p *Pool) Close() {
 	if p.books != nil {
 		close(p.books)
 	}
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }

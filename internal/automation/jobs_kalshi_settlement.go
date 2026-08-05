@@ -131,7 +131,7 @@ func (o *JobOrchestrator) kalshiSettlement(ctx context.Context) error {
 	return nil
 }
 
-func (o *JobOrchestrator) recordKalshiSettlementMetrics(success bool, dryRun bool) {
+func (o *JobOrchestrator) recordKalshiSettlementMetrics(success, dryRun bool) {
 	if o.metrics == nil {
 		return
 	}

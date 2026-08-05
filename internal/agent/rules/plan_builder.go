@@ -26,13 +26,13 @@ func BuildTradingPlan(
 		}
 	}
 
-	close := snap.Values["close"]
+	closePrice := snap.Values["close"]
 	atr := snap.Values["atr_14"]
-	entryPrice := close
+	entryPrice := closePrice
 
 	stopLoss := computeStopLoss(cfg.StopLoss, snap, entryPrice, signal)
 	takeProfit := computeTakeProfit(cfg.TakeProfit, entryPrice, stopLoss, signal)
-	positionSize := computePositionSize(cfg.PositionSizing, equity, entryPrice, atr, stopLoss)
+	positionSize := computePositionSize(cfg.PositionSizing, equity, entryPrice, atr)
 	riskDistance := math.Abs(entryPrice - stopLoss)
 	rewardDistance := math.Abs(takeProfit - entryPrice)
 	riskReward := 0.0
@@ -107,7 +107,7 @@ func computeTakeProfit(cfg TakeProfitConfig, entryPrice, stopLoss float64, signa
 	}
 }
 
-func computePositionSize(cfg SizingConfig, equity, entryPrice, atr, stopLoss float64) float64 {
+func computePositionSize(cfg SizingConfig, equity, entryPrice, atr float64) float64 {
 	if entryPrice <= 0 {
 		return 0
 	}

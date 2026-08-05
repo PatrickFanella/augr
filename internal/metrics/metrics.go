@@ -422,11 +422,13 @@ func (m *Metrics) RecordKalshiSettlementDryRun(result string) {
 		m.KalshiSettlementDryRunTotal.WithLabelValues(result).Inc()
 	}
 }
+
 func (m *Metrics) RecordKalshiSettlementOutcome(result string) {
 	if m != nil {
 		m.KalshiSettlementOutcomeTotal.WithLabelValues(result).Inc()
 	}
 }
+
 func (m *Metrics) RecordKalshiSettlementTransition(from, to string) {
 	if m != nil {
 		m.KalshiSettlementTransitionTotal.WithLabelValues(from, to).Inc()
@@ -442,7 +444,7 @@ func (m *Metrics) IncDrift(driftType string) {
 }
 
 // IncTriggered increments the Polymarket stop-guard trigger counter.
-func (m *Metrics) IncTriggered(slug string) {
+func (m *Metrics) IncTriggered(_ string) {
 	if m == nil {
 		return
 	}
@@ -450,7 +452,7 @@ func (m *Metrics) IncTriggered(slug string) {
 }
 
 // IncSendError increments the Polymarket stop-guard send-error counter.
-func (m *Metrics) IncSendError(slug string) {
+func (m *Metrics) IncSendError(_ string) {
 	if m == nil {
 		return
 	}
@@ -458,7 +460,7 @@ func (m *Metrics) IncSendError(slug string) {
 }
 
 // ObserveTickToFireSeconds records the elapsed seconds between tick receipt and guard fire.
-func (m *Metrics) ObserveTickToFireSeconds(slug string, seconds float64) {
+func (m *Metrics) ObserveTickToFireSeconds(_ string, seconds float64) {
 	if m == nil {
 		return
 	}

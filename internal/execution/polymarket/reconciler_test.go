@@ -27,9 +27,11 @@ func (s *reconcilerBrokerStub) CancelOrder(context.Context, string) error { retu
 func (s *reconcilerBrokerStub) GetOrderStatus(context.Context, string) (domain.OrderStatus, error) {
 	return "", nil
 }
+
 func (s *reconcilerBrokerStub) GetPositions(context.Context) ([]domain.Position, error) {
 	return append([]domain.Position(nil), s.positions...), s.err
 }
+
 func (s *reconcilerBrokerStub) GetAccountBalance(context.Context) (execution.Balance, error) {
 	return execution.Balance{}, nil
 }
@@ -43,12 +45,15 @@ func (r *reconcilerPositionRepoStub) Create(context.Context, *domain.Position) e
 func (r *reconcilerPositionRepoStub) CreateAlpacaOwned(context.Context, *domain.Position) error {
 	return nil
 }
+
 func (r *reconcilerPositionRepoStub) Get(context.Context, uuid.UUID) (*domain.Position, error) {
 	return nil, nil
 }
+
 func (r *reconcilerPositionRepoStub) List(context.Context, repository.PositionFilter, int, int) ([]domain.Position, error) {
 	return nil, nil
 }
+
 func (r *reconcilerPositionRepoStub) Count(context.Context, repository.PositionFilter) (int, error) {
 	return 0, nil
 }
@@ -67,12 +72,15 @@ func (r *reconcilerPositionRepoStub) GetOpen(_ context.Context, _ repository.Pos
 	}
 	return append([]domain.Position(nil), r.positions[offset:end]...), nil
 }
+
 func (r *reconcilerPositionRepoStub) ListOpenAlpacaOwned(context.Context, int, int) ([]domain.Position, error) {
 	return nil, nil
 }
+
 func (r *reconcilerPositionRepoStub) CountOpen(context.Context, repository.PositionFilter) (int, error) {
 	return len(r.positions), nil
 }
+
 func (r *reconcilerPositionRepoStub) GetByStrategy(context.Context, uuid.UUID, repository.PositionFilter, int, int) ([]domain.Position, error) {
 	return nil, nil
 }

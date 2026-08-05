@@ -727,7 +727,7 @@ func (r *realStrategyRunner) runPolymarketNative(ctx context.Context, strategy d
 		return nil, err
 	}
 	if !executionStrategy.IsPaper {
-		if err := r.registerPolymarketPositions(ctx, positions); err != nil && r.logger != nil {
+		if err := r.registerPolymarketPositions(positions); err != nil && r.logger != nil {
 			r.logger.WarnContext(ctx, "polymarket stop guard registration failed", "error", err, "strategy_id", strategy.ID)
 		}
 	}
@@ -1043,20 +1043,20 @@ func executionDecisionMetadata(ctx context.Context, decisionRepo repository.Agen
 	return metadata
 }
 
-func (r *realStrategyRunner) registerPolymarketPositions(ctx context.Context, positions []domain.Position) error {
+func (r *realStrategyRunner) registerPolymarketPositions(positions []domain.Position) error {
 	if r == nil || r.polymarketStopGuard == nil {
 		return nil
 	}
 	var firstErr error
 	for _, position := range positions {
-		if err := r.registerPolymarketPosition(ctx, position); err != nil && firstErr == nil {
+		if err := r.registerPolymarketPosition(position); err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}
 	return firstErr
 }
 
-func (r *realStrategyRunner) registerPolymarketPosition(ctx context.Context, position domain.Position) error {
+func (r *realStrategyRunner) registerPolymarketPosition(position domain.Position) error {
 	if r == nil || r.polymarketStopGuard == nil {
 		return nil
 	}
@@ -1450,12 +1450,12 @@ func effectiveDebateCallTimeout(llmTimeout time.Duration, resolved agent.Resolve
 		return callTimeout
 	}
 
-	cap := roundTimeout / 2
-	if cap <= 0 {
+	maximumCallTimeout := roundTimeout / 2
+	if maximumCallTimeout <= 0 {
 		return callTimeout
 	}
-	if callTimeout <= 0 || callTimeout > cap {
-		return cap
+	if callTimeout <= 0 || callTimeout > maximumCallTimeout {
+		return maximumCallTimeout
 	}
 	return callTimeout
 }

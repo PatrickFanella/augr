@@ -47,15 +47,15 @@ type EventStore struct {
 }
 
 // NewEventStore creates an EventStore with the given capacity per collection.
-// If cap <= 0, defaultStoreCapacity (200) is used.
-func NewEventStore(cap int) *EventStore {
-	if cap <= 0 {
-		cap = defaultStoreCapacity
+// If capacity <= 0, defaultStoreCapacity (200) is used.
+func NewEventStore(capacity int) *EventStore {
+	if capacity <= 0 {
+		capacity = defaultStoreCapacity
 	}
 	return &EventStore{
-		signals:  make([]StoredSignal, 0, cap),
-		triggers: make([]StoredTrigger, 0, cap),
-		cap:      cap,
+		signals:  make([]StoredSignal, 0, capacity),
+		triggers: make([]StoredTrigger, 0, capacity),
+		cap:      capacity,
 	}
 }
 

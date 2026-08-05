@@ -15,9 +15,10 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 )
 
-const settlementPageSize = 1000
-const pendingMarketCap = 5000
-const marketDecisionCap = 1000
+const (
+	pendingMarketCap  = 5000
+	marketDecisionCap = 1000
+)
 
 type settlementDecisionRepository interface {
 	Get(context.Context, uuid.UUID) (*domain.TradeDecision, error)
@@ -37,6 +38,7 @@ func (p *SettlementPreview) GetInstrument() string {
 	}
 	return p.Instrument
 }
+
 func (p *SettlementPreview) GetDecisionIDs() []uuid.UUID {
 	if p == nil {
 		return nil
@@ -260,9 +262,7 @@ func (s *Settler) matchPaperDecisions(ctx context.Context, marketType domain.Mar
 		return nil, fmt.Errorf("prediction settlement: market decision cap exceeded")
 	}
 	matches := make([]domain.TradeDecision, 0, len(decisions))
-	for i := range decisions {
-		matches = append(matches, decisions[i])
-	}
+	matches = append(matches, decisions...)
 	return matches, nil
 }
 

@@ -10,8 +10,10 @@ import (
 
 // thinkRegexp matches Qwen3-style <think>...</think> reasoning blocks that
 // appear before the actual response content.
-var thinkRegexp = regexp.MustCompile(`(?s)<think>.*?</think>`)
-var thinkCaptureRegexp = regexp.MustCompile(`(?s)<think>(.*?)</think>`)
+var (
+	thinkRegexp        = regexp.MustCompile(`(?s)<think>.*?</think>`)
+	thinkCaptureRegexp = regexp.MustCompile(`(?s)<think>(.*?)</think>`)
+)
 
 // StripThinkingTags removes <think>...</think> blocks emitted by models like
 // Qwen3 that use an explicit reasoning phase before the response.

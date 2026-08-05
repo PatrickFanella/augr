@@ -240,9 +240,11 @@ func (s stubBacktestConfigRepo) Get(context.Context, uuid.UUID) (*domain.Backtes
 	}
 	return s.config, nil
 }
+
 func (s stubBacktestConfigRepo) List(context.Context, repository.BacktestConfigFilter, int, int) ([]domain.BacktestConfig, error) {
 	return nil, nil
 }
+
 func (s stubBacktestConfigRepo) Count(context.Context, repository.BacktestConfigFilter) (int, error) {
 	return 0, nil
 }
@@ -258,12 +260,15 @@ func (r *recordingBacktestRunRepo) Create(_ context.Context, run *domain.Backtes
 	r.created = &copyRun
 	return nil
 }
+
 func (recordingBacktestRunRepo) Get(context.Context, uuid.UUID) (*domain.BacktestRun, error) {
 	return nil, repository.ErrNotFound
 }
+
 func (recordingBacktestRunRepo) List(context.Context, repository.BacktestRunFilter, int, int) ([]domain.BacktestRun, error) {
 	return nil, nil
 }
+
 func (recordingBacktestRunRepo) Count(context.Context, repository.BacktestRunFilter) (int, error) {
 	return 0, nil
 }
@@ -281,12 +286,15 @@ func (s *stubStrategyRepo) Get(context.Context, uuid.UUID) (*domain.Strategy, er
 	copyStrategy := *s.strategy
 	return &copyStrategy, nil
 }
+
 func (s *stubStrategyRepo) List(context.Context, repository.StrategyFilter, int, int) ([]domain.Strategy, error) {
 	return nil, nil
 }
+
 func (s *stubStrategyRepo) Count(context.Context, repository.StrategyFilter) (int, error) {
 	return 0, nil
 }
+
 func (s *stubStrategyRepo) Update(_ context.Context, strategy *domain.Strategy) error {
 	copyStrategy := *strategy
 	s.updated = &copyStrategy
@@ -299,6 +307,7 @@ func (s *stubStrategyRepo) Delete(context.Context, uuid.UUID) error { return nil
 func (s *stubStrategyRepo) UpdateThesis(context.Context, uuid.UUID, json.RawMessage) error {
 	return nil
 }
+
 func (s *stubStrategyRepo) GetThesisRaw(context.Context, uuid.UUID) (json.RawMessage, error) {
 	return nil, nil
 }
@@ -312,9 +321,11 @@ func (r *recordingAuditLogRepo) Create(_ context.Context, entry *domain.AuditLog
 	r.entries = append(r.entries, copyEntry)
 	return nil
 }
+
 func (recordingAuditLogRepo) Query(context.Context, repository.AuditLogFilter, int, int) ([]domain.AuditLogEntry, error) {
 	return nil, nil
 }
+
 func (recordingAuditLogRepo) Count(context.Context, repository.AuditLogFilter) (int, error) {
 	return 0, nil
 }
@@ -328,12 +339,15 @@ func (s *stubDataProvider) GetOHLCV(_ context.Context, ticker string, _ data.Tim
 	s.requestedTicker = ticker
 	return append([]domain.OHLCV(nil), s.bars...), nil
 }
+
 func (s *stubDataProvider) GetFundamentals(context.Context, string) (data.Fundamentals, error) {
 	return data.Fundamentals{}, data.ErrNotImplemented
 }
+
 func (s *stubDataProvider) GetNews(context.Context, string, time.Time, time.Time) ([]data.NewsArticle, error) {
 	return nil, data.ErrNotImplemented
 }
+
 func (s *stubDataProvider) GetSocialSentiment(context.Context, string, time.Time, time.Time) ([]data.SocialSentiment, error) {
 	return nil, data.ErrNotImplemented
 }
@@ -350,9 +364,11 @@ func (s *stubMarketDataRepo) Set(context.Context, *domain.MarketData) error { re
 func (s *stubMarketDataRepo) Expire(context.Context, repository.MarketDataCacheExpireFilter) error {
 	return nil
 }
+
 func (s *stubMarketDataRepo) UpsertHistoricalOHLCV(context.Context, []domain.HistoricalOHLCV) error {
 	return nil
 }
+
 func (s *stubMarketDataRepo) ListHistoricalOHLCV(_ context.Context, filter repository.HistoricalOHLCVFilter) ([]domain.HistoricalOHLCV, error) {
 	s.requestedTicker = filter.Ticker
 	result := make([]domain.HistoricalOHLCV, 0, len(s.bars))
@@ -371,9 +387,11 @@ func (s *stubMarketDataRepo) ListHistoricalOHLCV(_ context.Context, filter repos
 	}
 	return result, nil
 }
+
 func (s *stubMarketDataRepo) UpsertHistoricalOHLCVCoverage(context.Context, domain.HistoricalOHLCVCoverage) error {
 	return nil
 }
+
 func (s *stubMarketDataRepo) ListHistoricalOHLCVCoverage(context.Context, repository.HistoricalOHLCVCoverageFilter) ([]domain.HistoricalOHLCVCoverage, error) {
 	return nil, nil
 }

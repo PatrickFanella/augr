@@ -69,12 +69,12 @@ func findExistingPaperStrategy(ctx context.Context, repo repository.StrategyRepo
 
 	for i := range existing {
 		if eventmarkets.ReuseByTickerOnly(strategy.MarketType) {
-			copy := existing[i]
-			return &copy, nil
+			cloned := existing[i]
+			return &cloned, nil
 		}
 		if existing[i].Name == strategy.Name {
-			copy := existing[i]
-			return &copy, nil
+			cloned := existing[i]
+			return &cloned, nil
 		}
 	}
 

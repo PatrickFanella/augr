@@ -34,7 +34,7 @@ func (o *JobOrchestrator) polymarketResolutions(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var markets []struct {
 		Slug          string          `json:"slug"`
 		Outcomes      json.RawMessage `json:"outcomes"`
@@ -116,8 +116,7 @@ func (o *JobOrchestrator) polymarketResolutions(ctx context.Context) error {
 		_ = o.deps.PolymarketResolvedRepo.MarkProcessed(ctx, m.Slug, winningSide, resolvedAt)
 		processedMarkets++
 	}
-	if _, err := o.deps.PolymarketAccountRepo.MarkTracked(ctx, 0.70, 20); err == nil {
-	}
+	_, _ = o.deps.PolymarketAccountRepo.MarkTracked(ctx, 0.70, 20)
 	o.logger.Info("polymarket_resolutions: done", slog.Int("markets", processedMarkets), slog.Int("accounts", updatedAccounts), slog.Int("skipped_unresolved", skippedUnresolved), slog.Int("skipped_unsupported", skippedUnsupported), slog.Int("skipped_no_trades", skippedNoTrades))
 	return nil
 }

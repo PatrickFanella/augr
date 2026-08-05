@@ -59,7 +59,7 @@ func TestPoolStartsAndStats(t *testing.T) {
 
 	var mu sync.Mutex
 	conns := []*fakePoolConn{}
-	p := newPoolWithFactory(cfg, func(id int, cfg Config, ticks chan<- Tick, books chan<- BookSnapshot, dropped *atomic.Uint64) poolConnection {
+	p := newPoolWithFactory(cfg, func(id int, _ Config, ticks chan<- Tick, books chan<- BookSnapshot, _ *atomic.Uint64) poolConnection {
 		fc := &fakePoolConn{id: id, ticks: ticks, books: books, period: 10 * time.Millisecond, done: make(chan struct{})}
 		mu.Lock()
 		conns = append(conns, fc)
@@ -90,7 +90,7 @@ func TestPoolPrunesSlowMember(t *testing.T) {
 	cfg.JitterEMAAlpha = 0.5
 
 	periods := map[int]time.Duration{0: 5 * time.Millisecond, 1: 5 * time.Millisecond, 2: 40 * time.Millisecond, 3: 5 * time.Millisecond}
-	p := newPoolWithFactory(cfg, func(id int, cfg Config, ticks chan<- Tick, books chan<- BookSnapshot, dropped *atomic.Uint64) poolConnection {
+	p := newPoolWithFactory(cfg, func(id int, _ Config, ticks chan<- Tick, books chan<- BookSnapshot, _ *atomic.Uint64) poolConnection {
 		return &fakePoolConn{id: id, ticks: ticks, books: books, period: periods[id], done: make(chan struct{})}
 	})
 	ctx, cancel := context.WithCancel(context.Background())
@@ -116,7 +116,7 @@ func TestPoolCloseClosesChannels(t *testing.T) {
 	cfg.WSURL = "ws://example.invalid"
 	cfg.ConnectionsPerFeed = 1
 	cfg.StaggerStartup = 0
-	p := newPoolWithFactory(cfg, func(id int, cfg Config, ticks chan<- Tick, books chan<- BookSnapshot, dropped *atomic.Uint64) poolConnection {
+	p := newPoolWithFactory(cfg, func(id int, _ Config, ticks chan<- Tick, books chan<- BookSnapshot, _ *atomic.Uint64) poolConnection {
 		return &fakePoolConn{id: id, ticks: ticks, books: books, period: 5 * time.Millisecond, done: make(chan struct{})}
 	})
 	ctx, cancel := context.WithCancel(context.Background())

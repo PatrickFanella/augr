@@ -21,6 +21,7 @@ type stubReplayEventRepo struct {
 func (s *stubReplayEventRepo) CreateReplayEvent(context.Context, *domain.ReplayEvent) error {
 	return nil
 }
+
 func (s *stubReplayEventRepo) ListReplayEvents(context.Context, uuid.UUID) ([]domain.ReplayEvent, error) {
 	return s.listResult, s.listErr
 }
@@ -35,6 +36,7 @@ type stubReplayTradeDecisionRepo struct {
 func (s *stubReplayTradeDecisionRepo) Create(context.Context, *domain.TradeDecision) error {
 	return nil
 }
+
 func (s *stubReplayTradeDecisionRepo) Get(_ context.Context, id uuid.UUID) (*domain.TradeDecision, error) {
 	s.getID = id
 	s.getCalled = true
@@ -43,15 +45,19 @@ func (s *stubReplayTradeDecisionRepo) Get(_ context.Context, id uuid.UUID) (*dom
 	}
 	return s.getResult, nil
 }
+
 func (s *stubReplayTradeDecisionRepo) List(context.Context, repository.TradeDecisionFilter, int, int) ([]domain.TradeDecision, error) {
 	return nil, nil
 }
+
 func (s *stubReplayTradeDecisionRepo) Count(context.Context, repository.TradeDecisionFilter) (int, error) {
 	return 0, nil
 }
+
 func (s *stubReplayTradeDecisionRepo) AttachPaperOrder(context.Context, uuid.UUID, uuid.UUID) error {
 	return nil
 }
+
 func (s *stubReplayTradeDecisionRepo) AttachLiveOrder(context.Context, uuid.UUID, uuid.UUID) error {
 	return nil
 }

@@ -121,7 +121,7 @@ func TestRunPreMarketScreen(t *testing.T) {
 
 	snapshotBody, _ := json.Marshal(map[string]any{"tickers": snapshots})
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write(snapshotBody)
 	}))

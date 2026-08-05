@@ -33,12 +33,15 @@ type portfolioAllocatorOpportunityRepo struct {
 func (r *portfolioAllocatorOpportunityRepo) Create(context.Context, *domain.Opportunity) error {
 	return nil
 }
+
 func (r *portfolioAllocatorOpportunityRepo) UpsertQueuedByDedupeKey(context.Context, *domain.Opportunity) error {
 	return nil
 }
+
 func (r *portfolioAllocatorOpportunityRepo) Get(context.Context, uuid.UUID) (*domain.Opportunity, error) {
 	return nil, repository.ErrNotFound
 }
+
 func (r *portfolioAllocatorOpportunityRepo) List(_ context.Context, filter repository.OpportunityFilter, limit, offset int) ([]domain.Opportunity, error) {
 	r.lastFilter = filter
 	r.lastLimit = limit
@@ -54,6 +57,7 @@ func (r *portfolioAllocatorOpportunityRepo) List(_ context.Context, filter repos
 	}
 	return out, nil
 }
+
 func (r *portfolioAllocatorOpportunityRepo) ExpireQueuedBefore(_ context.Context, before time.Time) (int64, error) {
 	r.expireCalls++
 	r.lastAsOf = before
@@ -67,6 +71,7 @@ func (r *portfolioAllocatorOpportunityRepo) ExpireQueuedBefore(_ context.Context
 	}
 	return count, nil
 }
+
 func (r *portfolioAllocatorOpportunityRepo) ListQueuedForAllocation(_ context.Context, asOf time.Time) ([]domain.Opportunity, error) {
 	r.lastAsOf = asOf
 	out := make([]domain.Opportunity, 0, len(r.items))
@@ -77,10 +82,12 @@ func (r *portfolioAllocatorOpportunityRepo) ListQueuedForAllocation(_ context.Co
 	}
 	return out, nil
 }
+
 func (r *portfolioAllocatorOpportunityRepo) Count(_ context.Context, filter repository.OpportunityFilter) (int, error) {
 	items, _ := r.List(context.Background(), filter, 0, 0)
 	return len(items), nil
 }
+
 func (r *portfolioAllocatorOpportunityRepo) UpdateStatus(_ context.Context, _ uuid.UUID, status domain.OpportunityStatus, rejectReason string) error {
 	r.updateStatusCalls++
 	r.lastStatus = status
@@ -94,10 +101,11 @@ type portfolioAllocatorDecisionRepo struct {
 }
 
 func (r *portfolioAllocatorDecisionRepo) Create(_ context.Context, decision *domain.AllocationDecision) error {
-	copy := *decision
-	r.created = append(r.created, &copy)
+	cloned := *decision
+	r.created = append(r.created, &cloned)
 	return nil
 }
+
 func (r *portfolioAllocatorDecisionRepo) List(_ context.Context, filter repository.AllocationDecisionFilter, limit, offset int) ([]domain.AllocationDecision, error) {
 	_ = limit
 	_ = offset
@@ -110,6 +118,7 @@ func (r *portfolioAllocatorDecisionRepo) List(_ context.Context, filter reposito
 	}
 	return out, nil
 }
+
 func (r *portfolioAllocatorDecisionRepo) Count(_ context.Context, filter repository.AllocationDecisionFilter) (int, error) {
 	decisions, _ := r.List(context.Background(), filter, 0, 0)
 	return len(decisions), nil
@@ -126,15 +135,17 @@ func (r *portfolioAllocatorStrategyRepo) Get(_ context.Context, id uuid.UUID) (*
 	if r.strategy == nil || r.strategy.ID != id {
 		return nil, repository.ErrNotFound
 	}
-	copy := *r.strategy
-	return &copy, nil
+	cloned := *r.strategy
+	return &cloned, nil
 }
+
 func (r *portfolioAllocatorStrategyRepo) List(context.Context, repository.StrategyFilter, int, int) ([]domain.Strategy, error) {
 	if r.strategy == nil {
 		return nil, nil
 	}
 	return []domain.Strategy{*r.strategy}, nil
 }
+
 func (r *portfolioAllocatorStrategyRepo) Count(context.Context, repository.StrategyFilter) (int, error) {
 	return 0, nil
 }
@@ -143,6 +154,7 @@ func (r *portfolioAllocatorStrategyRepo) Delete(context.Context, uuid.UUID) erro
 func (r *portfolioAllocatorStrategyRepo) UpdateThesis(context.Context, uuid.UUID, json.RawMessage) error {
 	return nil
 }
+
 func (r *portfolioAllocatorStrategyRepo) GetThesisRaw(context.Context, uuid.UUID) (json.RawMessage, error) {
 	return nil, nil
 }

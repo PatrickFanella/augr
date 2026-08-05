@@ -344,6 +344,9 @@ func (o *JobOrchestrator) Status() []JobStatus {
 // RunJob triggers a specific job by name immediately, bypassing the
 // schedule/market-hours check (but still respecting dedup and dependencies).
 func (o *JobOrchestrator) RunJob(ctx context.Context, name string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	job, ok := o.jobs[name]
 	if !ok {
 		return fmt.Errorf("automation: unknown job %q", name)

@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"strconv"
-	"strings"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution"
@@ -117,13 +115,4 @@ func positionMarketValue(position domain.Position) float64 {
 		price = *position.CurrentPrice
 	}
 	return price * position.Quantity
-}
-
-func parsePaperSequence(externalID string) (uint64, bool) {
-	externalID = strings.TrimSpace(externalID)
-	if !strings.HasPrefix(externalID, "paper-") {
-		return 0, false
-	}
-	n, err := strconv.ParseUint(strings.TrimPrefix(externalID, "paper-"), 10, 64)
-	return n, err == nil
 }

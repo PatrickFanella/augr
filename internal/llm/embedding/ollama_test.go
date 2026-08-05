@@ -40,7 +40,7 @@ func TestOllamaProvider_Embed(t *testing.T) {
 		resp.Embeddings[0][0] = 0.42
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	})
 
 	srv := httptest.NewServer(handler)
@@ -91,7 +91,7 @@ func TestOllamaProvider_EmbedBatch(t *testing.T) {
 			Embeddings: embs,
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	})
 
 	srv := httptest.NewServer(handler)
@@ -148,7 +148,7 @@ func TestOllamaProvider_EmbedServerError(t *testing.T) {
 			t.Fatalf("expected auth header Bearer test-key, got %q", got)
 		}
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(`{"error":"model not found"}`))
+		_, _ = w.Write([]byte(`{"error":"model not found"}`))
 	})
 
 	srv := httptest.NewServer(handler)

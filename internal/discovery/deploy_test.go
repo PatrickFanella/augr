@@ -196,8 +196,8 @@ func (r *inMemoryStrategyRepo) Create(_ context.Context, strategy *domain.Strate
 func (r *inMemoryStrategyRepo) Get(_ context.Context, id uuid.UUID) (*domain.Strategy, error) {
 	for i := range r.strategies {
 		if r.strategies[i].ID == id {
-			copy := r.strategies[i]
-			return &copy, nil
+			cloned := r.strategies[i]
+			return &cloned, nil
 		}
 	}
 	return nil, repository.ErrNotFound

@@ -13,8 +13,10 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/scheduler"
 )
 
-var optionsExpirySpec = scheduler.ScheduleSpec{Type: scheduler.ScheduleTypeAfterHours, Cron: "0 23 * * 1-5", SkipWeekends: true, SkipHolidays: false}
-var optionsReconcileSpec = scheduler.ScheduleSpec{Type: scheduler.ScheduleTypeAfterHours, Cron: "30 23 * * 1-5", SkipWeekends: true, SkipHolidays: false}
+var (
+	optionsExpirySpec    = scheduler.ScheduleSpec{Type: scheduler.ScheduleTypeAfterHours, Cron: "0 23 * * 1-5", SkipWeekends: true, SkipHolidays: false}
+	optionsReconcileSpec = scheduler.ScheduleSpec{Type: scheduler.ScheduleTypeAfterHours, Cron: "30 23 * * 1-5", SkipWeekends: true, SkipHolidays: false}
+)
 
 func (o *JobOrchestrator) registerOptionsLifecycleJobs() {
 	if o.deps.PositionRepo != nil && o.deps.TradeRepo != nil && o.deps.DataService != nil {

@@ -8,13 +8,13 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 )
 
-func optionsBar(close float64) domain.OHLCV {
+func optionsBar(closePrice float64) domain.OHLCV {
 	return domain.OHLCV{
 		Timestamp: time.Date(2026, 4, 1, 15, 0, 0, 0, time.UTC),
-		Open:      close,
-		High:      close + 0.10,
-		Low:       close - 0.10,
-		Close:     close,
+		Open:      closePrice,
+		High:      closePrice + 0.10,
+		Low:       closePrice - 0.10,
+		Close:     closePrice,
 		Volume:    500,
 	}
 }

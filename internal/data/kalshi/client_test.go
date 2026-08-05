@@ -207,7 +207,7 @@ func TestClientAuthenticatedGet_SendsHeadersAndExcludesQueryFromSignature(t *tes
 func TestClientMissingCredentials_RejectsAuthenticatedCallsButNotPublicCalls(t *testing.T) {
 	t.Parallel()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"ok":true}`))
 	}))
@@ -391,7 +391,7 @@ func TestClientPost_429ReturnsTypedErrorWithoutRetry(t *testing.T) {
 
 	privateKeyPEMB64, _ := testPrivateKeyPEMB64(t)
 	var calls int
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		calls++
 		w.Header().Set("Retry-After", "7")
 		w.WriteHeader(http.StatusTooManyRequests)
@@ -434,7 +434,7 @@ func TestClientPost_429PersistsCooldownAcrossClientsAndRestart(t *testing.T) {
 
 	privateKeyPEMB64, _ := testPrivateKeyPEMB64(t)
 	var calls int
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		calls++
 		w.Header().Set("Retry-After", "7")
 		w.WriteHeader(http.StatusTooManyRequests)
@@ -470,7 +470,7 @@ func TestClientPostCooldownPersistenceErrorFailsClosed(t *testing.T) {
 	t.Parallel()
 
 	privateKeyPEMB64, _ := testPrivateKeyPEMB64(t)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Retry-After", "7")
 		w.WriteHeader(http.StatusTooManyRequests)
 	}))
@@ -517,7 +517,7 @@ func TestClientGetRetriesWithCapAndCancellation(t *testing.T) {
 	t.Parallel()
 	privateKeyPEMB64, _ := testPrivateKeyPEMB64(t)
 	var calls int
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		calls++
 		w.WriteHeader(http.StatusTooManyRequests)
 		_, _ = w.Write([]byte(`too many`))
@@ -546,7 +546,7 @@ func TestClientGetRecordsRetryMetricsFor5xxAnd429(t *testing.T) {
 
 	privateKeyPEMB64, _ := testPrivateKeyPEMB64(t)
 	var calls int
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		calls++
 		switch calls {
 		case 1:
@@ -591,7 +591,7 @@ func TestClientGetRecordsRetryMetricsFor5xxAnd429(t *testing.T) {
 func TestClientGetCancelsOnSleepError(t *testing.T) {
 	t.Parallel()
 	privateKeyPEMB64, _ := testPrivateKeyPEMB64(t)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusTooManyRequests)
 	}))
 	defer server.Close()
@@ -609,7 +609,7 @@ func TestClientGetCancelsOnSleepError(t *testing.T) {
 func TestClientGetHonorsContextCancellation(t *testing.T) {
 	t.Parallel()
 	privateKeyPEMB64, _ := testPrivateKeyPEMB64(t)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusTooManyRequests)
 	}))
 	defer server.Close()
@@ -628,17 +628,28 @@ func TestClientGetUsesDeterministicMaxBackoffAndJitter(t *testing.T) {
 	t.Parallel()
 	privateKeyPEMB64, _ := testPrivateKeyPEMB64(t)
 	var waits []time.Duration
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusTooManyRequests)
 	}))
 	defer server.Close()
 	client, _ := NewClient(server.URL+"/trade-api/v2", "test-key-id", privateKeyPEMB64, discardLogger())
 	client.SetHTTPClient(server.Client())
 	client.SetRetryPolicy(3, 2*time.Second, 1500*time.Millisecond, 0.5)
-	client.SetHooks(nil, func() float64 { return 0.0 }, func(ctx context.Context, d time.Duration) error { waits = append(waits, d); return nil })
+	client.SetHooks(nil, func() float64 { return 0.0 }, func(_ context.Context, d time.Duration) error { waits = append(waits, d); return nil })
 	_, _ = client.Get(context.Background(), "/markets", nil, true)
 	if len(waits) == 0 || waits[0] != 1500*time.Millisecond {
 		t.Fatalf("waits = %#v, want capped 1500ms", waits)
+	}
+}
+
+func TestClientNextBackoffGrowsExponentiallyAndCaps(t *testing.T) {
+	t.Parallel()
+	client := &Client{baseBackoff: 10 * time.Millisecond, maxBackoff: 25 * time.Millisecond}
+
+	for attempt, want := range []time.Duration{10 * time.Millisecond, 20 * time.Millisecond, 25 * time.Millisecond, 25 * time.Millisecond} {
+		if got := client.nextBackoff(attempt, 0); got != want {
+			t.Fatalf("nextBackoff(%d) = %s, want %s", attempt, got, want)
+		}
 	}
 }
 
@@ -646,7 +657,7 @@ func TestClientGetHonorsRetryAfterFloor(t *testing.T) {
 	t.Parallel()
 	privateKeyPEMB64, _ := testPrivateKeyPEMB64(t)
 	var waits []time.Duration
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Retry-After", "1")
 		w.WriteHeader(http.StatusTooManyRequests)
 	}))
@@ -654,7 +665,7 @@ func TestClientGetHonorsRetryAfterFloor(t *testing.T) {
 	client, _ := NewClient(server.URL+"/trade-api/v2", "test-key-id", privateKeyPEMB64, discardLogger())
 	client.SetHTTPClient(server.Client())
 	client.SetRetryPolicy(3, time.Millisecond, time.Second, 0.5)
-	client.SetHooks(nil, func() float64 { return 0.0 }, func(ctx context.Context, d time.Duration) error { waits = append(waits, d); return nil })
+	client.SetHooks(nil, func() float64 { return 0.0 }, func(_ context.Context, d time.Duration) error { waits = append(waits, d); return nil })
 	_, _ = client.Get(context.Background(), "/markets", nil, true)
 	if len(waits) == 0 || waits[0] < time.Second {
 		t.Fatalf("waits = %#v, want >= Retry-After", waits)
@@ -665,7 +676,7 @@ func TestClientGetStopsImmediatelyWhenRetryAfterExceedsMaxBackoff(t *testing.T) 
 	t.Parallel()
 	privateKeyPEMB64, _ := testPrivateKeyPEMB64(t)
 	var waits []time.Duration
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Retry-After", "5")
 		w.WriteHeader(http.StatusTooManyRequests)
 	}))
@@ -673,7 +684,7 @@ func TestClientGetStopsImmediatelyWhenRetryAfterExceedsMaxBackoff(t *testing.T) 
 	client, _ := NewClient(server.URL+"/trade-api/v2", "test-key-id", privateKeyPEMB64, discardLogger())
 	client.SetHTTPClient(server.Client())
 	client.SetRetryPolicy(3, time.Millisecond, time.Second, 0.5)
-	client.SetHooks(nil, func() float64 { return 0.0 }, func(ctx context.Context, d time.Duration) error { waits = append(waits, d); return nil })
+	client.SetHooks(nil, func() float64 { return 0.0 }, func(_ context.Context, d time.Duration) error { waits = append(waits, d); return nil })
 	_, err := client.Get(context.Background(), "/markets", nil, true)
 	if err == nil {
 		t.Fatal("Get() error = nil, want 429")
@@ -743,6 +754,7 @@ func (s *fakeCooldownStore) GetProviderCooldown(context.Context, string) (time.T
 	}
 	return s.cooldown["kalshi"], nil
 }
+
 func (s *fakeCooldownStore) SetProviderCooldown(_ context.Context, _ string, until time.Time) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -755,6 +767,7 @@ func (s *fakeCooldownStore) SetProviderCooldown(_ context.Context, _ string, unt
 	s.cooldown["kalshi"] = until
 	return nil
 }
+
 func (s *fakeCooldownStore) CompareAndClearProviderCooldown(context.Context, string, time.Time) (bool, error) {
 	return true, nil
 }

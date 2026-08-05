@@ -41,7 +41,7 @@ func TestPolymarketPollUsesGammaYesTokenForPriceLookup(t *testing.T) {
 			if got := r.URL.Query().Get("slug"); got != slug {
 				t.Fatalf("/markets slug = %q, want %q", got, slug)
 			}
-			fmt.Fprintf(w, `[{"slug":%q,"question":"Will it happen?","conditionId":%q,"clobTokenIds":[%q,"no-token"],"outcomes":["Yes","No"],"active":true,"closed":false,"acceptingOrders":true,"enableOrderBook":true,"volume24hrClob":321.5}]`, slug, conditionID, yesToken)
+			_, _ = fmt.Fprintf(w, `[{"slug":%q,"question":"Will it happen?","conditionId":%q,"clobTokenIds":[%q,"no-token"],"outcomes":["Yes","No"],"active":true,"closed":false,"acceptingOrders":true,"enableOrderBook":true,"volume24hrClob":321.5}]`, slug, conditionID, yesToken)
 		case "/price":
 			gotPriceToken = r.URL.Query().Get("token_id")
 			if gotPriceToken != yesToken {
@@ -51,7 +51,7 @@ func TestPolymarketPollUsesGammaYesTokenForPriceLookup(t *testing.T) {
 			if got := r.URL.Query().Get("side"); got != "BUY" {
 				t.Fatalf("/price side = %q, want BUY", got)
 			}
-			fmt.Fprint(w, `{"market":"slug-1","price":"0.61"}`)
+			_, _ = fmt.Fprint(w, `{"market":"slug-1","price":"0.61"}`)
 		default:
 			t.Fatalf("unexpected path %q", r.URL.Path)
 		}
@@ -74,8 +74,8 @@ func TestPolymarketPollUsesGammaYesTokenForPriceLookup(t *testing.T) {
 func fetchMarketSummary(t *testing.T, body string) (*PolymarketSource, clobMarketSummary) {
 	t.Helper()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, body)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = fmt.Fprint(w, body)
 	}))
 	t.Cleanup(server.Close)
 

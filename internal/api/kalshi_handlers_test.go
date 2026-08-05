@@ -79,9 +79,11 @@ func (s *kalshiSummaryStrategyRepoStub) Create(context.Context, *domain.Strategy
 func (s *kalshiSummaryStrategyRepoStub) Get(context.Context, uuid.UUID) (*domain.Strategy, error) {
 	return nil, repository.ErrNotFound
 }
+
 func (s *kalshiSummaryStrategyRepoStub) List(context.Context, repository.StrategyFilter, int, int) ([]domain.Strategy, error) {
 	return nil, nil
 }
+
 func (s *kalshiSummaryStrategyRepoStub) Count(_ context.Context, filter repository.StrategyFilter) (int, error) {
 	if filter.MarketType != domain.MarketTypeKalshi || filter.Status != domain.StrategyStatusActive || filter.IsPaper == nil || !*filter.IsPaper {
 		return 0, nil
@@ -93,6 +95,7 @@ func (s *kalshiSummaryStrategyRepoStub) Delete(context.Context, uuid.UUID) error
 func (s *kalshiSummaryStrategyRepoStub) UpdateThesis(context.Context, uuid.UUID, json.RawMessage) error {
 	return nil
 }
+
 func (s *kalshiSummaryStrategyRepoStub) GetThesisRaw(context.Context, uuid.UUID) (json.RawMessage, error) {
 	return nil, nil
 }
@@ -112,9 +115,11 @@ type kalshiSummarySnapshotsRepoStub struct{ snapshots []domain.KalshiMarketSnaps
 func (s *kalshiSummarySnapshotsRepoStub) Create(context.Context, *domain.KalshiMarketSnapshot) error {
 	return nil
 }
+
 func (s *kalshiSummarySnapshotsRepoStub) ListLatestByTicker(context.Context, string, int) ([]domain.KalshiMarketSnapshot, error) {
 	return nil, nil
 }
+
 func (s *kalshiSummarySnapshotsRepoStub) ListRecent(context.Context, int) ([]domain.KalshiMarketSnapshot, error) {
 	return s.snapshots, nil
 }
@@ -124,12 +129,15 @@ type kalshiSummaryDiscoveryRunsRepoStub struct{ runs []domain.KalshiDiscoveryRun
 func (s *kalshiSummaryDiscoveryRunsRepoStub) Create(context.Context, *domain.KalshiDiscoveryRun) error {
 	return nil
 }
+
 func (s *kalshiSummaryDiscoveryRunsRepoStub) GetActive(context.Context) (*domain.KalshiDiscoveryRun, error) {
 	return nil, repository.ErrNotFound
 }
+
 func (s *kalshiSummaryDiscoveryRunsRepoStub) Finish(context.Context, *domain.KalshiDiscoveryRun) error {
 	return nil
 }
+
 func (s *kalshiSummaryDiscoveryRunsRepoStub) ListLatest(context.Context, int) ([]domain.KalshiDiscoveryRun, error) {
 	return s.runs, nil
 }

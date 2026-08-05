@@ -16,21 +16,24 @@ type fakeRepo struct {
 	books [][]domain.PolymarketBookSnapshot
 }
 
-func (f *fakeRepo) InsertTicks(ctx context.Context, ticks []domain.PolymarketTick) error {
+func (f *fakeRepo) InsertTicks(_ context.Context, ticks []domain.PolymarketTick) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.ticks = append(f.ticks, append([]domain.PolymarketTick(nil), ticks...))
 	return nil
 }
-func (f *fakeRepo) InsertBookSnapshots(ctx context.Context, snaps []domain.PolymarketBookSnapshot) error {
+
+func (f *fakeRepo) InsertBookSnapshots(_ context.Context, snaps []domain.PolymarketBookSnapshot) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.books = append(f.books, append([]domain.PolymarketBookSnapshot(nil), snaps...))
 	return nil
 }
+
 func (f *fakeRepo) QueryTicks(context.Context, string, time.Time, time.Time, int) ([]domain.PolymarketTick, error) {
 	return nil, nil
 }
+
 func (f *fakeRepo) QueryBookAt(context.Context, string, time.Time) (*domain.PolymarketBookSnapshot, error) {
 	return nil, nil
 }
@@ -39,7 +42,7 @@ type fakeMetrics struct{ dropped int }
 
 func (f *fakeMetrics) IncInserted(string, int)           {}
 func (f *fakeMetrics) ObserveLagSeconds(string, float64) {}
-func (f *fakeMetrics) IncDropped(kind string, n int)     { f.dropped += n }
+func (f *fakeMetrics) IncDropped(_ string, n int)        { f.dropped += n }
 
 type fakeFeed struct {
 	ticks chan polymarket.Tick

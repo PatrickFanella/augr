@@ -7,12 +7,13 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/scheduler"
 )
 
-const reportTypePaperValidation = "paper_validation"
-const reportTypeCalibration = "calibration"
-const reportTypeWalletIntel = "wallet_intelligence"
-const reportTypeEventCalibration = "event_calibration"
-const reportTypeSolverArb = "solver_arbitrage"
-const reportTypeLatencyResearch = "latency_research"
+const (
+	reportTypePaperValidation  = "paper_validation"
+	reportTypeWalletIntel      = "wallet_intelligence"
+	reportTypeEventCalibration = "event_calibration"
+	reportTypeSolverArb        = "solver_arbitrage"
+	reportTypeLatencyResearch  = "latency_research"
+)
 
 var paperValidationReportSpec = scheduler.ScheduleSpec{
 	Type:         scheduler.ScheduleTypeAfterHours,

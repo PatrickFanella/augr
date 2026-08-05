@@ -37,18 +37,22 @@ func (s *portfolioDiagnosticsRunRepo) Create(context.Context, *domain.PipelineRu
 func (s *portfolioDiagnosticsRunRepo) GetByID(context.Context, uuid.UUID) (*domain.PipelineRun, error) {
 	return nil, repository.ErrNotFound
 }
+
 func (s *portfolioDiagnosticsRunRepo) Get(context.Context, uuid.UUID, time.Time) (*domain.PipelineRun, error) {
 	return nil, repository.ErrNotFound
 }
+
 func (s *portfolioDiagnosticsRunRepo) List(_ context.Context, filter repository.PipelineRunFilter, limit, offset int) ([]domain.PipelineRun, error) {
 	s.lastFilter = filter
 	s.lastLimit = limit
 	s.lastOffset = offset
 	return s.runs, nil
 }
+
 func (s *portfolioDiagnosticsRunRepo) Count(context.Context, repository.PipelineRunFilter) (int, error) {
 	return s.total, nil
 }
+
 func (s *portfolioDiagnosticsRunRepo) CountBySignal(context.Context, repository.PipelineRunFilter) (map[domain.PipelineSignal]int, error) {
 	counts := make(map[domain.PipelineSignal]int)
 	for _, run := range s.runs {
@@ -56,6 +60,7 @@ func (s *portfolioDiagnosticsRunRepo) CountBySignal(context.Context, repository.
 	}
 	return counts, nil
 }
+
 func (s *portfolioDiagnosticsRunRepo) CountByStatus(context.Context, repository.PipelineRunFilter) (map[domain.PipelineStatus]int, error) {
 	counts := make(map[domain.PipelineStatus]int)
 	for _, run := range s.runs {
@@ -63,6 +68,7 @@ func (s *portfolioDiagnosticsRunRepo) CountByStatus(context.Context, repository.
 	}
 	return counts, nil
 }
+
 func (s *portfolioDiagnosticsRunRepo) UpdateStatus(context.Context, uuid.UUID, time.Time, repository.PipelineRunStatusUpdate) error {
 	return nil
 }
@@ -78,18 +84,22 @@ type portfolioDiagnosticsTradeDecisionRepo struct {
 func (s *portfolioDiagnosticsTradeDecisionRepo) Create(context.Context, *domain.TradeDecision) error {
 	return nil
 }
+
 func (s *portfolioDiagnosticsTradeDecisionRepo) Get(context.Context, uuid.UUID) (*domain.TradeDecision, error) {
 	return nil, repository.ErrNotFound
 }
+
 func (s *portfolioDiagnosticsTradeDecisionRepo) List(_ context.Context, filter repository.TradeDecisionFilter, limit, offset int) ([]domain.TradeDecision, error) {
 	s.lastFilter = filter
 	s.lastLimit = limit
 	s.lastOffset = offset
 	return s.decisions, nil
 }
+
 func (s *portfolioDiagnosticsTradeDecisionRepo) Count(context.Context, repository.TradeDecisionFilter) (int, error) {
 	return s.total, nil
 }
+
 func (s *portfolioDiagnosticsTradeDecisionRepo) CountByStatus(context.Context, repository.TradeDecisionFilter) (map[domain.TradeDecisionStatus]int, error) {
 	counts := make(map[domain.TradeDecisionStatus]int)
 	for _, d := range s.decisions {
@@ -97,12 +107,15 @@ func (s *portfolioDiagnosticsTradeDecisionRepo) CountByStatus(context.Context, r
 	}
 	return counts, nil
 }
+
 func (s *portfolioDiagnosticsTradeDecisionRepo) CountByNoActionReason(context.Context, repository.TradeDecisionFilter) (map[string]int, error) {
 	return map[string]int{string(portfolio.NoActionReasonRiskRejected): 1}, nil
 }
+
 func (s *portfolioDiagnosticsTradeDecisionRepo) AttachPaperOrder(context.Context, uuid.UUID, uuid.UUID) error {
 	return nil
 }
+
 func (s *portfolioDiagnosticsTradeDecisionRepo) AttachLiveOrder(context.Context, uuid.UUID, uuid.UUID) error {
 	return nil
 }
@@ -116,9 +129,11 @@ type portfolioDiagnosticsStrategyRepo struct {
 func (s *portfolioDiagnosticsStrategyRepo) Create(context.Context, *domain.Strategy) error {
 	return nil
 }
+
 func (s *portfolioDiagnosticsStrategyRepo) Get(context.Context, uuid.UUID) (*domain.Strategy, error) {
 	return nil, repository.ErrNotFound
 }
+
 func (s *portfolioDiagnosticsStrategyRepo) List(_ context.Context, filter repository.StrategyFilter, _, _ int) ([]domain.Strategy, error) {
 	s.calls = append(s.calls, filter)
 	if filter.Status == "" {
@@ -132,9 +147,11 @@ func (s *portfolioDiagnosticsStrategyRepo) List(_ context.Context, filter reposi
 	}
 	return out, nil
 }
+
 func (s *portfolioDiagnosticsStrategyRepo) Count(context.Context, repository.StrategyFilter) (int, error) {
 	return s.total, nil
 }
+
 func (s *portfolioDiagnosticsStrategyRepo) CountByMarket(context.Context, repository.StrategyFilter) (map[domain.MarketType]int, error) {
 	counts := make(map[domain.MarketType]int)
 	for _, strategy := range s.strategies {
@@ -144,6 +161,7 @@ func (s *portfolioDiagnosticsStrategyRepo) CountByMarket(context.Context, reposi
 	}
 	return counts, nil
 }
+
 func (s *portfolioDiagnosticsStrategyRepo) Update(context.Context, *domain.Strategy) error {
 	return nil
 }
@@ -151,6 +169,7 @@ func (s *portfolioDiagnosticsStrategyRepo) Delete(context.Context, uuid.UUID) er
 func (s *portfolioDiagnosticsStrategyRepo) UpdateThesis(context.Context, uuid.UUID, json.RawMessage) error {
 	return nil
 }
+
 func (s *portfolioDiagnosticsStrategyRepo) GetThesisRaw(context.Context, uuid.UUID) (json.RawMessage, error) {
 	return nil, nil
 }
@@ -167,15 +186,19 @@ type portfolioDiagnosticsPositionRepo struct {
 func (s *portfolioDiagnosticsPositionRepo) Create(context.Context, *domain.Position) error {
 	return nil
 }
+
 func (s *portfolioDiagnosticsPositionRepo) CreateAlpacaOwned(context.Context, *domain.Position) error {
 	return nil
 }
+
 func (s *portfolioDiagnosticsPositionRepo) Get(context.Context, uuid.UUID) (*domain.Position, error) {
 	return nil, repository.ErrNotFound
 }
+
 func (s *portfolioDiagnosticsPositionRepo) List(context.Context, repository.PositionFilter, int, int) ([]domain.Position, error) {
 	return nil, nil
 }
+
 func (s *portfolioDiagnosticsPositionRepo) Update(context.Context, *domain.Position) error {
 	return nil
 }
@@ -186,15 +209,19 @@ func (s *portfolioDiagnosticsPositionRepo) GetOpen(_ context.Context, filter rep
 	s.lastOffset = offset
 	return s.positions, nil
 }
+
 func (s *portfolioDiagnosticsPositionRepo) Count(context.Context, repository.PositionFilter) (int, error) {
 	return len(s.positions), nil
 }
+
 func (s *portfolioDiagnosticsPositionRepo) CountOpen(context.Context, repository.PositionFilter) (int, error) {
 	return s.totalOpen, nil
 }
+
 func (s *portfolioDiagnosticsPositionRepo) ListOpenAlpacaOwned(context.Context, int, int) ([]domain.Position, error) {
 	return append([]domain.Position(nil), s.positions...), nil
 }
+
 func (s *portfolioDiagnosticsPositionRepo) CountOpenByMarket(context.Context, repository.PositionFilter) (map[domain.MarketType]int, error) {
 	counts := make(map[domain.MarketType]int)
 	for _, pos := range s.positions {
@@ -208,6 +235,7 @@ func (s *portfolioDiagnosticsPositionRepo) CountOpenByMarket(context.Context, re
 	}
 	return counts, nil
 }
+
 func (s *portfolioDiagnosticsPositionRepo) GrossExposureOpen(context.Context, repository.PositionFilter) (float64, error) {
 	var total float64
 	for _, pos := range s.positions {
@@ -219,6 +247,7 @@ func (s *portfolioDiagnosticsPositionRepo) GrossExposureOpen(context.Context, re
 	}
 	return total, nil
 }
+
 func (s *portfolioDiagnosticsPositionRepo) GetByStrategy(context.Context, uuid.UUID, repository.PositionFilter, int, int) ([]domain.Position, error) {
 	return nil, nil
 }
@@ -347,27 +376,34 @@ type portfolioAllocatorOpportunityRepo struct {
 func (s *portfolioAllocatorOpportunityRepo) Create(context.Context, *domain.Opportunity) error {
 	return nil
 }
+
 func (s *portfolioAllocatorOpportunityRepo) UpsertQueuedByDedupeKey(context.Context, *domain.Opportunity) error {
 	return nil
 }
+
 func (s *portfolioAllocatorOpportunityRepo) Get(context.Context, uuid.UUID) (*domain.Opportunity, error) {
 	return nil, repository.ErrNotFound
 }
+
 func (s *portfolioAllocatorOpportunityRepo) List(_ context.Context, filter repository.OpportunityFilter, limit, offset int) ([]domain.Opportunity, error) {
 	s.lastFilter = filter
 	s.lastLimit = limit
 	s.lastOffset = offset
 	return filterOpportunities(s.items, filter), nil
 }
+
 func (s *portfolioAllocatorOpportunityRepo) Count(_ context.Context, filter repository.OpportunityFilter) (int, error) {
 	return len(filterOpportunities(s.items, filter)), nil
 }
+
 func (s *portfolioAllocatorOpportunityRepo) ExpireQueuedBefore(context.Context, time.Time) (int64, error) {
 	return 0, nil
 }
+
 func (s *portfolioAllocatorOpportunityRepo) ListQueuedForAllocation(context.Context, time.Time) ([]domain.Opportunity, error) {
 	return append([]domain.Opportunity(nil), s.items...), nil
 }
+
 func (s *portfolioAllocatorOpportunityRepo) UpdateStatus(context.Context, uuid.UUID, domain.OpportunityStatus, string) error {
 	return nil
 }
@@ -382,12 +418,14 @@ type portfolioAllocatorDecisionRepo struct {
 func (s *portfolioAllocatorDecisionRepo) Create(context.Context, *domain.AllocationDecision) error {
 	return nil
 }
+
 func (s *portfolioAllocatorDecisionRepo) List(_ context.Context, filter repository.AllocationDecisionFilter, limit, offset int) ([]domain.AllocationDecision, error) {
 	s.lastFilter = filter
 	s.lastLimit = limit
 	s.lastOffset = offset
 	return filterAllocationDecisions(s.items, filter), nil
 }
+
 func (s *portfolioAllocatorDecisionRepo) Count(_ context.Context, filter repository.AllocationDecisionFilter) (int, error) {
 	return len(filterAllocationDecisions(s.items, filter)), nil
 }

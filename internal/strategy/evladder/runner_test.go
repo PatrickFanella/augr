@@ -19,13 +19,14 @@ type fakeBroker struct {
 	prep, send int
 }
 
-func (f *fakeBroker) PrepareTemplate(req *domain.Order) (*polymarketexec.OrderTemplate, error) {
+func (f *fakeBroker) PrepareTemplate(_ *domain.Order) (*polymarketexec.OrderTemplate, error) {
 	f.mu.Lock()
 	f.prep++
 	f.mu.Unlock()
 	return &polymarketexec.OrderTemplate{}, nil
 }
-func (f *fakeBroker) SendTemplate(ctx context.Context, tpl *polymarketexec.OrderTemplate) (any, error) {
+
+func (f *fakeBroker) SendTemplate(_ context.Context, _ *polymarketexec.OrderTemplate) (any, error) {
 	f.mu.Lock()
 	f.send++
 	f.mu.Unlock()

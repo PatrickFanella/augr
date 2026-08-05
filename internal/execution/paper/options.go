@@ -155,19 +155,20 @@ func (b *PaperBroker) PreflightSpread(ctx context.Context, spread *domain.Option
 		if leg.Contract.Expiry != first.Contract.Expiry || leg.Contract.OptionType != first.Contract.OptionType || leg.Contract.Multiplier != first.Contract.Multiplier {
 			return errors.New("paper: debit vertical legs must share type, expiry, and multiplier")
 		}
-		if leg.Side == domain.OrderSideBuy && leg.PositionIntent == domain.PositionIntentBuyToOpen {
+		switch {
+		case leg.Side == domain.OrderSideBuy && leg.PositionIntent == domain.PositionIntentBuyToOpen:
 			openBuys++
 			netDebit += leg.ExecutablePrice
-		} else if leg.Side == domain.OrderSideSell && leg.PositionIntent == domain.PositionIntentSellToOpen {
+		case leg.Side == domain.OrderSideSell && leg.PositionIntent == domain.PositionIntentSellToOpen:
 			openSells++
 			netDebit -= leg.ExecutablePrice
-		} else if leg.Side == domain.OrderSideBuy && leg.PositionIntent == domain.PositionIntentBuyToClose {
+		case leg.Side == domain.OrderSideBuy && leg.PositionIntent == domain.PositionIntentBuyToClose:
 			closeBuys++
 			netDebit += leg.ExecutablePrice
-		} else if leg.Side == domain.OrderSideSell && leg.PositionIntent == domain.PositionIntentSellToClose {
+		case leg.Side == domain.OrderSideSell && leg.PositionIntent == domain.PositionIntentSellToClose:
 			closeSells++
 			netDebit -= leg.ExecutablePrice
-		} else {
+		default:
 			return errors.New("paper: debit vertical requires consistent open or close intents")
 		}
 	}

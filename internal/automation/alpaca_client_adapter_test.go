@@ -159,7 +159,7 @@ func TestAlpacaClientAdapterListFills_PaginatesActivities(t *testing.T) {
 					orderStatus = "filled"
 				}
 				if i > 1 {
-					activityID = activityID + "-extra"
+					activityID += "-extra"
 				}
 				if i == 0 {
 					_, _ = w.Write([]byte("["))

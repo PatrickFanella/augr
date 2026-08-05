@@ -67,7 +67,7 @@ func (t *ssePreambleTransport) RoundTrip(req *http.Request) (*http.Response, err
 				stripped := llamabroker.StripSSEPreambleReadCloser(resp.Body)
 				// llama-line now signals errors as SSE status events, handled by
 				// StripSSEPreamble. PeekBrokerError handles older bare-JSON errors.
-				errMsg, remaining := llamabroker.PeekBrokerError(stripped)
+				errMsg, remaining := llamabroker.PeekBrokerError(stripped) //nolint:staticcheck // Required for older llama-line broker responses.
 				if errMsg != "" {
 					resp.StatusCode = http.StatusBadGateway
 					resp.Status = "502 Bad Gateway"
@@ -108,7 +108,7 @@ func requestIsStreaming(req *http.Request) bool {
 	}
 	buf := make([]byte, 512)
 	n, _ := body.Read(buf)
-	body.Close()
+	_ = body.Close()
 	return bytes.Contains(buf[:n], []byte(`"stream":true`))
 }
 

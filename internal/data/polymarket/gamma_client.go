@@ -87,7 +87,7 @@ func (c *GammaHTTPClient) GetMarket(ctx context.Context, slug string) (GammaMark
 	if err != nil {
 		return GammaMarket{}, fmt.Errorf("polymarket: gamma get market: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return GammaMarket{}, fmt.Errorf("polymarket: gamma markets HTTP %d", resp.StatusCode)

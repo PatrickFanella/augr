@@ -28,26 +28,30 @@ type promptCompactionStats struct {
 
 func buildBudgetedDebateMessages(systemPrompt string, rounds []agent.DebateRound, reports map[agent.AgentRole]string) ([]llm.Message, promptCompactionStats, error) {
 	stats := promptCompactionStats{}
-	base := []llm.Message{{Role: "system", Content: systemPrompt}}
-	if err := llm.ValidatePromptBytes(base, maxDebatePromptBytes); err != nil {
+	base := llm.Message{Role: "system", Content: systemPrompt}
+	if err := llm.ValidatePromptBytes([]llm.Message{base}, maxDebatePromptBytes); err != nil {
 		return nil, stats, err
 	}
 
 	fullReports, _ := formatAnalystReports(reports, -1)
 	user := formatBudgetedContext(rounds, fullReports)
-	messages := append(base, llm.Message{Role: "user", Content: user})
+	messages := []llm.Message{base, {Role: "user", Content: user}}
 	stats.OriginalBytes = llm.PromptBytes(messages)
-	if stats.OriginalBytes <= maxDebatePromptBytes {
-		stats.FinalBytes = stats.OriginalBytes
+	boundedReports, truncated := formatBudgetedAnalystReports(reports)
+	stats.TruncatedReports = truncated
+	user = formatBudgetedContext(rounds, boundedReports)
+	messages = []llm.Message{base, {Role: "user", Content: user}}
+	if llm.PromptBytes(messages) <= maxDebatePromptBytes {
+		stats.FinalBytes = llm.PromptBytes(messages)
 		return messages, stats, nil
 	}
 
 	selected, dropped := selectRoundsForBudget(rounds, systemPrompt, reports)
 	stats.DroppedRounds = dropped
 	formattedReports, truncated := compactAnalystReports(systemPrompt, selected, reports)
-	stats.TruncatedReports = truncated
+	stats.TruncatedReports = max(stats.TruncatedReports, truncated)
 	user = formatBudgetedContext(selected, formattedReports)
-	messages = append(base, llm.Message{Role: "user", Content: user})
+	messages = []llm.Message{base, {Role: "user", Content: user}}
 	if err := llm.ValidatePromptBytes(messages, maxDebatePromptBytes); err != nil {
 		return nil, stats, err
 	}
@@ -137,6 +141,7 @@ func formatAnalystReportsWithLimit(roles []agent.AgentRole, reports map[agent.Ag
 		if remaining < 0 {
 			remaining = 0
 		}
+		remaining = min(remaining, maxAnalystReportBytes)
 		body, cut := truncateUTF8(reports[role], remaining)
 		if cut {
 			truncated++

@@ -740,7 +740,9 @@ func TestPositionRepoIntegration_CreateAlpacaOwnedUsesTransactionalRollback(t *t
 	repo := NewPositionRepo(pool)
 	_, _ = pool.Exec(ctx, `CREATE OR REPLACE FUNCTION fail_position_provenance() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'boom'; END; $$ LANGUAGE plpgsql`)
 	_, _ = pool.Exec(ctx, `CREATE TRIGGER position_provenance_fail BEFORE INSERT ON position_provenance FOR EACH ROW EXECUTE FUNCTION fail_position_provenance()`)
-	defer pool.Exec(ctx, `DROP TRIGGER IF EXISTS position_provenance_fail ON position_provenance`)
+	defer func() {
+		_, _ = pool.Exec(ctx, `DROP TRIGGER IF EXISTS position_provenance_fail ON position_provenance`)
+	}()
 	pos := &domain.Position{MarketType: domain.MarketTypeStock, Ticker: "TSLA", Side: domain.PositionSideLong, Quantity: 1, AvgEntry: 300}
 	if err := repo.CreateAlpacaOwned(ctx, pos); err == nil {
 		t.Fatal("expected error")

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"math"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -88,7 +87,7 @@ func TestScoreWalletsSortsByScoreThenWalletID(t *testing.T) {
 }
 
 func TestScoreSourceDoesNotContainExecutionOrOrderTerms(t *testing.T) {
-	path := filepath.Join("score.go")
+	path := "score.go"
 	src, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("ReadFile(%q) error = %v", path, err)

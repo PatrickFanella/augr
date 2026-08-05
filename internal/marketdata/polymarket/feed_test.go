@@ -15,7 +15,7 @@ func TestFeedLifecycleAndRouting(t *testing.T) {
 	cfg.PruneInterval = 0
 	cfg.WarmupDuration = 0
 	cfg.WarmupMinClean = 1
-	f, err := newFeedWithFactory(cfg, func(id int, cfg Config, ticks chan<- Tick, books chan<- BookSnapshot, dropped *atomic.Uint64) poolConnection {
+	f, err := newFeedWithFactory(cfg, func(id int, _ Config, ticks chan<- Tick, books chan<- BookSnapshot, _ *atomic.Uint64) poolConnection {
 		return &fakePoolConn{id: id, ticks: ticks, books: books, period: 5 * time.Millisecond, done: make(chan struct{})}
 	})
 	if err != nil {

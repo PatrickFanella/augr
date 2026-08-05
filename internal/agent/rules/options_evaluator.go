@@ -2,7 +2,6 @@ package rules
 
 import (
 	"math"
-	"time"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 )
@@ -19,7 +18,7 @@ type OptionsSnapshot struct {
 }
 
 // NewOptionsSnapshot builds an OptionsSnapshot from underlying indicators, an
-// option chain, an optional open position, and the current time.
+// option chain, and an optional open position.
 //
 // Chain-derived fields:
 //   - atm_iv: IV of the contract whose strike is closest to the underlying close
@@ -32,7 +31,7 @@ type OptionsSnapshot struct {
 // iv_rank and iv_percentile must be injected via the snapshot Values map
 // before calling this constructor (they require historical IV data the chain
 // does not carry).
-func NewOptionsSnapshot(snap Snapshot, chain []domain.OptionSnapshot, pos *OpenPosition, now time.Time) OptionsSnapshot {
+func NewOptionsSnapshot(snap Snapshot, chain []domain.OptionSnapshot, pos *OpenPosition) OptionsSnapshot {
 	os := OptionsSnapshot{Snapshot: snap}
 
 	// Derive ATM IV: find the contract with strike closest to close.

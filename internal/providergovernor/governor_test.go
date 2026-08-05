@@ -12,9 +12,11 @@ type memoryCooldownStore struct{ until time.Time }
 func (s *memoryCooldownStore) GetProviderCooldown(context.Context, string) (time.Time, error) {
 	return s.until, nil
 }
+
 func (s *memoryCooldownStore) SetProviderCooldown(context.Context, string, time.Time) error {
 	return nil
 }
+
 func (s *memoryCooldownStore) CompareAndClearProviderCooldown(context.Context, string, time.Time) (bool, error) {
 	s.until = time.Time{}
 	return true, nil

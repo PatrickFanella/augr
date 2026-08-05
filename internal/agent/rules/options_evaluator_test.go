@@ -118,7 +118,7 @@ func TestOptionsSnapshot_DerivedFields(t *testing.T) {
 	expiry := time.Now().AddDate(0, 0, 30)
 	chain := syntheticChain(closePrice, expiry)
 
-	os := NewOptionsSnapshot(snap, chain, nil, time.Now())
+	os := NewOptionsSnapshot(snap, chain, nil)
 
 	// ATM IV should come from the contract with strike closest to close (= $450 strike).
 	if os.ATMImpliedVol == 0 {
@@ -172,7 +172,7 @@ func TestOptionsSnapshot_WithPosition(t *testing.T) {
 	expiry := time.Now().AddDate(0, 0, 30)
 	chain := syntheticChain(450, expiry)
 
-	os := NewOptionsSnapshot(snap, chain, pos, time.Now())
+	os := NewOptionsSnapshot(snap, chain, pos)
 
 	if os.PositionPnLPct != 15.5 {
 		t.Errorf("position pnl pct = %v, want 15.5", os.PositionPnLPct)
@@ -196,7 +196,7 @@ func TestOptionsSnapshot_ConditionEvaluation(t *testing.T) {
 
 	expiry := time.Now().AddDate(0, 0, 30)
 	chain := syntheticChain(450, expiry)
-	os := NewOptionsSnapshot(snap, chain, nil, time.Now())
+	os := NewOptionsSnapshot(snap, chain, nil)
 
 	// Test: iv_rank > 50 should be true.
 	cond := Condition{Field: "iv_rank", Op: "gt", Value: fp(50)}

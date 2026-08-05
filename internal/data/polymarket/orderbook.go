@@ -90,14 +90,14 @@ func normalizeOutcomes(values []string) []string {
 }
 
 func maxFlexible(values ...flexibleFloat) float64 {
-	var max float64
+	var maximum float64
 	for _, value := range values {
 		f := float64(value)
-		if f > max {
-			max = f
+		if f > maximum {
+			maximum = f
 		}
 	}
-	return max
+	return maximum
 }
 
 type rawOrderBook struct {

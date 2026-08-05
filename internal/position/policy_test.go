@@ -71,9 +71,9 @@ func TestResolveForMarket_UsesHalfKellyOnlyWhenExplicitlyOptedInAndEligible(t *t
 	}
 
 	for _, tc := range []struct {
-		name       string
-		useKelly   bool
-		stats      HistoryStats
+		name     string
+		useKelly bool
+		stats    HistoryStats
 	}{
 		{name: "opt-in missing", useKelly: false, stats: HistoryStats{ClosedTrades: KellyHistoryThreshold, WinRate: 0.62, WinLossRatio: 1.8}},
 		{name: "insufficient history", useKelly: true, stats: HistoryStats{ClosedTrades: KellyHistoryThreshold - 1, WinRate: 0.62, WinLossRatio: 1.8}},
@@ -95,8 +95,8 @@ func TestHalfKellyForHistory_RejectsMissingEdgeInputs(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
-		name        string
-		winRate     float64
+		name         string
+		winRate      float64
 		winLossRatio float64
 	}{
 		{name: "missing win rate", winRate: 0, winLossRatio: 0.55},

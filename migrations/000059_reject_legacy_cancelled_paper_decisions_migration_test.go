@@ -184,7 +184,6 @@ func TestRejectLegacyCancelledPaperDecisionsMigrationAppliesAgainstCurrentSchema
 
 			execMust(t, ctx, pool, `INSERT INTO orders (id, market_type, broker, order_type, ticker, side, quantity, filled_quantity, filled_avg_price, filled_at, status) VALUES ($1,'kalshi','paper','market',$2,'buy',10,0,NULL,NULL,'cancelled')`, orderID(9), "T9")
 			execMust(t, ctx, pool, `INSERT INTO trade_decisions (id, market_type, instrument_key, side, risk_status, risk_reasons, paper_order_id, status) VALUES ($1,'kalshi',$2,'buy','approved',ARRAY[]::text[],$3,'paper_ordered')`, decisionID(9), "k9", orderID(9))
-
 		}, false, func(ctx context.Context, pool *pgxpool.Pool) {
 			for i := 7; i <= 9; i++ {
 				assertDecisionState(t, ctx, pool, decisionID(i), "paper_ordered", []string{})

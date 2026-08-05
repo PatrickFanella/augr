@@ -617,16 +617,6 @@ func marketTypeFromAssetClass(assetClass domain.AssetClass) domain.MarketType {
 	}
 }
 
-func positionPnl(position domain.Position) float64 {
-	if position.ClosedAt != nil {
-		return position.RealizedPnL
-	}
-	if position.UnrealizedPnL != nil {
-		return *position.UnrealizedPnL
-	}
-	return 0
-}
-
 func applyOrderSnapshot(order *domain.Order, snapshot BrokerOrderSnapshot, strategyID *uuid.UUID) bool {
 	changed := false
 	if !uuidPtrEqual(order.StrategyID, strategyID) {
@@ -812,7 +802,7 @@ func diffOrderSnapshot(order domain.Order, snapshot BrokerOrderSnapshot) []strin
 	return fields
 }
 
-func diffPositionSnapshot(position domain.Position, snapshot domain.Position) []string {
+func diffPositionSnapshot(position, snapshot domain.Position) []string {
 	var fields []string
 	if position.Ticker != snapshot.Ticker {
 		fields = append(fields, "ticker")

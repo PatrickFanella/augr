@@ -72,10 +72,6 @@ func NewClient(baseURL, apiKeyID, privateKeyPEMB64 string, logger *slog.Logger) 
 
 	trimmedAPIKeyID := strings.TrimSpace(apiKeyID)
 	trimmedPrivateKeyPEMB64 := strings.TrimSpace(privateKeyPEMB64)
-	if trimmedAPIKeyID == "" && trimmedPrivateKeyPEMB64 == "" {
-		privateKeyPEMB64 = ""
-	}
-
 	var privateKey *rsa.PrivateKey
 	if trimmedAPIKeyID != "" || trimmedPrivateKeyPEMB64 != "" {
 		var err error
@@ -147,9 +143,9 @@ func (c *Client) Governor() governor {
 // Retry-After is always respected as a floor. If a server asks for longer than
 // max, the client returns the typed rate-limit error immediately so the caller
 // or scheduler can defer without sleeping for hours.
-func (c *Client) SetRetryPolicy(maxAttempts int, base, max time.Duration, jitter float64) {
+func (c *Client) SetRetryPolicy(maxAttempts int, base, maximum time.Duration, jitter float64) {
 	if c != nil {
-		c.maxAttempts, c.baseBackoff, c.maxBackoff, c.jitterRatio = maxAttempts, base, max, jitter
+		c.maxAttempts, c.baseBackoff, c.maxBackoff, c.jitterRatio = maxAttempts, base, maximum, jitter
 	}
 }
 
@@ -364,6 +360,17 @@ func (c *Client) nextBackoff(attempt int, retryAfter time.Duration) time.Duratio
 	b := c.baseBackoff
 	if b <= 0 {
 		b = 100 * time.Millisecond
+	}
+	for range max(attempt, 0) {
+		if c.maxBackoff > 0 && b >= c.maxBackoff/2 {
+			b = c.maxBackoff
+			break
+		}
+		if b > time.Duration(1<<63-1)/2 {
+			b = time.Duration(1<<63 - 1)
+			break
+		}
+		b *= 2
 	}
 	if c.maxBackoff > 0 && b > c.maxBackoff {
 		b = c.maxBackoff

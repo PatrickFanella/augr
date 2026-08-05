@@ -35,7 +35,7 @@ func (f *fakeBroker) PrepareTemplate(order *domain.Order) (*OrderTemplate, error
 	return NewOrderTemplate([]byte(strings.Repeat("a", 32)), "POST", "https://example.com/v1/orders", []byte(`{}`))
 }
 
-func (f *fakeBroker) SendTemplate(ctx context.Context, tmpl *OrderTemplate) (*createOrderResponse, error) {
+func (f *fakeBroker) SendTemplate(_ context.Context, tmpl *OrderTemplate) (*createOrderResponse, error) {
 	f.sendCalls.Add(1)
 	f.mu.Lock()
 	f.lastTmpl = tmpl

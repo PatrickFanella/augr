@@ -142,7 +142,7 @@ func realizedVol(bars []domain.OHLCV, lookback int) float64 {
 }
 
 // chainMetrics extracts ATM IV and put/call ratio from a chain.
-func chainMetrics(chain []domain.OptionSnapshot, close float64) (atmIV, putCallRatio float64) {
+func chainMetrics(chain []domain.OptionSnapshot, closePrice float64) (atmIV, putCallRatio float64) {
 	var putVol, callVol float64
 	bestDist := math.Inf(1)
 
@@ -153,7 +153,7 @@ func chainMetrics(chain []domain.OptionSnapshot, close float64) (atmIV, putCallR
 		case domain.OptionTypeCall:
 			callVol += snap.Volume
 			// ATM IV from call nearest to close.
-			dist := math.Abs(snap.Contract.Strike - close)
+			dist := math.Abs(snap.Contract.Strike - closePrice)
 			if dist < bestDist {
 				bestDist = dist
 				atmIV = snap.Greeks.IV

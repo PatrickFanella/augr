@@ -128,22 +128,22 @@ func orderSideFromSignal(signal domain.PipelineSignal) domain.OrderSide {
 	}
 }
 
-func clampMin(value, min float64) float64 {
-	if value < min || value != value {
-		return min
+func clampMin(value, minimum float64) float64 {
+	if value < minimum || value != value {
+		return minimum
 	}
 	return value
 }
 
-func clampFloat(value, min, max float64) float64 {
+func clampFloat(value, minimum, maximum float64) float64 {
 	if value != value {
-		return min
+		return minimum
 	}
-	if value < min {
-		return min
+	if value < minimum {
+		return minimum
 	}
-	if value > max {
-		return max
+	if value > maximum {
+		return maximum
 	}
 	return value
 }

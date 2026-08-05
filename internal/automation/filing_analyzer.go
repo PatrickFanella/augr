@@ -127,7 +127,7 @@ func fetchFilingText(ctx context.Context, url string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("fetch filing: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("filing fetch returned status %d", resp.StatusCode)

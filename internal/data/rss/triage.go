@@ -184,17 +184,17 @@ func normalizeTriageContent(content string) string {
 
 func parseTriageResults(content string) ([]TriageResult, error) {
 	var triageResults []TriageResult
-	if err := json.Unmarshal([]byte(content), &triageResults); err == nil {
+	err := json.Unmarshal([]byte(content), &triageResults)
+	if err == nil {
 		return triageResults, nil
-	} else {
-		var wrapper struct {
-			Results []TriageResult `json:"results"`
-		}
-		if err2 := json.Unmarshal([]byte(content), &wrapper); err2 == nil {
-			return wrapper.Results, nil
-		}
-		return nil, err
 	}
+	var wrapper struct {
+		Results []TriageResult `json:"results"`
+	}
+	if err2 := json.Unmarshal([]byte(content), &wrapper); err2 == nil {
+		return wrapper.Results, nil
+	}
+	return nil, err
 }
 
 func isRetryableTriageParseError(content string, err error) bool {

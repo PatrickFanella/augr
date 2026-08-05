@@ -18,7 +18,7 @@ type lifecycleRepo struct {
 	startOnce   sync.Once
 }
 
-func (r *lifecycleRepo) InsertTicks(ctx context.Context, ticks []domain.PolymarketTick) error {
+func (r *lifecycleRepo) InsertTicks(_ context.Context, ticks []domain.PolymarketTick) error {
 	r.signalStart()
 	if r.blockInsert != nil {
 		<-r.blockInsert
@@ -29,7 +29,7 @@ func (r *lifecycleRepo) InsertTicks(ctx context.Context, ticks []domain.Polymark
 	return nil
 }
 
-func (r *lifecycleRepo) InsertBookSnapshots(ctx context.Context, snaps []domain.PolymarketBookSnapshot) error {
+func (r *lifecycleRepo) InsertBookSnapshots(_ context.Context, snaps []domain.PolymarketBookSnapshot) error {
 	r.signalStart()
 	if r.blockInsert != nil {
 		<-r.blockInsert

@@ -23,7 +23,7 @@ type fakeLLM struct {
 	err  error
 }
 
-func (f *fakeLLM) Complete(ctx context.Context, req llm.CompletionRequest) (*llm.CompletionResponse, error) {
+func (f *fakeLLM) Complete(_ context.Context, _ llm.CompletionRequest) (*llm.CompletionResponse, error) {
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -35,29 +35,33 @@ type fakeStrategyRepo struct {
 	theses  map[uuid.UUID]json.RawMessage
 }
 
-func (f *fakeStrategyRepo) Create(ctx context.Context, s *domain.Strategy) error {
+func (f *fakeStrategyRepo) Create(_ context.Context, s *domain.Strategy) error {
 	f.created = append(f.created, *s)
 	return nil
 }
-func (f *fakeStrategyRepo) Get(ctx context.Context, id uuid.UUID) (*domain.Strategy, error) {
+
+func (f *fakeStrategyRepo) Get(_ context.Context, _ uuid.UUID) (*domain.Strategy, error) {
 	return nil, repository.ErrNotFound
 }
-func (f *fakeStrategyRepo) List(ctx context.Context, _ repository.StrategyFilter, _, _ int) ([]domain.Strategy, error) {
+
+func (f *fakeStrategyRepo) List(_ context.Context, _ repository.StrategyFilter, _, _ int) ([]domain.Strategy, error) {
 	return f.created, nil
 }
-func (f *fakeStrategyRepo) Count(ctx context.Context, _ repository.StrategyFilter) (int, error) {
+
+func (f *fakeStrategyRepo) Count(_ context.Context, _ repository.StrategyFilter) (int, error) {
 	return len(f.created), nil
 }
-func (f *fakeStrategyRepo) Update(ctx context.Context, _ *domain.Strategy) error { return nil }
-func (f *fakeStrategyRepo) Delete(ctx context.Context, _ uuid.UUID) error        { return nil }
-func (f *fakeStrategyRepo) UpdateThesis(ctx context.Context, id uuid.UUID, t json.RawMessage) error {
+func (f *fakeStrategyRepo) Update(_ context.Context, _ *domain.Strategy) error { return nil }
+func (f *fakeStrategyRepo) Delete(_ context.Context, _ uuid.UUID) error        { return nil }
+func (f *fakeStrategyRepo) UpdateThesis(_ context.Context, id uuid.UUID, t json.RawMessage) error {
 	if f.theses == nil {
 		f.theses = map[uuid.UUID]json.RawMessage{}
 	}
 	f.theses[id] = t
 	return nil
 }
-func (f *fakeStrategyRepo) GetThesisRaw(ctx context.Context, id uuid.UUID) (json.RawMessage, error) {
+
+func (f *fakeStrategyRepo) GetThesisRaw(_ context.Context, id uuid.UUID) (json.RawMessage, error) {
 	return f.theses[id], nil
 }
 
@@ -83,9 +87,11 @@ func TestValidateProposal(t *testing.T) {
 		t.Fatalf("good proposal rejected: %v", err)
 	}
 
-	bad := &Proposal{Template: "bogus", Name: "n", Summary: "s", Direction: "YES",
+	bad := &Proposal{
+		Template: "bogus", Name: "n", Summary: "s", Direction: "YES",
 		Conviction: 0.5, TimeHorizon: "days", WatchTerms: []string{"a"},
-		SourceReferences: []string{"source"}, MaxSpreadPct: 1, MinLiquidity: 1, StopPolicy: "stop", TargetPolicy: "target", EntryPriceMax: 0.5}
+		SourceReferences: []string{"source"}, MaxSpreadPct: 1, MinLiquidity: 1, StopPolicy: "stop", TargetPolicy: "target", EntryPriceMax: 0.5,
+	}
 	if err := validateProposal(bad); err == nil {
 		t.Fatal("expected error for invalid template")
 	}
@@ -244,7 +250,7 @@ func TestScreenMarkets_FiltersByLiquidityAndVolume(t *testing.T) {
 func TestRun_HappyPath(t *testing.T) {
 	now := time.Now()
 	// Mock Gamma API.
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		markets := []GammaMarket{{
 			Slug:            "test-market",
 			Question:        "Will Example happen?",
@@ -359,7 +365,7 @@ func TestDeployStrategyRejectsSkippedProposal(t *testing.T) {
 
 func TestRun_SkipBelowConviction(t *testing.T) {
 	now := time.Now()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		markets := []GammaMarket{{
 			Slug: "mkt", Question: "Will Widget happen?",
 			AcceptingOrders: true,
@@ -397,7 +403,7 @@ func TestRun_SkipBelowConviction(t *testing.T) {
 
 func TestRun_RejectsInvalidMetadataBeforeActivation(t *testing.T) {
 	now := time.Now()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		markets := []GammaMarket{{
 			Slug:            "bad-market",
 			Question:        "Will Example happen?",
@@ -440,7 +446,7 @@ func TestRun_RejectsInvalidMetadataBeforeActivation(t *testing.T) {
 
 func TestFetchOpenMarkets_DecodesNumericFields(t *testing.T) {
 	now := time.Now()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`[{"slug":"numeric-market","question":"Q","acceptingOrders":true,"outcomes":"[\"Yes\",\"No\"]","volume":12345.67,"volume24hr":50000,"liquidity":20000,"endDate":"` + now.Add(20*24*time.Hour).Format(time.RFC3339) + `"}]`))
 	}))
 	defer srv.Close()

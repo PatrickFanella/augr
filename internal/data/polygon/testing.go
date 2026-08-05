@@ -7,12 +7,12 @@ func SetBaseURLForTest(c *Client, baseURL string) {
 }
 
 // SnapshotBarForTest constructs a SnapshotBar with the given values.
-func SnapshotBarForTest(open, high, low, close_, volume, vwap float64) SnapshotBar {
+func SnapshotBarForTest(open, high, low, closePrice, volume, vwap float64) SnapshotBar {
 	return SnapshotBar{
 		Open:   open,
 		High:   high,
 		Low:    low,
-		Close:  close_,
+		Close:  closePrice,
 		Volume: volume,
 		VWAP:   vwap,
 	}

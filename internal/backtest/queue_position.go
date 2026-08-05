@@ -64,7 +64,7 @@ func (q *QueueTracker) RegisterPassive(entry QueueEntry, book marketdata.BookSna
 
 // ApplyTrade represents executed prints at a price.
 // We model only own-side queue priority; Side is retained for attribution.
-func (q *QueueTracker) ApplyTrade(slug string, price float64, size float64, ts time.Time) {
+func (q *QueueTracker) ApplyTrade(slug string, price, size float64, ts time.Time) {
 	if size <= 0 {
 		return
 	}

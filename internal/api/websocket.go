@@ -71,8 +71,8 @@ type Client struct {
 	conn *websocket.Conn
 	send chan []byte
 
-	mu            sync.RWMutex
-	subscriptions Subscriptions
+	mu                   sync.RWMutex
+	subscriptions        Subscriptions
 	subscribedPolymarket bool
 }
 
@@ -102,7 +102,11 @@ func (c *Client) matchesParsed(strategyID, runID uuid.UUID) bool {
 	return false
 }
 
-func (c *Client) matchesPolymarket() bool { c.mu.RLock(); defer c.mu.RUnlock(); return c.subscribedPolymarket || c.subscriptions.AllEvents }
+func (c *Client) matchesPolymarket() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.subscribedPolymarket || c.subscriptions.AllEvents
+}
 
 // matchesSubscription checks whether msg should be delivered to this client.
 // Used only in tests; the hub's broadcast loop uses matchesParsed instead.
@@ -209,9 +213,13 @@ func (c *Client) handleCommand(raw []byte) {
 		}
 		c.mu.Unlock()
 	case "subscribe_polymarket":
-		c.mu.Lock(); c.subscribedPolymarket = true; c.mu.Unlock()
+		c.mu.Lock()
+		c.subscribedPolymarket = true
+		c.mu.Unlock()
 	case "unsubscribe_polymarket":
-		c.mu.Lock(); c.subscribedPolymarket = false; c.mu.Unlock()
+		c.mu.Lock()
+		c.subscribedPolymarket = false
+		c.mu.Unlock()
 	default:
 		c.sendError("unknown action: " + cmd.Action)
 		return

@@ -73,7 +73,9 @@ func (s *Server) handleRunDiscovery(w http.ResponseWriter, r *http.Request) {
 	if s.discoveryRunRepo != nil {
 		configJSON, _ := json.Marshal(cfg)
 		resultJSON, _ := json.Marshal(result)
-		s.discoveryRunRepo.Create(r.Context(), configJSON, resultJSON, startedAt, result.Duration, result.Candidates, result.Deployed)
+		if err := s.discoveryRunRepo.Create(r.Context(), configJSON, resultJSON, startedAt, result.Duration, result.Candidates, result.Deployed); err != nil {
+			s.logger.Warn("persist discovery run", "error", err)
+		}
 	}
 
 	respondJSON(w, http.StatusOK, result)

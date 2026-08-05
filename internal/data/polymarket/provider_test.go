@@ -25,10 +25,10 @@ func TestGetOHLCVUsesYesTokenForPriceHistory(t *testing.T) {
 			if got := r.URL.Query().Get("market_slug"); got != slug {
 				t.Fatalf("market_slug = %q, want %q", got, slug)
 			}
-			fmt.Fprintf(w, `{"data":[{"condition_id":"cond-1","tokens":[{"token_id":%q,"outcome":"Yes"},{"token_id":"no-token","outcome":"No"}]}]}`, yesToken)
+			_, _ = fmt.Fprintf(w, `{"data":[{"condition_id":"cond-1","tokens":[{"token_id":%q,"outcome":"Yes"},{"token_id":"no-token","outcome":"No"}]}]}`, yesToken)
 		case "/prices-history":
 			gotMarket = r.URL.Query().Get("market")
-			fmt.Fprint(w, `{"history":[{"t":1700000000,"p":0.61}]}`)
+			_, _ = fmt.Fprint(w, `{"history":[{"t":1700000000,"p":0.61}]}`)
 		default:
 			t.Fatalf("unexpected path %q", r.URL.Path)
 		}

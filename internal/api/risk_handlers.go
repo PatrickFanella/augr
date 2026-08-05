@@ -16,10 +16,6 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/risk"
 )
 
-type riskBreakerListerFunc interface {
-	ListTripped(ctx context.Context) ([]domain.RiskBreakerState, error)
-}
-
 type RiskBreakerLister interface {
 	ListTripped(ctx context.Context) ([]domain.RiskBreakerState, error)
 }

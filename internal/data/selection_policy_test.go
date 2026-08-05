@@ -14,7 +14,6 @@ import (
 )
 
 type optionsStubProvider struct {
-	name       string
 	chain      []domain.OptionSnapshot
 	chainErr   error
 	chainCalls int

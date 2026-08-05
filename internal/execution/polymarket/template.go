@@ -119,7 +119,7 @@ func (t *OrderTemplate) SigningPath() string {
 	return t.path
 }
 
-func (t *OrderTemplate) newRequest(timestamp string, signature string) (*http.Request, error) {
+func (t *OrderTemplate) newRequest(timestamp, signature string) (*http.Request, error) {
 	req, err := http.NewRequest(http.MethodPost, t.url, bytes.NewReader(t.body))
 	if err != nil {
 		return nil, fmt.Errorf("polymarket: create templated request: %w", err)

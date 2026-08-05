@@ -594,8 +594,8 @@ type KalshiDiscoveryRunRepository interface {
 // KalshiSettlementGateRepository stores durable dry-run gating state for Kalshi settlement.
 type KalshiSettlementGateRepository interface {
 	Get(ctx context.Context, jobName string) (*domain.KalshiSettlementGateState, error)
-	RecordSuccess(ctx context.Context, jobName string, threshold int, fetched, resolved, wouldSettleMarkets, wouldSettleDecisions int, projectionFingerprint string, lastRunAt time.Time) (*domain.KalshiSettlementGateState, error)
-	RecordFailure(ctx context.Context, jobName string, threshold int, fetched, resolved, wouldSettleMarkets, wouldSettleDecisions int, lastRunAt time.Time, lastError string) (*domain.KalshiSettlementGateState, error)
+	RecordSuccess(ctx context.Context, jobName string, threshold, fetched, resolved, wouldSettleMarkets, wouldSettleDecisions int, projectionFingerprint string, lastRunAt time.Time) (*domain.KalshiSettlementGateState, error)
+	RecordFailure(ctx context.Context, jobName string, threshold, fetched, resolved, wouldSettleMarkets, wouldSettleDecisions int, lastRunAt time.Time, lastError string) (*domain.KalshiSettlementGateState, error)
 }
 
 // PolymarketResolvedMarketsRepository tracks resolved market processing.

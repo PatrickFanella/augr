@@ -17,10 +17,12 @@ type CooldownStore interface {
 	CompareAndClearProviderCooldown(context.Context, string, time.Time) (bool, error)
 }
 
-type Limiter interface{ Wait(context.Context) error }
-type Sleeper interface {
-	Sleep(context.Context, time.Duration) error
-}
+type (
+	Limiter interface{ Wait(context.Context) error }
+	Sleeper interface {
+		Sleep(context.Context, time.Duration) error
+	}
+)
 
 type ProviderGovernor struct {
 	Provider string

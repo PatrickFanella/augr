@@ -238,9 +238,9 @@ type socialSentimentResponse struct {
 	Data   []socialSentimentDay `json:"data"`
 }
 
-// GetSocialSentiment returns daily social sentiment from Finnhub for the given
+// getSocialSentiment returns daily social sentiment from Finnhub for the given
 // ticker and date range. Aggregates Reddit + Twitter mentions.
-func (c *Client) GetSocialSentiment(ctx context.Context, symbol string, from, to time.Time) ([]socialSentimentDay, error) {
+func (c *Client) getSocialSentiment(ctx context.Context, symbol string, from, to time.Time) ([]socialSentimentDay, error) {
 	params := url.Values{
 		"symbol": {symbol},
 		"from":   {from.Format("2006-01-02")},
