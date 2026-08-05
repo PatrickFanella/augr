@@ -172,6 +172,8 @@ func ensureBacktestRunTable(t *testing.T, ctx context.Context, pool *pgxpool.Poo
 		duration_ns        BIGINT      NOT NULL CHECK (duration_ns >= 0),
 		prompt_version     TEXT        NOT NULL,
 		prompt_version_hash TEXT       NOT NULL,
+		simulation_version TEXT        NOT NULL DEFAULT 'legacy-unversioned',
+		input_hash         TEXT        NOT NULL DEFAULT '',
 		created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 		updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
 	)`)

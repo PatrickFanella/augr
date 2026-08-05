@@ -513,6 +513,7 @@ func newPipelineRunIntegrationPool(t *testing.T, ctx context.Context) (*pgxpool.
 			completed_at    TIMESTAMPTZ,
 			error_message   TEXT            NOT NULL DEFAULT '',
 			config_snapshot JSONB,
+			phase_timings   JSONB,
 			PRIMARY KEY (id, trade_date)
 		) PARTITION BY RANGE (trade_date)`,
 		`CREATE TABLE pipeline_runs_2026_q1 PARTITION OF pipeline_runs

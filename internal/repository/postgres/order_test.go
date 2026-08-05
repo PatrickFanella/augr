@@ -385,6 +385,7 @@ func newOrderTradeIntegrationPool(t *testing.T, ctx context.Context) (*pgxpool.P
 			'long',
 			'short'
 		)`,
+		`CREATE TYPE market_type AS ENUM ('stock', 'crypto', 'polymarket', 'kalshi', 'options')`,
 		`CREATE TABLE strategies (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid()
 		)`,
@@ -395,6 +396,7 @@ func newOrderTradeIntegrationPool(t *testing.T, ctx context.Context) (*pgxpool.P
 			side position_side NOT NULL,
 			quantity NUMERIC(20, 8) NOT NULL,
 			avg_entry NUMERIC(20, 8) NOT NULL,
+			unrealized_pnl NUMERIC(20, 8) NOT NULL DEFAULT 0,
 			realized_pnl NUMERIC(20, 8) NOT NULL DEFAULT 0,
 			opened_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 			closed_at TIMESTAMPTZ
@@ -416,7 +418,18 @@ func newOrderTradeIntegrationPool(t *testing.T, ctx context.Context) (*pgxpool.P
 			broker TEXT,
 			submitted_at TIMESTAMPTZ,
 			filled_at TIMESTAMPTZ,
-			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			asset_class         TEXT           NOT NULL DEFAULT 'equity',
+			underlying_ticker   TEXT,
+			option_type         TEXT,
+			strike              NUMERIC(20, 8),
+			expiry              DATE,
+			contract_multiplier NUMERIC(10, 4) DEFAULT 100,
+			position_intent     TEXT,
+			leg_group_id        UUID,
+			market_type         market_type NOT NULL DEFAULT 'stock',
+			prediction_side     TEXT,
+			polymarket_intent   TEXT
 		)`,
 		`CREATE TABLE trades (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -429,7 +442,11 @@ func newOrderTradeIntegrationPool(t *testing.T, ctx context.Context) (*pgxpool.P
 			price NUMERIC(20, 8) NOT NULL,
 			fee NUMERIC(20, 8) NOT NULL DEFAULT 0,
 			executed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			asset_class TEXT NOT NULL DEFAULT 'equity',
+			open_close TEXT,
+			contract_multiplier NUMERIC(10, 4) DEFAULT 100,
+			premium NUMERIC(20, 8)
 		)`,
 		`CREATE TABLE position_provenance (
 			position_id UUID PRIMARY KEY REFERENCES positions(id) ON DELETE CASCADE,

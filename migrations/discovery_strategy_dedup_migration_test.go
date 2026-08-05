@@ -15,6 +15,7 @@ func TestDiscoveryStrategyDedupUpMigrationDefinesExpectedSQL(t *testing.T) {
 	upSQL := normalizeSQL(t, readMigrationFile(t, "000031_discovery_strategy_dedup.up.sql"))
 
 	for _, fragment := range []string{
+		"begin;",
 		"create temp table _strategy_dedup_map on commit drop as",
 		"partition by ticker, market_type, is_paper, name",
 		"where is_paper = true and (name like 'discovery:%' or name like 'options:%')",
@@ -27,6 +28,7 @@ func TestDiscoveryStrategyDedupUpMigrationDefinesExpectedSQL(t *testing.T) {
 		"delete from strategies",
 		"create unique index if not exists idx_strategies_discovery_unique",
 		"on strategies (ticker, market_type, is_paper, name)",
+		"commit;",
 	} {
 		if !strings.Contains(upSQL, fragment) {
 			t.Fatalf("expected up migration to contain %q, got:\n%s", fragment, upSQL)

@@ -578,7 +578,18 @@ func newPositionIntegrationPool(t *testing.T, ctx context.Context) (*pgxpool.Poo
 			stop_loss       NUMERIC(20, 8),
 			take_profit     NUMERIC(20, 8),
 			opened_at       TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
-			closed_at       TIMESTAMPTZ
+			closed_at       TIMESTAMPTZ,
+			asset_class         TEXT           NOT NULL DEFAULT 'equity',
+			underlying_ticker   TEXT,
+			option_type         TEXT,
+			strike              NUMERIC(20, 8),
+			expiry              DATE,
+			contract_multiplier NUMERIC(10, 4) DEFAULT 100,
+			leg_group_id        UUID,
+			delta               NUMERIC(10, 6),
+			gamma               NUMERIC(10, 6),
+			theta               NUMERIC(10, 6),
+			vega                NUMERIC(10, 6)
 		)`,
 		`CREATE TABLE trades (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -613,6 +613,7 @@ func newAgentDecisionIntegrationPool(t *testing.T, ctx context.Context) (*pgxpoo
 			prompt_tokens     INT,
 			completion_tokens INT,
 			latency_ms        INT,
+			cost_usd          NUMERIC(12, 6) DEFAULT 0,
 			created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 			PRIMARY KEY (id, created_at)
 		) PARTITION BY RANGE (created_at)`,

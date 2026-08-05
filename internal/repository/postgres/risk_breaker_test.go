@@ -20,7 +20,7 @@ func TestRiskBreakerRepoIntegration_CRUD(t *testing.T) {
 	pool, cleanup := newRiskBreakerIntegrationPool(t, ctx)
 	defer cleanup()
 	repo := NewRiskBreakerRepo(pool)
-	tripAt := time.Now().UTC().Add(-time.Minute)
+	tripAt := time.Now().UTC().Add(-time.Minute).Truncate(time.Microsecond)
 	if err := repo.Trip(ctx, domain.RiskBreakerScopeGlobal, "initial", tripAt); err != nil {
 		t.Fatalf("Trip() error = %v", err)
 	}

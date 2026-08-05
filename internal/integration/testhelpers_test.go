@@ -136,6 +136,7 @@ func applyDDL(t *testing.T, pool *pgxpool.Pool) {
 			market_type   market_type NOT NULL DEFAULT 'stock',
 			schedule_cron TEXT        NOT NULL DEFAULT '',
 			config        JSONB       NOT NULL DEFAULT '{}',
+			is_active     BOOLEAN     NOT NULL DEFAULT true,
 			status        TEXT        NOT NULL DEFAULT 'active',
 			skip_next_run BOOLEAN     NOT NULL DEFAULT false,
 			is_paper      BOOLEAN     NOT NULL DEFAULT true,
@@ -155,6 +156,7 @@ func applyDDL(t *testing.T, pool *pgxpool.Pool) {
 			completed_at    TIMESTAMPTZ,
 			error_message   TEXT            NOT NULL DEFAULT '',
 			config_snapshot JSONB,
+			phase_timings   JSONB,
 			PRIMARY KEY (id, trade_date)
 		) PARTITION BY RANGE (trade_date)`,
 		`CREATE TABLE pipeline_runs_2026_q1 PARTITION OF pipeline_runs
@@ -177,6 +179,8 @@ func applyDDL(t *testing.T, pool *pgxpool.Pool) {
 			prompt_tokens     INT,
 			completion_tokens INT,
 			latency_ms        INT,
+			prompt_text       TEXT,
+			cost_usd          NUMERIC(12, 6) DEFAULT 0,
 			created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 			PRIMARY KEY (id, created_at)
 		) PARTITION BY RANGE (created_at)`,
@@ -199,7 +203,18 @@ func applyDDL(t *testing.T, pool *pgxpool.Pool) {
 			stop_loss       NUMERIC(20, 8),
 			take_profit     NUMERIC(20, 8),
 			opened_at       TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
-			closed_at       TIMESTAMPTZ
+			closed_at       TIMESTAMPTZ,
+			asset_class         TEXT           NOT NULL DEFAULT 'equity',
+			underlying_ticker   TEXT,
+			option_type         TEXT,
+			strike              NUMERIC(20, 8),
+			expiry              DATE,
+			contract_multiplier NUMERIC(10, 4) DEFAULT 100,
+			leg_group_id        UUID,
+			delta               NUMERIC(10, 6),
+			gamma               NUMERIC(10, 6),
+			theta               NUMERIC(10, 6),
+			vega                NUMERIC(10, 6)
 		)`,
 
 		// Orders
@@ -220,7 +235,18 @@ func applyDDL(t *testing.T, pool *pgxpool.Pool) {
 			broker          TEXT,
 			submitted_at    TIMESTAMPTZ,
 			filled_at       TIMESTAMPTZ,
-			created_at      TIMESTAMPTZ    NOT NULL DEFAULT NOW()
+			created_at      TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
+			asset_class         TEXT           NOT NULL DEFAULT 'equity',
+			underlying_ticker   TEXT,
+			option_type         TEXT,
+			strike              NUMERIC(20, 8),
+			expiry              DATE,
+			contract_multiplier NUMERIC(10, 4) DEFAULT 100,
+			position_intent     TEXT,
+			leg_group_id        UUID,
+			market_type         market_type NOT NULL DEFAULT 'stock',
+			prediction_side     TEXT,
+			polymarket_intent   TEXT
 		)`,
 
 		// Trades
@@ -235,7 +261,11 @@ func applyDDL(t *testing.T, pool *pgxpool.Pool) {
 			price       NUMERIC(20, 8) NOT NULL,
 			fee         NUMERIC(20, 8) NOT NULL DEFAULT 0,
 			executed_at TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
-			created_at  TIMESTAMPTZ    NOT NULL DEFAULT NOW()
+			created_at  TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
+			asset_class         TEXT           NOT NULL DEFAULT 'equity',
+			open_close          TEXT,
+			contract_multiplier NUMERIC(10, 4) DEFAULT 100,
+			premium             NUMERIC(20, 8)
 		)`,
 
 		// Agent memories (with FTS)

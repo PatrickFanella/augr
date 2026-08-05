@@ -424,6 +424,19 @@ func newOpportunityIntegrationPool(t *testing.T, ctx context.Context) (*pgxpool.
 		`CREATE INDEX idx_portfolio_opportunities_status_expires_at ON portfolio_opportunities (status, expires_at)`,
 		`CREATE INDEX idx_portfolio_opportunities_strategy_id ON portfolio_opportunities (strategy_id)`,
 		`CREATE INDEX idx_portfolio_opportunities_market_type_ticker ON portfolio_opportunities (market_type, ticker)`,
+		`CREATE TABLE allocation_decisions (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			opportunity_id UUID REFERENCES portfolio_opportunities (id),
+			strategy_id UUID REFERENCES strategies (id),
+			mode TEXT NOT NULL CHECK (mode IN ('shadow', 'paper')),
+			action TEXT NOT NULL CHECK (action IN ('shadow_selected', 'shadow_rejected', 'paper_order_intent', 'execution_rejected', 'executed')),
+			score NUMERIC NOT NULL DEFAULT 0,
+			notional_usd NUMERIC NOT NULL DEFAULT 0,
+			quantity NUMERIC NOT NULL DEFAULT 0,
+			reasons TEXT[] NOT NULL DEFAULT '{}',
+			created_order_id UUID REFERENCES orders (id),
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
 	}
 
 	for _, stmt := range ddl {

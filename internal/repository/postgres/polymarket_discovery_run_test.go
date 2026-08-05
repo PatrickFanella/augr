@@ -63,7 +63,7 @@ func TestPolymarketDiscoveryRunRepoIntegration_CRUD(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get() error = %v", err)
 	}
-	if got.Candidates[0].Slug != "eth" || string(got.Accepted[0].Proposal) != `{"approved":true}` {
+	if got.Candidates[0].Slug != "eth" || !jsonBytesEqual(got.Accepted[0].Proposal, json.RawMessage(`{"approved":true}`)) {
 		t.Fatalf("round trip mismatch: %#v", got)
 	}
 	active, err := repo.GetActive(ctx)

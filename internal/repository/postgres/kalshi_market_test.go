@@ -97,7 +97,7 @@ func TestKalshiRepositoriesIntegration_CRUD(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListLatestByTicker() error = %v", err)
 	}
-	if len(latest) != 2 || string(latest[0].Raw) != `{"seq":2}` || string(latest[1].Raw) != `{"seq":1}` {
+	if len(latest) != 2 || !jsonBytesEqual(latest[0].Raw, snap2.Raw) || !jsonBytesEqual(latest[1].Raw, snap1.Raw) {
 		t.Fatalf("ListLatestByTicker() = %#v, want newest-first snapshots", latest)
 	}
 	recent, err := snapshotRepo.ListRecent(ctx, 1)
@@ -207,6 +207,9 @@ func newKalshiIntegrationPool(t *testing.T, ctx context.Context) (*pgxpool.Pool,
 	}
 	ddl = `CREATE TABLE kalshi_market_snapshots (
 		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+		provider TEXT NOT NULL DEFAULT 'kalshi',
+		environment TEXT NOT NULL DEFAULT 'unknown',
+		source_url TEXT NOT NULL DEFAULT '',
 		ticker TEXT NOT NULL,
 		title TEXT NOT NULL DEFAULT '',
 		status TEXT NOT NULL DEFAULT '',

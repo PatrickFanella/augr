@@ -67,6 +67,9 @@ func TestAllocationDecisionRepoIntegration_CreateListAndCount(t *testing.T) {
 	}
 
 	createdOrderID := uuid.New()
+	if _, err := pool.Exec(ctx, `INSERT INTO orders (id) VALUES ($1)`, createdOrderID); err != nil {
+		t.Fatalf("create order fixture: %v", err)
+	}
 	decision := &domain.AllocationDecision{
 		OpportunityID:  &opportunity.ID,
 		StrategyID:     &strategyID,

@@ -1,5 +1,7 @@
 -- Collapse existing duplicates for discovery-generated paper strategies,
 -- preserving the earliest created row for each logical strategy key.
+BEGIN;
+
 CREATE TEMP TABLE _strategy_dedup_map ON COMMIT DROP AS
 WITH ranked AS (
     SELECT id,
@@ -58,3 +60,5 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_strategies_discovery_unique
     ON strategies (ticker, market_type, is_paper, name)
     WHERE is_paper = true
       AND (name LIKE 'discovery:%' OR name LIKE 'options:%');
+
+COMMIT;

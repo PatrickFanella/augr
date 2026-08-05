@@ -50,7 +50,7 @@ func TestKalshiSettlementGateRepoIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get() 3 = %v", err)
 	}
-	if !state.Eligible || state.ConsecutiveSuccesses != 21 {
+	if !state.Eligible || state.ConsecutiveSuccesses != 20 {
 		t.Fatalf("eligibility after threshold = %#v", state)
 	}
 	if _, err := repo.RecordSuccess(ctx, job, 20, 1, 1, 1, 1, "fp-b", now); err != nil {

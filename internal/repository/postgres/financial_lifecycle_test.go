@@ -154,7 +154,7 @@ func TestFinancialLifecycle_SettlePredictionDecisionSingleLotKeepsLinkage(t *tes
 
 func TestFinancialLifecycle_KalshiEarlyExitClosesOpeningAndExitDecisions(t *testing.T) {
 	ctx := context.Background()
-	pool, cleanup := newFinancialLifecycleIntegrationPool(t, ctx)
+	pool, cleanup := newFinancialLifecycleSettlementIntegrationPool(t, ctx)
 	defer cleanup()
 	repo := &DB{Pool: pool}
 	strategyID := createFinancialLifecycleStrategy(t, ctx, pool)
