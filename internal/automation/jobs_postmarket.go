@@ -19,7 +19,7 @@ import (
 )
 
 func (o *JobOrchestrator) registerPostMarketJobs() {
-	o.Register("daily_review", "Performance review — disable losing strategies", dailyReviewSpec, o.dailyReview)
+	o.Register("daily_review", "Review daily pipeline completion and decision quality", dailyReviewSpec, o.dailyReview)
 	o.Register("strategy_resweep", "Re-sweep deployed strategies with latest data", strategyResweepSpec, o.strategyResweep)
 	o.Register("options_scan", "Scan options chains for next-day setups", optionsScanSpec, o.optionsScan)
 }
@@ -30,18 +30,19 @@ var (
 	optionsScanSpec     = scheduler.ScheduleSpec{Type: scheduler.ScheduleTypeAfterHours, Cron: "0 22 * * 1-5", SkipWeekends: true, SkipHolidays: true}
 )
 
-// dailyReview checks all active strategies' pipeline runs from today
-// and logs a summary per strategy.
+// dailyReview checks all active strategies' pipeline runs from today and
+// persists an operationally meaningful status/signal summary.
 func (o *JobOrchestrator) dailyReview(ctx context.Context) error {
 	o.logger.Info("daily_review: starting")
 
-	strategies, err := o.deps.StrategyRepo.List(ctx, repository.StrategyFilter{Status: "active"}, 100, 0)
+	strategies, err := listAllStrategies(ctx, o.deps.StrategyRepo, repository.StrategyFilter{Status: "active"})
 	if err != nil {
 		return fmt.Errorf("daily_review: list strategies: %w", err)
 	}
 
 	today := time.Now().UTC().Truncate(24 * time.Hour)
 
+	summary := map[string]int{"strategies": len(strategies)}
 	for _, strat := range strategies {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -60,49 +61,41 @@ func (o *JobOrchestrator) dailyReview(ctx context.Context) error {
 			continue
 		}
 
-		var buyCount, sellCount, holdCount int
-		var confidenceSum float64
-		for _, run := range runs {
-			switch run.Signal {
-			case domain.PipelineSignalBuy:
-				buyCount++
-			case domain.PipelineSignalSell:
-				sellCount++
-			case domain.PipelineSignalHold:
-				holdCount++
-			}
-			// Use signal as rough confidence proxy: buy=1, sell=-1, hold=0.
-			switch run.Signal {
-			case domain.PipelineSignalBuy:
-				confidenceSum += 1.0
-			case domain.PipelineSignalSell:
-				confidenceSum -= 1.0
-			}
+		strategySummary := summarizePipelineRuns(runs)
+		for key, value := range strategySummary {
+			summary[key] += value
 		}
-
-		totalRuns := len(runs)
-		var avgConfidence float64
-		if totalRuns > 0 {
-			avgConfidence = confidenceSum / float64(totalRuns)
-		}
-
-		// Warn if strategy has enough runs and trending negative.
-		totalAllTime := buyCount + sellCount + holdCount
-		if totalAllTime >= 5 && avgConfidence < 0 {
-			o.logger.Warn("daily_review: strategy trending negative",
+		if strategySummary["failed"] > 0 || strategySummary["running"] > 0 {
+			o.logger.Warn("daily_review: strategy has incomplete runs",
 				slog.String("ticker", strat.Ticker),
 				slog.String("strategy", strat.Name),
-				slog.Float64("avg_confidence", avgConfidence),
+				slog.Int("failed", strategySummary["failed"]),
+				slog.Int("running", strategySummary["running"]),
 			)
 		}
-
-		o.logger.Info(fmt.Sprintf("daily_review: %s — %d runs today, %d buy, %d sell, %d hold, avg confidence %.2f",
-			strat.Ticker, totalRuns, buyCount, sellCount, holdCount, avgConfidence),
-		)
+		o.logger.Info("daily_review: strategy summary", slog.String("ticker", strat.Ticker), slog.String("strategy", strat.Name), slog.Any("summary", strategySummary))
 	}
 
-	o.logger.Info("daily_review: completed", slog.Int("strategies", len(strategies)))
+	o.SetLastSummary("daily_review", summary)
+	o.logger.Info("daily_review: completed", slog.Any("summary", summary))
 	return nil
+}
+
+func summarizePipelineRuns(runs []domain.PipelineRun) map[string]int {
+	summary := map[string]int{"runs": len(runs)}
+	for _, run := range runs {
+		summary[run.Status.String()]++
+		if run.Status != domain.PipelineStatusCompleted {
+			continue
+		}
+		switch run.Signal {
+		case domain.PipelineSignalBuy, domain.PipelineSignalSell, domain.PipelineSignalHold:
+			summary[run.Signal.String()]++
+		default:
+			summary["completed_without_signal"]++
+		}
+	}
+	return summary
 }
 
 // strategyResweep runs a lighter parameter sweep (10 variants) on each
@@ -111,7 +104,7 @@ func (o *JobOrchestrator) dailyReview(ctx context.Context) error {
 func (o *JobOrchestrator) strategyResweep(ctx context.Context) error {
 	o.logger.Info("strategy_resweep: starting")
 
-	strategies, err := o.deps.StrategyRepo.List(ctx, repository.StrategyFilter{Status: "active"}, 100, 0)
+	strategies, err := listAllStrategies(ctx, o.deps.StrategyRepo, repository.StrategyFilter{Status: "active"})
 	if err != nil {
 		return fmt.Errorf("strategy_resweep: list strategies: %w", err)
 	}

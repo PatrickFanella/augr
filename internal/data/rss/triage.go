@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/llm"
+	"github.com/PatrickFanella/get-rich-quick/internal/llm/parse"
 )
 
 // TriageResult is the LLM's analysis of a news headline.
@@ -132,6 +133,9 @@ func triageBatch(ctx context.Context, provider llm.Provider, model string, batch
 
 		content := normalizeTriageContent(resp.Content)
 		parsed, parseErr := parseTriageResults(content)
+		if parseErr == nil && len(parsed) != len(batch) {
+			parseErr = fmt.Errorf("triage result count %d does not match batch size %d", len(parsed), len(batch))
+		}
 		if parseErr != nil {
 			retryable := isRetryableTriageParseError(content, parseErr)
 			if attempt == 1 && retryable {
@@ -183,18 +187,58 @@ func normalizeTriageContent(content string) string {
 }
 
 func parseTriageResults(content string) ([]TriageResult, error) {
-	var triageResults []TriageResult
-	err := json.Unmarshal([]byte(content), &triageResults)
-	if err == nil {
-		return triageResults, nil
-	}
 	var wrapper struct {
 		Results []TriageResult `json:"results"`
 	}
-	if err2 := json.Unmarshal([]byte(content), &wrapper); err2 == nil {
-		return wrapper.Results, nil
+	extracted, err := parse.ExtractJSONObject(content)
+	if err != nil {
+		return nil, err
 	}
-	return nil, err
+	if err := json.Unmarshal([]byte(extracted), &wrapper); err != nil {
+		return nil, err
+	}
+	if len(wrapper.Results) == 0 {
+		return nil, fmt.Errorf("triage response contains no results")
+	}
+	for i := range wrapper.Results {
+		normalizeTriageResult(&wrapper.Results[i])
+		if err := validateTriageResult(wrapper.Results[i]); err != nil {
+			return nil, fmt.Errorf("triage result %d: %w", i+1, err)
+		}
+	}
+	return wrapper.Results, nil
+}
+
+func normalizeTriageResult(result *TriageResult) {
+	if result == nil {
+		return
+	}
+	result.Category = strings.ToLower(strings.TrimSpace(result.Category))
+	result.Sentiment = strings.ToLower(strings.TrimSpace(result.Sentiment))
+	result.Summary = strings.TrimSpace(result.Summary)
+	for i := range result.Tickers {
+		result.Tickers[i] = strings.ToUpper(strings.TrimSpace(result.Tickers[i]))
+	}
+}
+
+func validateTriageResult(result TriageResult) error {
+	switch result.Category {
+	case "earnings", "macro", "sector", "company", "geopolitical", "other":
+	default:
+		return fmt.Errorf("invalid category %q", result.Category)
+	}
+	switch result.Sentiment {
+	case "bullish", "bearish", "neutral":
+	default:
+		return fmt.Errorf("invalid sentiment %q", result.Sentiment)
+	}
+	if result.Relevance < 0 || result.Relevance > 1 {
+		return fmt.Errorf("relevance %.3f outside [0,1]", result.Relevance)
+	}
+	if result.Summary == "" {
+		return fmt.Errorf("summary is required")
+	}
+	return nil
 }
 
 func isRetryableTriageParseError(content string, err error) bool {

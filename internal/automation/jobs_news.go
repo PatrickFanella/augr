@@ -162,7 +162,7 @@ func (o *JobOrchestrator) socialScan(ctx context.Context) error {
 	}
 
 	if o.deps.StrategyRepo != nil {
-		strategies, err := o.deps.StrategyRepo.List(ctx, repository.StrategyFilter{Status: "active"}, 50, 0)
+		strategies, err := listAllStrategies(ctx, o.deps.StrategyRepo, repository.StrategyFilter{Status: "active"})
 		if err != nil {
 			return fmt.Errorf("social_scan: list strategies: %w", err)
 		}
@@ -210,4 +210,25 @@ func (o *JobOrchestrator) socialScan(ctx context.Context) error {
 
 	o.logger.Info("social_scan: complete")
 	return nil
+}
+
+func listAllStrategies(ctx context.Context, repo repository.StrategyRepository, filter repository.StrategyFilter) ([]domain.Strategy, error) {
+	count, err := repo.Count(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+	const pageSize = 100
+	strategies := make([]domain.Strategy, 0, count)
+	for offset := 0; offset < count; {
+		page, err := repo.List(ctx, filter, min(pageSize, count-offset), offset)
+		if err != nil {
+			return nil, err
+		}
+		if len(page) == 0 {
+			break
+		}
+		strategies = append(strategies, page...)
+		offset += len(page)
+	}
+	return strategies, nil
 }

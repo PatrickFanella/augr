@@ -78,6 +78,42 @@ func TestTriageRequestsResultsWrapperAndParsesBatch(t *testing.T) {
 	}
 }
 
+func TestTriageParsesOllamaProsePrefixedJSON(t *testing.T) {
+	t.Parallel()
+
+	provider := &stubTriageProvider{responses: []string{
+		"**Classifying headlines with ticker identification**\n" +
+			`{"results":[{"tickers":[" aapl "],"category":"Company","sentiment":"Bullish","relevance":0.9,"summary":" Apple demand stays strong "}]}`,
+	}}
+	articles := []Article{{GUID: "guid-1", Source: "Reuters", Title: "Apple demand stays strong"}}
+
+	results := Triage(context.Background(), provider, "", articles, nil)
+	if len(results) != 1 {
+		t.Fatalf("len(results) = %d, want 1", len(results))
+	}
+	got := results["guid-1"]
+	if got == nil || len(got.Tickers) != 1 || got.Tickers[0] != "AAPL" || got.Category != "company" || got.Sentiment != "bullish" || got.Summary != "Apple demand stays strong" {
+		t.Fatalf("results[guid-1] = %#v, want normalized parsed result", got)
+	}
+}
+
+func TestTriageRejectsWrongResultCount(t *testing.T) {
+	t.Parallel()
+
+	provider := &stubTriageProvider{responses: []string{
+		`{"results":[{"tickers":["AAPL"],"category":"company","sentiment":"bullish","relevance":0.9,"summary":"Apple demand stays strong"}]}`,
+	}}
+	articles := []Article{
+		{GUID: "guid-1", Title: "Apple demand stays strong"},
+		{GUID: "guid-2", Title: "Microsoft updates product plans"},
+	}
+
+	results := Triage(context.Background(), provider, "", articles, nil)
+	if len(results) != 0 {
+		t.Fatalf("len(results) = %d, want 0 for incomplete provenance mapping", len(results))
+	}
+}
+
 func TestTriageRetriesOnceOnEmptyTruncatedResponse(t *testing.T) {
 	t.Parallel()
 

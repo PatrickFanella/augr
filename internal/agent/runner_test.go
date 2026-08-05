@@ -194,6 +194,9 @@ func TestRunnerPrepare_ResolvesRuntimeFromStrategyConfig(t *testing.T) {
 	if len(prepared.ConfigSnapshot) == 0 {
 		t.Fatal("expected config snapshot to be populated")
 	}
+	if prepared.Runtime.SkipPhases[PhaseRiskDebate] {
+		t.Fatal("risk debate is skipped by default, want canonical risk stage enabled")
+	}
 }
 
 func TestRunnerRunStrategy_ConcurrentRunsKeepConfigIsolated(t *testing.T) {
@@ -216,8 +219,6 @@ func TestRunnerRunStrategy_ConcurrentRunsKeepConfigIsolated(t *testing.T) {
 				errs <- pErr
 				return
 			}
-			// Enable risk debate for this test (default skips it).
-			prepared.Runtime.SkipPhases = nil
 			result, err := runner.Run(context.Background(), prepared)
 			if err != nil {
 				errs <- err
@@ -283,9 +284,6 @@ func TestRunnerRunStrategy_RiskJudgeUpdatesCanonicalSignalAndPlan(t *testing.T) 
 	if err != nil {
 		t.Fatalf("Prepare() error = %v", err)
 	}
-	// Enable risk debate for this test (default skips it).
-	prepared.Runtime.SkipPhases = nil
-
 	result, err := runner.Run(context.Background(), prepared)
 	if err != nil {
 		t.Fatalf("RunStrategy() error = %v", err)

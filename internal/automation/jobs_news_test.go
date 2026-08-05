@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
+	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 	pgrepo "github.com/PatrickFanella/get-rich-quick/internal/repository/postgres"
 )
 
@@ -71,6 +72,41 @@ func TestJobOrchestratorSocialScan_SkipsStockTwitsForPolymarketStrategies(t *tes
 	if gotPolymarket != 0 {
 		t.Fatalf("polymarket sentiment requests = %d, want 0", gotPolymarket)
 	}
+}
+
+func TestListAllStrategiesPaginatesPastFirstPage(t *testing.T) {
+	t.Parallel()
+
+	strategies := make([]domain.Strategy, 141)
+	for i := range strategies {
+		strategies[i] = domain.Strategy{ID: uuid.New(), Status: domain.StrategyStatusActive}
+	}
+	repo := &pagedStrategyRepo{stubReportStrategyRepo: stubReportStrategyRepo{strategies: strategies}}
+
+	got, err := listAllStrategies(context.Background(), repo, repository.StrategyFilter{Status: domain.StrategyStatusActive})
+	if err != nil {
+		t.Fatalf("listAllStrategies() error = %v", err)
+	}
+	if len(got) != 141 {
+		t.Fatalf("len(strategies) = %d, want 141", len(got))
+	}
+	if repo.listCalls != 2 {
+		t.Fatalf("List() calls = %d, want 2", repo.listCalls)
+	}
+}
+
+type pagedStrategyRepo struct {
+	stubReportStrategyRepo
+	listCalls int
+}
+
+func (r *pagedStrategyRepo) List(_ context.Context, _ repository.StrategyFilter, limit, offset int) ([]domain.Strategy, error) {
+	r.listCalls++
+	if offset >= len(r.strategies) {
+		return nil, nil
+	}
+	end := min(offset+limit, len(r.strategies))
+	return append([]domain.Strategy(nil), r.strategies[offset:end]...), nil
 }
 
 func jsonResponse(body string) *http.Response {

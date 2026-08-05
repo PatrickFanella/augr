@@ -830,11 +830,11 @@ func snapshotState(state *PipelineState) StateView {
 	}
 }
 
-// defaultSkipPhases returns the phases to skip by default.
-// Risk debate is skipped because the research debate + trader already
-// incorporate risk assessment, and it doubles the pipeline time.
+// defaultSkipPhases returns the phases to skip by default. The canonical
+// pipeline runs every configured stage, including the independent risk debate;
+// callers that intentionally operate a reduced pipeline must opt out explicitly.
 func defaultSkipPhases() map[Phase]bool {
-	return map[Phase]bool{PhaseRiskDebate: true}
+	return nil
 }
 
 // runtimePipelineTimeout derives a safe wall-clock budget for the entire
