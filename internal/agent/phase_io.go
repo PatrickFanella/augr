@@ -58,9 +58,10 @@ type TradingOutput struct {
 
 // RiskJudgeInput provides the risk debate results and trading plan for the risk manager.
 type RiskJudgeInput struct {
-	Ticker      string
-	Rounds      []DebateRound
-	TradingPlan TradingPlan
+	Ticker       string
+	Rounds       []DebateRound
+	TradingPlan  TradingPlan
+	MarketReport string
 }
 
 // RiskJudgeOutput is the result of the risk manager node's execution.
@@ -174,9 +175,10 @@ func applyTradingOutput(state *PipelineState, output TradingOutput) {
 // riskJudgeInputFromState constructs a RiskJudgeInput from the pipeline state.
 func riskJudgeInputFromState(state *PipelineState) RiskJudgeInput {
 	return RiskJudgeInput{
-		Ticker:      state.Ticker,
-		Rounds:      state.RiskDebate.Rounds,
-		TradingPlan: state.TradingPlan,
+		Ticker:       state.Ticker,
+		Rounds:       state.RiskDebate.Rounds,
+		TradingPlan:  state.TradingPlan,
+		MarketReport: state.AnalystReports[AgentRoleMarketAnalyst],
 	}
 }
 

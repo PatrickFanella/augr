@@ -761,7 +761,10 @@ func (r *Runner) runDebateJudge(ctx context.Context, state *PipelineState, phase
 
 func (r *Runner) debateInputFromState(state *PipelineState, phase Phase) DebateInput {
 	if phase == PhaseRiskDebate {
-		return DebateInput{Ticker: state.Ticker, Rounds: state.RiskDebate.Rounds, ContextReports: map[AgentRole]string{AgentRoleTrader: MarshalTradingPlanSafe(state.TradingPlan)}}
+		return DebateInput{Ticker: state.Ticker, Rounds: state.RiskDebate.Rounds, ContextReports: map[AgentRole]string{
+			AgentRoleTrader:        MarshalTradingPlanSafe(state.TradingPlan),
+			AgentRoleMarketAnalyst: state.AnalystReports[AgentRoleMarketAnalyst],
+		}}
 	}
 	return debateInputFromState(state)
 }

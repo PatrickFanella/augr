@@ -114,9 +114,10 @@ func (r *RiskManager) Phase() agent.Phase { return agent.PhaseRiskDebate }
 // with the risk-adjusted values. For HOLD, no position adjustments are made.
 func (r *RiskManager) Execute(ctx context.Context, state *agent.PipelineState) error {
 	input := agent.RiskJudgeInput{
-		Ticker:      state.Ticker,
-		Rounds:      state.RiskDebate.Rounds,
-		TradingPlan: state.TradingPlan,
+		Ticker:       state.Ticker,
+		Rounds:       state.RiskDebate.Rounds,
+		TradingPlan:  state.TradingPlan,
+		MarketReport: state.AnalystReports[agent.AgentRoleMarketAnalyst],
 	}
 	output, err := r.JudgeRisk(ctx, input)
 	if output.StoredSignal != "" {
@@ -145,6 +146,9 @@ func (r *RiskManager) JudgeRisk(ctx context.Context, input agent.RiskJudgeInput)
 	}
 	contextReports := map[agent.AgentRole]string{
 		agent.AgentRoleTrader: string(tradingPlanJSON),
+	}
+	if strings.TrimSpace(input.MarketReport) != "" {
+		contextReports[agent.AgentRoleMarketAnalyst] = input.MarketReport
 	}
 
 	content, promptText, resp, err := r.CallWithContext(

@@ -182,9 +182,10 @@ func (d *DebateExecutor) Execute(ctx context.Context, state *PipelineState) erro
 	))
 	if rj, ok := d.config.Judge.(RiskJudgeNode); ok {
 		input := RiskJudgeInput{
-			Ticker:      state.Ticker,
-			Rounds:      d.debateRounds(state),
-			TradingPlan: state.TradingPlan,
+			Ticker:       state.Ticker,
+			Rounds:       d.debateRounds(state),
+			TradingPlan:  state.TradingPlan,
+			MarketReport: state.AnalystReports[AgentRoleMarketAnalyst],
 		}
 		result, err := rj.JudgeRisk(phaseCtx, input)
 		if err != nil {

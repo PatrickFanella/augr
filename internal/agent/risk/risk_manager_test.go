@@ -728,7 +728,8 @@ func TestRiskManagerJudgeRisk(t *testing.T) {
 	rm := NewRiskManager(mock, "test-provider", "test-model", slog.Default())
 
 	input := agent.RiskJudgeInput{
-		Ticker: "TSLA",
+		Ticker:       "TSLA",
+		MarketReport: "Authoritative current price: $250.00; support: $238.00.",
 		Rounds: []agent.DebateRound{
 			{
 				Number: 1,
@@ -755,6 +756,9 @@ func TestRiskManagerJudgeRisk(t *testing.T) {
 	output, err := rm.JudgeRisk(context.Background(), input)
 	if err != nil {
 		t.Fatalf("JudgeRisk() error = %v, want nil", err)
+	}
+	if !strings.Contains(mock.lastReq.Messages[1].Content, "Authoritative current price: $250.00") {
+		t.Fatalf("risk prompt omitted market report: %q", mock.lastReq.Messages[1].Content)
 	}
 
 	// Verify FinalSignal.
