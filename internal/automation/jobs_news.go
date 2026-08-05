@@ -180,6 +180,10 @@ func (o *JobOrchestrator) socialScan(ctx context.Context) error {
 			o.logger.Warn("social_scan: open positions fetch failed", slog.Any("error", err))
 		} else {
 			for _, pos := range positions {
+				marketType := pos.MarketType.Normalize()
+				if marketType != "" && marketType != domain.MarketTypeStock {
+					continue
+				}
 				addTicker(pos.Ticker)
 			}
 		}

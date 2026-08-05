@@ -74,6 +74,52 @@ func TestJobOrchestratorSocialScan_SkipsStockTwitsForPolymarketStrategies(t *tes
 	}
 }
 
+func TestJobOrchestratorSocialScan_SkipsPredictionMarketPositions(t *testing.T) {
+	origTransport := http.DefaultTransport
+	t.Cleanup(func() { http.DefaultTransport = origTransport })
+
+	var (
+		mu    sync.Mutex
+		calls = map[string]int{}
+	)
+	http.DefaultTransport = roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		mu.Lock()
+		calls[req.URL.Path]++
+		mu.Unlock()
+		switch req.URL.Path {
+		case "/api/2/trending/symbols.json":
+			return jsonResponse(`{"symbols":[]}`), nil
+		case "/api/2/streams/symbol/AAPL.json":
+			return jsonResponse(`{"messages":[]}`), nil
+		case "/api/2/streams/symbol/KXTEST:YES.json":
+			return jsonResponse(`{"messages":[]}`), nil
+		default:
+			t.Fatalf("unexpected request: %s", req.URL.String())
+			return nil, nil
+		}
+	})
+
+	orch := NewJobOrchestrator(OrchestratorDeps{
+		NewsFeedRepo: &pgrepo.NewsFeedRepo{},
+		PositionRepo: newRecordingPositionRepo(
+			&domain.Position{ID: uuid.New(), Ticker: "AAPL", MarketType: domain.MarketTypeStock},
+			&domain.Position{ID: uuid.New(), Ticker: "KXTEST:YES", MarketType: domain.MarketTypeKalshi},
+		),
+	})
+	if err := orch.socialScan(context.Background()); err != nil {
+		t.Fatalf("socialScan() error = %v", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if calls["/api/2/streams/symbol/AAPL.json"] != 1 {
+		t.Fatalf("stock position calls = %d, want 1", calls["/api/2/streams/symbol/AAPL.json"])
+	}
+	if calls["/api/2/streams/symbol/KXTEST:YES.json"] != 0 {
+		t.Fatalf("Kalshi position calls = %d, want 0", calls["/api/2/streams/symbol/KXTEST:YES.json"])
+	}
+}
+
 func TestListAllStrategiesPaginatesPastFirstPage(t *testing.T) {
 	t.Parallel()
 

@@ -77,6 +77,10 @@ func (o *JobOrchestrator) currentDataRefresh(ctx context.Context) error {
 			summary["errors"]++
 		} else {
 			for _, pos := range positions {
+				marketType := pos.MarketType.Normalize()
+				if marketType != "" && marketType != domain.MarketTypeStock {
+					continue
+				}
 				addTicker(pos.Ticker)
 			}
 		}
