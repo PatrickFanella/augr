@@ -1,6 +1,6 @@
 # Augr automation audit — 2026-08-05
 
-Status: in progress  
+Status: complete
 Production timezone: America/Chicago  
 Production stack: Compose project `augr`, `/srv/repos/patrickfanella/augr/docker-compose.nuc.yml`  
 Audit start: 2026-08-05 16:36 CDT  
@@ -34,35 +34,35 @@ The live orchestration API exposed 27 jobs. The code contains five additional co
 
 ### Live automation jobs
 
-| Job | Purpose | Schedule / market calendar | Dependencies / downstream | Start-of-audit state | Provisional classification |
+| Job | Purpose | Schedule / market calendar | Dependencies / downstream | Start-of-audit state | Final classification |
 |---|---|---|---|---|---|
-| `universe_refresh` | Refresh stock universe from Polygon | Sun 12:00 ET; provider calendar, not market-hours gated | source for watchlist/history/scans | enabled; last run failed 2026-08-02 | Buggy |
-| `history_refresh` | Refresh stock OHLCV history | Tue–Sat 04:00 ET | source for scans/backtests | enabled; last run OK | Pending audit |
-| `current_data_refresh` | Refresh intraday stock OHLCV | every 15m in NYSE hours | blocks `hot_scan`; feeds strategies | enabled; last run reported 105/115 updated | Buggy |
-| `gap_scanner` | Detect premarket gaps/volume | weekdays 08:00 ET, NYSE calendar | blocks `discovery_run`; updates watch scores | enabled; last run OK | Pending audit |
-| `hot_scan` | Score top watchlist | every 15m in NYSE hours | waits while refresh runs; may trigger strategies | enabled; last run OK | Pending audit |
-| `deep_scan` | Score full stock universe | hourly in NYSE hours | waits while hot scan runs; updates watch scores | enabled; last run OK | Pending audit |
-| `discovery_run` | Discover stock strategies | weekdays 08:30 ET, NYSE calendar | waits while gap scan runs; creates candidates/configs | enabled; last run OK | Pending audit |
-| `position_review` | Review positions before open | weekdays 09:00 ET, NYSE calendar | strategy/pipeline inputs | enabled; old implementation was a no-op | Outright failure; fixed |
-| `earnings_scanner` | Ingest upcoming earnings | weekdays 10:00 ET, NYSE calendar | event context/triggers | enabled; recovered from one error | Pending audit |
-| `filing_monitor` | Monitor 8-K filings | every 4h weekdays, NYSE holiday skip | LLM filing analysis/event triggers | enabled; last run OK | Pending audit |
-| `news_scan` | Ingest RSS and LLM-triage news | twice hourly in NYSE hours | news context | enabled; last run OK | Pending audit |
-| `social_scan` | StockTwits trend/sentiment | every 15m in NYSE hours | social context | enabled; last run queried non-stock positions | Buggy |
-| `overnight_backtest` | Chunked five-year backtests | every 30m 01:00–05:59 ET Tue–Sat | waits while history refresh runs; input to sweep/generate | enabled; last run OK | Pending audit |
-| `overnight_sweep` | Optimize deployed strategies | 02:00 ET Tue–Sat | waits while backtest runs | enabled; last run OK | Pending audit |
-| `overnight_generate` | LLM-generate strategy ideas | 03:00 ET Tue–Sat | waits while sweep/backtest run; feeds options discovery | enabled; last run 2026-08-01 | Pending audit |
-| `options_discovery` | Discover option strategies | 03:30 ET Tue–Sat | waits while overnight generation runs | enabled; last run OK | Pending audit |
-| `options_scan` | Scan next-day option setups | weekdays 22:00 ET, after-hours/NYSE calendar | option candidates | enabled; last run OK | Pending audit |
-| `options_expiry_settlement` | Cash-settle expired paper options | weekdays 23:00 ET, after hours | precedes lifecycle reconcile | enabled; last run OK | Pending audit |
-| `options_lifecycle_reconcile` | Reconcile option lifecycle records | weekdays 23:30 ET, after hours | waits while expiry settlement runs | enabled; last run OK | Pending audit |
-| `daily_review` | Review daily pipeline/decision quality | weekdays 20:30 ET, after hours | reporting/maintenance | enabled; last run OK | Pending audit |
-| `strategy_resweep` | Resweep deployed strategies | weekdays 21:00 ET, after hours | maintenance/candidate state | enabled; last run OK | Pending audit |
-| `paper_validation_report` | Generate paper validation reports | weekdays 17:00 ET, after hours | consumes strategies/backtests/runs; report artifacts | enabled; old runs averaged 2h34m and hid item errors | Outright failure; fixed |
-| `portfolio_allocator` | Shadow portfolio allocation | :15/:45 after hours, NYSE calendar | consumes opportunity queue; may paper execute | enabled; current queue empty | Pending audit |
-| `alpaca_reconcile` | Reconcile paper broker lifecycle | every 5m, 24/7 | orders/trades/positions | enabled; current result consistent | Pending audit |
-| `kalshi_discovery` | Generate Kalshi paper strategies | hourly at :15, Kalshi/provider calendar | strategies, snapshots, discovery progress | enabled; active since 21:15 UTC at baseline | Degraded but usable |
-| `kalshi_settlement` | Settle resolved Kalshi paper contracts | every 5m, Kalshi/provider calendar | decisions/positions/trades/replay | auto-disabled after gate-ineligible failures | Outright failure, fail-closed; fixed |
-| `strategy_tournament` | Compare/prune strategies | Sun 14:00 ET | strategy state | old path capped at 100 and mixed markets | Buggy; fixed |
+| `universe_refresh` | Refresh stock universe from Polygon | Sun 12:00 ET; provider calendar, not market-hours gated | source for watchlist/history/scans | enabled; last run failed 2026-08-02 | Degraded but usable; external failure recovered and leak fixed |
+| `history_refresh` | Refresh stock OHLCV history | Tue–Sat 04:00 ET | source for scans/backtests | enabled; last run OK | Healthy with recommendations |
+| `current_data_refresh` | Refresh intraday stock OHLCV | every 15m in NYSE hours | blocks `hot_scan`; feeds strategies | enabled; last run reported 105/115 updated | Healthy after fix and production canary |
+| `gap_scanner` | Detect premarket gaps/volume | weekdays 08:00 ET, NYSE calendar | blocks `discovery_run`; updates watch scores | enabled; last run OK | Healthy with recommendations |
+| `hot_scan` | Score top watchlist | every 15m in NYSE hours | waits while refresh runs; may trigger strategies | enabled; last run OK | Healthy after canonical-trigger fix |
+| `deep_scan` | Score full stock universe | hourly in NYSE hours | waits while hot scan runs; updates watch scores | enabled; last run OK | Healthy with recommendations |
+| `discovery_run` | Discover stock strategies | weekdays 08:30 ET, NYSE calendar | waits while gap scan runs; creates candidates/configs | enabled; last run OK | Healthy with recommendations |
+| `position_review` | Review positions before open | weekdays 09:00 ET, NYSE calendar | strategy/pipeline inputs | enabled; old implementation was a no-op | Healthy after fix and production canary |
+| `earnings_scanner` | Ingest upcoming earnings | weekdays 10:00 ET, NYSE calendar | event context/triggers | enabled; recovered from one error | Healthy after market-filter fix |
+| `filing_monitor` | Monitor 8-K filings | every 4h weekdays, NYSE holiday skip | LLM filing analysis/event triggers | enabled; last run OK | Healthy after rotation/error fix |
+| `news_scan` | Ingest RSS and LLM-triage news | twice hourly in NYSE hours | news context | enabled; last run OK | Healthy with recommendations |
+| `social_scan` | StockTwits trend/sentiment | every 15m in NYSE hours | social context | enabled; last run queried non-stock positions | Degraded but usable; wrong-market path fixed and canaried |
+| `overnight_backtest` | Chunked five-year backtests | every 30m 01:00–05:59 ET Tue–Sat | waits while history refresh runs; input to sweep/generate | enabled; last run OK | Healthy |
+| `overnight_sweep` | Optimize deployed strategies | 02:00 ET Tue–Sat | waits while backtest runs | enabled; last run OK | Healthy with recommendations |
+| `overnight_generate` | LLM-generate strategy ideas | 03:00 ET Tue–Sat | waits while sweep/backtest run; feeds options discovery | enabled; last run 2026-08-01 | Healthy with recommendations |
+| `options_discovery` | Discover option strategies | 03:30 ET Tue–Sat | waits while overnight generation runs | enabled; last run OK | Healthy |
+| `options_scan` | Scan next-day option setups | weekdays 22:00 ET, after-hours/NYSE calendar | option candidates | enabled; last run OK | Healthy with recommendations |
+| `options_expiry_settlement` | Cash-settle expired paper options | weekdays 23:00 ET, after hours | precedes lifecycle reconcile | enabled; last run OK | Healthy |
+| `options_lifecycle_reconcile` | Reconcile option lifecycle records | weekdays 23:30 ET, after hours | waits while expiry settlement runs | enabled; last run OK | Healthy |
+| `daily_review` | Review daily pipeline/decision quality | weekdays 20:30 ET, after hours | reporting/maintenance | enabled; last run OK | Healthy |
+| `strategy_resweep` | Resweep deployed strategies | weekdays 21:00 ET, after hours | maintenance/candidate state | enabled; last run OK | Healthy |
+| `paper_validation_report` | Generate paper validation reports | weekdays 17:00 ET, after hours | consumes strategies/backtests/runs; report artifacts | enabled; old runs averaged 2h34m and hid item errors | Degraded but trustworthy; 38 strategy configs need repair |
+| `portfolio_allocator` | Shadow portfolio allocation | :15/:45 after hours, NYSE calendar | consumes opportunity queue; may paper execute | enabled; current queue empty | Healthy with recommendations |
+| `alpaca_reconcile` | Reconcile paper broker lifecycle | every 5m, 24/7 | orders/trades/positions | enabled; current result consistent | Healthy with recommendations |
+| `kalshi_discovery` | Generate Kalshi paper strategies | hourly at :15, Kalshi/provider calendar | strategies, snapshots, discovery progress | enabled; active since 21:15 UTC at baseline | Degraded but usable; external provider |
+| `kalshi_settlement` | Settle resolved Kalshi paper contracts | every 5m, Kalshi/provider calendar | decisions/positions/trades/replay | auto-disabled after gate-ineligible failures | Healthy preview path; mutation remains fail-closed |
+| `strategy_tournament` | Compare/prune strategies | Sun 14:00 ET | strategy state | old path capped at 100 and mixed markets | Healthy after pagination/capability fix |
 
 ### Conditional jobs absent from live registry
 
@@ -91,14 +91,14 @@ The implementation's `DependsOn` relation only prevents overlap; it does not req
 | Priority | Finding | Evidence / impact | Remediation status |
 |---|---|---|---|
 | P0 | Provider query credential persisted in a failed automation error and was returned by the authenticated status API. | `universe_refresh` run on 2026-08-02 stored a transport URL containing the credential; another provider echoed its configured credential in a non-success body. | Fixed in `c119d6d`: transport errors remove query strings and configured credentials are redacted from bodies. One historical row was sanitized; database scans now find zero occurrences in automation runs, pipeline runs, or agent events. Provider rotation remains external. |
-| P0 | Stock refresh/social jobs accepted known prediction-market positions. | Live logs showed Kalshi contract identifiers sent to stock OHLCV providers and StockTwits; refresh still returned overall success with one failed batch. | Regression tests added; known non-stock positions are filtered. Affected safe reruns pending deploy. |
+| P0 | Stock refresh/social jobs accepted known prediction-market positions. | Live logs showed Kalshi contract identifiers sent to stock OHLCV providers and StockTwits; refresh still returned overall success with one failed batch. | Regression tests added; known non-stock positions are filtered. Production canaries refreshed 134 stock tickers in 14 clean batches and completed social ingestion without a prediction-market identifier. |
 | P1 | Manual API trigger could execute a disabled job. | `RunJob` did not inspect `Enabled`; disabled state was checked only by cron wrapper. | Regression test added; manual trigger now rejects disabled jobs and direct runner rechecks state. |
 | P1 | Kalshi settlement could not qualify its own safety gate: disabled mode never ran previews, while enabled mode rejected ineligibility and auto-disabled. | Live status: 8 consecutive failures, threshold 20, eligibility false. | Fixed in `ce1dca4`: scheduled non-mutating previews build stable evidence; mutation requires configured execution intent, persisted eligibility, and an unchanged fingerprint. Missing/unhealthy gate remains fail-closed. |
 | P1 | Operator API credential variables are populated but rejected and no API-key rows exist. | Both configured operator values returned HTTP 401; database `api_keys` table empty. | Authentication state unchanged; audit uses a short-lived JWT signed with the existing secret. Permanent operator-credential repair pending. |
 | P1 | `position_review` counted every active strategy as having a position without querying positions. | Eight historical runs reported success in about 0.1s but performed no review. | Fixed in `ce1dca4`: paginated open positions are joined to active strategies; ownership, inactive links, missing prices, and missing stops are summarized. |
-| P1 | Paper validation slept up to 119 seconds before each local report, included event markets, persisted item errors, then returned success. | Seven runs averaged 9,237s; the current run remained active beyond an hour. At sampling time 35 reports completed and 12 errored against 163 active paper strategies. | Fixed in `ce1dca4`: artificial delay removed, event markets skipped, complete summary persisted, and eligible item failures fail the job. |
+| P1 | Paper validation slept up to 119 seconds before each local report, included event markets, persisted item errors, then returned success. | Seven runs averaged 9,237s; the current run remained active beyond an hour. At sampling time 35 reports completed and 12 errored against 163 active paper strategies. | Fixed in `ce1dca4`: artificial delay removed, event markets skipped, complete summary persisted, and eligible item failures fail the job. The production canary finished in 0.56s: 163 scanned, 22 event strategies skipped, 103 succeeded, and 38 missing-config failures honestly failed the job. |
 | P1 | Orchestrator jobs ignored `SCHEDULER_JOB_TIMEOUT` and ran with `context.Background()`. | Long/stuck work had no hard ceiling; reports routinely exceeded two hours. | Fixed in `ce1dca4`: manual and scheduled orchestration jobs now receive the configured two-hour timeout. |
-| P1 | Risk debate lost authoritative market context and treated ARE's $46.69 lower Bollinger support as current price, despite a $50.10 close. | Run `07b35b8f-...`: judge cited $50.10, later risk roles calculated from $46.69. Final action remained HOLD, so no order was created. | Fixed in `f190265`: the market analyst report is now supplied to every risk debater and the judge. |
+| P1 | Risk debate lost authoritative market context and treated ARE's $46.69 lower Bollinger support as current price, despite a $50.10 close. | Run `07b35b8f-...`: judge cited $50.10, later risk roles calculated from $46.69. Final action remained HOLD, so no order was created. | Fixed in `f190265`: the market analyst report is now supplied to every risk debater and the judge. Post-deploy ARE run `1503b5f0-...` proved the exact market report was present in all nine debate prompts and the risk-manager prompt. |
 | P2 | Deep-think decisions stored zero latency because debate/judge/trader/risk nodes rebuilt completion objects and discarded provider metadata. | ARE, APTV, and ROK had quick-role latency but zero deep-role latency. | Fixed in `beeac89`: the original model, usage, latency, and cost now flow to persistence. |
 | P2 | Tournament, earnings, filings, and event triggers had incomplete or wrong-market coverage. | Tournament capped at 100 of 163 and attempted event OHLCV; filings always chose the first 20; earnings included Kalshi; event triggers duplicated scheduler keys. | Fixed in `ce1dca4`: pagination/capability filters, rotating filing batches, honest partial failures, summaries, and canonical triggers. |
 | P2 | Successful refresh status concealed failed batches. | Latest pre-fix refresh reported `errors=1`, `updated=105/115`, but persisted `ok`. | Fixed in `ce1dca4`: partial source/batch failures return an aggregate error with the retained summary. |
@@ -145,11 +145,12 @@ All persisted automation runs were queried. Samples were stratified by earliest,
 
 ### Scheduled pipeline and model evidence
 
-- Current OpenCode deployment completed ARE `07b35b8f-6942-4b38-b0ec-83e5baa04a75` (497.7s), APTV `1254d0d0-2037-4dd1-8c67-8eef5b145365` (431.1s), and ROK `ef9f0214-4e15-4f00-8606-c64f6b354597` (471.4s). Additional current runs are being collected for the five-sample post-deploy set.
+- Five current OpenCode completions were inspected: ARE `07b35b8f-6942-4b38-b0ec-83e5baa04a75` (497.7s), APTV `1254d0d0-2037-4dd1-8c67-8eef5b145365` (431.1s), ROK `ef9f0214-4e15-4f00-8606-c64f6b354597` (471.4s), ARE `e2126ee7-dd13-4ca3-9a29-616016a5fc7e` (392.0s), and post-deploy ARE `1503b5f0-0b2c-4c31-8890-c612b826025c` (411.7s).
 - Market/fundamentals/news roles used OpenCode `openai/gpt-5.6-luna`; debate, judge, trader, and risk roles used `openai/gpt-5.6-sol`. Social was intentionally skipped with no model/tokens when its source returned no usable data. No sampled call required terra fallback.
 - Stored prompt text and structured envelopes were present. Judge prompts remained below the 96 KiB preflight budget: ARE 67,466 characters/14,853 tokens; APTV 62,597/13,976; ROK 65,068/14,441. Prompt compaction tests cover overflow and report dropped/truncated context.
-- All three final signals were HOLD and created no orders. ARE's snapshot closed at $50.099998 on 2026-08-05 13:30 UTC. Early roles used it correctly, but risk roles later misread $46.69 support as current price; `f190265` supplies the missing market report.
-- Pre-fix deep roles stored zero latency while quick roles stored 21–41s values. `beeac89` preserves completion metadata; post-deploy evidence is required.
+- The sampled final signals were HOLD and created no orders. ARE's snapshot closed at $50.099998 on 2026-08-05 13:30 UTC. Early roles used it correctly, but pre-fix risk roles later misread $46.69 support as current price; `f190265` supplies the missing market report.
+- Post-deploy run `1503b5f0-...` used Luna for fundamentals/market/news and Sol for all debate, judge, trader, and risk calls. All 21 model calls retained nonzero latency (4.5–45.0s); social correctly recorded a zero-call skip. The largest prompt was the investment judge at 62,073 characters/13,727 tokens. No terra fallback was used.
+- All nine risk-debater prompts and the risk-manager prompt contained the exact market-analyst output. The risk manager produced canonical parsed `risk_signal/v1`, `fallback_used=false`, action HOLD, confidence 7, and no adjusted position. The run created zero orders, trades, or live decisions.
 - Seven-day pipeline history was 217 completed/2,170 failed stock and 291 completed/192 failed Kalshi runs. Most stock failures were obsolete Ollama connection errors before `0f7fdf3`; current OpenCode examples complete, but historical success alone is not treated as current proof.
 
 ## Commits
@@ -161,6 +162,7 @@ All persisted automation runs were queried. Samples were stratified by earliest,
 - `beeac89` — preserve LLM model/usage/latency/cost through deep-agent paths; full agent suite passed.
 - `f190265` — ground risk debate/judge prompts in market context; full agent suite passed.
 - `59c98d9` — align the API contract test with preview scheduling while retaining the independent mutation gate.
+- `3c69f34` — record the pre-deployment inventory, evidence, findings, remediation, and release gate.
 
 ## Release gate, synchronization, deployment, and rollback
 
@@ -174,9 +176,37 @@ Pre-deployment gate passed on 2026-08-05. The first full run correctly stopped o
 - Migration package tests and schema-version review; no migration is introduced by this change set and production remains at version 60.
 - `git diff --check` and a focused `origin/main...HEAD` credential/private-key pattern scan. No secret-like additions were found.
 
-Previous images recorded for rollback: app `augr-app:0f7fdf3a0801`; web `augr-web:review-735b344bf7ab`. Synchronization, deployment, and post-deploy results remain pending.
+The audited branch was fetched immediately before release; `origin/main...HEAD` was `0 15`, then `main` was pushed through `3c69f34f8912ed2d9023ba02fe2ece6c44370334` and verified at `0 0`. Immutable images were built from that exact commit and verified before any production change:
+
+- App `augr-app:audit-3c69f34f8912`, image `sha256:e83c8e56c943b81a3ffee0e79d1dd1ac508974b76c3ee7815f3cfc49aed893c3`.
+- Web `augr-web:audit-3c69f34f8912`, image `sha256:30659dff1b107064282849f98aa775d9b854d1681c67069db3481e872ec4ee92`.
+- Embedded app metadata: version `automation-audit`, commit `3c69f34f8912ed2d9023ba02fe2ece6c44370334`, build time `2026-08-05T22:18:00Z`.
+
+Exactly one deployment was performed at 2026-08-05 17:23 CDT. It force-recreated only Compose services `app` and `web`; PostgreSQL, Redis, and OpenCode were not restarted or replaced. New container IDs are app `6adce945dd1b...` and web `35ff69c7ec25...`. No migration ran because the release contains none.
+
+### Post-deployment validation
+
+- The app became healthy immediately; `/healthz` returned database and Redis `ok`. App, PostgreSQL, Redis, and OpenCode health checks are green; web is running. Production reports schema current/required `60/60`, status `ok`, and the exact audited build commit.
+- Runtime registry restored 27 orchestrator jobs and 131 strategy/discovery schedules from 163 active paper strategies. The expected 33 duplicate stock schedules were skipped. Polymarket automation remained disabled.
+- Safety controls remained unchanged: `ENABLE_LIVE_TRADING=false`; Alpaca and Binance are configured in paper mode; Kalshi uses demo data and paper execution. Although `KALSHI_DRY_RUN=false` expresses configured settlement intent, the independent mutation gate remained ineligible and fail-closed.
+- Kalshi settlement previews ran successfully at 17:25, 17:30, and 17:35 CDT. The latest summary was `dry_run=1`, five fetched, zero resolved/would-settle, three consecutive stable previews against a threshold of 20, `eligible=false`. No decision, position, order, or trade was settled.
+- `position_review` completed with 10 open positions across five active strategies, zero unowned/inactive links, and honest warnings for 10 missing current prices and stop losses.
+- `paper_validation_report` completed in 0.56s instead of hours: 163 scanned, 22 event strategies skipped, 141 stock strategies eligible, 103 reports succeeded, and 38 missing backtest configurations caused an explicit failed outcome. This is **degraded but trustworthy**, with strategy-config repair required.
+- `current_data_refresh` completed twice with 134/134 stock tickers updated in 14 batches and zero errors. `social_scan` completed twice. New logs contained no prediction-market identifiers in either stock path.
+- Post-deploy ARE pipeline `1503b5f0-...` completed in 411.7s with correct Luna/Sol routing, nonzero deep latency, exact market context in all risk prompts, and a canonical HOLD. It created no order or trade.
+- Before and after canaries: 26 orders, 10 open positions, 36 trades, 141 trade decisions, and zero decisions with a live order. Post-deployment additions were zero orders, zero trades, and zero live decisions.
+- Final automation health is `healthy=true`, 27 total, zero failing, two degraded. The degraded jobs are the now-honest paper-report configuration failure and the earlier external `universe_refresh` failure. New-container logs contain zero panic/fatal/schema-mismatch signals and zero potential credential leaks. OpenCode remains tool-free with global and agent-level `permission.*=deny`.
+
+Previous images recorded for rollback: app `augr-app:0f7fdf3a0801`; web `augr-web:review-735b344bf7ab`. Rollback requires recreating only app/web with those two explicit immutable tags; database rollback is not required. Rollback was not triggered because every release and post-deploy safety gate passed.
 
 ## Deferred items / external blockers
 
-- Provider credential rotation requires access to the provider account and a coordinated secret replacement; owner and exact action will be recorded after code/data containment is complete.
-- US-equity market-hours reruns after code remediation require the next valid NYSE session. Any timer created will be recorded here.
+- **Provider credential rotation — owner: provider-account/operator owner.** Revoke and replace the historically exposed provider credential, update the production secret through the normal secret-management path, and verify one universe refresh. Code and database containment are complete, but existing historical container logs still require access-controlled retention handling.
+- **Operator authentication — owner: application operations.** Replace the two stale configured operator credentials or provision a scoped API-key row, then verify authenticated automation status access. No credential was changed during this audit.
+- **Paper strategy configuration — owner: strategy operations/application maintainers.** Repair or retire the 38 active stock strategies with no backtest configuration, then rerun `paper_validation_report` and require 141/141 eligible success.
+- **Position data quality — owner: paper-portfolio operations.** Populate current price and stop-loss data for the 10 open positions flagged by `position_review`, then rerun the review.
+- **Ticker-discovery observability — owner: application maintainers.** Persist scheduler-only discovery start, outcome, duration, and summary using the automation-run contract.
+- **PostgreSQL collation metadata — owner: database operations.** Execute the existing collation runbook in a maintenance window and verify schema/query health afterward; this warning did not affect the release.
+- **External provider reliability — owner: integrations/application operations.** Continue monitoring Kalshi demo and StockTwits transient errors; do not weaken retry, timeout, or fail-closed behavior.
+
+No follow-up timer was created: the extended equity session allowed safe affected-path canaries during this audit, and all time-window-dependent behavior was either executed in production or reproduced under the release gate without enabling live execution.
