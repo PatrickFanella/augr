@@ -56,16 +56,16 @@ func (b BaseDebater) CallWithContext(
 	systemPrompt string,
 	previousRounds []agent.DebateRound,
 	analystReports map[agent.AgentRole]string,
-) (string, string, llm.CompletionUsage, error) {
+) (string, string, *llm.CompletionResponse, error) {
 	errorPrefix := fmt.Sprintf("%s (%s)", b.role, b.phase)
 
 	if b.provider == nil {
-		return "", "", llm.CompletionUsage{}, fmt.Errorf("%s: nil llm provider", errorPrefix)
+		return "", "", nil, fmt.Errorf("%s: nil llm provider", errorPrefix)
 	}
 
 	messages, stats, err := buildBudgetedDebateMessages(systemPrompt, previousRounds, analystReports)
 	if err != nil {
-		return "", "", llm.CompletionUsage{}, fmt.Errorf("%s: prompt preflight failed: %w", errorPrefix, err)
+		return "", "", nil, fmt.Errorf("%s: prompt preflight failed: %w", errorPrefix, err)
 	}
 	if stats.OriginalBytes != stats.FinalBytes {
 		b.logger.WarnContext(ctx, "debate prompt compacted",
@@ -84,13 +84,16 @@ func (b BaseDebater) CallWithContext(
 		Messages: messages,
 	})
 	if err != nil {
-		return "", "", llm.CompletionUsage{}, fmt.Errorf("%s: llm completion failed: %w", errorPrefix, err)
+		return "", "", nil, fmt.Errorf("%s: llm completion failed: %w", errorPrefix, err)
 	}
 	if resp == nil {
-		return "", "", llm.CompletionUsage{}, fmt.Errorf("%s: nil llm response", errorPrefix)
+		return "", "", nil, fmt.Errorf("%s: nil llm response", errorPrefix)
+	}
+	if strings.TrimSpace(resp.Model) == "" {
+		resp.Model = b.model
 	}
 
-	return resp.Content, promptText, resp.Usage, nil
+	return resp.Content, promptText, resp, nil
 }
 
 func formatRoundsForPrompt(rounds []agent.DebateRound) string {

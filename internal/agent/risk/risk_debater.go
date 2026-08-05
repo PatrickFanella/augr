@@ -5,7 +5,6 @@ import (
 
 	"github.com/PatrickFanella/get-rich-quick/internal/agent"
 	"github.com/PatrickFanella/get-rich-quick/internal/agent/debate"
-	"github.com/PatrickFanella/get-rich-quick/internal/llm"
 )
 
 // executeRiskDebate contains the shared Execute logic for risk debate agents.
@@ -45,7 +44,7 @@ func debateRiskFromInput(
 	providerName string,
 	input agent.DebateInput,
 ) (agent.DebateOutput, error) {
-	content, promptText, usage, err := debater.CallWithContext(
+	content, promptText, resp, err := debater.CallWithContext(
 		ctx,
 		systemPrompt,
 		input.Rounds,
@@ -60,11 +59,7 @@ func debateRiskFromInput(
 		LLMResponse: &agent.DecisionLLMResponse{
 			Provider:   providerName,
 			PromptText: promptText,
-			Response: &llm.CompletionResponse{
-				Content: content,
-				Model:   debater.Model(),
-				Usage:   usage,
-			},
+			Response:   resp,
 		},
 	}, nil
 }

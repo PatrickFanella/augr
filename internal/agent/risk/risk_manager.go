@@ -147,7 +147,7 @@ func (r *RiskManager) JudgeRisk(ctx context.Context, input agent.RiskJudgeInput)
 		agent.AgentRoleTrader: string(tradingPlanJSON),
 	}
 
-	content, promptText, usage, err := r.CallWithContext(
+	content, promptText, resp, err := r.CallWithContext(
 		ctx,
 		r.systemPrompt,
 		input.Rounds,
@@ -211,11 +211,7 @@ func (r *RiskManager) JudgeRisk(ctx context.Context, input agent.RiskJudgeInput)
 			Provider:         r.providerName,
 			PromptText:       promptText,
 			OutputStructured: structured,
-			Response: &llm.CompletionResponse{
-				Content: content,
-				Model:   r.Model(),
-				Usage:   usage,
-			},
+			Response:         resp,
 		},
 	}
 	if parseErr != nil {

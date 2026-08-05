@@ -55,7 +55,9 @@ func TestFormatRoundsForPrompt(t *testing.T) {
 func TestBaseDebaterCallWithContextSendsCorrectMessages(t *testing.T) {
 	mock := &mockProvider{
 		response: &llm.CompletionResponse{
-			Content: "Bull case updated.",
+			Content:   "Bull case updated.",
+			LatencyMS: 321,
+			CostUSD:   0.0123,
 			Usage: llm.CompletionUsage{
 				PromptTokens:     91,
 				CompletionTokens: 27,
@@ -71,7 +73,7 @@ func TestBaseDebaterCallWithContextSendsCorrectMessages(t *testing.T) {
 		slog.Default(),
 	)
 
-	content, promptText, usage, err := debater.CallWithContext(
+	content, promptText, response, err := debater.CallWithContext(
 		context.Background(),
 		"You are the bull researcher.",
 		[]agent.DebateRound{
@@ -95,8 +97,11 @@ func TestBaseDebaterCallWithContextSendsCorrectMessages(t *testing.T) {
 	if content != "Bull case updated." {
 		t.Fatalf("content = %q, want %q", content, "Bull case updated.")
 	}
-	if usage.PromptTokens != 91 || usage.CompletionTokens != 27 {
-		t.Fatalf("usage = %+v, want prompt=91 completion=27", usage)
+	if response.Usage.PromptTokens != 91 || response.Usage.CompletionTokens != 27 {
+		t.Fatalf("usage = %+v, want prompt=91 completion=27", response.Usage)
+	}
+	if response.LatencyMS != 321 || response.CostUSD != 0.0123 {
+		t.Fatalf("provider metadata lost: latency=%d cost=%f", response.LatencyMS, response.CostUSD)
 	}
 	if got := mock.calls.Load(); got != 1 {
 		t.Fatalf("provider calls = %d, want 1", got)

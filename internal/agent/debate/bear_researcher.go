@@ -92,7 +92,7 @@ func (b *BearResearcher) Execute(ctx context.Context, state *agent.PipelineState
 // researcher system prompt, previous debate rounds, and context reports, and
 // returns the debate contribution.
 func (b *BearResearcher) Debate(ctx context.Context, input agent.DebateInput) (agent.DebateOutput, error) {
-	content, promptText, usage, err := b.CallWithContext(
+	content, promptText, resp, err := b.CallWithContext(
 		ctx,
 		b.systemPrompt,
 		input.Rounds,
@@ -107,11 +107,7 @@ func (b *BearResearcher) Debate(ctx context.Context, input agent.DebateInput) (a
 		LLMResponse: &agent.DecisionLLMResponse{
 			Provider:   b.providerName,
 			PromptText: promptText,
-			Response: &llm.CompletionResponse{
-				Content: content,
-				Model:   b.model,
-				Usage:   usage,
-			},
+			Response:   resp,
 		},
 	}, nil
 }

@@ -192,7 +192,6 @@ func (t *Trader) Trade(ctx context.Context, input agent.TradingInput) (agent.Tra
 	}
 
 	content := resp.Content
-	usage := resp.Usage
 
 	// Attempt to parse the structured output. When parsing succeeds we
 	// populate the TradingPlan from the parsed fields. On failure we
@@ -244,11 +243,7 @@ func (t *Trader) Trade(ctx context.Context, input agent.TradingInput) (agent.Tra
 			Provider:         t.providerName,
 			PromptText:       promptText,
 			OutputStructured: structured,
-			Response: &llm.CompletionResponse{
-				Content: content,
-				Model:   resp.Model,
-				Usage:   usage,
-			},
+			Response:         resp,
 		},
 	}
 	if parseErr != nil {

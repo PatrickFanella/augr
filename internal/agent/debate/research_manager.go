@@ -123,7 +123,7 @@ func (r *ResearchManager) Execute(ctx context.Context, state *agent.PipelineStat
 
 // JudgeResearch implements the runner-facing research judge contract.
 func (r *ResearchManager) JudgeResearch(ctx context.Context, input agent.DebateInput) (agent.ResearchJudgeOutput, error) {
-	content, promptText, usage, err := r.CallWithContext(
+	content, promptText, resp, err := r.CallWithContext(
 		ctx,
 		r.systemPrompt,
 		input.Rounds,
@@ -156,11 +156,7 @@ func (r *ResearchManager) JudgeResearch(ctx context.Context, input agent.DebateI
 			Provider:         r.providerName,
 			PromptText:       promptText,
 			OutputStructured: structured,
-			Response: &llm.CompletionResponse{
-				Content: content,
-				Model:   r.model,
-				Usage:   usage,
-			},
+			Response:         resp,
 		},
 	}
 	if parseErr != nil {
