@@ -142,6 +142,41 @@ func TestComposerBuildProviderForSelection_SupportsAliases(t *testing.T) {
 	}
 }
 
+func TestComposerOpenCodeModelRouting(t *testing.T) {
+	t.Parallel()
+	var captured []llm.OpenCodeProviderConfig
+	composer := llm.NewComposer(llm.RuntimeProviderFactories{
+		OpenCode: func(cfg llm.OpenCodeProviderConfig) (llm.Provider, error) {
+			captured = append(captured, cfg)
+			return llm.ProviderFunc(func(context.Context, llm.CompletionRequest) (*llm.CompletionResponse, error) {
+				return &llm.CompletionResponse{Content: "ok"}, nil
+			}), nil
+		},
+	})
+	cfg := config.LLMConfig{
+		DefaultProvider: "opencode", QuickThinkModel: "openai/gpt-5.6-luna",
+		FallbackProvider: "opencode", FallbackModel: "openai/gpt-5.6-terra",
+		ThrottleConcurrency: 1,
+		Providers: config.LLMProviderConfigs{OpenCode: config.OpenCodeConfig{
+			BaseURL: "http://opencode:4096", Password: "secret", Model: "openai/gpt-5.6-terra",
+		}},
+	}
+
+	provider := composer.BuildProvider(cfg, nil, discardLogger(), nil)
+	if provider == nil {
+		t.Fatal("BuildProvider() = nil")
+	}
+	if len(captured) != 2 {
+		t.Fatalf("captured configs = %d, want primary and fallback", len(captured))
+	}
+	if captured[0].Model != "openai/gpt-5.6-luna" || !captured[0].UseRequestModel {
+		t.Fatalf("primary config = %#v, want Luna with request routing", captured[0])
+	}
+	if captured[1].Model != "openai/gpt-5.6-terra" || captured[1].UseRequestModel {
+		t.Fatalf("fallback config = %#v, want forced Terra", captured[1])
+	}
+}
+
 func TestComposerWrapProviderChain_FallbackAndCacheToggle(t *testing.T) {
 	fallbackCalls := atomic.Int32{}
 	composer := llm.NewComposer(llm.RuntimeProviderFactories{

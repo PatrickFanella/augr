@@ -60,8 +60,8 @@ func TestProviderCompleteUsesConfiguredModelAndToolDisabledSession(t *testing.T)
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Fatal(err)
 			}
-			if body.Agent != "augr-fallback" || body.Model.ProviderID != "openai" || body.Model.ModelID != "gpt-5.4-mini" {
-				t.Fatalf("message routing = %#v, want augr-fallback openai/gpt-5.4-mini", body)
+			if body.Agent != "augr-completion" || body.Model.ProviderID != "openai" || body.Model.ModelID != "gpt-5.6-terra" {
+				t.Fatalf("message routing = %#v, want augr-completion openai/gpt-5.6-terra", body)
 			}
 			if strings.Contains(body.Model.ModelID, "primary") {
 				t.Fatal("provider forwarded the primary model to the fallback")
@@ -72,7 +72,7 @@ func TestProviderCompleteUsesConfiguredModelAndToolDisabledSession(t *testing.T)
 			if len(body.Parts) != 1 || !strings.Contains(body.Parts[0].Text, "<user>\nquestion\n</user>") || !strings.Contains(body.Parts[0].Text, "<assistant>\nprior\n</assistant>") {
 				t.Fatalf("transcript = %#v, want preserved roles", body.Parts)
 			}
-			_, _ = w.Write([]byte(`{"info":{"providerID":"openai","modelID":"gpt-5.4-mini","cost":0.012,"tokens":{"input":23,"output":7}},"parts":[{"type":"reasoning","text":"hidden"},{"type":"text","text":"{\"ok\":true}"}]}`))
+			_, _ = w.Write([]byte(`{"info":{"providerID":"openai","modelID":"gpt-5.6-terra","cost":0.012,"tokens":{"input":23,"output":7}},"parts":[{"type":"reasoning","text":"hidden"},{"type":"text","text":"{\"ok\":true}"}]}`))
 		case r.Method == http.MethodDelete && r.URL.Path == "/session/session-1":
 			_, _ = w.Write([]byte(`true`))
 		default:
@@ -82,7 +82,7 @@ func TestProviderCompleteUsesConfiguredModelAndToolDisabledSession(t *testing.T)
 	defer server.Close()
 
 	provider, err := opencode.NewProvider(opencode.Config{
-		BaseURL: server.URL, Username: "augr", Password: "secret", Model: "openai/gpt-5.4-mini",
+		BaseURL: server.URL, Username: "augr", Password: "secret", Model: "openai/gpt-5.6-terra",
 	})
 	if err != nil {
 		t.Fatalf("NewProvider() error = %v", err)
@@ -105,7 +105,7 @@ func TestProviderCompleteUsesConfiguredModelAndToolDisabledSession(t *testing.T)
 	if err != nil {
 		t.Fatalf("Complete() error = %v", err)
 	}
-	if response.Content != `{"ok":true}` || response.Model != "openai/gpt-5.4-mini" {
+	if response.Content != `{"ok":true}` || response.Model != "openai/gpt-5.6-terra" {
 		t.Fatalf("response = %#v", response)
 	}
 	if response.Usage.PromptTokens != 23 || response.Usage.CompletionTokens != 7 || response.CostUSD != 0.012 {
@@ -136,7 +136,7 @@ func TestProviderReturnsOpenCodeErrorAndDeletesSession(t *testing.T) {
 	}))
 	defer server.Close()
 
-	provider, err := opencode.NewProvider(opencode.Config{BaseURL: server.URL, Password: "secret", Model: "openai/gpt-5.4-mini"})
+	provider, err := opencode.NewProvider(opencode.Config{BaseURL: server.URL, Password: "secret", Model: "openai/gpt-5.6-terra"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,13 +149,57 @@ func TestProviderReturnsOpenCodeErrorAndDeletesSession(t *testing.T) {
 	}
 }
 
+func TestProviderUsesQualifiedRequestModelWhenEnabled(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/session":
+			_, _ = w.Write([]byte(`{"id":"tiered"}`))
+		case r.Method == http.MethodPost:
+			var body struct {
+				Model struct {
+					ProviderID string `json:"providerID"`
+					ModelID    string `json:"modelID"`
+				} `json:"model"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatal(err)
+			}
+			if body.Model.ProviderID != "openai" || body.Model.ModelID != "gpt-5.6-sol" {
+				t.Fatalf("request model = %#v, want openai/gpt-5.6-sol", body.Model)
+			}
+			_, _ = w.Write([]byte(`{"info":{"providerID":"openai","modelID":"gpt-5.6-sol"},"parts":[{"type":"text","text":"ok"}]}`))
+		case r.Method == http.MethodDelete:
+			_, _ = w.Write([]byte(`true`))
+		}
+	}))
+	defer server.Close()
+
+	provider, err := opencode.NewProvider(opencode.Config{
+		BaseURL: server.URL, Password: "secret", Model: "openai/gpt-5.6-terra", UseRequestModel: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := provider.Complete(context.Background(), llm.CompletionRequest{
+		Model: "openai/gpt-5.6-sol", Messages: []llm.Message{{Role: "user", Content: "x"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.Model != "openai/gpt-5.6-sol" {
+		t.Fatalf("response model = %q", response.Model)
+	}
+}
+
 func TestNewProviderValidatesConfiguration(t *testing.T) {
 	t.Parallel()
 	for _, cfg := range []opencode.Config{
-		{Password: "x", Model: "openai/gpt-5.4-mini"},
-		{BaseURL: "not-a-url", Password: "x", Model: "openai/gpt-5.4-mini"},
-		{BaseURL: "http://localhost", Model: "openai/gpt-5.4-mini"},
-		{BaseURL: "http://localhost", Password: "x", Model: "gpt-5.4-mini"},
+		{Password: "x", Model: "openai/gpt-5.6-terra"},
+		{BaseURL: "not-a-url", Password: "x", Model: "openai/gpt-5.6-terra"},
+		{BaseURL: "http://localhost", Model: "openai/gpt-5.6-terra"},
+		{BaseURL: "http://localhost", Password: "x", Model: "gpt-5.6-terra"},
 	} {
 		if _, err := opencode.NewProvider(cfg); err == nil {
 			t.Fatalf("NewProvider(%#v) error = nil", cfg)
@@ -169,29 +213,35 @@ func TestProviderLiveOAuthIntegration(t *testing.T) {
 	if baseURL == "" || password == "" {
 		t.Skip("set OPENCODE_INTEGRATION_URL and OPENCODE_SERVER_PASSWORD to run")
 	}
-	provider, err := opencode.NewProvider(opencode.Config{
-		BaseURL: baseURL, Username: "opencode", Password: password, Model: "openai/gpt-5.4-mini",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
-	defer cancel()
-	response, err := provider.Complete(ctx, llm.CompletionRequest{
-		Messages:       []llm.Message{{Role: "user", Content: `Return {"oauth":true}.`}},
-		MaxTokens:      20,
-		ResponseFormat: &llm.ResponseFormat{Type: llm.ResponseFormatJSONObject},
-	})
-	if err != nil {
-		t.Fatalf("live OAuth completion failed: %v", err)
-	}
-	var result struct {
-		OAuth bool `json:"oauth"`
-	}
-	if err := json.Unmarshal([]byte(response.Content), &result); err != nil || !result.OAuth {
-		t.Fatalf("live response = %q, JSON error = %v", response.Content, err)
-	}
-	if response.Model != "openai/gpt-5.4-mini" {
-		t.Fatalf("live response model = %q", response.Model)
+	for _, model := range []string{"openai/gpt-5.6-sol", "openai/gpt-5.6-terra", "openai/gpt-5.6-luna"} {
+		t.Run(model, func(t *testing.T) {
+			provider, err := opencode.NewProvider(opencode.Config{
+				BaseURL: baseURL, Username: "opencode", Password: password,
+				Model: "openai/gpt-5.6-terra", UseRequestModel: true,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			defer cancel()
+			response, err := provider.Complete(ctx, llm.CompletionRequest{
+				Model:          model,
+				Messages:       []llm.Message{{Role: "user", Content: `Return {"oauth":true}.`}},
+				MaxTokens:      20,
+				ResponseFormat: &llm.ResponseFormat{Type: llm.ResponseFormatJSONObject},
+			})
+			if err != nil {
+				t.Fatalf("live OAuth completion failed: %v", err)
+			}
+			var result struct {
+				OAuth bool `json:"oauth"`
+			}
+			if err := json.Unmarshal([]byte(response.Content), &result); err != nil || !result.OAuth {
+				t.Fatalf("live response = %q, JSON error = %v", response.Content, err)
+			}
+			if response.Model != model {
+				t.Fatalf("live response model = %q, want %q", response.Model, model)
+			}
+		})
 	}
 }

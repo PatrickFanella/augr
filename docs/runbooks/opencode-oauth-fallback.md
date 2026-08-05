@@ -1,9 +1,9 @@
-# OpenCode OAuth fallback
+# OpenCode OAuth provider
 
-Use this fallback when Augr's primary LLM is unavailable and OpenCode can
-authenticate to OpenAI with a ChatGPT account. Augr does not receive an OpenAI
-API key or the OAuth credential. It calls a private, password-protected
-OpenCode service on the internal Compose network.
+Use this provider when Augr should authenticate to OpenAI with a ChatGPT
+account. Augr does not receive an OpenAI API key or the OAuth credential. It
+calls a private, password-protected OpenCode service on the internal Compose
+network.
 
 ## Security boundary
 
@@ -32,19 +32,24 @@ OpenCode service on the internal Compose network.
    Select OpenAI and then the ChatGPT Plus/Pro browser login. This stores the
    refreshable OAuth credential only in `OPENCODE_AUTH_DIR`.
 
-5. Configure the fallback:
+5. Configure the primary, tier, and same-service model fallback:
 
    ```dotenv
    LLM_FALLBACK_PROVIDER=opencode
-   LLM_FALLBACK_MODEL=openai/gpt-5.4-mini
+   LLM_DEFAULT_PROVIDER=opencode
+   LLM_DEEP_THINK_MODEL=openai/gpt-5.6-sol
+   LLM_QUICK_THINK_MODEL=openai/gpt-5.6-luna
+   LLM_FALLBACK_PROVIDER=opencode
+   LLM_FALLBACK_MODEL=openai/gpt-5.6-terra
    OPENCODE_BASE_URL=http://opencode:4096
    OPENCODE_SERVER_USERNAME=opencode
-   OPENCODE_MODEL=openai/gpt-5.4-mini
+   OPENCODE_MODEL=openai/gpt-5.6-terra
    ```
 
-`LLM_FALLBACK_MODEL` is optional; when present it must use OpenCode's
-`provider/model` form. Keep `openai/gpt-5.4-mini` until a larger model is shown
-to improve audited decisions enough to justify its latency.
+All OpenCode models use `provider/model` form. Sol handles deep-think work,
+Luna handles high-volume quick-think work, and Terra is the balanced fallback
+for model-specific failures. This fallback does not protect against a complete
+OpenCode sidecar or OAuth outage.
 
 ## Verify
 
@@ -59,7 +64,7 @@ docker compose -f docker-compose.nuc.yml exec -T opencode sh -ec \
 
 Induce or reproduce a non-destructive primary-provider failure and verify that
 the completion succeeds with `used_fallback=true` and model
-`openai/gpt-5.4-mini`. Review logs for fallback count, latency, malformed JSON,
+the expected 5.6 model. Review logs for fallback count, latency, malformed JSON,
 and primary recovery before considering the integration healthy.
 
 ## Rotate or revoke

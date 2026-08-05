@@ -4,9 +4,9 @@ import "fmt"
 
 // Hardcoded defaults used as the final fallback in ResolveConfig.
 const (
-	defaultLLMProvider            = "openai"
-	defaultLLMDeepThinkModel      = "gpt-5.2"
-	defaultLLMQuickThinkModel     = "gpt-5-mini"
+	defaultLLMProvider            = "opencode"
+	defaultLLMDeepThinkModel      = "openai/gpt-5.6-sol"
+	defaultLLMQuickThinkModel     = "openai/gpt-5.6-luna"
 	defaultPipelineDebateRounds   = 3
 	defaultAnalysisTimeoutSeconds = 1800
 	defaultDebateTimeoutSeconds   = 3600

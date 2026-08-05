@@ -99,7 +99,7 @@ type OllamaConfig struct {
 	APIKey  string
 }
 
-// OpenCodeConfig contains settings for the isolated OpenCode fallback service.
+// OpenCodeConfig contains settings for the isolated OpenCode OAuth service.
 type OpenCodeConfig struct {
 	BaseURL  string
 	Username string
@@ -592,9 +592,9 @@ func loadFromEnvironment() (Config, error) {
 			URL: os.Getenv("REDIS_URL"),
 		},
 		LLM: LLMConfig{
-			DefaultProvider: getEnvString("LLM_DEFAULT_PROVIDER", "openai"),
-			DeepThinkModel:  getEnvString("LLM_DEEP_THINK_MODEL", "gpt-5.2"),
-			QuickThinkModel: getEnvString("LLM_QUICK_THINK_MODEL", "gpt-5-mini"),
+			DefaultProvider: getEnvString("LLM_DEFAULT_PROVIDER", "opencode"),
+			DeepThinkModel:  getEnvString("LLM_DEEP_THINK_MODEL", "openai/gpt-5.6-sol"),
+			QuickThinkModel: getEnvString("LLM_QUICK_THINK_MODEL", "openai/gpt-5.6-luna"),
 			Timeout:         llmTimeout,
 			Providers: LLMProviderConfigs{
 				OpenAI: LLMProviderConfig{
@@ -629,7 +629,7 @@ func loadFromEnvironment() (Config, error) {
 					BaseURL:  getEnvString("OPENCODE_BASE_URL", "http://localhost:4096"),
 					Username: getEnvString("OPENCODE_SERVER_USERNAME", "opencode"),
 					Password: os.Getenv("OPENCODE_SERVER_PASSWORD"),
-					Model:    getEnvString("OPENCODE_MODEL", "openai/gpt-5.4-mini"),
+					Model:    getEnvString("OPENCODE_MODEL", "openai/gpt-5.6-terra"),
 				},
 			},
 			FallbackProvider:     getEnvString("LLM_FALLBACK_PROVIDER", ""),

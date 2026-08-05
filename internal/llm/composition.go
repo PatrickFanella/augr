@@ -39,10 +39,11 @@ type OllamaProviderConfig struct {
 
 // OpenCodeProviderConfig is the config shape required by an OpenCode factory.
 type OpenCodeProviderConfig struct {
-	BaseURL  string
-	Username string
-	Password string
-	Model    string
+	BaseURL         string
+	Username        string
+	Password        string
+	Model           string
+	UseRequestModel bool
 }
 
 // RuntimeProviderFactories provides provider constructors used by the runtime composer.
@@ -85,6 +86,10 @@ func (c Composer) WrapProviderChain(primary Provider, cfg config.LLMConfig, appM
 
 // BuildProviderForSelection resolves and constructs a provider for a requested provider name.
 func (c Composer) BuildProviderForSelection(cfg config.LLMConfig, providerName, model string, logger *slog.Logger) (Provider, error) {
+	return c.buildProviderForSelection(cfg, providerName, model, logger, true)
+}
+
+func (c Composer) buildProviderForSelection(cfg config.LLMConfig, providerName, model string, logger *slog.Logger, useRequestModel bool) (Provider, error) {
 	_ = logger
 
 	providerName = strings.ToLower(strings.TrimSpace(providerName))
@@ -155,10 +160,11 @@ func (c Composer) BuildProviderForSelection(cfg config.LLMConfig, providerName, 
 			return nil, fmt.Errorf("llm: opencode factory is not configured")
 		}
 		return c.factories.OpenCode(OpenCodeProviderConfig{
-			BaseURL:  cfg.Providers.OpenCode.BaseURL,
-			Username: cfg.Providers.OpenCode.Username,
-			Password: cfg.Providers.OpenCode.Password,
-			Model:    resolveModel(cfg.Providers.OpenCode.Model),
+			BaseURL:         cfg.Providers.OpenCode.BaseURL,
+			Username:        cfg.Providers.OpenCode.Username,
+			Password:        cfg.Providers.OpenCode.Password,
+			Model:           resolveModel(cfg.Providers.OpenCode.Model),
+			UseRequestModel: useRequestModel,
 		})
 	default:
 		if providerName == "" {
@@ -216,7 +222,7 @@ func (c Composer) chainOptions(cfg config.LLMConfig, appMetrics any, logger *slo
 	}
 
 	if fb := strings.TrimSpace(cfg.FallbackProvider); fb != "" {
-		secondary, err := c.BuildProviderForSelection(cfg, fb, cfg.FallbackModel, logger)
+		secondary, err := c.buildProviderForSelection(cfg, fb, cfg.FallbackModel, logger, false)
 		if err != nil {
 			if logger != nil {
 				logger.Warn("llm: fallback provider unavailable, skipping",

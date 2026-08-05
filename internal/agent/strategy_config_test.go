@@ -85,6 +85,19 @@ func TestValidateStrategyConfig_InvalidQuickThinkModel(t *testing.T) {
 	}
 }
 
+func TestValidateStrategyConfig_OpenCodeGPT56Models(t *testing.T) {
+	provider := "opencode"
+	deep := "openai/gpt-5.6-sol"
+	quick := "openai/gpt-5.6-luna"
+	cfg := validStrategyConfig()
+	cfg.LLMConfig = &agent.StrategyLLMConfig{
+		Provider: &provider, DeepThinkModel: &deep, QuickThinkModel: &quick,
+	}
+	if err := agent.ValidateStrategyConfig(cfg); err != nil {
+		t.Fatalf("ValidateStrategyConfig() error = %v", err)
+	}
+}
+
 func TestValidateStrategyConfig_PositionSizePctOutOfRange(t *testing.T) {
 	tests := []struct {
 		name string

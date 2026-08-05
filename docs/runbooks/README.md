@@ -28,7 +28,7 @@ These runbooks are for operators and contributors handling a running system, an 
 
 - [Broker API outage handling](broker-api-outage.md)
 - [LLM provider outage handling](llm-provider-outage.md)
-- [OpenCode OAuth fallback](opencode-oauth-fallback.md)
+- [OpenCode OAuth provider](opencode-oauth-fallback.md)
 - [Rolling restart procedure](rolling-restart.md)
 - [Database backup and restore](database-backup-restore.md)
 - [Release readiness and recovery drills](release-readiness.md)

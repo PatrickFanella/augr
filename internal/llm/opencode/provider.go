@@ -23,20 +23,22 @@ const (
 
 // Config contains the settings required to use an OpenCode server.
 type Config struct {
-	BaseURL    string
-	Username   string
-	Password   string
-	Model      string
-	HTTPClient *http.Client
+	BaseURL         string
+	Username        string
+	Password        string
+	Model           string
+	UseRequestModel bool
+	HTTPClient      *http.Client
 }
 
 // Provider implements llm.Provider through OpenCode's headless HTTP API.
 type Provider struct {
-	baseURL  string
-	username string
-	password string
-	model    string
-	client   *http.Client
+	baseURL         string
+	username        string
+	password        string
+	model           string
+	useRequestModel bool
+	client          *http.Client
 }
 
 var _ llm.Provider = (*Provider)(nil)
@@ -66,11 +68,12 @@ func NewProvider(cfg Config) (*Provider, error) {
 		client = http.DefaultClient
 	}
 	return &Provider{
-		baseURL:  baseURL,
-		username: username,
-		password: cfg.Password,
-		model:    strings.TrimSpace(cfg.Model),
-		client:   client,
+		baseURL:         baseURL,
+		username:        username,
+		password:        cfg.Password,
+		model:           strings.TrimSpace(cfg.Model),
+		useRequestModel: cfg.UseRequestModel,
+		client:          client,
 	}, nil
 }
 
@@ -83,12 +86,11 @@ func (p *Provider) Complete(ctx context.Context, request llm.CompletionRequest) 
 		return nil, errors.New("opencode: at least one message is required")
 	}
 
-	// The configured model is intentional: fallback calls retain the primary request's
-	// model, which may not exist in OpenCode. Only use the request model when no
-	// provider-specific model was configured.
 	model := p.model
-	if model == "" {
-		model = strings.TrimSpace(request.Model)
+	if p.useRequestModel {
+		if _, _, err := splitModel(request.Model); err == nil {
+			model = strings.TrimSpace(request.Model)
+		}
 	}
 	providerID, modelID, err := splitModel(model)
 	if err != nil {
@@ -100,7 +102,7 @@ func (p *Provider) Complete(ctx context.Context, request llm.CompletionRequest) 
 		ID string `json:"id"`
 	}
 	err = p.doJSON(ctx, http.MethodPost, "/session", map[string]any{
-		"title": "Augr fallback completion",
+		"title": "Augr completion",
 		"permission": []map[string]string{{
 			"permission": "*",
 			"pattern":    "*",
@@ -121,7 +123,7 @@ func (p *Provider) Complete(ctx context.Context, request llm.CompletionRequest) 
 	}
 	var completion messageResponse
 	err = p.doJSON(ctx, http.MethodPost, "/session/"+url.PathEscape(session.ID)+"/message", map[string]any{
-		"agent": "augr-fallback",
+		"agent": "augr-completion",
 		"model": map[string]string{
 			"providerID": providerID,
 			"modelID":    modelID,

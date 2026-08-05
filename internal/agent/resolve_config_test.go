@@ -396,14 +396,14 @@ func TestResolveConfig_GlobalFallback(t *testing.T) {
 func TestResolveConfig_HardcodedDefaults(t *testing.T) {
 	got := agent.ResolveConfig(nil, agent.GlobalSettings{})
 
-	if got.LLMConfig.Provider != "openai" {
-		t.Errorf("Provider = %q, want %q", got.LLMConfig.Provider, "openai")
+	if got.LLMConfig.Provider != "opencode" {
+		t.Errorf("Provider = %q, want %q", got.LLMConfig.Provider, "opencode")
 	}
-	if got.LLMConfig.DeepThinkModel != "gpt-5.2" {
-		t.Errorf("DeepThinkModel = %q, want %q", got.LLMConfig.DeepThinkModel, "gpt-5.2")
+	if got.LLMConfig.DeepThinkModel != "openai/gpt-5.6-sol" {
+		t.Errorf("DeepThinkModel = %q, want %q", got.LLMConfig.DeepThinkModel, "openai/gpt-5.6-sol")
 	}
-	if got.LLMConfig.QuickThinkModel != "gpt-5-mini" {
-		t.Errorf("QuickThinkModel = %q, want %q", got.LLMConfig.QuickThinkModel, "gpt-5-mini")
+	if got.LLMConfig.QuickThinkModel != "openai/gpt-5.6-luna" {
+		t.Errorf("QuickThinkModel = %q, want %q", got.LLMConfig.QuickThinkModel, "openai/gpt-5.6-luna")
 	}
 	if got.PipelineConfig.DebateRounds != 3 {
 		t.Errorf("DebateRounds = %d, want %d", got.PipelineConfig.DebateRounds, 3)
@@ -475,8 +475,8 @@ func TestResolveConfig_PartialStrategyOverride(t *testing.T) {
 	if got.LLMConfig.DeepThinkModel != "claude-3-7-sonnet-latest" {
 		t.Errorf("DeepThinkModel = %q, want %q", got.LLMConfig.DeepThinkModel, "claude-3-7-sonnet-latest")
 	}
-	if got.LLMConfig.QuickThinkModel != "gpt-5-mini" {
-		t.Errorf("QuickThinkModel = %q, want %q (hardcoded default)", got.LLMConfig.QuickThinkModel, "gpt-5-mini")
+	if got.LLMConfig.QuickThinkModel != "openai/gpt-5.6-luna" {
+		t.Errorf("QuickThinkModel = %q, want %q (hardcoded default)", got.LLMConfig.QuickThinkModel, "openai/gpt-5.6-luna")
 	}
 }
 
@@ -533,7 +533,7 @@ func TestResolveConfig_EdgeCases(t *testing.T) {
 			global:   agent.GlobalSettings{},
 			check: func(t *testing.T, got agent.ResolvedConfig) {
 				t.Helper()
-				if got.LLMConfig.Provider != "openai" || got.LLMConfig.DeepThinkModel != "gpt-5.2" || got.LLMConfig.QuickThinkModel != "gpt-5-mini" {
+				if got.LLMConfig.Provider != "opencode" || got.LLMConfig.DeepThinkModel != "openai/gpt-5.6-sol" || got.LLMConfig.QuickThinkModel != "openai/gpt-5.6-luna" {
 					t.Fatalf("LLM defaults = %+v", got.LLMConfig)
 				}
 				if got.PipelineConfig.DebateRounds != 3 || got.PipelineConfig.AnalysisTimeoutSeconds != 1800 || got.PipelineConfig.DebateTimeoutSeconds != 3600 {

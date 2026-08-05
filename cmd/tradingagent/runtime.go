@@ -215,7 +215,7 @@ func runtimeOllamaProvider(cfg llm.OllamaProviderConfig) (llm.Provider, error) {
 
 func runtimeOpenCodeProvider(cfg llm.OpenCodeProviderConfig) (llm.Provider, error) {
 	provider, err := opencode.NewProvider(opencode.Config{
-		BaseURL: cfg.BaseURL, Username: cfg.Username, Password: cfg.Password, Model: cfg.Model,
+		BaseURL: cfg.BaseURL, Username: cfg.Username, Password: cfg.Password, Model: cfg.Model, UseRequestModel: cfg.UseRequestModel,
 	})
 	if err != nil {
 		return nil, err

@@ -12,6 +12,7 @@ func TestLoadParsesEnvironmentValues(t *testing.T) {
 	t.Setenv("APP_ENV", "test")
 	t.Setenv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/tradingagent?sslmode=disable")
 	t.Setenv("OPENAI_API_KEY", "test-key")
+	t.Setenv("LLM_DEFAULT_PROVIDER", "openai")
 	t.Setenv("OPENAI_BASE_URL", "https://openai.example.com/v1")
 	t.Setenv("OPENROUTER_API_KEY", "openrouter-key")
 	t.Setenv("OPENROUTER_BASE_URL", "https://openrouter.example.com/api/v1")
@@ -256,6 +257,7 @@ func TestLoadAppliesResilienceDefaults(t *testing.T) {
 	t.Setenv("APP_ENV", "test")
 	t.Setenv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/tradingagent?sslmode=disable")
 	t.Setenv("OPENAI_API_KEY", "test-key")
+	t.Setenv("LLM_DEFAULT_PROVIDER", "openai")
 	t.Setenv("POLYGON_API_KEY", "test-polygon-key")
 
 	cfg, err := Load()
@@ -443,6 +445,7 @@ func TestLoadFloat64Field_ValidValue(t *testing.T) {
 	t.Setenv("APP_ENV", "test")
 	t.Setenv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/tradingagent?sslmode=disable")
 	t.Setenv("OPENAI_API_KEY", "test-key")
+	t.Setenv("LLM_DEFAULT_PROVIDER", "openai")
 	t.Setenv("POLYGON_API_KEY", "test-polygon-key")
 	t.Setenv("RISK_MAX_POSITION_SIZE_PCT", "0.25")
 
@@ -494,6 +497,7 @@ func TestLoadDotEnv_NonDevDoesNotFail(t *testing.T) {
 	t.Setenv("APP_ENV", "production")
 	t.Setenv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/tradingagent?sslmode=disable")
 	t.Setenv("OPENAI_API_KEY", "test-key")
+	t.Setenv("LLM_DEFAULT_PROVIDER", "openai")
 	t.Setenv("POLYGON_API_KEY", "test-polygon-key")
 
 	_, err := Load()

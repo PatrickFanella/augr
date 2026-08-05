@@ -10,11 +10,14 @@ import (
 // ValidateStrategyConfig accepts. Use isKnownLLMModel to query it.
 var knownLLMModels = map[string]bool{
 	// OpenAI
-	"gpt-5-mini":          true,
-	"gpt-5.2":             true,
-	"gpt-5.4":             true,
-	"gpt-4.1-mini":        true,
-	"openai/gpt-4.1-mini": true,
+	"gpt-5-mini":           true,
+	"gpt-5.2":              true,
+	"gpt-5.4":              true,
+	"gpt-4.1-mini":         true,
+	"openai/gpt-4.1-mini":  true,
+	"openai/gpt-5.6-sol":   true,
+	"openai/gpt-5.6-terra": true,
+	"openai/gpt-5.6-luna":  true,
 	// Anthropic
 	"claude-3-7-sonnet-latest": true,
 	// Google
@@ -39,10 +42,11 @@ var knownLLMProviders = map[string]bool{
 	"openrouter": true,
 	"xai":        true,
 	"ollama":     true,
+	"opencode":   true,
 }
 
 // providerModelAllowlist maps provider names to their accepted model identifiers.
-// Providers omitted from this map (openrouter, xai, ollama) are unconstrained and
+// Providers omitted from this map (openrouter, xai, ollama, opencode) are unconstrained and
 // may route to many underlying models; their model names are not further validated.
 var providerModelAllowlist = map[string]map[string]bool{
 	"openai": {
@@ -191,10 +195,10 @@ func validateLLMConfig(c *StrategyLLMConfig) error {
 	if c.Provider != nil {
 		provider = strings.ToLower(strings.TrimSpace(*c.Provider))
 		if !knownLLMProviders[provider] {
-			return fmt.Errorf("llm_config.provider: unknown provider %q (valid: openai, anthropic, google, openrouter, xai, ollama)", provider)
+			return fmt.Errorf("llm_config.provider: unknown provider %q (valid: openai, anthropic, google, openrouter, xai, ollama, opencode)", provider)
 		}
 	}
-	// Providers not in providerModelAllowlist (ollama, openrouter, xai) are
+	// Providers not in providerModelAllowlist (ollama, openrouter, xai, opencode) are
 	// unconstrained — skip the global model check for them.
 	constrained := provider == "" || providerModelAllowlist[provider] != nil
 	if c.DeepThinkModel != nil {
