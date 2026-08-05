@@ -351,6 +351,12 @@ func (o *JobOrchestrator) RunJob(ctx context.Context, name string) error {
 	if !ok {
 		return fmt.Errorf("automation: unknown job %q", name)
 	}
+	job.mu.Lock()
+	enabled := job.Enabled
+	job.mu.Unlock()
+	if !enabled {
+		return fmt.Errorf("automation: job %q is disabled", name)
+	}
 	o.logger.Info("automation: manual trigger", slog.String("job", name))
 	go o.runDirect(job)
 	return nil
@@ -359,6 +365,11 @@ func (o *JobOrchestrator) RunJob(ctx context.Context, name string) error {
 // runDirect runs a job immediately without checking ShouldFire (for manual triggers).
 func (o *JobOrchestrator) runDirect(job *RegisteredJob) {
 	job.mu.Lock()
+	if !job.Enabled {
+		job.mu.Unlock()
+		o.logger.Info("automation: skipping disabled manual run", slog.String("job", job.Name))
+		return
+	}
 	if job.Running {
 		job.mu.Unlock()
 		o.logger.Warn("automation: skipping overlapping run", slog.String("job", job.Name))

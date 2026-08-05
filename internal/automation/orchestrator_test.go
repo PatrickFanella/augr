@@ -127,6 +127,32 @@ func TestJobOrchestratorRunJob_AutoDisablesAfterThreshold(t *testing.T) {
 	}
 }
 
+func TestJobOrchestratorRunJob_RejectsDisabledJob(t *testing.T) {
+	t.Parallel()
+
+	var calls int
+	orch := NewJobOrchestrator(OrchestratorDeps{})
+	orch.Register("job", "disabled job", schedulerSpecEveryMinute(), func(context.Context) error {
+		calls++
+		return nil
+	})
+	if err := orch.SetEnabled("job", false); err != nil {
+		t.Fatalf("SetEnabled(false) error = %v", err)
+	}
+
+	err := orch.RunJob(context.Background(), "job")
+	if err == nil || !strings.Contains(err.Error(), "disabled") {
+		t.Fatalf("RunJob() error = %v, want disabled rejection", err)
+	}
+	time.Sleep(20 * time.Millisecond)
+	if calls != 0 {
+		t.Fatalf("disabled job calls = %d, want 0", calls)
+	}
+	if status := singleJobStatus(t, orch, "job"); status.RunCount != 0 {
+		t.Fatalf("disabled job RunCount = %d, want 0", status.RunCount)
+	}
+}
+
 func TestJobOrchestratorWrapAndRun_AutoDisabledJobsAreSkipped(t *testing.T) {
 	t.Parallel()
 
