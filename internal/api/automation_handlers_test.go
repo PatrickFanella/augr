@@ -10,6 +10,7 @@ import (
 
 	"github.com/PatrickFanella/get-rich-quick/internal/automation"
 	"github.com/PatrickFanella/get-rich-quick/internal/scheduler"
+	"github.com/go-chi/chi/v5"
 )
 
 // newTestOrchestrator creates a minimal orchestrator with no DB deps.
@@ -191,20 +192,26 @@ func TestAutomationStatusIncludesAlpacaReconcileLastSummary(t *testing.T) {
 	}
 }
 
-func TestAutomationEnableRejectsKalshiGateErrorsAsBadRequest(t *testing.T) {
+func TestAutomationEnableAllowsKalshiPreviewSchedulingWithoutGate(t *testing.T) {
 	o := automation.NewJobOrchestrator(automation.OrchestratorDeps{})
 	o.Register("kalshi_settlement", "test", scheduler.ScheduleSpec{Cron: "0 * * * *"}, func(context.Context) error { return nil })
 	if err := o.SetEnabled("kalshi_settlement", false); err != nil {
 		t.Fatal(err)
 	}
-	if err := o.SetEnabled("kalshi_settlement", true); err == nil || !strings.Contains(err.Error(), "gate unavailable") {
-		t.Fatalf("expected gate unavailable error, got %v", err)
+	if err := o.SetEnabled("kalshi_settlement", true); err != nil {
+		t.Fatalf("preview scheduling must not require mutation gate: %v", err)
+	}
+	if err := o.SetEnabled("kalshi_settlement", false); err != nil {
+		t.Fatal(err)
 	}
 	s := &Server{automation: o}
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/automation/jobs/kalshi_settlement/enable", strings.NewReader(`{"enabled":true}`))
+	routeCtx := chi.NewRouteContext()
+	routeCtx.URLParams.Add("name", "kalshi_settlement")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, routeCtx))
 	rr := httptest.NewRecorder()
 	s.handleSetAutomationJobEnabled(rr, req)
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("status=%d, want 400", rr.Code)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d, want 200: %s", rr.Code, rr.Body.String())
 	}
 }
