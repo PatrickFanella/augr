@@ -82,6 +82,7 @@ type LLMProviderConfigs struct {
 	OpenRouter LLMProviderConfig
 	XAI        LLMProviderConfig
 	Ollama     OllamaConfig
+	OpenCode   OpenCodeConfig
 }
 
 // LLMProviderConfig contains settings for API-backed LLM providers.
@@ -96,6 +97,14 @@ type OllamaConfig struct {
 	BaseURL string
 	Model   string
 	APIKey  string
+}
+
+// OpenCodeConfig contains settings for the isolated OpenCode fallback service.
+type OpenCodeConfig struct {
+	BaseURL  string
+	Username string
+	Password string
+	Model    string
 }
 
 // EmbeddingConfig contains settings for the embedding provider.
@@ -615,6 +624,12 @@ func loadFromEnvironment() (Config, error) {
 					BaseURL: getEnvString("OLLAMA_BASE_URL", "http://localhost:11434"),
 					Model:   getEnvString("OLLAMA_MODEL", "llama3.2"),
 					APIKey:  os.Getenv("OLLAMA_API_KEY"),
+				},
+				OpenCode: OpenCodeConfig{
+					BaseURL:  getEnvString("OPENCODE_BASE_URL", "http://localhost:4096"),
+					Username: getEnvString("OPENCODE_SERVER_USERNAME", "opencode"),
+					Password: os.Getenv("OPENCODE_SERVER_PASSWORD"),
+					Model:    getEnvString("OPENCODE_MODEL", "openai/gpt-5.4-mini"),
 				},
 			},
 			FallbackProvider:     getEnvString("LLM_FALLBACK_PROVIDER", ""),

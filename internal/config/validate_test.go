@@ -677,6 +677,35 @@ func TestValidateFallbackProviderOllamaWithBaseURLAndAPIKey(t *testing.T) {
 	}
 }
 
+func TestValidateFallbackProviderOpenCodeWithOAuthService(t *testing.T) {
+	cfg := validConfig()
+	cfg.LLM.FallbackProvider = "opencode"
+	cfg.LLM.Providers.OpenCode = OpenCodeConfig{
+		BaseURL: "http://opencode:4096", Password: "server-secret", Model: "openai/gpt-5.4-mini",
+	}
+
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("Validate() error = %v, want nil", err)
+	}
+}
+
+func TestValidateFallbackProviderOpenCodeRequiresPasswordAndQualifiedModel(t *testing.T) {
+	cfg := validConfig()
+	cfg.LLM.FallbackProvider = "opencode"
+	cfg.LLM.Providers.OpenCode = OpenCodeConfig{BaseURL: "http://opencode:4096", Model: "gpt-5.4-mini"}
+
+	err := Validate(cfg)
+	if err == nil || !strings.Contains(err.Error(), "OPENCODE_SERVER_PASSWORD is not set") {
+		t.Fatalf("Validate() error = %v, want OpenCode password error", err)
+	}
+
+	cfg.LLM.Providers.OpenCode.Password = "server-secret"
+	err = Validate(cfg)
+	if err == nil || !strings.Contains(err.Error(), "OPENCODE_MODEL must use provider/model form") {
+		t.Fatalf("Validate() error = %v, want OpenCode model error", err)
+	}
+}
+
 func TestHasLLMProviderReturnsFalseWhenOnlyOllamaBaseURLSet(t *testing.T) {
 	if hasLLMProvider(LLMProviderConfigs{Ollama: OllamaConfig{BaseURL: "http://localhost:11434/v1"}}) {
 		t.Fatal("hasLLMProvider() = true, want false when Ollama API key is missing")
@@ -824,6 +853,10 @@ func clearConfigEnv(t *testing.T) {
 		"OLLAMA_BASE_URL",
 		"OLLAMA_API_KEY",
 		"OLLAMA_MODEL",
+		"OPENCODE_BASE_URL",
+		"OPENCODE_SERVER_USERNAME",
+		"OPENCODE_SERVER_PASSWORD",
+		"OPENCODE_MODEL",
 		"POLYGON_API_KEY",
 		"ALPHA_VANTAGE_API_KEY",
 		"ALPHA_VANTAGE_RATE_LIMIT_PER_MINUTE",

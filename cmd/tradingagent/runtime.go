@@ -52,6 +52,7 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/llm/google"
 	"github.com/PatrickFanella/get-rich-quick/internal/llm/ollama"
 	openaiProvider "github.com/PatrickFanella/get-rich-quick/internal/llm/openai"
+	"github.com/PatrickFanella/get-rich-quick/internal/llm/opencode"
 	polymarketws "github.com/PatrickFanella/get-rich-quick/internal/marketdata/polymarket"
 	"github.com/PatrickFanella/get-rich-quick/internal/metrics"
 	"github.com/PatrickFanella/get-rich-quick/internal/notification"
@@ -160,6 +161,7 @@ var (
 		OpenRouter: runtimeOpenRouterProvider,
 		XAI:        runtimeXAIProvider,
 		Ollama:     runtimeOllamaProvider,
+		OpenCode:   runtimeOpenCodeProvider,
 	})
 )
 
@@ -205,6 +207,16 @@ func runtimeXAIProvider(cfg llm.OpenAIProviderConfig) (llm.Provider, error) {
 
 func runtimeOllamaProvider(cfg llm.OllamaProviderConfig) (llm.Provider, error) {
 	provider, err := ollama.NewProvider(ollama.Config{BaseURL: cfg.BaseURL, APIKey: cfg.APIKey, Model: cfg.Model})
+	if err != nil {
+		return nil, err
+	}
+	return llm.ProviderFunc(provider.Complete), nil
+}
+
+func runtimeOpenCodeProvider(cfg llm.OpenCodeProviderConfig) (llm.Provider, error) {
+	provider, err := opencode.NewProvider(opencode.Config{
+		BaseURL: cfg.BaseURL, Username: cfg.Username, Password: cfg.Password, Model: cfg.Model,
+	})
 	if err != nil {
 		return nil, err
 	}

@@ -58,6 +58,42 @@ services:
     networks:
       - backend
 
+  opencode:
+    image: ghcr.io/anomalyco/opencode:1.17.20@sha256:f5381f02f54777e1ea51a4790be843e76e2d9a0ca3488633c8b71e136f9c590d
+    entrypoint: ['/bin/sh', '-ec']
+    command:
+      - |
+        test -n "$${OPENCODE_SERVER_PASSWORD:-}" || {
+          echo 'OPENCODE_SERVER_PASSWORD is required' >&2
+          exit 1
+        }
+        exec opencode serve --pure --hostname 0.0.0.0 --port 4096
+    working_dir: /workspace
+    environment:
+      HOME: /root
+      OPENCODE_CONFIG: /etc/opencode/opencode.json
+      OPENCODE_SERVER_USERNAME: ${OPENCODE_SERVER_USERNAME:-opencode}
+      OPENCODE_SERVER_PASSWORD: ${OPENCODE_SERVER_PASSWORD:-}
+    volumes:
+      - ./ops/opencode/opencode.json:/etc/opencode/opencode.json:ro
+      - ${OPENCODE_AUTH_DIR:-/var/lib/augr-opencode}:/root/.local/share/opencode
+    tmpfs:
+      - /workspace:rw,noexec,nosuid,size=16m
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'auth="$$(printf "%s:%s" "$${OPENCODE_SERVER_USERNAME:-opencode}" "$${OPENCODE_SERVER_PASSWORD}" | base64 | tr -d "\n")"; wget --quiet --spider --header="Authorization: Basic $${auth}" http://127.0.0.1:4096/global/health || exit 1',
+        ]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - backend
+      - llm-egress
+
   app:
     image: ${AUGR_APP_IMAGE:-augr-app:local}
     build:
@@ -76,6 +112,7 @@ services:
       APP_PORT: 8080
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@augr-postgres:5432/${POSTGRES_DB:-tradingagent}?sslmode=disable
       OLLAMA_BASE_URL: http://10.0.0.50:11434/v1
+      OPENCODE_BASE_URL: http://opencode:4096
       REDIS_URL: redis://augr-redis:6379/0
     ports:
       - '10.0.0.56:${AUGR_API_PORT:-3030}:8080'
@@ -127,6 +164,10 @@ networks:
   frontend:
   backend:
     internal: true
+  llm-egress:
+    ipam:
+      config:
+        - subnet: 10.251.0.0/28
   monitoring:
     name: monitoring
     external: true

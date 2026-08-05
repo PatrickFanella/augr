@@ -180,7 +180,8 @@ func hasLLMProvider(providers LLMProviderConfigs) bool {
 		strings.TrimSpace(providers.Google.APIKey) != "" ||
 		strings.TrimSpace(providers.OpenRouter.APIKey) != "" ||
 		strings.TrimSpace(providers.XAI.APIKey) != "" ||
-		(strings.TrimSpace(providers.Ollama.BaseURL) != "" && strings.TrimSpace(providers.Ollama.APIKey) != "")
+		(strings.TrimSpace(providers.Ollama.BaseURL) != "" && strings.TrimSpace(providers.Ollama.APIKey) != "") ||
+		(strings.TrimSpace(providers.OpenCode.BaseURL) != "" && strings.TrimSpace(providers.OpenCode.Password) != "")
 }
 
 func validateSelectedProvider(llmCfg LLMConfig) string {
@@ -203,7 +204,7 @@ func validateLLMProviderSelection(rawProvider, envName string, llmCfg LLMConfig)
 		return ""
 	}
 
-	known := []string{"openai", "anthropic", "google", "openrouter", "xai", "ollama"}
+	known := []string{"openai", "anthropic", "google", "openrouter", "xai", "ollama", "opencode"}
 	if !slices.Contains(known, provider) {
 		return fmt.Sprintf("%s %q is not a known provider", envName, rawProvider)
 	}
@@ -236,10 +237,29 @@ func validateLLMProviderSelection(rawProvider, envName string, llmCfg LLMConfig)
 		if strings.TrimSpace(llmCfg.Providers.Ollama.APIKey) == "" {
 			return fmt.Sprintf("%s is ollama but OLLAMA_API_KEY is not set", envName)
 		}
+	case "opencode":
+		if strings.TrimSpace(llmCfg.Providers.OpenCode.BaseURL) == "" {
+			return fmt.Sprintf("%s is opencode but OPENCODE_BASE_URL is not set", envName)
+		}
+		if strings.TrimSpace(llmCfg.Providers.OpenCode.Password) == "" {
+			return fmt.Sprintf("%s is opencode but OPENCODE_SERVER_PASSWORD is not set", envName)
+		}
+		opencodeModel := strings.TrimSpace(llmCfg.Providers.OpenCode.Model)
+		if envName == "LLM_FALLBACK_PROVIDER" && strings.TrimSpace(llmCfg.FallbackModel) != "" {
+			opencodeModel = strings.TrimSpace(llmCfg.FallbackModel)
+		}
+		if !validOpenCodeModel(opencodeModel) {
+			return fmt.Sprintf("%s is opencode but OPENCODE_MODEL must use provider/model form", envName)
+		}
 	default:
 		return fmt.Sprintf("LLM_DEFAULT_PROVIDER %q is not a known provider", llmCfg.DefaultProvider)
 	}
 	return ""
+}
+
+func validOpenCodeModel(model string) bool {
+	provider, modelID, ok := strings.Cut(strings.TrimSpace(model), "/")
+	return ok && strings.TrimSpace(provider) != "" && strings.TrimSpace(modelID) != ""
 }
 
 func validateBrokerCredentials(errs *[]string, keyName, keyValue, secretName, secretValue string) {

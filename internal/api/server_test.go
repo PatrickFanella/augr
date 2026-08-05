@@ -446,7 +446,7 @@ func TestHealthEndpointRedisDown(t *testing.T) {
 }
 
 func TestHealthEndpointUsesSharedTimeout(t *testing.T) {
-	const maxExpectedElapsed = 250 * time.Millisecond
+	const maxExpectedElapsed = time.Second
 
 	originalTimeout := healthCheckTimeout
 	healthCheckTimeout = 100 * time.Millisecond
@@ -455,8 +455,8 @@ func TestHealthEndpointUsesSharedTimeout(t *testing.T) {
 	}()
 
 	deps := testDeps()
-	dbHealth := &blockingHealthCheck{}
-	redisHealth := &blockingHealthCheck{}
+	dbHealth := &blockingHealthCheck{deadline: make(chan time.Time, 1)}
+	redisHealth := &blockingHealthCheck{deadline: make(chan time.Time, 1)}
 	deps.DBHealth = dbHealth
 	deps.RedisHealth = redisHealth
 	srv := newTestServerWithDeps(t, deps)
@@ -480,6 +480,11 @@ func TestHealthEndpointUsesSharedTimeout(t *testing.T) {
 	}
 	if elapsed >= maxExpectedElapsed {
 		t.Fatalf("elapsed = %v, want < %v", elapsed, maxExpectedElapsed)
+	}
+	dbDeadline := <-dbHealth.deadline
+	redisDeadline := <-redisHealth.deadline
+	if !dbDeadline.Equal(redisDeadline) {
+		t.Fatalf("dependency deadlines differ: db=%v redis=%v", dbDeadline, redisDeadline)
 	}
 	if dbHealth.calls.Load() != 1 {
 		t.Fatalf("db health calls = %d, want 1", dbHealth.calls.Load())
@@ -2820,11 +2825,16 @@ func (s *stubHealthCheck) Check(context.Context) error {
 }
 
 type blockingHealthCheck struct {
-	calls atomic.Int32
+	calls    atomic.Int32
+	deadline chan time.Time
 }
 
 func (b *blockingHealthCheck) Check(ctx context.Context) error {
 	b.calls.Add(1)
+	if b.deadline != nil {
+		deadline, _ := ctx.Deadline()
+		b.deadline <- deadline
+	}
 	<-ctx.Done()
 	return ctx.Err()
 }

@@ -37,6 +37,14 @@ type OllamaProviderConfig struct {
 	Model   string
 }
 
+// OpenCodeProviderConfig is the config shape required by an OpenCode factory.
+type OpenCodeProviderConfig struct {
+	BaseURL  string
+	Username string
+	Password string
+	Model    string
+}
+
 // RuntimeProviderFactories provides provider constructors used by the runtime composer.
 type RuntimeProviderFactories struct {
 	OpenAI     func(OpenAIProviderConfig) (Provider, error)
@@ -45,6 +53,7 @@ type RuntimeProviderFactories struct {
 	OpenRouter func(OpenAIProviderConfig) (Provider, error)
 	XAI        func(OpenAIProviderConfig) (Provider, error)
 	Ollama     func(OllamaProviderConfig) (Provider, error)
+	OpenCode   func(OpenCodeProviderConfig) (Provider, error)
 }
 
 // Composer owns runtime LLM provider assembly.
@@ -140,6 +149,16 @@ func (c Composer) BuildProviderForSelection(cfg config.LLMConfig, providerName, 
 			BaseURL: cfg.Providers.Ollama.BaseURL,
 			APIKey:  cfg.Providers.Ollama.APIKey,
 			Model:   resolveModel(cfg.Providers.Ollama.Model),
+		})
+	case "opencode":
+		if c.factories.OpenCode == nil {
+			return nil, fmt.Errorf("llm: opencode factory is not configured")
+		}
+		return c.factories.OpenCode(OpenCodeProviderConfig{
+			BaseURL:  cfg.Providers.OpenCode.BaseURL,
+			Username: cfg.Providers.OpenCode.Username,
+			Password: cfg.Providers.OpenCode.Password,
+			Model:    resolveModel(cfg.Providers.OpenCode.Model),
 		})
 	default:
 		if providerName == "" {
