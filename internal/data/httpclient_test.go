@@ -115,6 +115,84 @@ func TestAPIClientGet_AuthQueryParam(t *testing.T) {
 	}
 }
 
+func TestAPIClientGet_TransportErrorRedactsQueryCredentials(t *testing.T) {
+	t.Parallel()
+
+	const secret = "provider-secret-that-must-not-leak"
+	client := NewAPIClient(APIClientConfig{
+		BaseURL: "https://provider.invalid",
+		Auth: AuthConfig{
+			Style:     AuthStyleQueryParam,
+			ParamName: "apiKey",
+			Value:     secret,
+		},
+		Timeout: time.Second,
+		Logger:  discardLogger(),
+		Prefix:  "test",
+	})
+	client.SetHTTPClient(&http.Client{Transport: roundTripperError{err: errors.New("dns unavailable")}})
+
+	_, _, err := client.Get(context.Background(), "/v1/data", url.Values{"symbol": {"AAPL"}})
+	if err == nil {
+		t.Fatal("Get() error = nil, want transport error")
+	}
+	if strings.Contains(err.Error(), secret) {
+		t.Fatalf("Get() error leaked query credential: %q", err)
+	}
+	if strings.Contains(err.Error(), "apiKey=") || strings.Contains(err.Error(), "symbol=") {
+		t.Fatalf("Get() error leaked query string: %q", err)
+	}
+	if !strings.Contains(err.Error(), "provider.invalid/v1/data") {
+		t.Fatalf("Get() error = %q, want redacted request path", err)
+	}
+}
+
+func TestAPIClientGet_NonSuccessBodyRedactsConfiguredCredential(t *testing.T) {
+	t.Parallel()
+
+	const secret = "provider-secret-that-must-not-leak"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"message":"provider detected API key ` + secret + `"}`))
+	}))
+	defer server.Close()
+
+	client := NewAPIClient(APIClientConfig{
+		BaseURL: server.URL,
+		Auth: AuthConfig{
+			Style:     AuthStyleQueryParam,
+			ParamName: "apiKey",
+			Value:     secret,
+		},
+		Timeout: time.Second,
+		Logger:  discardLogger(),
+		Prefix:  "test",
+	})
+
+	_, _, err := client.Get(context.Background(), "/v1/data", nil)
+	if err == nil {
+		t.Fatal("Get() error = nil, want non-success error")
+	}
+	if strings.Contains(err.Error(), secret) {
+		t.Fatalf("Get() error leaked configured credential: %q", err)
+	}
+	if !strings.Contains(err.Error(), "[REDACTED]") {
+		t.Fatalf("Get() error = %q, want redaction marker", err)
+	}
+
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("Get() error type = %T, want *APIError", err)
+	}
+	if strings.Contains(string(apiErr.Body), secret) {
+		t.Fatalf("APIError body leaked configured credential: %q", apiErr.Body)
+	}
+}
+
+type roundTripperError struct{ err error }
+
+func (r roundTripperError) RoundTrip(*http.Request) (*http.Response, error) { return nil, r.err }
+
 func TestAPIClientGet_AuthHeader(t *testing.T) {
 	t.Parallel()
 

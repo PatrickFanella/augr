@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -150,6 +151,7 @@ func (c *APIClient) Get(ctx context.Context, path string, params url.Values) ([]
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		err = redactTransportError(err)
 		c.logger.Warn(c.prefix+": request failed",
 			slog.String("method", req.Method),
 			slog.String("path", req.URL.Path),
@@ -178,10 +180,39 @@ func (c *APIClient) Get(ctx context.Context, path string, params url.Values) ([]
 	)
 
 	if resp.StatusCode >= 400 {
+		body = redactConfiguredCredential(body, c.auth.Value)
 		return nil, resp.StatusCode, &APIError{StatusCode: resp.StatusCode, Body: body}
 	}
 
 	return body, resp.StatusCode, nil
+}
+
+func redactConfiguredCredential(body []byte, credential string) []byte {
+	credential = strings.TrimSpace(credential)
+	if len(body) == 0 || credential == "" {
+		return body
+	}
+	return []byte(strings.ReplaceAll(string(body), credential, "[REDACTED]"))
+}
+
+// redactTransportError removes query strings from the URL embedded by
+// net/http in transport errors. Query parameters can contain provider
+// credentials and must never flow into logs, persisted job errors, or APIs.
+func redactTransportError(err error) error {
+	var urlErr *url.Error
+	if !errors.As(err, &urlErr) {
+		return err
+	}
+
+	redacted := *urlErr
+	if parsed, parseErr := url.Parse(redacted.URL); parseErr == nil {
+		parsed.RawQuery = ""
+		parsed.ForceQuery = false
+		redacted.URL = parsed.String()
+	} else if queryStart := strings.IndexByte(redacted.URL, '?'); queryStart >= 0 {
+		redacted.URL = redacted.URL[:queryStart]
+	}
+	return &redacted
 }
 
 // BaseURL returns the base URL of the client.
