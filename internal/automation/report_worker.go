@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"math/rand/v2"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/backtest"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
+	"github.com/PatrickFanella/get-rich-quick/internal/eventmarkets"
 	"github.com/PatrickFanella/get-rich-quick/internal/papervalidation"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 	pgrepo "github.com/PatrickFanella/get-rich-quick/internal/repository/postgres"
@@ -31,12 +31,11 @@ type reportWorkerDeps struct {
 
 // ReportWorker owns paper validation report generation and persistence.
 type ReportWorker struct {
-	deps    reportWorkerDeps
-	logger  *slog.Logger
-	metrics ReportWorkerMetrics
-	intN    func(int) int
-	wait    func(context.Context, time.Duration) error
-	now     func() time.Time
+	deps        reportWorkerDeps
+	logger      *slog.Logger
+	metrics     ReportWorkerMetrics
+	now         func() time.Time
+	lastSummary map[string]int
 }
 
 // NewReportWorker constructs a report worker with safe defaults.
@@ -48,34 +47,18 @@ func NewReportWorker(deps reportWorkerDeps, logger *slog.Logger, metrics ReportW
 		deps:    deps,
 		logger:  logger,
 		metrics: metrics,
-		intN:    rand.IntN,
-		wait: func(ctx context.Context, d time.Duration) error {
-			if d <= 0 {
-				return nil
-			}
-			timer := time.NewTimer(d)
-			defer timer.Stop()
-			select {
-			case <-timer.C:
-				return nil
-			case <-ctx.Done():
-				return ctx.Err()
-			}
-		},
-		now: time.Now,
+		now:     time.Now,
 	}
+}
+
+func (w *ReportWorker) LastSummary() map[string]int {
+	return cloneSummary(w.lastSummary)
 }
 
 // RunPaperValidationReport generates a report for each active paper strategy.
 func (w *ReportWorker) RunPaperValidationReport(ctx context.Context) error {
 	if w.deps.StrategyRepo == nil {
 		return fmt.Errorf("paper_validation_report: strategy repo not configured")
-	}
-	if w.intN == nil {
-		w.intN = rand.IntN
-	}
-	if w.wait == nil {
-		w.wait = func(context.Context, time.Duration) error { return nil }
 	}
 	if w.now == nil {
 		w.now = time.Now
@@ -94,11 +77,13 @@ func (w *ReportWorker) RunPaperValidationReport(ctx context.Context) error {
 	}
 	var paperStrategies []paperEntry
 	for _, s := range strategies {
-		if s.IsPaper {
+		if s.IsPaper && !eventmarkets.IsEventMarket(s.MarketType) {
 			paperStrategies = append(paperStrategies, paperEntry{ID: s.ID, Name: s.Name})
 		}
 	}
+	skipped := len(strategies) - len(paperStrategies)
 	if len(paperStrategies) == 0 {
+		w.lastSummary = map[string]int{"scanned": len(strategies), "eligible": 0, "skipped": skipped, "succeeded": 0, "failed": 0}
 		w.logger.Info("paper_validation_report: no active paper strategies")
 		return nil
 	}
@@ -112,11 +97,6 @@ func (w *ReportWorker) RunPaperValidationReport(ctx context.Context) error {
 	for _, ps := range paperStrategies {
 		if ctx.Err() != nil {
 			return ctx.Err()
-		}
-
-		jitter := time.Duration(w.intN(120)) * time.Second
-		if err := w.wait(ctx, jitter); err != nil {
-			return err
 		}
 
 		if err := w.generateOneReport(ctx, ps.ID, ps.Name, timeBucket, now); err != nil {
@@ -140,6 +120,10 @@ func (w *ReportWorker) RunPaperValidationReport(ctx context.Context) error {
 		slog.Int("succeeded", succeeded),
 		slog.Int("failed", failed),
 	)
+	w.lastSummary = map[string]int{"scanned": len(strategies), "eligible": len(paperStrategies), "skipped": skipped, "succeeded": succeeded, "failed": failed}
+	if failed > 0 {
+		return fmt.Errorf("paper_validation_report: %d of %d eligible strategies failed", failed, len(paperStrategies))
+	}
 	return nil
 }
 

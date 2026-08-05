@@ -91,7 +91,7 @@ func (s *kalshiGateRepoStub) Get(context.Context, string) (*domain.KalshiSettlem
 	return s.state, nil
 }
 
-func (s *kalshiGateRepoStub) RecordSuccess(context.Context, string, int, int, int, int, int, string, time.Time) (*domain.KalshiSettlementGateState, error) {
+func (s *kalshiGateRepoStub) RecordSuccess(_ context.Context, _ string, threshold, _, _, _, _ int, fingerprint string, _ time.Time) (*domain.KalshiSettlementGateState, error) {
 	if s.failPersist {
 		return nil, errors.New("persist failed")
 	}
@@ -99,6 +99,10 @@ func (s *kalshiGateRepoStub) RecordSuccess(context.Context, string, int, int, in
 		s.state = &domain.KalshiSettlementGateState{}
 	}
 	s.state.ConsecutiveSuccesses++
+	s.state.Threshold = threshold
+	s.state.ProjectionFingerprint = fingerprint
+	s.state.Eligible = threshold > 0 && s.state.ConsecutiveSuccesses >= threshold
+	s.state.LastOutcome = "success"
 	return s.state, nil
 }
 
@@ -145,21 +149,21 @@ func TestKalshiSettlementManualDryRunAccumulatesGateAndSkipsMutation(t *testing.
 	}
 }
 
-func TestKalshiSettlementLivePathChecksGateBeforeMutation(t *testing.T) {
+func TestKalshiSettlementLivePathBuildsGateEvidenceBeforeMutation(t *testing.T) {
 	cat := &kalshiSettlementCatalogStub{getMarkets: map[string]*kalshidiscovery.MarketCandidate{"KX-A": {Ticker: "KX-A", Result: "yes"}}}
 	settler := &kalshiPendingSettlerStub{pending: []string{"KX-A"}, preview: map[string]int{"KX-A": 1}}
 	gate := &kalshiGateRepoStub{state: &domain.KalshiSettlementGateState{Threshold: 1, Eligible: false}}
-	orch := NewJobOrchestrator(OrchestratorDeps{KalshiCatalog: cat, PredictionSettler: settler, KalshiSettlementGateRepo: gate})
+	orch := NewJobOrchestrator(OrchestratorDeps{KalshiCatalog: cat, PredictionSettler: settler, KalshiSettlementGateRepo: gate, KalshiSettlementEnabled: true})
 	orch.Register("kalshi_settlement", "test", schedulerSpecEveryMinute(), orch.kalshiSettlement)
 	job := orch.jobs["kalshi_settlement"]
 	job.Enabled = true
-	if err := orch.kalshiSettlement(context.Background()); err == nil {
-		t.Fatal("kalshiSettlement() error = nil, want gate rejection")
+	if err := orch.kalshiSettlement(context.Background()); err != nil {
+		t.Fatalf("kalshiSettlement() error = %v", err)
 	}
 	if len(settler.settle) != 0 {
 		t.Fatalf("SettleMarket calls = %v, want none", settler.settle)
 	}
-	if gate.gets == 0 {
+	if gate.gets == 0 || gate.state.ConsecutiveSuccesses != 1 {
 		t.Fatal("gate eligibility was not checked")
 	}
 	if len(cat.fetched) != 1 || cat.fetched[0] != "KX-A" {
@@ -194,7 +198,7 @@ func TestKalshiSettlementLiveSuccessDoesNotRecordGateSuccess(t *testing.T) {
 	settler := &kalshiPendingSettlerStub{pending: []string{"KX-A"}, preview: map[string]int{"KX-A": 1}, previewIDs: map[string][]uuid.UUID{"KX-A": {decisionID}}, settle: []string{}}
 	fingerprint := settlementProjectionFingerprint([]string{settlementPreviewFingerprint(&prediction.SettlementPreview{Instrument: "KX-A", Count: 1, DecisionIDs: []uuid.UUID{decisionID}}, "YES")})
 	gate := &kalshiGateRepoStub{state: &domain.KalshiSettlementGateState{Threshold: 1, Eligible: true, ProjectionFingerprint: fingerprint}}
-	orch := NewJobOrchestrator(OrchestratorDeps{KalshiCatalog: cat, PredictionSettler: settler, KalshiSettlementGateRepo: gate, KalshiSettlementDryRun: false})
+	orch := NewJobOrchestrator(OrchestratorDeps{KalshiCatalog: cat, PredictionSettler: settler, KalshiSettlementGateRepo: gate, KalshiSettlementDryRun: false, KalshiSettlementEnabled: true})
 	orch.Register("kalshi_settlement", "test", schedulerSpecEveryMinute(), orch.kalshiSettlement)
 	job := orch.jobs["kalshi_settlement"]
 	job.Enabled = true
@@ -211,21 +215,21 @@ func TestKalshiSettlementLiveFingerprintMismatchSkipsAllMutations(t *testing.T) 
 	settler := &kalshiPendingSettlerStub{pending: []string{"KX-A"}, preview: map[string]int{"KX-A": 1}}
 	gate := &kalshiGateRepoStub{state: &domain.KalshiSettlementGateState{Threshold: 1, Eligible: true, ProjectionFingerprint: "old-fp"}}
 	metrics := &stubAutomationMetrics{}
-	orch := NewJobOrchestrator(OrchestratorDeps{KalshiCatalog: cat, PredictionSettler: settler, KalshiSettlementGateRepo: gate})
+	orch := NewJobOrchestrator(OrchestratorDeps{KalshiCatalog: cat, PredictionSettler: settler, KalshiSettlementGateRepo: gate, KalshiSettlementEnabled: true})
 	orch.WithJobMetrics(metrics)
 	orch.Register("kalshi_settlement", "test", schedulerSpecEveryMinute(), orch.kalshiSettlement)
 	job := orch.jobs["kalshi_settlement"]
 	job.Enabled = true
-	if err := orch.kalshiSettlement(context.Background()); err == nil {
-		t.Fatal("kalshiSettlement() error = nil, want fingerprint mismatch")
+	if err := orch.kalshiSettlement(context.Background()); err != nil {
+		t.Fatalf("kalshiSettlement() error = %v", err)
 	}
 	if len(settler.settle) != 0 {
 		t.Fatalf("SettleMarket calls = %v, want none", settler.settle)
 	}
-	if gate.state == nil || gate.state.ConsecutiveSuccesses != 0 || gate.state.LastOutcome != "failure" {
-		t.Fatalf("gate state = %#v, want failure reset", gate.state)
+	if gate.state == nil || gate.state.ConsecutiveSuccesses != 1 || gate.state.LastOutcome != "success" {
+		t.Fatalf("gate state = %#v, want new preview sequence", gate.state)
 	}
-	if metrics.kalshiOutcomes["failure"] != 1 {
+	if metrics.kalshiDryRuns["success"] != 1 || metrics.kalshiOutcomes["success"] != 1 {
 		t.Fatalf("metrics = %#v", metrics)
 	}
 }

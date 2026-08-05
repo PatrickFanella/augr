@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -43,9 +44,9 @@ func (o *JobOrchestrator) earningsScanner(ctx context.Context) error {
 		return nil
 	}
 
-	strategies, err := o.deps.StrategyRepo.List(ctx, repository.StrategyFilter{
+	strategies, err := listAllStrategies(ctx, o.deps.StrategyRepo, repository.StrategyFilter{
 		Status: domain.StrategyStatusActive,
-	}, 0, 0)
+	})
 	if err != nil {
 		return fmt.Errorf("earnings_scanner: list strategies: %w", err)
 	}
@@ -57,6 +58,9 @@ func (o *JobOrchestrator) earningsScanner(ctx context.Context) error {
 	// Build ticker set from active strategies.
 	tickerSet := make(map[string]struct{}, len(strategies))
 	for _, s := range strategies {
+		if s.MarketType.Normalize() != domain.MarketTypeStock {
+			continue
+		}
 		tickerSet[s.Ticker] = struct{}{}
 	}
 
@@ -86,6 +90,7 @@ func (o *JobOrchestrator) earningsScanner(ctx context.Context) error {
 		slog.Int("matched", matched),
 		slog.Int("active_tickers", len(tickerSet)),
 	)
+	o.SetLastSummary("earnings_scanner", map[string]int{"events": len(events), "matched": matched, "active_stock_tickers": len(tickerSet)})
 	return nil
 }
 
@@ -96,9 +101,9 @@ func (o *JobOrchestrator) filingMonitor(ctx context.Context) error {
 		return nil
 	}
 
-	strategies, err := o.deps.StrategyRepo.List(ctx, repository.StrategyFilter{
+	strategies, err := listAllStrategies(ctx, o.deps.StrategyRepo, repository.StrategyFilter{
 		Status: domain.StrategyStatusActive,
-	}, 0, 0)
+	})
 	if err != nil {
 		return fmt.Errorf("filing_monitor: list strategies: %w", err)
 	}
@@ -120,23 +125,31 @@ func (o *JobOrchestrator) filingMonitor(ctx context.Context) error {
 		tickerStrategy[s.Ticker] = s.Name
 		tickers = append(tickers, s.Ticker)
 	}
+	sort.Strings(tickers)
+	available := len(tickers)
 	if len(tickers) > filingMonitorMaxTickersPerRun {
+		now := time.Now().UTC()
+		batchNumber := now.YearDay()*6 + now.Hour()/4
+		start := (batchNumber * filingMonitorMaxTickersPerRun) % len(tickers)
+		rotated := append(append([]string(nil), tickers[start:]...), tickers[:start]...)
 		o.logger.Info("filing_monitor: limiting ticker batch",
 			slog.Int("available", len(tickers)),
 			slog.Int("checked", filingMonitorMaxTickersPerRun),
+			slog.Int("start_offset", start),
 		)
-		tickers = tickers[:filingMonitorMaxTickersPerRun]
+		tickers = rotated[:filingMonitorMaxTickersPerRun]
 	}
 
 	now := time.Now().UTC()
 	from := now.AddDate(0, 0, -1)
 	to := now
 
-	var totalFilings int
+	var totalFilings, tickersChecked int
 	for _, ticker := range tickers {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
+		tickersChecked++
 
 		for _, formType := range []string{"8-K", "10-Q"} {
 			filings, err := o.deps.EventsProvider.GetFilings(ctx, ticker, formType, from, to)
@@ -147,7 +160,8 @@ func (o *JobOrchestrator) filingMonitor(ctx context.Context) error {
 						slog.String("form", formType),
 						slog.Any("error", err),
 					)
-					return nil
+					o.SetLastSummary("filing_monitor", map[string]int{"available": available, "tickers_checked": tickersChecked, "filings_found": totalFilings, "rate_limited": 1})
+					return fmt.Errorf("filing_monitor: provider rate limited after %d filings: %w", totalFilings, err)
 				}
 				o.logger.Warn("filing_monitor: failed to fetch filings",
 					slog.String("ticker", ticker),
@@ -192,6 +206,7 @@ func (o *JobOrchestrator) filingMonitor(ctx context.Context) error {
 		slog.Int("tickers_checked", len(tickers)),
 		slog.Int("filings_found", totalFilings),
 	)
+	o.SetLastSummary("filing_monitor", map[string]int{"available": available, "tickers_checked": len(tickers), "filings_found": totalFilings, "rate_limited": 0})
 	return nil
 }
 

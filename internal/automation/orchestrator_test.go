@@ -153,6 +153,23 @@ func TestJobOrchestratorRunJob_RejectsDisabledJob(t *testing.T) {
 	}
 }
 
+func TestJobOrchestratorRunDirectEnforcesTimeout(t *testing.T) {
+	orch := NewJobOrchestrator(OrchestratorDeps{JobTimeout: 10 * time.Millisecond})
+	orch.Register("job", "test", schedulerSpecEveryMinute(), func(ctx context.Context) error {
+		<-ctx.Done()
+		return ctx.Err()
+	})
+
+	orch.runDirect(orch.jobs["job"])
+	status := singleJobStatus(t, orch, "job")
+	if status.LastResult != "failed" {
+		t.Fatalf("LastResult = %q, want failed", status.LastResult)
+	}
+	if !strings.Contains(status.LastError, context.DeadlineExceeded.Error()) {
+		t.Fatalf("LastError = %q, want deadline exceeded", status.LastError)
+	}
+}
+
 func TestJobOrchestratorWrapAndRun_AutoDisabledJobsAreSkipped(t *testing.T) {
 	t.Parallel()
 
@@ -381,8 +398,8 @@ func TestJobOrchestratorRegisterAllAddsKalshiSettlement(t *testing.T) {
 	if status.Schedule == "" || status.Schedule == "Manual only" {
 		t.Fatalf("kalshi settlement schedule = %q", status.Schedule)
 	}
-	if status.Enabled {
-		t.Fatal("kalshi_settlement enabled = true, want false by default")
+	if !status.Enabled {
+		t.Fatal("kalshi_settlement enabled = false, want preview scheduler active")
 	}
 }
 
@@ -423,8 +440,8 @@ func (s *kalshiSettlementGateStub) RecordFailure(context.Context, string, int, i
 func TestJobOrchestratorSetEnabledKalshiSettlementDoesNotRequireEligibility(t *testing.T) {
 	orch := NewJobOrchestrator(OrchestratorDeps{KalshiSettlementGateRepo: &kalshiSettlementGateStub{state: &domain.KalshiSettlementGateState{Eligible: false}}})
 	orch.Register("kalshi_settlement", "test", schedulerSpecEveryMinute(), func(context.Context) error { return nil })
-	if err := orch.SetEnabled("kalshi_settlement", true); err == nil {
-		t.Fatal("SetEnabled(true) error = nil, want gate rejection")
+	if err := orch.SetEnabled("kalshi_settlement", true); err != nil {
+		t.Fatalf("SetEnabled(true) error = %v, preview scheduling must not require eligibility", err)
 	}
 	orch.deps.KalshiSettlementGateRepo = &kalshiSettlementGateStub{state: &domain.KalshiSettlementGateState{Eligible: true}}
 	if err := orch.SetEnabled("kalshi_settlement", false); err != nil {
@@ -432,23 +449,23 @@ func TestJobOrchestratorSetEnabledKalshiSettlementDoesNotRequireEligibility(t *t
 	}
 }
 
-func TestJobOrchestratorSetEnabledKalshiSettlementFailsClosedAfterGatePersistError(t *testing.T) {
+func TestJobOrchestratorSetEnabledKalshiSettlementAllowsPreviewAfterGateLoadError(t *testing.T) {
 	orch := NewJobOrchestrator(OrchestratorDeps{KalshiSettlementGateRepo: &kalshiSettlementGateStub{err: errors.New("boom")}})
 	orch.Register("kalshi_settlement", "test", schedulerSpecEveryMinute(), func(context.Context) error { return nil })
-	if err := orch.SetEnabled("kalshi_settlement", true); err == nil {
-		t.Fatal("SetEnabled(true) error = nil, want gate load failure")
+	if err := orch.SetEnabled("kalshi_settlement", true); err != nil {
+		t.Fatalf("SetEnabled(true) error = %v, job itself enforces the mutation gate", err)
 	}
 }
 
-func TestJobOrchestratorSetEnabledKalshiSettlementKeepsUnhealthyLatchOnDisable(t *testing.T) {
+func TestJobOrchestratorSetEnabledKalshiSettlementDoesNotUseHealthLatchForScheduling(t *testing.T) {
 	orch := NewJobOrchestrator(OrchestratorDeps{KalshiSettlementGateRepo: &kalshiSettlementGateStub{state: &domain.KalshiSettlementGateState{Eligible: true}}})
 	orch.Register("kalshi_settlement", "test", schedulerSpecEveryMinute(), func(context.Context) error { return nil })
 	orch.kalshiGateUnhealthy = true
 	if err := orch.SetEnabled("kalshi_settlement", false); err != nil {
 		t.Fatalf("SetEnabled(false) error = %v", err)
 	}
-	if err := orch.SetEnabled("kalshi_settlement", true); err == nil {
-		t.Fatal("SetEnabled(true) error = nil, want unhealthy latch rejection")
+	if err := orch.SetEnabled("kalshi_settlement", true); err != nil {
+		t.Fatalf("SetEnabled(true) error = %v, preview scheduler should recover health", err)
 	}
 }
 

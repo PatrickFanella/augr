@@ -21,17 +21,13 @@ func (o *JobOrchestrator) registerKalshiSettlementJob() {
 		return
 	}
 	o.Register("kalshi_settlement", "Cash-settle resolved Kalshi paper contracts and journal outcomes", kalshiSettlementSpec, o.kalshiSettlement)
-	o.jobs["kalshi_settlement"].Enabled = o.deps.KalshiSettlementEnabled
 }
 
 func (o *JobOrchestrator) kalshiSettlement(ctx context.Context) error {
-	job, ok := o.jobs["kalshi_settlement"]
+	_, ok := o.jobs["kalshi_settlement"]
 	if !ok {
 		return fmt.Errorf("kalshi_settlement: job not registered")
 	}
-	job.mu.Lock()
-	enabled := job.Enabled
-	job.mu.Unlock()
 	type projectedMarket struct {
 		ticker, winner, fingerprint string
 		count                       int
@@ -48,7 +44,7 @@ func (o *JobOrchestrator) kalshiSettlement(ctx context.Context) error {
 		if _, persistErr := o.kalshiSettlementRecordFailure(ctx, threshold, fetched, resolved, wouldSettleMarkets, wouldSettleDecisions, err.Error()); persistErr != nil {
 			return persistErr
 		}
-		o.recordKalshiSettlementMetrics(false, o.deps.KalshiSettlementDryRun || !enabled)
+		o.recordKalshiSettlementMetrics(false, true)
 		return fmt.Errorf("kalshi_settlement: load pending markets: %w", err)
 	}
 	fetched += len(pending)
@@ -58,7 +54,7 @@ func (o *JobOrchestrator) kalshiSettlement(ctx context.Context) error {
 			if _, persistErr := o.kalshiSettlementRecordFailure(ctx, threshold, fetched, resolved, wouldSettleMarkets, wouldSettleDecisions, err.Error()); persistErr != nil {
 				return persistErr
 			}
-			o.recordKalshiSettlementMetrics(false, o.deps.KalshiSettlementDryRun || !enabled)
+			o.recordKalshiSettlementMetrics(false, true)
 			return fmt.Errorf("kalshi_settlement: get market %s: %w", ticker, err)
 		}
 		if market == nil {
@@ -74,7 +70,7 @@ func (o *JobOrchestrator) kalshiSettlement(ctx context.Context) error {
 			if _, persistErr := o.kalshiSettlementRecordFailure(ctx, threshold, fetched, resolved, wouldSettleMarkets, wouldSettleDecisions, err.Error()); persistErr != nil {
 				return persistErr
 			}
-			o.recordKalshiSettlementMetrics(false, o.deps.KalshiSettlementDryRun || !enabled)
+			o.recordKalshiSettlementMetrics(false, true)
 			return fmt.Errorf("kalshi_settlement: preview market %s: %w", market.Ticker, err)
 		}
 		if preview.Count > 0 {
@@ -86,14 +82,17 @@ func (o *JobOrchestrator) kalshiSettlement(ctx context.Context) error {
 		projection = append(projection, previewFingerprint)
 	}
 	fingerprint := settlementProjectionFingerprint(projection)
-	if enabled && !o.deps.KalshiSettlementDryRun {
-		if _, err := o.kalshiSettlementGateEligible(ctx); err != nil {
-			if _, persistErr := o.kalshiSettlementRecordFailure(ctx, threshold, fetched, resolved, wouldSettleMarkets, wouldSettleDecisions, err.Error()); persistErr != nil {
-				return persistErr
-			}
-			o.recordKalshiSettlementMetrics(false, false)
+	liveRequested := o.deps.KalshiSettlementEnabled && !o.deps.KalshiSettlementDryRun
+	liveEligible := false
+	if liveRequested {
+		state, err := o.kalshiSettlementGateState(ctx)
+		if err != nil {
+			o.recordKalshiSettlementMetrics(false, true)
 			return err
 		}
+		liveEligible = state != nil && state.Eligible && state.ProjectionFingerprint == fingerprint
+	}
+	if liveEligible {
 		for _, pm := range projected {
 			preview, err := o.deps.PredictionSettler.SettlePreview(ctx, domain.MarketTypeKalshi, pm.ticker)
 			if err != nil {
@@ -120,7 +119,7 @@ func (o *JobOrchestrator) kalshiSettlement(ctx context.Context) error {
 			}
 		}
 	}
-	dryRun := o.deps.KalshiSettlementDryRun || !enabled
+	dryRun := !liveEligible
 	if dryRun {
 		if _, err := o.kalshiSettlementRecordSuccess(ctx, threshold, fetched, resolved, wouldSettleMarkets, wouldSettleDecisions, fingerprint); err != nil {
 			return err
@@ -129,6 +128,21 @@ func (o *JobOrchestrator) kalshiSettlement(ctx context.Context) error {
 	o.SetLastSummary("kalshi_settlement", map[string]int{"dry_run": btoi(dryRun), "fetched": fetched, "resolved": resolved, "would_settle_markets": wouldSettleMarkets, "would_settle_decisions": wouldSettleDecisions})
 	o.recordKalshiSettlementMetrics(true, dryRun)
 	return nil
+}
+
+func (o *JobOrchestrator) kalshiSettlementGateState(ctx context.Context) (*domain.KalshiSettlementGateState, error) {
+	if o.deps.KalshiSettlementGateRepo == nil {
+		o.kalshiGateUnhealthy = true
+		return nil, fmt.Errorf("kalshi_settlement: gate unavailable")
+	}
+	state, err := o.deps.KalshiSettlementGateRepo.Get(ctx, "kalshi_settlement")
+	if err != nil {
+		o.kalshiGateUnhealthy = true
+		return nil, fmt.Errorf("kalshi_settlement: load gate: %w", err)
+	}
+	o.kalshiGateUnhealthy = false
+	o.updateKalshiSettlementGateStatus(state)
+	return state, nil
 }
 
 func (o *JobOrchestrator) recordKalshiSettlementMetrics(success, dryRun bool) {
@@ -150,26 +164,6 @@ func btoi(v bool) int {
 		return 1
 	}
 	return 0
-}
-
-func (o *JobOrchestrator) kalshiSettlementGateEligible(ctx context.Context) (bool, error) {
-	if o.deps.KalshiSettlementGateRepo == nil {
-		return false, fmt.Errorf("kalshi_settlement: gate unavailable")
-	}
-	state, err := o.deps.KalshiSettlementGateRepo.Get(ctx, "kalshi_settlement")
-	if err != nil {
-		return false, fmt.Errorf("kalshi_settlement: load gate: %w", err)
-	}
-	if state == nil || !state.Eligible {
-		return false, fmt.Errorf("kalshi_settlement: gate not eligible")
-	}
-	job := o.jobs["kalshi_settlement"]
-	if job != nil {
-		job.mu.Lock()
-		job.SettlementGate = settlementGateStatusFromState(state)
-		job.mu.Unlock()
-	}
-	return true, nil
 }
 
 func settlementProjectionFingerprint(parts []string) string {

@@ -45,5 +45,7 @@ func (o *JobOrchestrator) runPaperValidationReport(ctx context.Context) error {
 	if o.reportWorker == nil {
 		return fmt.Errorf("paper_validation_report: worker not configured")
 	}
-	return o.reportWorker.RunPaperValidationReport(ctx)
+	err := o.reportWorker.RunPaperValidationReport(ctx)
+	o.SetLastSummary("paper_validation_report", o.reportWorker.LastSummary())
+	return err
 }

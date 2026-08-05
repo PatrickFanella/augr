@@ -187,8 +187,6 @@ func newTestReportWorker(t *testing.T, strategies []domain.Strategy, configs map
 		BacktestRunRepo:    &stubReportBacktestRunRepo{byConfig: runs},
 		ReportArtifactRepo: repo,
 	}, nil, metrics)
-	w.intN = func(int) int { return 0 }
-	w.wait = func(context.Context, time.Duration) error { return nil }
 	return w
 }
 
@@ -218,7 +216,6 @@ func TestRunPaperValidationReport_FiltersAndPersistsCompletedArtifacts(t *testin
 
 	reportRepo := &stubReportArtifactRepo{}
 	metrics := &captureReportMetrics{}
-	waitCalls := 0
 	worker := newTestReportWorker(t,
 		[]domain.Strategy{
 			{ID: activePaperA, Name: "paper-a", Status: domain.StrategyStatusActive, IsPaper: true, CreatedAt: fixedNow.Add(-90 * 24 * time.Hour)},
@@ -238,10 +235,6 @@ func TestRunPaperValidationReport_FiltersAndPersistsCompletedArtifacts(t *testin
 		metrics,
 	)
 	worker.now = func() time.Time { return fixedNow }
-	worker.wait = func(context.Context, time.Duration) error {
-		waitCalls++
-		return nil
-	}
 
 	if err := worker.RunPaperValidationReport(context.Background()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -257,9 +250,6 @@ func TestRunPaperValidationReport_FiltersAndPersistsCompletedArtifacts(t *testin
 	}
 	if got := len(metrics.errors); got != 0 {
 		t.Fatalf("error metrics = %d, want 0", got)
-	}
-	if got := waitCalls; got != 2 {
-		t.Fatalf("wait calls = %d, want 2", got)
 	}
 
 	for _, artifact := range reportRepo.artifacts {
@@ -316,6 +306,32 @@ func TestGenerateOneReport_PersistsErrorArtifactWhenBacktestConfigMissing(t *tes
 	}
 	if !strings.Contains(artifact.ErrorMessage, "no backtest configs") {
 		t.Fatalf("error message = %q, want backtest config failure", artifact.ErrorMessage)
+	}
+}
+
+func TestRunPaperValidationReportSkipsEventMarketsAndReportsEligibleFailures(t *testing.T) {
+	stockID := uuid.New()
+	kalshiID := uuid.New()
+	fixedNow := time.Date(2026, 6, 11, 15, 4, 5, 0, time.UTC)
+	reportRepo := &stubReportArtifactRepo{}
+	worker := newTestReportWorker(t,
+		[]domain.Strategy{
+			{ID: stockID, Name: "stock", MarketType: domain.MarketTypeStock, Status: domain.StrategyStatusActive, IsPaper: true},
+			{ID: kalshiID, Name: "kalshi", MarketType: domain.MarketTypeKalshi, Status: domain.StrategyStatusActive, IsPaper: true},
+		},
+		map[uuid.UUID][]domain.BacktestConfig{}, map[uuid.UUID][]domain.BacktestRun{}, reportRepo, &captureReportMetrics{},
+	)
+	worker.now = func() time.Time { return fixedNow }
+
+	err := worker.RunPaperValidationReport(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "1 of 1 eligible strategies failed") {
+		t.Fatalf("RunPaperValidationReport() error = %v", err)
+	}
+	if got := worker.LastSummary(); got["eligible"] != 1 || got["skipped"] != 1 || got["failed"] != 1 {
+		t.Fatalf("summary = %v, want one eligible failure and one skip", got)
+	}
+	if len(reportRepo.artifacts) != 1 || reportRepo.artifacts[0].StrategyID != stockID {
+		t.Fatalf("artifacts = %#v, event-market strategy must be skipped", reportRepo.artifacts)
 	}
 }
 

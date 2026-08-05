@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"math"
 
+	"github.com/google/uuid"
+
 	"github.com/PatrickFanella/get-rich-quick/internal/discovery"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
@@ -138,11 +140,11 @@ func (o *JobOrchestrator) gapScanner(ctx context.Context) error {
 		for _, g := range gaps {
 			gapTickers[g.ticker] = struct{}{}
 		}
-		strategies, listErr := o.deps.StrategyRepo.List(ctx, repository.StrategyFilter{
+		strategies, listErr := listAllStrategies(ctx, o.deps.StrategyRepo, repository.StrategyFilter{
 			Status: domain.StrategyStatusActive,
-		}, 0, 0)
+		})
 		if listErr == nil {
-			for _, s := range strategies {
+			for _, s := range canonicalTriggeredStrategies(strategies) {
 				if _, ok := gapTickers[s.Ticker]; ok {
 					o.logger.Info("gap_scanner: triggering strategy for gap ticker",
 						slog.String("ticker", s.Ticker),
@@ -236,34 +238,65 @@ func (o *JobOrchestrator) discoveryRun(ctx context.Context) error {
 
 // positionReview reviews all active strategies and their open positions before market open.
 func (o *JobOrchestrator) positionReview(ctx context.Context) error {
-	strategies, err := o.deps.StrategyRepo.List(ctx, repository.StrategyFilter{
-		Status: domain.StrategyStatusActive,
-	}, 0, 0)
+	if o.deps.StrategyRepo == nil || o.deps.PositionRepo == nil {
+		return fmt.Errorf("position_review: strategy and position repositories are required")
+	}
+	strategies, err := listAllStrategies(ctx, o.deps.StrategyRepo, repository.StrategyFilter{Status: domain.StrategyStatusActive})
 	if err != nil {
 		return fmt.Errorf("position_review: list strategies: %w", err)
 	}
-
-	if len(strategies) == 0 {
-		o.logger.Info("position_review: no active strategies")
-		return nil
+	positions, err := listAllOpenPositions(ctx, o.deps.PositionRepo)
+	if err != nil {
+		return fmt.Errorf("position_review: list open positions: %w", err)
 	}
 
-	var withPositions int
+	active := make(map[uuid.UUID]domain.Strategy, len(strategies))
 	for _, s := range strategies {
-		// For now, log each active strategy. Full position checking will be
-		// wired once the PositionRepository is exposed through deps.
-		o.logger.Info("position_review: active strategy",
-			slog.String("id", s.ID.String()),
-			slog.String("ticker", s.Ticker),
-			slog.String("name", s.Name),
-			slog.Bool("is_paper", s.IsPaper),
+		active[s.ID] = s
+	}
+	withPositions := make(map[uuid.UUID]struct{})
+	var unowned, inactiveStrategy, missingStop, missingPrice int
+	for _, position := range positions {
+		if position.StrategyID == nil {
+			unowned++
+		} else if _, ok := active[*position.StrategyID]; ok {
+			withPositions[*position.StrategyID] = struct{}{}
+		} else {
+			inactiveStrategy++
+		}
+		if position.StopLoss == nil {
+			missingStop++
+		}
+		if position.CurrentPrice == nil {
+			missingPrice++
+		}
+		o.logger.Info("position_review: open position",
+			slog.String("ticker", position.Ticker),
+			slog.String("market_type", string(position.MarketType)),
+			slog.String("side", position.Side.String()),
+			slog.Float64("quantity", position.Quantity),
+			slog.Any("unrealized_pnl", position.UnrealizedPnL),
 		)
-		withPositions++
 	}
 
+	summary := map[string]int{
+		"active_strategies":           len(strategies),
+		"open_positions":              len(positions),
+		"strategies_with_positions":   len(withPositions),
+		"unowned_positions":           unowned,
+		"inactive_strategy_positions": inactiveStrategy,
+		"positions_missing_stop_loss": missingStop,
+		"positions_missing_price":     missingPrice,
+	}
+	o.SetLastSummary("position_review", summary)
 	o.logger.Info("position_review: complete",
-		slog.Int("active_strategies", len(strategies)),
-		slog.Int("with_positions", withPositions),
+		slog.Int("active_strategies", summary["active_strategies"]),
+		slog.Int("open_positions", summary["open_positions"]),
+		slog.Int("strategies_with_positions", summary["strategies_with_positions"]),
+		slog.Int("unowned_positions", summary["unowned_positions"]),
+		slog.Int("inactive_strategy_positions", summary["inactive_strategy_positions"]),
+		slog.Int("positions_missing_stop_loss", summary["positions_missing_stop_loss"]),
+		slog.Int("positions_missing_price", summary["positions_missing_price"]),
 	)
 	return nil
 }

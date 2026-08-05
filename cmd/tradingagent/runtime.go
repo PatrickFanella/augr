@@ -723,6 +723,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 					BacktestConfigRepo:          backtestConfigRepo,
 					BacktestRunRepo:             backtestRunRepo,
 					OvernightBacktestRuns:       overnightBacktestRunRepo,
+					JobTimeout:                  cfg.Features.SchedulerJobTimeout,
 					StrategyTrigger:             sched,
 					Logger:                      logger,
 				})

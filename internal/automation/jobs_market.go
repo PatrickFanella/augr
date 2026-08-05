@@ -71,7 +71,7 @@ func (o *JobOrchestrator) currentDataRefresh(ctx context.Context) error {
 	}
 
 	if o.deps.PositionRepo != nil {
-		positions, err := o.deps.PositionRepo.GetOpen(ctx, repository.PositionFilter{}, 100, 0)
+		positions, err := listAllOpenPositions(ctx, o.deps.PositionRepo)
 		if err != nil {
 			o.logger.Warn("current_data_refresh: get open positions failed", slog.Any("error", err))
 			summary["errors"]++
@@ -87,7 +87,7 @@ func (o *JobOrchestrator) currentDataRefresh(ctx context.Context) error {
 	}
 
 	if o.deps.StrategyRepo != nil {
-		strategies, err := o.deps.StrategyRepo.List(ctx, repository.StrategyFilter{Status: domain.StrategyStatusActive, MarketType: domain.MarketTypeStock}, 100, 0)
+		strategies, err := listAllStrategies(ctx, o.deps.StrategyRepo, repository.StrategyFilter{Status: domain.StrategyStatusActive, MarketType: domain.MarketTypeStock})
 		if err != nil {
 			o.logger.Warn("current_data_refresh: list active strategies failed", slog.Any("error", err))
 			summary["errors"]++
@@ -118,8 +118,7 @@ func (o *JobOrchestrator) currentDataRefresh(ctx context.Context) error {
 	}
 
 	if o.deps.DataService == nil {
-		o.logger.Info("current_data_refresh: data service unavailable, skipping refresh", slog.Int("tickers", len(tickers)))
-		return nil
+		return fmt.Errorf("current_data_refresh: data service unavailable for %d tickers", len(tickers))
 	}
 
 	const batchSize = 10
@@ -155,6 +154,9 @@ func (o *JobOrchestrator) currentDataRefresh(ctx context.Context) error {
 		slog.Int("updated", summary["updated"]),
 		slog.Int("errors", summary["errors"]),
 	)
+	if summary["errors"] > 0 {
+		return fmt.Errorf("current_data_refresh: completed with %d errors (%d/%d tickers updated)", summary["errors"], summary["updated"], summary["tickers"])
+	}
 	return nil
 }
 
@@ -226,11 +228,11 @@ func (o *JobOrchestrator) hotScan(ctx context.Context) error {
 			}
 		}
 		if len(significantTickers) > 0 {
-			strategies, listErr := o.deps.StrategyRepo.List(ctx, repository.StrategyFilter{
+			strategies, listErr := listAllStrategies(ctx, o.deps.StrategyRepo, repository.StrategyFilter{
 				Status: domain.StrategyStatusActive,
-			}, 0, 0)
+			})
 			if listErr == nil {
-				for _, s := range strategies {
+				for _, s := range canonicalTriggeredStrategies(strategies) {
 					if changePct, ok := significantTickers[s.Ticker]; ok {
 						o.logger.Info("hot_scan: triggering strategy for significant move",
 							slog.String("ticker", s.Ticker),
@@ -246,6 +248,35 @@ func (o *JobOrchestrator) hotScan(ctx context.Context) error {
 
 	o.logger.Info("hot_scan: complete", slog.Int("scanned", len(tickers)))
 	return nil
+}
+
+func canonicalTriggeredStrategies(strategies []domain.Strategy) []domain.Strategy {
+	canonical := make(map[string]domain.Strategy, len(strategies))
+	for _, strategy := range strategies {
+		marketType := strategy.MarketType.Normalize()
+		if marketType != domain.MarketTypeStock {
+			continue
+		}
+		key := strings.ToUpper(strings.TrimSpace(strategy.Ticker)) + "\x00" + string(marketType) + "\x00" + strings.TrimSpace(strategy.ScheduleCron)
+		current, ok := canonical[key]
+		if !ok || strategy.ID.String() < current.ID.String() {
+			canonical[key] = strategy
+		}
+	}
+	result := make([]domain.Strategy, 0, len(canonical))
+	for _, strategy := range canonical {
+		result = append(result, strategy)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Ticker != result[j].Ticker {
+			return result[i].Ticker < result[j].Ticker
+		}
+		if result[i].ScheduleCron != result[j].ScheduleCron {
+			return result[i].ScheduleCron < result[j].ScheduleCron
+		}
+		return result[i].ID.String() < result[j].ID.String()
+	})
+	return result
 }
 
 // deepScan scores the universe using locally stored OHLCV data (from history_refresh)

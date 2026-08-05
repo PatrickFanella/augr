@@ -11,6 +11,7 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/backtest"
 	"github.com/PatrickFanella/get-rich-quick/internal/data"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
+	"github.com/PatrickFanella/get-rich-quick/internal/eventmarkets"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 	"github.com/PatrickFanella/get-rich-quick/internal/scheduler"
 )
@@ -48,7 +49,7 @@ func (o *JobOrchestrator) universeRefresh(ctx context.Context) error {
 func (o *JobOrchestrator) strategyTournament(ctx context.Context) error {
 	o.logger.Info("strategy_tournament: starting")
 
-	strategies, err := o.deps.StrategyRepo.List(ctx, repository.StrategyFilter{Status: "active"}, 100, 0)
+	strategies, err := listAllStrategies(ctx, o.deps.StrategyRepo, repository.StrategyFilter{Status: "active"})
 	if err != nil {
 		return fmt.Errorf("strategy_tournament: list strategies: %w", err)
 	}
@@ -62,14 +63,21 @@ func (o *JobOrchestrator) strategyTournament(ctx context.Context) error {
 		sharpe float64
 	}
 	var rankings []ranked
+	var eligible, skipped, failed int
 
 	for _, strat := range strategies {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
+		if !eventmarkets.SupportsOHLCVResweep(strat.MarketType) {
+			skipped++
+			continue
+		}
+		eligible++
 
 		rulesConfig, err := extractRulesConfig(strat.Config)
 		if err != nil {
+			failed++
 			o.logger.Warn("strategy_tournament: bad config",
 				slog.String("strategy", strat.Name),
 				slog.Any("error", err),
@@ -83,6 +91,7 @@ func (o *JobOrchestrator) strategyTournament(ctx context.Context) error {
 			data.Timeframe1d, histFrom, now, true,
 		)
 		if err != nil {
+			failed++
 			o.logger.Warn("strategy_tournament: download failed",
 				slog.String("ticker", strat.Ticker),
 				slog.Any("error", err),
@@ -92,6 +101,7 @@ func (o *JobOrchestrator) strategyTournament(ctx context.Context) error {
 
 		bars := barsMap[strat.Ticker]
 		if len(bars) < 50 {
+			failed++
 			o.logger.Warn("strategy_tournament: insufficient bars",
 				slog.String("ticker", strat.Ticker),
 				slog.Int("bars", len(bars)),
@@ -101,6 +111,7 @@ func (o *JobOrchestrator) strategyTournament(ctx context.Context) error {
 
 		metrics, err := backtestStrategy(ctx, *rulesConfig, strat.Ticker, bars, o.logger)
 		if err != nil {
+			failed++
 			o.logger.Warn("strategy_tournament: backtest failed",
 				slog.String("ticker", strat.Ticker),
 				slog.Any("error", err),
@@ -138,7 +149,11 @@ func (o *JobOrchestrator) strategyTournament(ctx context.Context) error {
 		}
 	}
 
-	o.logger.Info("strategy_tournament: completed", slog.Int("strategies_ranked", len(rankings)))
+	o.SetLastSummary("strategy_tournament", map[string]int{"scanned": len(strategies), "eligible": eligible, "skipped": skipped, "ranked": len(rankings), "failed": failed})
+	o.logger.Info("strategy_tournament: completed", slog.Int("strategies_ranked", len(rankings)), slog.Int("failed", failed), slog.Int("skipped", skipped))
+	if failed > 0 {
+		return fmt.Errorf("strategy_tournament: %d of %d eligible strategies failed", failed, eligible)
+	}
 	return nil
 }
 

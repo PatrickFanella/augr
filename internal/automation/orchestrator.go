@@ -46,6 +46,8 @@ func mustLoadEastern() *time.Location {
 // job is automatically disabled to prevent cascading damage.
 const autoDisableThreshold = 5
 
+const defaultAutomationJobTimeout = 2 * time.Hour
+
 // StrategyTrigger triggers an immediate pipeline run for a strategy.
 // The scheduler satisfies this interface.
 type StrategyTrigger interface {
@@ -106,6 +108,7 @@ type OrchestratorDeps struct {
 	BacktestConfigRepo        repository.BacktestConfigRepository // optional; needed by report jobs
 	BacktestRunRepo           repository.BacktestRunRepository    // optional; needed by report jobs
 	OvernightBacktestRuns     repository.OvernightBacktestRunRepository
+	JobTimeout                time.Duration
 	Logger                    *slog.Logger
 }
 
@@ -206,6 +209,14 @@ func NewJobOrchestrator(deps OrchestratorDeps) *JobOrchestrator {
 		deps:   deps,
 		logger: logger,
 	}
+}
+
+func (o *JobOrchestrator) jobContext() (context.Context, context.CancelFunc) {
+	timeout := o.deps.JobTimeout
+	if timeout <= 0 {
+		timeout = defaultAutomationJobTimeout
+	}
+	return context.WithTimeout(context.Background(), timeout)
 }
 
 // WithJobMetrics attaches a metrics sink to the orchestrator.
@@ -408,7 +419,9 @@ func (o *JobOrchestrator) runDirect(job *RegisteredJob) {
 
 	o.logger.Info("automation: job starting", slog.String("job", job.Name))
 	start := time.Now()
-	err := job.Fn(context.Background())
+	ctx, cancel := o.jobContext()
+	defer cancel()
+	err := job.Fn(ctx)
 	elapsed := time.Since(start)
 
 	job.mu.Lock()
@@ -448,23 +461,6 @@ func (o *JobOrchestrator) SetEnabled(name string, enabled bool) error {
 	job, ok := o.jobs[name]
 	if !ok {
 		return fmt.Errorf("automation: unknown job %q", name)
-	}
-	if name == "kalshi_settlement" && enabled {
-		if o.kalshiGateUnhealthy {
-			return fmt.Errorf("automation: kalshi settlement gate unhealthy")
-		}
-		if o.deps.KalshiSettlementGateRepo == nil {
-			o.kalshiGateUnhealthy = true
-			return fmt.Errorf("automation: kalshi settlement gate unavailable")
-		}
-		state, err := o.deps.KalshiSettlementGateRepo.Get(context.Background(), name)
-		if err != nil {
-			o.kalshiGateUnhealthy = true
-			return fmt.Errorf("automation: load kalshi settlement gate: %w", err)
-		}
-		if state == nil || !state.Eligible {
-			return fmt.Errorf("automation: kalshi settlement gate not eligible")
-		}
 	}
 	job.mu.Lock()
 	previous := job.Enabled
@@ -556,7 +552,8 @@ func (o *JobOrchestrator) wrapAndRun(job *RegisteredJob) {
 	o.logger.Info("automation: job starting", slog.String("job", job.Name))
 	start := time.Now()
 
-	ctx := context.Background()
+	ctx, cancel := o.jobContext()
+	defer cancel()
 	err := job.Fn(ctx)
 
 	elapsed := time.Since(start)
