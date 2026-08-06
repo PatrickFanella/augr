@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
@@ -62,11 +63,7 @@ func AnalyzeFiling(ctx context.Context, provider llm.Provider, model string, fil
 	// Fetch filing text from SEC.
 	text, err := fetchFilingText(ctx, filing.URL)
 	if err != nil {
-		logger.Debug("filing_analyzer: failed to fetch filing text, returning neutral analysis",
-			slog.String("url", filing.URL),
-			slog.Any("error", err),
-		)
-		return neutralAnalysis(filing), nil
+		return nil, fmt.Errorf("filing_analyzer: fetch filing text: %w", err)
 	}
 
 	// Truncate to fit in context window.
@@ -85,20 +82,18 @@ func AnalyzeFiling(ctx context.Context, provider llm.Provider, model string, fil
 		ResponseFormat: &llm.ResponseFormat{Type: llm.ResponseFormatJSONObject},
 	})
 	if err != nil {
-		logger.Warn("filing_analyzer: LLM call failed, returning neutral analysis",
-			slog.String("symbol", filing.Symbol),
-			slog.Any("error", err),
-		)
-		return neutralAnalysis(filing), nil
+		return nil, fmt.Errorf("filing_analyzer: LLM call for %s: %w", filing.Symbol, err)
+	}
+	if resp == nil {
+		return nil, fmt.Errorf("filing_analyzer: LLM returned nil response for %s", filing.Symbol)
 	}
 
 	var analysis FilingAnalysis
 	if err := json.Unmarshal([]byte(resp.Content), &analysis); err != nil {
-		logger.Warn("filing_analyzer: failed to parse LLM response, returning neutral analysis",
-			slog.String("content", resp.Content),
-			slog.Any("error", err),
-		)
-		return neutralAnalysis(filing), nil
+		return nil, fmt.Errorf("filing_analyzer: parse LLM response for %s: %w", filing.Symbol, err)
+	}
+	if err := validateFilingAnalysis(analysis); err != nil {
+		return nil, fmt.Errorf("filing_analyzer: validate LLM response for %s: %w", filing.Symbol, err)
 	}
 
 	// Fill in metadata from the filing itself.
@@ -107,6 +102,34 @@ func AnalyzeFiling(ctx context.Context, provider llm.Provider, model string, fil
 	analysis.FiledDate = filing.FiledDate
 
 	return &analysis, nil
+}
+
+func validateFilingAnalysis(analysis FilingAnalysis) error {
+	if !oneOf(strings.ToLower(strings.TrimSpace(analysis.Sentiment)), "bullish", "bearish", "neutral") {
+		return fmt.Errorf("invalid sentiment %q", analysis.Sentiment)
+	}
+	if !oneOf(strings.ToLower(strings.TrimSpace(analysis.Impact)), "high", "medium", "low") {
+		return fmt.Errorf("invalid impact %q", analysis.Impact)
+	}
+	if !oneOf(strings.ToLower(strings.TrimSpace(analysis.Action)), "hold", "increase_position", "reduce_position", "close_position", "no_change") {
+		return fmt.Errorf("invalid action %q", analysis.Action)
+	}
+	if analysis.Confidence < 0 || analysis.Confidence > 1 {
+		return fmt.Errorf("confidence %.4f outside [0,1]", analysis.Confidence)
+	}
+	if strings.TrimSpace(analysis.Summary) == "" || strings.TrimSpace(analysis.Reasoning) == "" {
+		return fmt.Errorf("summary and reasoning are required")
+	}
+	return nil
+}
+
+func oneOf(value string, allowed ...string) bool {
+	for _, candidate := range allowed {
+		if value == candidate {
+			return true
+		}
+	}
+	return false
 }
 
 func fetchFilingText(ctx context.Context, url string) (string, error) {
@@ -165,19 +188,4 @@ Analyze this filing. What are the key material items? How does this affect our t
 		text,
 		filing.Symbol,
 	)
-}
-
-func neutralAnalysis(filing domain.SECFiling) *FilingAnalysis {
-	return &FilingAnalysis{
-		Symbol:     filing.Symbol,
-		Form:       filing.Form,
-		FiledDate:  filing.FiledDate,
-		Sentiment:  "neutral",
-		Impact:     "low",
-		Summary:    "Unable to analyze filing — returned neutral assessment.",
-		Action:     "no_change",
-		Confidence: 0.0,
-		KeyItems:   []string{},
-		Reasoning:  "Analysis could not be completed due to an error.",
-	}
 }

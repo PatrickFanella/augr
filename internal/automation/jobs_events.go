@@ -196,27 +196,29 @@ func (o *JobOrchestrator) filingMonitor(ctx context.Context) error {
 					f.Form, f.Symbol, f.FiledDate.Format("2006-01-02")),
 				)
 
-				// Run LLM analysis if provider is available.
-				if o.deps.LLMProvider != nil {
-					analysis, err := AnalyzeFiling(ctx, o.deps.LLMProvider, "", f, tickerStrategy[ticker], o.logger)
-					if err != nil {
-						summary["analysis_errors"]++
-						o.logger.Warn("filing_monitor: analysis failed",
-							slog.String("ticker", ticker),
-							slog.Any("error", err),
-						)
-						continue
-					}
+				if o.deps.LLMProvider == nil {
+					summary["analysis_errors"]++
+					o.logger.Warn("filing_monitor: analysis failed", slog.String("ticker", ticker), slog.String("error", "LLM provider not configured"))
+					continue
+				}
+				analysis, err := AnalyzeFiling(ctx, o.deps.LLMProvider, "", f, tickerStrategy[ticker], o.logger)
+				if err != nil {
+					summary["analysis_errors"]++
+					o.logger.Warn("filing_monitor: analysis failed",
+						slog.String("ticker", ticker),
+						slog.Any("error", err),
+					)
+					continue
+				}
 
-					if analysis.Impact == "high" && analysis.Action != "no_change" {
-						o.logger.Warn(fmt.Sprintf("filing_monitor: %s %s analyzed — sentiment=%s, impact=%s, action=%s",
-							ticker, f.Form, analysis.Sentiment, analysis.Impact, analysis.Action),
-						)
-					} else {
-						o.logger.Info(fmt.Sprintf("filing_monitor: %s %s analyzed — sentiment=%s, impact=%s, action=%s",
-							ticker, f.Form, analysis.Sentiment, analysis.Impact, analysis.Action),
-						)
-					}
+				if analysis.Impact == "high" && analysis.Action != "no_change" {
+					o.logger.Warn(fmt.Sprintf("filing_monitor: %s %s analyzed — sentiment=%s, impact=%s, action=%s",
+						ticker, f.Form, analysis.Sentiment, analysis.Impact, analysis.Action),
+					)
+				} else {
+					o.logger.Info(fmt.Sprintf("filing_monitor: %s %s analyzed — sentiment=%s, impact=%s, action=%s",
+						ticker, f.Form, analysis.Sentiment, analysis.Impact, analysis.Action),
+					)
 				}
 			}
 		}

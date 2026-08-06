@@ -18,13 +18,35 @@ func (s *filingStrategyRepo) Count(context.Context, repository.StrategyFilter) (
 }
 
 type filingEventsProviderStub struct {
-	calls  int
-	failAt int
-	err    error
+	calls   int
+	failAt  int
+	err     error
+	filings []domain.SECFiling
 }
 
 func (s *filingEventsProviderStub) GetEarningsCalendar(context.Context, time.Time, time.Time) ([]domain.EarningsEvent, error) {
 	return nil, nil
+}
+
+func TestFilingMonitorFailsWhenAnalysisProviderIsMissing(t *testing.T) {
+	t.Parallel()
+
+	provider := &filingEventsProviderStub{failAt: -1, filings: []domain.SECFiling{{Symbol: "AAPL", Form: "8-K", URL: "https://example.invalid/filing"}}}
+	orch := NewJobOrchestrator(OrchestratorDeps{
+		EventsProvider: provider,
+		StrategyRepo: &filingStrategyRepo{&kalshiStrategyRepoStub{strategies: []domain.Strategy{
+			{Ticker: "AAPL", MarketType: domain.MarketTypeStock, Status: domain.StrategyStatusActive},
+		}}},
+	})
+	orch.Register("filing_monitor", "test", schedulerSpecEveryMinute(), orch.filingMonitor)
+
+	err := orch.filingMonitor(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "analyses failed") {
+		t.Fatalf("filingMonitor() error = %v, want analysis failure", err)
+	}
+	if got := orch.jobs["filing_monitor"].LastSummary["analysis_errors"]; got != 2 {
+		t.Fatalf("analysis_errors = %d, want 2", got)
+	}
 }
 
 func (s *filingEventsProviderStub) GetNextEarnings(context.Context, string) (*domain.EarningsEvent, error) {
@@ -43,7 +65,7 @@ func (s *filingEventsProviderStub) GetFilings(context.Context, string, string, t
 		}
 		return nil, filingRateLimitError{}
 	}
-	return nil, nil
+	return s.filings, nil
 }
 
 func TestFilingMonitorFailsPartialNonRateLimitedCoverage(t *testing.T) {
