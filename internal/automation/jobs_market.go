@@ -203,7 +203,7 @@ func (o *JobOrchestrator) currentDataRefresh(ctx context.Context) error {
 
 // hotScan scores the top 200 watchlist tickers using locally stored OHLCV data.
 func (o *JobOrchestrator) hotScan(ctx context.Context) error {
-	summary := map[string]int{"watchlist": 0, "scored": 0, "fetch_errors": 0, "insufficient": 0, "stale": 0, "score_errors": 0, "significant_tickers": 0, "strategies_triggered": 0}
+	summary := map[string]int{"watchlist": 0, "scored": 0, "fetch_errors": 0, "insufficient": 0, "stale": 0, "score_errors": 0, "significant_tickers": 0, "trigger_requests": 0}
 	defer func() { o.SetLastSummary("hot_scan", summary) }()
 	tickers, err := o.deps.Universe.GetWatchlist(ctx, 200)
 	if err != nil {
@@ -291,13 +291,13 @@ func (o *JobOrchestrator) hotScan(ctx context.Context) error {
 			if listErr == nil {
 				for _, s := range canonicalTriggeredStrategies(strategies) {
 					if changePct, ok := significantTickers[s.Ticker]; ok {
-						o.logger.Info("hot_scan: triggering strategy for significant move",
+						o.logger.Info("hot_scan: requesting strategy trigger for significant move",
 							slog.String("ticker", s.Ticker),
 							slog.String("strategy_id", s.ID.String()),
 							slog.Float64("change_pct", changePct),
 						)
 						o.deps.StrategyTrigger.TriggerStrategy(s)
-						summary["strategies_triggered"]++
+						summary["trigger_requests"]++
 					}
 				}
 			}

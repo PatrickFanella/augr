@@ -46,7 +46,7 @@ func (o *JobOrchestrator) registerPreMarketJobs() {
 
 // gapScanner detects overnight gaps and unusual volume in the top 500 tickers.
 func (o *JobOrchestrator) gapScanner(ctx context.Context) error {
-	summary := map[string]int{"requested": 0, "snapshot_batches": 0, "failed_batches": 0, "snapshots": 0, "missing_snapshots": 0, "gaps": 0, "score_failed": 0, "triggered": 0, "strategy_list_failed": 0}
+	summary := map[string]int{"requested": 0, "snapshot_batches": 0, "failed_batches": 0, "snapshots": 0, "missing_snapshots": 0, "gaps": 0, "score_failed": 0, "trigger_requests": 0, "strategy_list_failed": 0}
 	defer func() { o.SetLastSummary("gap_scanner", summary) }()
 	if o.deps.Universe == nil {
 		o.logger.Info("gap_scanner: skipped — Universe not configured")
@@ -156,12 +156,12 @@ func (o *JobOrchestrator) gapScanner(ctx context.Context) error {
 		if listErr == nil {
 			for _, s := range canonicalTriggeredStrategies(strategies) {
 				if _, ok := gapTickers[s.Ticker]; ok {
-					o.logger.Info("gap_scanner: triggering strategy for gap ticker",
+					o.logger.Info("gap_scanner: requesting strategy trigger for gap ticker",
 						slog.String("ticker", s.Ticker),
 						slog.String("strategy_id", s.ID.String()),
 					)
 					o.deps.StrategyTrigger.TriggerStrategy(s)
-					summary["triggered"]++
+					summary["trigger_requests"]++
 				}
 			}
 		} else {
