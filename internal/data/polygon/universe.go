@@ -35,6 +35,25 @@ type TickerSnapshot struct {
 	TodaysChangePct float64     `json:"todaysChangePerc"`
 	Day             SnapshotBar `json:"day"`
 	PrevDay         SnapshotBar `json:"prevDay"`
+	Updated         int64       `json:"updated"`
+}
+
+// UpdatedAt converts Polygon's Unix snapshot timestamp. Snapshot endpoints
+// commonly return nanoseconds, while aggregate timestamps use milliseconds;
+// accepting both keeps validation explicit across provider payload variants.
+func (s TickerSnapshot) UpdatedAt() time.Time {
+	switch value := s.Updated; {
+	case value <= 0:
+		return time.Time{}
+	case value >= 1e17:
+		return time.Unix(0, value).UTC()
+	case value >= 1e14:
+		return time.Unix(0, value*int64(time.Microsecond)).UTC()
+	case value >= 1e11:
+		return time.UnixMilli(value).UTC()
+	default:
+		return time.Unix(value, 0).UTC()
+	}
 }
 
 // SnapshotBar holds OHLCV + VWAP data from a snapshot bar.

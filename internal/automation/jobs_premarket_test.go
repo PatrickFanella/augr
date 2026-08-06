@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
@@ -26,6 +27,21 @@ func TestGapScannerCompletionErrorRejectsPartialCoverage(t *testing.T) {
 	err := gapScannerCompletionError(map[string]int{"missing_snapshots": 3, "score_failed": 1})
 	if err == nil || !strings.Contains(err.Error(), "missing_snapshots=3") || !strings.Contains(err.Error(), "score_failed=1") {
 		t.Fatalf("gapScannerCompletionError(partial) = %v", err)
+	}
+}
+
+func TestPreMarketSnapshotFreshRequiresCurrentExtendedSession(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.August, 6, 8, 0, 0, 0, easternTime)
+	if !preMarketSnapshotFresh(now, time.Date(2026, time.August, 6, 4, 1, 0, 0, easternTime)) {
+		t.Fatal("current premarket snapshot should be fresh")
+	}
+	if preMarketSnapshotFresh(now, time.Date(2026, time.August, 5, 15, 59, 0, 0, easternTime)) {
+		t.Fatal("prior-day snapshot should be stale")
+	}
+	if preMarketSnapshotFresh(now, time.Date(2026, time.August, 6, 3, 59, 0, 0, easternTime)) {
+		t.Fatal("pre-reset snapshot should be stale")
 	}
 }
 

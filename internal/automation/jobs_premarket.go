@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -46,7 +47,7 @@ func (o *JobOrchestrator) registerPreMarketJobs() {
 
 // gapScanner detects overnight gaps and unusual volume in the top 500 tickers.
 func (o *JobOrchestrator) gapScanner(ctx context.Context) error {
-	summary := map[string]int{"requested": 0, "snapshot_batches": 0, "failed_batches": 0, "snapshots": 0, "missing_snapshots": 0, "gaps": 0, "score_failed": 0, "trigger_requests": 0, "strategy_list_failed": 0}
+	summary := map[string]int{"requested": 0, "snapshot_batches": 0, "failed_batches": 0, "snapshots": 0, "missing_snapshots": 0, "stale_snapshots": 0, "gaps": 0, "score_failed": 0, "trigger_requests": 0, "strategy_list_failed": 0}
 	defer func() { o.SetLastSummary("gap_scanner", summary) }()
 	if o.deps.Universe == nil {
 		o.logger.Info("gap_scanner: skipped — Universe not configured")
@@ -101,6 +102,10 @@ func (o *JobOrchestrator) gapScanner(ctx context.Context) error {
 		}
 
 		for _, snap := range snapshots {
+			if !preMarketSnapshotFresh(time.Now(), snap.UpdatedAt()) {
+				summary["stale_snapshots"]++
+				continue
+			}
 			// Calculate gap percentage: (today open - prev close) / prev close.
 			gapPct := 0.0
 			if snap.PrevDay.Close > 0 {
@@ -252,12 +257,25 @@ func (o *JobOrchestrator) discoveryRun(ctx context.Context) error {
 }
 
 func gapScannerCompletionError(summary map[string]int) error {
-	incomplete := summary["failed_batches"] + summary["missing_snapshots"] + summary["score_failed"] + summary["strategy_list_failed"]
+	incomplete := summary["failed_batches"] + summary["missing_snapshots"] + summary["stale_snapshots"] + summary["score_failed"] + summary["strategy_list_failed"]
 	if incomplete == 0 {
 		return nil
 	}
-	return fmt.Errorf("gap_scanner: incomplete run: failed_batches=%d missing_snapshots=%d score_failed=%d strategy_list_failed=%d",
-		summary["failed_batches"], summary["missing_snapshots"], summary["score_failed"], summary["strategy_list_failed"])
+	return fmt.Errorf("gap_scanner: incomplete run: failed_batches=%d missing_snapshots=%d stale_snapshots=%d score_failed=%d strategy_list_failed=%d",
+		summary["failed_batches"], summary["missing_snapshots"], summary["stale_snapshots"], summary["score_failed"], summary["strategy_list_failed"])
+}
+
+func preMarketSnapshotFresh(now, updatedAt time.Time) bool {
+	if updatedAt.IsZero() {
+		return false
+	}
+	nowET := now.In(easternTime)
+	updatedET := updatedAt.In(easternTime)
+	if !sameMarketDate(nowET, updatedET) {
+		return false
+	}
+	sessionStart := time.Date(nowET.Year(), nowET.Month(), nowET.Day(), 4, 0, 0, 0, easternTime)
+	return !updatedET.Before(sessionStart) && !updatedET.After(nowET.Add(5*time.Minute))
 }
 
 func discoveryRunCompletionError(errors []string) error {

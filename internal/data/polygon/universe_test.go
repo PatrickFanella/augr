@@ -60,3 +60,24 @@ func TestListActiveTickersRespectsFreeTierRateLimit(t *testing.T) {
 		t.Fatalf("sleep calls = %#v, want [12s]", sleepCalls)
 	}
 }
+
+func TestTickerSnapshotUpdatedAtAcceptsProviderTimestampUnits(t *testing.T) {
+	t.Parallel()
+
+	want := time.Date(2026, time.August, 6, 12, 0, 0, 0, time.UTC)
+	for name, value := range map[string]int64{
+		"seconds":      want.Unix(),
+		"milliseconds": want.UnixMilli(),
+		"microseconds": want.UnixMicro(),
+		"nanoseconds":  want.UnixNano(),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := (TickerSnapshot{Updated: value}).UpdatedAt(); !got.Equal(want) {
+				t.Fatalf("UpdatedAt() = %s, want %s", got, want)
+			}
+		})
+	}
+	if got := (TickerSnapshot{}).UpdatedAt(); !got.IsZero() {
+		t.Fatalf("zero UpdatedAt() = %s", got)
+	}
+}
