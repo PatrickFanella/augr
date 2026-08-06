@@ -96,6 +96,17 @@ func (o *JobOrchestrator) earningsScanner(ctx context.Context) error {
 
 // filingMonitor checks recent 8-K and 10-Q filings for all active strategy tickers.
 func (o *JobOrchestrator) filingMonitor(ctx context.Context) error {
+	summary := map[string]int{
+		"available":         0,
+		"tickers_attempted": 0,
+		"tickers_checked":   0,
+		"filings_found":     0,
+		"rate_limited":      0,
+		"request_errors":    0,
+		"analysis_errors":   0,
+	}
+	defer func() { o.SetLastSummary("filing_monitor", summary) }()
+
 	if o.deps.EventsProvider == nil {
 		o.logger.Info("filing_monitor: skipped — events provider not configured")
 		return nil
@@ -127,6 +138,7 @@ func (o *JobOrchestrator) filingMonitor(ctx context.Context) error {
 	}
 	sort.Strings(tickers)
 	available := len(tickers)
+	summary["available"] = available
 	if len(tickers) > filingMonitorMaxTickersPerRun {
 		now := time.Now().UTC()
 		batchNumber := now.YearDay()*6 + now.Hour()/4
@@ -144,25 +156,27 @@ func (o *JobOrchestrator) filingMonitor(ctx context.Context) error {
 	from := now.AddDate(0, 0, -1)
 	to := now
 
-	var totalFilings, tickersAttempted, tickersChecked int
 	for _, ticker := range tickers {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		tickersAttempted++
+		summary["tickers_attempted"]++
+		tickerComplete := true
 
 		for _, formType := range []string{"8-K", "10-Q"} {
 			filings, err := o.deps.EventsProvider.GetFilings(ctx, ticker, formType, from, to)
 			if err != nil {
 				if isFilingProviderRateLimited(err) {
+					summary["rate_limited"] = 1
 					o.logger.Warn("filing_monitor: provider rate limited; ending run early",
 						slog.String("ticker", ticker),
 						slog.String("form", formType),
 						slog.Any("error", err),
 					)
-					o.SetLastSummary("filing_monitor", map[string]int{"available": available, "tickers_attempted": tickersAttempted, "tickers_checked": tickersChecked, "filings_found": totalFilings, "rate_limited": 1})
-					return fmt.Errorf("filing_monitor: provider rate limited after %d filings: %w", totalFilings, err)
+					return fmt.Errorf("filing_monitor: provider rate limited after %d filings: %w", summary["filings_found"], err)
 				}
+				tickerComplete = false
+				summary["request_errors"]++
 				o.logger.Warn("filing_monitor: failed to fetch filings",
 					slog.String("ticker", ticker),
 					slog.String("form", formType),
@@ -172,7 +186,7 @@ func (o *JobOrchestrator) filingMonitor(ctx context.Context) error {
 			}
 
 			for _, f := range filings {
-				totalFilings++
+				summary["filings_found"]++
 				o.logger.Info(fmt.Sprintf("filing_monitor: new %s for %s filed %s",
 					f.Form, f.Symbol, f.FiledDate.Format("2006-01-02")),
 				)
@@ -181,6 +195,7 @@ func (o *JobOrchestrator) filingMonitor(ctx context.Context) error {
 				if o.deps.LLMProvider != nil {
 					analysis, err := AnalyzeFiling(ctx, o.deps.LLMProvider, "", f, tickerStrategy[ticker], o.logger)
 					if err != nil {
+						summary["analysis_errors"]++
 						o.logger.Warn("filing_monitor: analysis failed",
 							slog.String("ticker", ticker),
 							slog.Any("error", err),
@@ -200,14 +215,21 @@ func (o *JobOrchestrator) filingMonitor(ctx context.Context) error {
 				}
 			}
 		}
-		tickersChecked++
+		if tickerComplete {
+			summary["tickers_checked"]++
+		}
 	}
 
 	o.logger.Info("filing_monitor: complete",
-		slog.Int("tickers_checked", len(tickers)),
-		slog.Int("filings_found", totalFilings),
+		slog.Int("tickers_attempted", summary["tickers_attempted"]),
+		slog.Int("tickers_checked", summary["tickers_checked"]),
+		slog.Int("filings_found", summary["filings_found"]),
+		slog.Int("request_errors", summary["request_errors"]),
+		slog.Int("analysis_errors", summary["analysis_errors"]),
 	)
-	o.SetLastSummary("filing_monitor", map[string]int{"available": available, "tickers_attempted": tickersAttempted, "tickers_checked": tickersChecked, "filings_found": totalFilings, "rate_limited": 0})
+	if summary["request_errors"] > 0 || summary["analysis_errors"] > 0 {
+		return fmt.Errorf("filing_monitor: incomplete run: %d provider requests failed and %d filing analyses failed", summary["request_errors"], summary["analysis_errors"])
+	}
 	return nil
 }
 
