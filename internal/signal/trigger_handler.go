@@ -18,7 +18,7 @@ type StrategyLoader interface {
 
 // StrategyTriggerer triggers an immediate pipeline run for a strategy.
 type StrategyTriggerer interface {
-	TriggerStrategy(strategy domain.Strategy)
+	TriggerSignalStrategy(strategy domain.Strategy, recordOutcome func(domain.StrategyTriggerOutcome) error) domain.StrategyTriggerOutcome
 }
 
 // ThesisLoader loads the serialised thesis JSON from persistent storage.
@@ -116,8 +116,8 @@ func (h *TriggerHandler) handle(ctx context.Context, evt TriggerEvent) {
 		if !h.recordTriggerRequest(ctx, evt, log) {
 			return
 		}
-		log.Info("signal trigger: queuing pipeline run")
-		h.runner.TriggerStrategy(*strategy)
+		log.Info("signal trigger: requesting pipeline admission")
+		h.dispatchStrategy(ctx, evt, *strategy, log)
 
 	case TriggerActionExecuteThesis:
 		strategy, err := h.loadStrategy(ctx, evt.StrategyID)
@@ -140,8 +140,22 @@ func (h *TriggerHandler) handle(ctx context.Context, evt TriggerEvent) {
 		}
 		// In both cases dispatch a pipeline run; the runner uses the stored
 		// thesis for fast-track execution if it has one.
-		h.runner.TriggerStrategy(*strategy)
+		h.dispatchStrategy(ctx, evt, *strategy, log)
 	}
+}
+
+func (h *TriggerHandler) dispatchStrategy(ctx context.Context, evt TriggerEvent, strategy domain.Strategy, log *slog.Logger) {
+	outcome := h.runner.TriggerSignalStrategy(strategy, func(outcome domain.StrategyTriggerOutcome) error {
+		if h.recorder == nil {
+			return nil
+		}
+		return h.recorder.RecordTriggerOutcome(ctx, evt, outcome)
+	})
+	if outcome == domain.StrategyTriggerPersistenceFailed {
+		log.Error("signal trigger: outcome persistence failed; pipeline dropped")
+		return
+	}
+	log.Info("signal trigger: scheduler admission resolved", slog.String("outcome", string(outcome)))
 }
 
 func (h *TriggerHandler) recordTriggerRequest(ctx context.Context, evt TriggerEvent, log *slog.Logger) bool {

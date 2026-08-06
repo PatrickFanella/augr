@@ -229,7 +229,12 @@ type fakeLifecycleStrategyTriggerer struct {
 	once  sync.Once
 }
 
-func (r *fakeLifecycleStrategyTriggerer) TriggerStrategy(strategy domain.Strategy) {
+func (r *fakeLifecycleStrategyTriggerer) TriggerSignalStrategy(strategy domain.Strategy, recordOutcome func(domain.StrategyTriggerOutcome) error) domain.StrategyTriggerOutcome {
+	if recordOutcome != nil {
+		if err := recordOutcome(domain.StrategyTriggerAdmitted); err != nil {
+			return domain.StrategyTriggerPersistenceFailed
+		}
+	}
 	r.mu.Lock()
 	r.calls = append(r.calls, strategy.ID)
 	ready := len(r.calls) == 2
@@ -237,4 +242,5 @@ func (r *fakeLifecycleStrategyTriggerer) TriggerStrategy(strategy domain.Strateg
 	if ready {
 		r.once.Do(func() { close(r.done) })
 	}
+	return domain.StrategyTriggerAdmitted
 }

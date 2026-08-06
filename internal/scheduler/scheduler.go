@@ -316,6 +316,84 @@ func (s *Scheduler) TriggerStrategy(strategy domain.Strategy) {
 	go s.runTriggeredStrategy(strategy)
 }
 
+// TriggerSignalStrategy makes the event-driven admission decision
+// synchronously, persists that decision through recordOutcome, and only then
+// starts admitted work. A lost outcome record therefore cannot create an
+// untraceable strategy execution.
+func (s *Scheduler) TriggerSignalStrategy(
+	strategy domain.Strategy,
+	recordOutcome func(domain.StrategyTriggerOutcome) error,
+) domain.StrategyTriggerOutcome {
+	if s.metrics != nil {
+		s.metrics.RecordSchedulerTick("strategy")
+	}
+
+	if !s.dedup.TryAcquire(strategy.ID) {
+		return s.persistSignalTriggerOutcome(strategy, domain.StrategyTriggerDeduplicated, recordOutcome)
+	}
+
+	runCtx := s.schedulerContext()
+	select {
+	case <-runCtx.Done():
+		s.dedup.Release(strategy.ID)
+		return s.persistSignalTriggerOutcome(strategy, domain.StrategyTriggerSchedulerStopped, recordOutcome)
+	default:
+	}
+
+	select {
+	case s.strategySem <- struct{}{}:
+	default:
+		s.dedup.Release(strategy.ID)
+		return s.persistSignalTriggerOutcome(strategy, domain.StrategyTriggerCapacityDropped, recordOutcome)
+	}
+
+	if outcome := s.persistSignalTriggerOutcome(strategy, domain.StrategyTriggerAdmitted, recordOutcome); outcome != domain.StrategyTriggerAdmitted {
+		<-s.strategySem
+		s.dedup.Release(strategy.ID)
+		return outcome
+	}
+
+	go func() {
+		defer s.containStrategyPanic(strategy)
+		defer s.dedup.Release(strategy.ID)
+		defer func() { <-s.strategySem }()
+		s.executeAdmittedStrategy(strategy)
+	}()
+	return domain.StrategyTriggerAdmitted
+}
+
+func (s *Scheduler) persistSignalTriggerOutcome(
+	strategy domain.Strategy,
+	outcome domain.StrategyTriggerOutcome,
+	recordOutcome func(domain.StrategyTriggerOutcome) error,
+) domain.StrategyTriggerOutcome {
+	if recordOutcome == nil {
+		return outcome
+	}
+	if err := invokeSignalOutcomeRecorder(recordOutcome, outcome); err != nil {
+		s.logger.Error("scheduler: signal trigger outcome persistence failed",
+			slog.String("strategy_id", strategy.ID.String()),
+			slog.String("ticker", strategy.Ticker),
+			slog.String("outcome", string(outcome)),
+			slog.Any("error", err),
+		)
+		return domain.StrategyTriggerPersistenceFailed
+	}
+	return outcome
+}
+
+func invokeSignalOutcomeRecorder(
+	recordOutcome func(domain.StrategyTriggerOutcome) error,
+	outcome domain.StrategyTriggerOutcome,
+) (err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = fmt.Errorf("signal outcome recorder panic (%T)", recovered)
+		}
+	}()
+	return recordOutcome(outcome)
+}
+
 // Stop gracefully stops the cron engine and waits for running jobs to finish.
 func (s *Scheduler) Stop() {
 	s.mu.Lock()
@@ -463,8 +541,12 @@ func (s *Scheduler) runStrategyWithAdmission(strategy domain.Strategy, waitForCa
 		}
 	}
 
+	s.executeAdmittedStrategy(strategy)
+}
+
+func (s *Scheduler) executeAdmittedStrategy(strategy domain.Strategy) {
 	// Re-read strategy to get latest status and skip_next_run.
-	fetchCtx, fetchCancel := context.WithTimeout(s.ctx, 5*time.Second)
+	fetchCtx, fetchCancel := context.WithTimeout(s.schedulerContext(), 5*time.Second)
 	defer fetchCancel()
 	current, err := s.strategyRepo.Get(fetchCtx, strategy.ID)
 	if err != nil {
@@ -579,6 +661,16 @@ func (s *Scheduler) runStrategyWithAdmission(strategy domain.Strategy, waitForCa
 		slog.String("strategy_id", current.ID.String()),
 		slog.String("ticker", current.Ticker),
 	)
+}
+
+func (s *Scheduler) schedulerContext() context.Context {
+	s.mu.Lock()
+	ctx := s.ctx
+	s.mu.Unlock()
+	if ctx == nil {
+		return context.Background()
+	}
+	return ctx
 }
 
 func (s *Scheduler) runBacktest(config domain.BacktestConfig) {

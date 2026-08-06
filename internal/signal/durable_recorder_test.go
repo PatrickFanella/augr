@@ -57,15 +57,33 @@ func TestAgentEventRecorderPersistsSanitizedSignalLineage(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	if err := recorder.RecordTriggerOutcome(context.Background(), TriggerEvent{
+		Signal:     signal,
+		StrategyID: strategyID,
+		Action:     TriggerActionRunPipeline,
+		Priority:   3,
+	}, domain.StrategyTriggerAdmitted); err != nil {
+		t.Fatal(err)
+	}
 
-	if got := len(writer.events); got != 2 {
-		t.Fatalf("events = %d, want 2", got)
+	if got := len(writer.events); got != 3 {
+		t.Fatalf("events = %d, want 3", got)
 	}
 	if got := writer.events[0].EventKind; got != SignalEvaluatedEventKind {
 		t.Fatalf("evaluated event kind = %q", got)
 	}
 	if got := writer.events[1].EventKind; got != SignalTriggerRequestedEventKind {
 		t.Fatalf("trigger event kind = %q", got)
+	}
+	if got := writer.events[2].EventKind; got != SignalTriggerOutcomeEventKind {
+		t.Fatalf("trigger outcome event kind = %q", got)
+	}
+	var outcomeMetadata map[string]any
+	if err := json.Unmarshal(writer.events[2].Metadata, &outcomeMetadata); err != nil {
+		t.Fatal(err)
+	}
+	if got := outcomeMetadata["outcome"]; got != string(domain.StrategyTriggerAdmitted) {
+		t.Fatalf("trigger outcome = %v, want admitted", got)
 	}
 	if writer.events[1].StrategyID == nil || *writer.events[1].StrategyID != strategyID {
 		t.Fatalf("trigger strategy = %v, want %s", writer.events[1].StrategyID, strategyID)
@@ -149,9 +167,42 @@ func TestTriggerHandlerDurableRequestFailureDoesNotDispatch(t *testing.T) {
 	}
 }
 
+func TestTriggerHandlerDurableOutcomeFailureDoesNotDispatch(t *testing.T) {
+	t.Parallel()
+
+	strategyID := uuid.New()
+	runner := &fakeLifecycleStrategyTriggerer{}
+	handler := NewTriggerHandler(
+		nil,
+		&fakeLifecycleStrategyLoader{strategies: map[uuid.UUID]*domain.Strategy{strategyID: {ID: strategyID}}},
+		nil,
+		runner,
+		nil,
+		nil,
+	).WithEventRecorder(&failingSignalEventRecorder{outcomeErr: errors.New("database unavailable")})
+
+	handler.handle(context.Background(), TriggerEvent{
+		Signal: EvaluatedSignal{
+			Raw:                RawSignalEvent{Source: "rss:test", Title: "Apple update"},
+			AffectedStrategies: []uuid.UUID{strategyID},
+			Urgency:            3,
+			Summary:            "Material update",
+			RecommendedAction:  "re-evaluate",
+		},
+		StrategyID: strategyID,
+		Action:     TriggerActionRunPipeline,
+		Priority:   3,
+	})
+
+	if got := len(runner.calls); got != 0 {
+		t.Fatalf("runner calls = %d, want 0 after outcome persistence failure", got)
+	}
+}
+
 type failingSignalEventRecorder struct {
 	evaluatedErr error
 	triggerErr   error
+	outcomeErr   error
 }
 
 func (r *failingSignalEventRecorder) RecordEvaluated(context.Context, EvaluatedSignal) error {
@@ -160,4 +211,8 @@ func (r *failingSignalEventRecorder) RecordEvaluated(context.Context, EvaluatedS
 
 func (r *failingSignalEventRecorder) RecordTriggerRequest(context.Context, TriggerEvent) error {
 	return r.triggerErr
+}
+
+func (r *failingSignalEventRecorder) RecordTriggerOutcome(context.Context, TriggerEvent, domain.StrategyTriggerOutcome) error {
+	return r.outcomeErr
 }

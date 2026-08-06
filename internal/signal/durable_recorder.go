@@ -15,6 +15,7 @@ import (
 const (
 	SignalEvaluatedEventKind        = "signal.evaluated"
 	SignalTriggerRequestedEventKind = "signal.trigger_requested"
+	SignalTriggerOutcomeEventKind   = "signal.trigger_outcome"
 	signalEventPersistenceTimeout   = 5 * time.Second
 )
 
@@ -23,6 +24,39 @@ const (
 type EventRecorder interface {
 	RecordEvaluated(context.Context, EvaluatedSignal) error
 	RecordTriggerRequest(context.Context, TriggerEvent) error
+	RecordTriggerOutcome(context.Context, TriggerEvent, domain.StrategyTriggerOutcome) error
+}
+
+func (r *AgentEventRecorder) RecordTriggerOutcome(ctx context.Context, trigger TriggerEvent, outcome domain.StrategyTriggerOutcome) error {
+	if r == nil || r.writer == nil {
+		return fmt.Errorf("signal event recorder: writer unavailable")
+	}
+	metadata, err := json.Marshal(map[string]any{
+		"received_at": trigger.Signal.Raw.ReceivedAt,
+		"source":      trigger.Signal.Raw.Source,
+		"urgency":     trigger.Signal.Urgency,
+		"action":      trigger.Action,
+		"priority":    trigger.Priority,
+		"input_hash":  signalInputHash(trigger.Signal.Raw),
+		"outcome":     outcome,
+	})
+	if err != nil {
+		return fmt.Errorf("signal event recorder: marshal trigger outcome: %w", err)
+	}
+	strategyID := trigger.StrategyID
+	event := &domain.AgentEvent{
+		StrategyID: &strategyID,
+		EventKind:  SignalTriggerOutcomeEventKind,
+		Title:      trigger.Signal.Raw.Title,
+		Summary:    trigger.Signal.Summary,
+		Tags: []string{
+			"signal",
+			"source:" + trigger.Signal.Raw.Source,
+			"outcome:" + string(outcome),
+		},
+		Metadata: metadata,
+	}
+	return r.create(ctx, event)
 }
 
 type agentEventWriter interface {

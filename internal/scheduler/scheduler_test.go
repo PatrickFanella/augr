@@ -1343,6 +1343,145 @@ func TestTriggeredStrategyDoesNotQueueBehindCapacity(t *testing.T) {
 	<-s.strategySem
 }
 
+func TestTriggerSignalStrategyPersistsCapacityOutcomeBeforeStarting(t *testing.T) {
+	t.Parallel()
+
+	strategy := domain.Strategy{ID: uuid.New(), Ticker: "AAPL", MarketType: domain.MarketTypeStock, Status: domain.StrategyStatusActive}
+	pipeline := &mockPipeline{}
+	s := NewScheduler(&mockStrategyRepo{strategies: []domain.Strategy{strategy}}, pipeline, &mockRiskEngine{}, testLogger())
+	s.ctx = context.Background()
+	s.strategySem <- struct{}{}
+	s.strategySem <- struct{}{}
+
+	var recorded domain.StrategyTriggerOutcome
+	got := s.TriggerSignalStrategy(strategy, func(outcome domain.StrategyTriggerOutcome) error {
+		recorded = outcome
+		return nil
+	})
+	if got != domain.StrategyTriggerCapacityDropped || recorded != domain.StrategyTriggerCapacityDropped {
+		t.Fatalf("outcome = %q, recorded = %q, want capacity dropped", got, recorded)
+	}
+	if got := pipeline.callCount(); got != 0 {
+		t.Fatalf("pipeline calls = %d, want 0", got)
+	}
+
+	<-s.strategySem
+	<-s.strategySem
+}
+
+func TestTriggerSignalStrategyRecordsStoppedScheduler(t *testing.T) {
+	t.Parallel()
+
+	strategy := domain.Strategy{ID: uuid.New(), Ticker: "AAPL", MarketType: domain.MarketTypeStock, Status: domain.StrategyStatusActive}
+	s := NewScheduler(&mockStrategyRepo{strategies: []domain.Strategy{strategy}}, &mockPipeline{}, &mockRiskEngine{}, testLogger())
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	s.ctx = ctx
+
+	var recorded domain.StrategyTriggerOutcome
+	got := s.TriggerSignalStrategy(strategy, func(outcome domain.StrategyTriggerOutcome) error {
+		recorded = outcome
+		return nil
+	})
+	if got != domain.StrategyTriggerSchedulerStopped || recorded != domain.StrategyTriggerSchedulerStopped {
+		t.Fatalf("outcome = %q, recorded = %q, want scheduler stopped", got, recorded)
+	}
+	if got := s.InFlightCount(); got != 0 {
+		t.Fatalf("in-flight count = %d, want 0", got)
+	}
+}
+
+func TestTriggerSignalStrategyPersistenceFailureCancelsAdmission(t *testing.T) {
+	t.Parallel()
+
+	strategy := domain.Strategy{ID: uuid.New(), Ticker: "AAPL", MarketType: domain.MarketTypeStock, Status: domain.StrategyStatusActive}
+	pipeline := &mockPipeline{}
+	s := NewScheduler(&mockStrategyRepo{strategies: []domain.Strategy{strategy}}, pipeline, &mockRiskEngine{}, testLogger())
+	s.ctx = context.Background()
+
+	got := s.TriggerSignalStrategy(strategy, func(outcome domain.StrategyTriggerOutcome) error {
+		if outcome != domain.StrategyTriggerAdmitted {
+			t.Fatalf("callback outcome = %q, want admitted", outcome)
+		}
+		return errors.New("ledger unavailable")
+	})
+	if got != domain.StrategyTriggerPersistenceFailed {
+		t.Fatalf("outcome = %q, want persistence failed", got)
+	}
+	if got := pipeline.callCount(); got != 0 {
+		t.Fatalf("pipeline calls = %d, want 0 after outcome persistence failure", got)
+	}
+	if got := s.InFlightCount(); got != 0 {
+		t.Fatalf("in-flight count = %d, want 0", got)
+	}
+	if got := len(s.strategySem); got != 0 {
+		t.Fatalf("capacity slots held = %d, want 0", got)
+	}
+}
+
+func TestTriggerSignalStrategyContainsOutcomeRecorderPanic(t *testing.T) {
+	t.Parallel()
+
+	strategy := domain.Strategy{ID: uuid.New(), Ticker: "AAPL", MarketType: domain.MarketTypeStock, Status: domain.StrategyStatusActive}
+	pipeline := &mockPipeline{}
+	s := NewScheduler(&mockStrategyRepo{strategies: []domain.Strategy{strategy}}, pipeline, &mockRiskEngine{}, testLogger())
+	s.ctx = context.Background()
+
+	got := s.TriggerSignalStrategy(strategy, func(domain.StrategyTriggerOutcome) error {
+		panic("provider text must not escape")
+	})
+	if got != domain.StrategyTriggerPersistenceFailed {
+		t.Fatalf("outcome = %q, want persistence failed", got)
+	}
+	if got := pipeline.callCount(); got != 0 {
+		t.Fatalf("pipeline calls = %d, want 0", got)
+	}
+	if got := s.InFlightCount(); got != 0 {
+		t.Fatalf("in-flight count = %d, want 0", got)
+	}
+}
+
+func TestTriggerSignalStrategyStartsOnlyAfterAdmissionPersistence(t *testing.T) {
+	t.Parallel()
+
+	strategy := domain.Strategy{ID: uuid.New(), Ticker: "AAPL", MarketType: domain.MarketTypeStock, Status: domain.StrategyStatusActive}
+	recorded := make(chan struct{})
+	executed := make(chan struct{})
+	s := NewScheduler(
+		&mockStrategyRepo{strategies: []domain.Strategy{strategy}},
+		&mockPipeline{},
+		&mockRiskEngine{},
+		testLogger(),
+		WithStrategyExecution(func(context.Context, domain.Strategy) error {
+			select {
+			case <-recorded:
+			default:
+				t.Error("strategy execution started before admission persistence")
+			}
+			close(executed)
+			return nil
+		}),
+	)
+	s.ctx = context.Background()
+	s.nowFunc = func() time.Time { return time.Date(2026, time.August, 6, 15, 0, 0, 0, time.UTC) }
+
+	got := s.TriggerSignalStrategy(strategy, func(outcome domain.StrategyTriggerOutcome) error {
+		if outcome != domain.StrategyTriggerAdmitted {
+			t.Fatalf("callback outcome = %q, want admitted", outcome)
+		}
+		close(recorded)
+		return nil
+	})
+	if got != domain.StrategyTriggerAdmitted {
+		t.Fatalf("outcome = %q, want admitted", got)
+	}
+	select {
+	case <-executed:
+	case <-time.After(time.Second):
+		t.Fatal("admitted strategy did not execute")
+	}
+}
+
 func TestRunStrategy_CancelsWhileWaitingForCapacity(t *testing.T) {
 	t.Parallel()
 

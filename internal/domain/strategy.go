@@ -24,6 +24,18 @@ const (
 	StrategyStatusInactive = "inactive"
 )
 
+// StrategyTriggerOutcome is the scheduler's durable admission decision for an
+// event-driven strategy request.
+type StrategyTriggerOutcome string
+
+const (
+	StrategyTriggerAdmitted          StrategyTriggerOutcome = "admitted"
+	StrategyTriggerDeduplicated      StrategyTriggerOutcome = "deduplicated"
+	StrategyTriggerCapacityDropped   StrategyTriggerOutcome = "capacity_dropped"
+	StrategyTriggerSchedulerStopped  StrategyTriggerOutcome = "scheduler_stopped"
+	StrategyTriggerPersistenceFailed StrategyTriggerOutcome = "outcome_persistence_failed"
+)
+
 // String returns the string representation of a MarketType.
 func (m MarketType) String() string {
 	return string(m)
