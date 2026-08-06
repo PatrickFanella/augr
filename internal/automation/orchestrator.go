@@ -209,6 +209,7 @@ type JobOrchestrator struct {
 	reportMetrics       ReportWorkerMetrics
 	reportWorker        *ReportWorker
 	kalshiGateUnhealthy bool
+	now                 func() time.Time
 }
 
 // NewJobOrchestrator constructs a new orchestrator.
@@ -222,6 +223,7 @@ func NewJobOrchestrator(deps OrchestratorDeps) *JobOrchestrator {
 		cron:   cron.New(cron.WithLocation(easternTime)),
 		deps:   deps,
 		logger: logger,
+		now:    time.Now,
 	}
 }
 
@@ -382,8 +384,10 @@ func (o *JobOrchestrator) Status() []JobStatus {
 	return statuses
 }
 
-// RunJob triggers a specific job by name immediately, bypassing the
-// schedule/market-hours check (but still respecting dedup and dependencies).
+// RunJob triggers a specific job by name immediately while retaining the
+// schedule's market-session, weekday, and holiday safety gates. The cron
+// minute itself is intentionally not checked by ScheduleSpec.ShouldFire, so
+// operators can rerun a job anywhere inside its authorized session.
 func (o *JobOrchestrator) RunJob(ctx context.Context, name string) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -394,9 +398,17 @@ func (o *JobOrchestrator) RunJob(ctx context.Context, name string) error {
 	}
 	job.mu.Lock()
 	enabled := job.Enabled
+	schedule := job.Schedule
 	job.mu.Unlock()
 	if !enabled {
 		return fmt.Errorf("automation: job %q is disabled", name)
+	}
+	now := time.Now()
+	if o.now != nil {
+		now = o.now()
+	}
+	if !schedule.ShouldFire(now) {
+		return fmt.Errorf("automation: job %q is outside configured session (%s)", name, schedule.Describe())
 	}
 	o.logger.Info("automation: manual trigger", slog.String("job", name))
 	go o.runDirect(job)

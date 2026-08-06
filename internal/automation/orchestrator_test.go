@@ -212,6 +212,62 @@ func TestJobOrchestratorRunJob_RejectsDisabledJob(t *testing.T) {
 	}
 }
 
+func TestJobOrchestratorRunJobRejectsOutsideConfiguredSession(t *testing.T) {
+	t.Parallel()
+
+	var calls int
+	orch := NewJobOrchestrator(OrchestratorDeps{})
+	orch.now = func() time.Time {
+		return time.Date(2026, time.August, 6, 21, 0, 0, 0, time.UTC) // 5:00 PM ET
+	}
+	orch.Register("market_job", "market-window job", scheduler.ScheduleSpec{
+		Type:         scheduler.ScheduleTypeMarketHours,
+		MarketType:   string(domain.MarketTypeStock),
+		SkipWeekends: true,
+		SkipHolidays: true,
+	}, func(context.Context) error {
+		calls++
+		return nil
+	})
+
+	err := orch.RunJob(context.Background(), "market_job")
+	if err == nil || !strings.Contains(err.Error(), "outside configured session") {
+		t.Fatalf("RunJob() error = %v, want configured-session rejection", err)
+	}
+	time.Sleep(20 * time.Millisecond)
+	if calls != 0 {
+		t.Fatalf("job calls = %d, want 0", calls)
+	}
+}
+
+func TestJobOrchestratorRunJobAllowsRerunInsideConfiguredSession(t *testing.T) {
+	t.Parallel()
+
+	done := make(chan struct{})
+	orch := NewJobOrchestrator(OrchestratorDeps{})
+	orch.now = func() time.Time {
+		return time.Date(2026, time.August, 6, 15, 0, 0, 0, time.UTC) // 11:00 AM ET
+	}
+	orch.Register("market_job", "market-window job", scheduler.ScheduleSpec{
+		Type:         scheduler.ScheduleTypeMarketHours,
+		MarketType:   string(domain.MarketTypeStock),
+		SkipWeekends: true,
+		SkipHolidays: true,
+	}, func(context.Context) error {
+		close(done)
+		return nil
+	})
+
+	if err := orch.RunJob(context.Background(), "market_job"); err != nil {
+		t.Fatalf("RunJob() error = %v", err)
+	}
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("market-session rerun did not start")
+	}
+}
+
 func TestJobOrchestratorRunDirectEnforcesTimeout(t *testing.T) {
 	orch := NewJobOrchestrator(OrchestratorDeps{JobTimeout: 10 * time.Millisecond})
 	orch.Register("job", "test", schedulerSpecEveryMinute(), func(ctx context.Context) error {
