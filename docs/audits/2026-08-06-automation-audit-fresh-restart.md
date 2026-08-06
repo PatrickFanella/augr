@@ -55,11 +55,11 @@ Eastern Time schedules are shown because the production automation orchestrator 
 | `paper_validation_report` | enabled | 17:00 weekdays, after hours | strategy/backtest history | pending valid after-hours window |
 | `options_expiry_settlement` | enabled | 23:00 weekdays, after hours | paper option lifecycle | pending valid after-hours window |
 | `options_lifecycle_reconcile` | enabled | 23:30 weekdays, after hours | after expiry settlement | pending valid after-hours window |
-| `history_refresh` | enabled | 04:00 Tue–Sat | upstream of overnight sweep/backtest | qualifying defect run; full-universe/current-provider postdeployment proof pending |
-| `overnight_sweep` | enabled | 02:00 Tue–Sat | must follow fresh history | pending |
-| `overnight_backtest` | enabled | every 30 minutes 01:00–05:59 Tue–Sat | guarded against history/sweep overlap | pending |
-| `overnight_generate` | enabled | 03:00 Tue–Sat in deployed version | guarded against sweep/backtest overlap | pending |
-| `options_discovery` | enabled | 03:30 Tue–Sat in deployed version | after overnight generation | qualifying defect run; postdeployment proof pending |
+| `history_refresh` | enabled | deployed 04:00 Tue–Sat; local pending 00:00 | upstream of overnight sweep/backtest | qualifying defect run; full-universe/current-provider postdeployment proof pending |
+| `overnight_sweep` | enabled | deployed 02:00 Tue–Sat; local pending 00:30 | must follow fresh history | pending |
+| `overnight_backtest` | enabled | every 30 minutes 01:00–05:59 Tue–Sat, unchanged | after fresh history and sweep | pending |
+| `overnight_generate` | enabled | deployed 03:00 Tue–Sat; local pending 06:00 | after sweep and completion of the backtest window | pending |
+| `options_discovery` | enabled | deployed 03:30 Tue–Sat; local pending 06:30 | after overnight generation | qualifying defect run; postdeployment proof pending |
 | `universe_refresh` | enabled | Sunday 12:00 | Polygon reference source | pending valid weekly window |
 | `strategy_tournament` | enabled | Sunday 14:00 | all active strategies; potentially mutating | pending valid weekly window |
 | `kalshi_discovery` | enabled | :15 hourly | Kalshi calendar/provider; paper-only deployment | 5+ qualifying defect runs; fixes require postdeploy proof |
@@ -80,6 +80,8 @@ Eastern Time schedules are shown because the production automation orchestrator 
 Because the desktop timer interface is unavailable in this runtime, bounded secret-redacting production log observers are armed before each required window instead of using retrospective log reads. The 15:45 UTC regular-session scan and 16:00 filing windows have now been captured and reconciled. Remaining armed targets are the 20:00 and 00:00 filing boundaries, which should prove suppression after auto-disable, plus a continuous observer beginning 20:14 UTC for the after-hours, overnight, and next 10:30 UTC ticker-discovery windows. Each run still counts only after terminal database/output and downstream-state reconciliation. Separate Sunday 12:00/14:00 ET observers remain to be armed closer to the weekly windows.
 
 The 16:15 UTC `portfolio_allocator` cron boundary was also observed while NYSE trading was open. No allocator start log or durable run row appeared, while other due jobs started normally. This confirms the deployed after-hours session gate suppressed the tick; it is schedule-control evidence only and does not count as the required allocator execution.
+
+The overnight observer follows the currently deployed 04:00/02:00/03:00/03:30 ET history/sweep/generate/options timings. Commit `c4bc1e8` changes the single-deploy graph to history at 00:00, sweep at 00:30, unchanged backtest chunks from 01:00–05:59, generation at 06:00, and options discovery at 06:30 ET. Those postdeploy timings require a separate observer; evidence from the deployed order cannot validate the pending order.
 
 ## Qualifying fresh-run ledger
 
