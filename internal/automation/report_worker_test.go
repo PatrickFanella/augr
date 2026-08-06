@@ -3,6 +3,7 @@ package automation
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -170,9 +171,13 @@ func (s *stubReportBacktestRunRepo) Count(_ context.Context, _ repository.Backte
 
 type stubReportArtifactRepo struct {
 	artifacts []pgrepo.ReportArtifact
+	err       error
 }
 
 func (s *stubReportArtifactRepo) Upsert(_ context.Context, a *pgrepo.ReportArtifact) error {
+	if s.err != nil {
+		return s.err
+	}
 	cloned := *a
 	if a.ReportJSON != nil {
 		cloned.ReportJSON = append(json.RawMessage(nil), a.ReportJSON...)
@@ -345,6 +350,29 @@ func TestGenerateOneReportRejectsMalformedTradeLog(t *testing.T) {
 	}
 	if len(reportRepo.artifacts) != 1 || reportRepo.artifacts[0].Status != "error" {
 		t.Fatalf("artifacts = %#v, want one error artifact", reportRepo.artifacts)
+	}
+}
+
+func TestGenerateOneReportSurfacesErrorArtifactPersistenceFailure(t *testing.T) {
+	t.Parallel()
+
+	strategyID := uuid.New()
+	fixedNow := time.Date(2026, 6, 11, 15, 4, 5, 0, time.UTC)
+	reportRepo := &stubReportArtifactRepo{err: errors.New("artifact store unavailable")}
+	worker := newTestReportWorker(t,
+		[]domain.Strategy{{ID: strategyID, Name: "paper", Status: domain.StrategyStatusActive, IsPaper: true}},
+		map[uuid.UUID][]domain.BacktestConfig{strategyID: nil},
+		map[uuid.UUID][]domain.BacktestRun{},
+		reportRepo,
+		&captureReportMetrics{},
+	)
+
+	err := worker.generateOneReport(context.Background(), strategyID, "paper", fixedNow.Truncate(24*time.Hour), fixedNow)
+	if err == nil || !strings.Contains(err.Error(), "no backtest configs") || !strings.Contains(err.Error(), "persist error artifact") {
+		t.Fatalf("generateOneReport() error = %v, want generation and artifact persistence failures", err)
+	}
+	if len(reportRepo.artifacts) != 0 {
+		t.Fatalf("artifacts = %#v, want no falsely persisted artifact", reportRepo.artifacts)
 	}
 }
 

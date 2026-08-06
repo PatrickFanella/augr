@@ -3,6 +3,7 @@ package automation
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -235,9 +236,10 @@ func (w *ReportWorker) persistErrorArtifact(
 	}
 	if err := w.deps.ReportArtifactRepo.Upsert(ctx, artifact); err != nil {
 		w.logger.Error("paper_validation_report: failed to persist error artifact",
-			slog.Any("original_error", origErr),
-			slog.Any("persist_error", err),
+			slog.String("original_error_type", fmt.Sprintf("%T", origErr)),
+			slog.String("persist_error_type", fmt.Sprintf("%T", err)),
 		)
+		return errors.Join(origErr, fmt.Errorf("persist error artifact: %w", err))
 	}
 	return origErr
 }
