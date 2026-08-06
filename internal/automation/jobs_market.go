@@ -47,13 +47,21 @@ func (o *JobOrchestrator) registerMarketJobs() {
 // currentDataRefresh refreshes recent intraday OHLCV for the most relevant stock tickers.
 func (o *JobOrchestrator) currentDataRefresh(ctx context.Context) error {
 	summary := map[string]int{
-		"tickers":       0,
-		"batches":       0,
-		"updated":       0,
-		"empty":         0,
-		"daily_updated": 0,
-		"daily_empty":   0,
-		"errors":        0,
+		"tickers":                 0,
+		"batches":                 0,
+		"updated":                 0,
+		"empty":                   0,
+		"cache_only":              0,
+		"stale":                   0,
+		"provider_requests":       0,
+		"fresh_bars":              0,
+		"daily_updated":           0,
+		"daily_empty":             0,
+		"daily_cache_only":        0,
+		"daily_stale":             0,
+		"daily_provider_requests": 0,
+		"daily_fresh_bars":        0,
+		"errors":                  0,
 	}
 	defer func() {
 		o.SetLastSummary("current_data_refresh", summary)
@@ -136,8 +144,14 @@ func (o *JobOrchestrator) currentDataRefresh(ctx context.Context) error {
 		batch := tickers[start:end]
 		summary["batches"]++
 
-		refresh := func(timeframe data.Timeframe, from time.Time, updatedKey, emptyKey string) {
-			barsByTicker, err := o.deps.DataService.DownloadHistoricalOHLCV(ctx, domain.MarketTypeStock, batch, timeframe, from, now, false)
+		refresh := func(timeframe data.Timeframe, from time.Time, prefix string, fresh func(time.Time, time.Time) bool) {
+			updatedKey := prefix + "updated"
+			emptyKey := prefix + "empty"
+			cacheOnlyKey := prefix + "cache_only"
+			staleKey := prefix + "stale"
+			providerRequestsKey := prefix + "provider_requests"
+			freshBarsKey := prefix + "fresh_bars"
+			download, err := o.deps.DataService.DownloadHistoricalOHLCVWithStats(ctx, domain.MarketTypeStock, batch, timeframe, from, now, false)
 			if err != nil {
 				o.logger.Warn("current_data_refresh: batch refresh failed",
 					slog.Int("batch", summary["batches"]),
@@ -149,15 +163,26 @@ func (o *JobOrchestrator) currentDataRefresh(ctx context.Context) error {
 				return
 			}
 			for _, ticker := range batch {
-				if len(barsByTicker[ticker]) == 0 {
+				summary[providerRequestsKey] += download.ProviderRequests[ticker]
+				summary[freshBarsKey] += download.FreshBars[ticker]
+				if download.ProviderRequests[ticker] == 0 {
+					summary[cacheOnlyKey]++
+					continue
+				}
+				bars := download.Bars[ticker]
+				if download.FreshBars[ticker] == 0 || len(bars) == 0 {
 					summary[emptyKey]++
+					continue
+				}
+				if !fresh(now, bars[len(bars)-1].Timestamp) {
+					summary[staleKey]++
 					continue
 				}
 				summary[updatedKey]++
 			}
 		}
-		refresh(data.Timeframe5m, intradayFrom, "updated", "empty")
-		refresh(data.Timeframe1d, dailyFrom, "daily_updated", "daily_empty")
+		refresh(data.Timeframe5m, intradayFrom, "", intradayBarFresh)
+		refresh(data.Timeframe1d, dailyFrom, "daily_", dailyBarFresh)
 
 		if end < len(tickers) {
 			time.Sleep(150 * time.Millisecond)
@@ -173,15 +198,12 @@ func (o *JobOrchestrator) currentDataRefresh(ctx context.Context) error {
 		slog.Int("daily_empty", summary["daily_empty"]),
 		slog.Int("errors", summary["errors"]),
 	)
-	if summary["errors"] > 0 {
-		return fmt.Errorf("current_data_refresh: completed with %d errors (%d/%d tickers updated)", summary["errors"], summary["updated"], summary["tickers"])
-	}
-	return nil
+	return currentDataRefreshCompletionError(summary)
 }
 
 // hotScan scores the top 200 watchlist tickers using locally stored OHLCV data.
 func (o *JobOrchestrator) hotScan(ctx context.Context) error {
-	summary := map[string]int{"watchlist": 0, "scored": 0, "score_errors": 0, "significant_tickers": 0, "strategies_triggered": 0}
+	summary := map[string]int{"watchlist": 0, "scored": 0, "fetch_errors": 0, "insufficient": 0, "stale": 0, "score_errors": 0, "significant_tickers": 0, "strategies_triggered": 0}
 	defer func() { o.SetLastSummary("hot_scan", summary) }()
 	tickers, err := o.deps.Universe.GetWatchlist(ctx, 200)
 	if err != nil {
@@ -204,11 +226,20 @@ func (o *JobOrchestrator) hotScan(ctx context.Context) error {
 
 	for _, t := range tickers {
 		bars, fetchErr := o.deps.DataService.GetOHLCV(ctx, "stock", t.Ticker, data.Timeframe1d, from, now)
-		if fetchErr != nil || len(bars) < 2 {
+		if fetchErr != nil {
+			summary["fetch_errors"]++
+			continue
+		}
+		if len(bars) < 2 {
+			summary["insufficient"]++
 			continue
 		}
 
 		lastBar := bars[len(bars)-1]
+		if !dailyBarFresh(now, lastBar.Timestamp) {
+			summary["stale"]++
+			continue
+		}
 		prevBar := bars[len(bars)-2]
 		changePct := 0.0
 		if prevBar.Close > 0 {
@@ -274,7 +305,7 @@ func (o *JobOrchestrator) hotScan(ctx context.Context) error {
 	}
 
 	o.logger.Info("hot_scan: complete", slog.Int("scanned", len(tickers)))
-	return nil
+	return marketScanCompletionError("hot_scan", summary)
 }
 
 func canonicalTriggeredStrategies(strategies []domain.Strategy) []domain.Strategy {
@@ -309,7 +340,7 @@ func canonicalTriggeredStrategies(strategies []domain.Strategy) []domain.Strateg
 // deepScan scores the universe using locally stored OHLCV data (from history_refresh)
 // instead of the Polygon snapshot API, which requires a paid plan.
 func (o *JobOrchestrator) deepScan(ctx context.Context) error {
-	summary := map[string]int{"active_tickers": 0, "scored": 0, "score_errors": 0}
+	summary := map[string]int{"active_tickers": 0, "scored": 0, "fetch_errors": 0, "insufficient": 0, "stale": 0, "score_errors": 0}
 	defer func() { o.SetLastSummary("deep_scan", summary) }()
 	allSymbols, err := o.deps.Universe.GetActiveTickers(ctx, "", 0)
 	if err != nil {
@@ -335,12 +366,21 @@ func (o *JobOrchestrator) deepScan(ctx context.Context) error {
 
 	for i, ticker := range allSymbols {
 		bars, fetchErr := o.deps.DataService.GetOHLCV(ctx, "stock", ticker, data.Timeframe1d, from, now)
-		if fetchErr != nil || len(bars) < 5 {
+		if fetchErr != nil {
+			summary["fetch_errors"]++
+			continue
+		}
+		if len(bars) < 5 {
+			summary["insufficient"]++
 			continue
 		}
 
 		// Score from recent bars: volatility + volume + momentum.
 		lastBar := bars[len(bars)-1]
+		if !dailyBarFresh(now, lastBar.Timestamp) {
+			summary["stale"]++
+			continue
+		}
 		prevBar := bars[len(bars)-2]
 		changePct := 0.0
 		if prevBar.Close > 0 {
@@ -395,14 +435,61 @@ func (o *JobOrchestrator) deepScan(ctx context.Context) error {
 		)
 	}
 
-	return deepScanCompletionError(summary["score_errors"])
+	return marketScanCompletionError("deep_scan", summary)
 }
 
-func deepScanCompletionError(scoreErrors int) error {
-	if scoreErrors <= 0 {
+func currentDataRefreshCompletionError(summary map[string]int) error {
+	incomplete := summary["errors"] + summary["empty"] + summary["cache_only"] + summary["stale"] +
+		summary["daily_empty"] + summary["daily_cache_only"] + summary["daily_stale"]
+	if incomplete == 0 {
 		return nil
 	}
-	return fmt.Errorf("deep_scan: %d universe score updates failed", scoreErrors)
+	return fmt.Errorf("current_data_refresh: incomplete provider refresh: errors=%d intraday(empty=%d cache_only=%d stale=%d) daily(empty=%d cache_only=%d stale=%d)",
+		summary["errors"], summary["empty"], summary["cache_only"], summary["stale"],
+		summary["daily_empty"], summary["daily_cache_only"], summary["daily_stale"])
+}
+
+func marketScanCompletionError(job string, summary map[string]int) error {
+	incomplete := summary["fetch_errors"] + summary["insufficient"] + summary["stale"] + summary["score_errors"]
+	if incomplete == 0 {
+		return nil
+	}
+	return fmt.Errorf("%s: incomplete scan: fetch_errors=%d insufficient=%d stale=%d score_errors=%d", job,
+		summary["fetch_errors"], summary["insufficient"], summary["stale"], summary["score_errors"])
+}
+
+func intradayBarFresh(now, latest time.Time) bool {
+	if !scheduler.IsRegularMarketOpen(now, domain.MarketTypeStock) {
+		return false
+	}
+	nowET := now.In(easternTime)
+	latestET := latest.In(easternTime)
+	if !sameMarketDate(nowET, latestET) {
+		return false
+	}
+	open := time.Date(nowET.Year(), nowET.Month(), nowET.Day(), 9, 30, 0, 0, easternTime)
+	if latestET.Before(open) || latestET.After(nowET.Add(5*time.Minute)) {
+		return false
+	}
+	return nowET.Sub(latestET) <= 20*time.Minute
+}
+
+func dailyBarFresh(now, latest time.Time) bool {
+	expected := now.In(easternTime)
+	minutes := expected.Hour()*60 + expected.Minute()
+	if !scheduler.IsNYSETradingDay(expected) || minutes < 9*60+30 {
+		expected = expected.AddDate(0, 0, -1)
+		for !scheduler.IsNYSETradingDay(expected) {
+			expected = expected.AddDate(0, 0, -1)
+		}
+	}
+	return sameMarketDate(expected, latest.In(easternTime))
+}
+
+func sameMarketDate(a, b time.Time) bool {
+	ay, am, ad := a.Date()
+	by, bm, bd := b.Date()
+	return ay == by && am == bm && ad == bd
 }
 
 // scoreFromSnapshot computes a watch score combining momentum, volume surge,

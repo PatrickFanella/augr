@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -60,14 +61,51 @@ func TestCanonicalTriggeredStrategiesDeduplicatesSchedulerKeys(t *testing.T) {
 	}
 }
 
-func TestDeepScanCompletionErrorFailsVisibleOnScoreWriteErrors(t *testing.T) {
+func TestMarketScanCompletionErrorFailsVisibleOnPartialCoverage(t *testing.T) {
 	t.Parallel()
 
-	if err := deepScanCompletionError(0); err != nil {
-		t.Fatalf("deepScanCompletionError(0) = %v, want nil", err)
+	if err := marketScanCompletionError("deep_scan", map[string]int{}); err != nil {
+		t.Fatalf("marketScanCompletionError(empty) = %v, want nil", err)
 	}
-	err := deepScanCompletionError(2)
-	if err == nil || !strings.Contains(err.Error(), "2 universe score updates failed") {
-		t.Fatalf("deepScanCompletionError(2) = %v", err)
+	err := marketScanCompletionError("deep_scan", map[string]int{"fetch_errors": 1, "insufficient": 2, "stale": 3, "score_errors": 4})
+	if err == nil || !strings.Contains(err.Error(), "fetch_errors=1 insufficient=2 stale=3 score_errors=4") {
+		t.Fatalf("marketScanCompletionError(partial) = %v", err)
+	}
+}
+
+func TestMarketBarFreshnessUsesRegularSessionAndTradingDate(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.August, 6, 10, 0, 0, 0, easternTime)
+	if !intradayBarFresh(now, time.Date(2026, time.August, 6, 9, 45, 0, 0, easternTime)) {
+		t.Fatal("15-minute-old same-session intraday bar should be fresh")
+	}
+	if intradayBarFresh(now, time.Date(2026, time.August, 6, 9, 35, 0, 0, easternTime)) {
+		t.Fatal("25-minute-old intraday bar should be stale")
+	}
+	if intradayBarFresh(time.Date(2026, time.August, 6, 9, 20, 0, 0, easternTime), time.Date(2026, time.August, 5, 15, 55, 0, 0, easternTime)) {
+		t.Fatal("premarket bar must not qualify for a regular-session refresh")
+	}
+	if !dailyBarFresh(now, time.Date(2026, time.August, 6, 9, 30, 0, 0, easternTime)) {
+		t.Fatal("current-session daily bar should be fresh after open")
+	}
+	if dailyBarFresh(now, time.Date(2026, time.August, 5, 9, 30, 0, 0, easternTime)) {
+		t.Fatal("prior-session daily bar should be stale after open")
+	}
+	preMarketMonday := time.Date(2026, time.August, 10, 8, 0, 0, 0, easternTime)
+	if !dailyBarFresh(preMarketMonday, time.Date(2026, time.August, 7, 9, 30, 0, 0, easternTime)) {
+		t.Fatal("Friday daily bar should be fresh before Monday open")
+	}
+}
+
+func TestCurrentDataRefreshCompletionErrorRejectsCacheOnlyAndStale(t *testing.T) {
+	t.Parallel()
+
+	if err := currentDataRefreshCompletionError(map[string]int{}); err != nil {
+		t.Fatalf("currentDataRefreshCompletionError(empty) = %v, want nil", err)
+	}
+	err := currentDataRefreshCompletionError(map[string]int{"cache_only": 2, "daily_stale": 1})
+	if err == nil || !strings.Contains(err.Error(), "cache_only=2") || !strings.Contains(err.Error(), "stale=1") {
+		t.Fatalf("currentDataRefreshCompletionError(partial) = %v", err)
 	}
 }
