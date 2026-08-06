@@ -46,7 +46,7 @@ func (o *JobOrchestrator) registerPreMarketJobs() {
 
 // gapScanner detects overnight gaps and unusual volume in the top 500 tickers.
 func (o *JobOrchestrator) gapScanner(ctx context.Context) error {
-	summary := map[string]int{"requested": 0, "snapshot_batches": 0, "failed_batches": 0, "snapshots": 0, "gaps": 0, "score_failed": 0, "triggered": 0, "strategy_list_failed": 0}
+	summary := map[string]int{"requested": 0, "snapshot_batches": 0, "failed_batches": 0, "snapshots": 0, "missing_snapshots": 0, "gaps": 0, "score_failed": 0, "triggered": 0, "strategy_list_failed": 0}
 	defer func() { o.SetLastSummary("gap_scanner", summary) }()
 	if o.deps.Universe == nil {
 		o.logger.Info("gap_scanner: skipped — Universe not configured")
@@ -96,6 +96,9 @@ func (o *JobOrchestrator) gapScanner(ctx context.Context) error {
 			continue
 		}
 		summary["snapshots"] += len(snapshots)
+		if len(snapshots) < len(batch) {
+			summary["missing_snapshots"] += len(batch) - len(snapshots)
+		}
 
 		for _, snap := range snapshots {
 			// Calculate gap percentage: (today open - prev close) / prev close.
@@ -172,10 +175,7 @@ func (o *JobOrchestrator) gapScanner(ctx context.Context) error {
 		slog.Int("scanned", len(symbols)),
 		slog.Int("gaps_found", len(gaps)),
 	)
-	if summary["failed_batches"] > 0 || summary["score_failed"] > 0 || summary["strategy_list_failed"] > 0 {
-		return fmt.Errorf("gap_scanner: incomplete run: failed_batches=%d score_failed=%d strategy_list_failed=%d", summary["failed_batches"], summary["score_failed"], summary["strategy_list_failed"])
-	}
-	return nil
+	return gapScannerCompletionError(summary)
 }
 
 // discoveryRun runs the full strategy discovery pipeline on top watchlist tickers.
@@ -248,7 +248,23 @@ func (o *JobOrchestrator) discoveryRun(ctx context.Context) error {
 		)
 	}
 
-	return nil
+	return discoveryRunCompletionError(result.Errors)
+}
+
+func gapScannerCompletionError(summary map[string]int) error {
+	incomplete := summary["failed_batches"] + summary["missing_snapshots"] + summary["score_failed"] + summary["strategy_list_failed"]
+	if incomplete == 0 {
+		return nil
+	}
+	return fmt.Errorf("gap_scanner: incomplete run: failed_batches=%d missing_snapshots=%d score_failed=%d strategy_list_failed=%d",
+		summary["failed_batches"], summary["missing_snapshots"], summary["score_failed"], summary["strategy_list_failed"])
+}
+
+func discoveryRunCompletionError(errors []string) error {
+	if len(errors) == 0 {
+		return nil
+	}
+	return fmt.Errorf("discovery_run: completed with %d pipeline errors", len(errors))
 }
 
 // positionReview reviews all active strategies and their open positions before market open.

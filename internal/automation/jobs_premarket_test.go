@@ -3,6 +3,7 @@ package automation
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
@@ -14,6 +15,30 @@ type positionReviewStrategyRepo struct{ *kalshiStrategyRepoStub }
 
 func (s *positionReviewStrategyRepo) Count(context.Context, repository.StrategyFilter) (int, error) {
 	return len(s.strategies), nil
+}
+
+func TestGapScannerCompletionErrorRejectsPartialCoverage(t *testing.T) {
+	t.Parallel()
+
+	if err := gapScannerCompletionError(map[string]int{}); err != nil {
+		t.Fatalf("gapScannerCompletionError(empty) = %v, want nil", err)
+	}
+	err := gapScannerCompletionError(map[string]int{"missing_snapshots": 3, "score_failed": 1})
+	if err == nil || !strings.Contains(err.Error(), "missing_snapshots=3") || !strings.Contains(err.Error(), "score_failed=1") {
+		t.Fatalf("gapScannerCompletionError(partial) = %v", err)
+	}
+}
+
+func TestDiscoveryRunCompletionErrorRejectsReportedErrors(t *testing.T) {
+	t.Parallel()
+
+	if err := discoveryRunCompletionError(nil); err != nil {
+		t.Fatalf("discoveryRunCompletionError(nil) = %v, want nil", err)
+	}
+	err := discoveryRunCompletionError([]string{"generate AAPL", "persist MSFT"})
+	if err == nil || !strings.Contains(err.Error(), "2 pipeline errors") {
+		t.Fatalf("discoveryRunCompletionError(errors) = %v", err)
+	}
 }
 
 func TestGapScannerSkipsWhenUniverseIsNotConfigured(t *testing.T) {
