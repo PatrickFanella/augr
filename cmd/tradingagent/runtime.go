@@ -806,8 +806,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 	var sigEvaluator *signal.Evaluator
 	if deps.LLMProvider != nil {
 		sigEvaluator = signal.NewEvaluator(deps.LLMProvider, cfg.LLM.QuickThinkModel, logger).
-			WithMetrics(appMetrics).
-			WithFallbackMode(os.Getenv("SIGNAL_FALLBACK_MODE"))
+			WithMetrics(appMetrics)
 	}
 
 	stratProvider := signal.NewStrategyProviderWithCache(

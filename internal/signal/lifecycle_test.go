@@ -145,6 +145,7 @@ type fakeLifecycleEvaluator struct {
 	urgency      int
 	summary      string
 	action       string
+	err          error
 }
 
 func (f *fakeLifecycleEvaluator) Evaluate(_ context.Context, evt RawSignalEvent, strategies []StrategyContext) (*EvaluatedSignal, error) {
@@ -155,6 +156,9 @@ func (f *fakeLifecycleEvaluator) Evaluate(_ context.Context, evt RawSignalEvent,
 	copy(copyStrategies, strategies)
 	f.received = append(f.received, copyStrategies)
 	f.sourceTitles = append(f.sourceTitles, evt.Title)
+	if f.err != nil {
+		return nil, f.err
+	}
 	urgency := f.urgency
 	if urgency == 0 {
 		urgency = 4
@@ -174,6 +178,31 @@ func (f *fakeLifecycleEvaluator) Evaluate(_ context.Context, evt RawSignalEvent,
 		Summary:            summary,
 		RecommendedAction:  action,
 	}, nil
+}
+
+func TestSignalLifecycle_EvaluatorUnavailableOrFailedIsNotActionable(t *testing.T) {
+	t.Parallel()
+
+	event := RawSignalEvent{Source: "rss", Title: "headline"}
+	strategies := []StrategyContext{{ID: uuid.New()}}
+	tests := map[string]SignalEvaluator{
+		"unavailable": nil,
+		"failed":      &fakeLifecycleEvaluator{err: errors.New("provider failed")},
+	}
+	for name, evaluator := range tests {
+		name, evaluator := name, evaluator
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			lifecycle := NewLifecycle(nil, nil, evaluator, nil, nil, slog.Default())
+			got := lifecycle.evaluate(context.Background(), event, strategies)
+			if got == nil || got.Urgency != 1 || len(got.AffectedStrategies) != 0 {
+				t.Fatalf("evaluate() = %+v, want non-actionable fallback", got)
+			}
+			if got.RecommendedAction != "monitor" {
+				t.Fatalf("RecommendedAction = %q, want monitor", got.RecommendedAction)
+			}
+		})
+	}
 }
 
 type fakeLifecycleStrategyLoader struct {

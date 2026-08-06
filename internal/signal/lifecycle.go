@@ -161,14 +161,11 @@ func (l *Lifecycle) evaluate(ctx context.Context, evt RawSignalEvent, strategies
 		}
 	}
 
-	ids := make([]uuid.UUID, len(strategies))
-	for i, s := range strategies {
-		ids[i] = s.ID
-	}
+	// An unavailable or failed evaluator must not manufacture pipeline work.
 	return &EvaluatedSignal{
 		Raw:                evt,
-		AffectedStrategies: ids,
-		Urgency:            3,
+		AffectedStrategies: nil,
+		Urgency:            1,
 		Summary:            evt.Title,
 		RecommendedAction:  "monitor",
 	}

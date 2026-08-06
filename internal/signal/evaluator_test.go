@@ -107,8 +107,7 @@ func TestEvaluatorFallback_DropMode(t *testing.T) {
 	m := &stubMetrics{}
 	strategyID := uuid.New()
 	e := NewEvaluator(stubEvaluatorProvider{err: errors.New("boom")}, "quick", nil).
-		WithMetrics(m).
-		WithFallbackMode("drop")
+		WithMetrics(m)
 
 	got, err := e.Evaluate(context.Background(), RawSignalEvent{Source: "rss", Title: "headline"},
 		[]StrategyContext{{ID: strategyID}})
@@ -126,53 +125,51 @@ func TestEvaluatorFallback_DropMode(t *testing.T) {
 	}
 }
 
-// TestEvaluatorFallback_LegacyMode verifies urgency=3 and all strategies in legacy mode.
-func TestEvaluatorFallback_LegacyMode(t *testing.T) {
+// TestEvaluatorFallback_CannotBeConfiguredActionable verifies failure is always fail-closed.
+func TestEvaluatorFallback_CannotBeConfiguredActionable(t *testing.T) {
 	t.Parallel()
 
 	m := &stubMetrics{}
 	strategyID1 := uuid.New()
 	strategyID2 := uuid.New()
 	e := NewEvaluator(stubEvaluatorProvider{err: errors.New("boom")}, "quick", nil).
-		WithMetrics(m).
-		WithFallbackMode("legacy")
+		WithMetrics(m)
 
 	got, err := e.Evaluate(context.Background(), RawSignalEvent{Source: "rss", Title: "headline"},
 		[]StrategyContext{{ID: strategyID1}, {ID: strategyID2}})
 	if err != nil {
 		t.Fatalf("Evaluate() error = %v", err)
 	}
-	if got.Urgency != 3 {
-		t.Fatalf("legacy mode: Urgency = %d, want 3", got.Urgency)
+	if got.Urgency != 1 {
+		t.Fatalf("Urgency = %d, want 1", got.Urgency)
 	}
-	if len(got.AffectedStrategies) != 2 {
-		t.Fatalf("legacy mode: AffectedStrategies len = %d, want 2", len(got.AffectedStrategies))
+	if len(got.AffectedStrategies) != 0 {
+		t.Fatalf("AffectedStrategies = %v, want empty", got.AffectedStrategies)
 	}
 	if m.parseFailures != 1 {
 		t.Fatalf("legacy mode: parseFailures = %d, want 1", m.parseFailures)
 	}
 }
 
-// TestEvaluatorFallback_ParseFailure_LegacyMode verifies JSON parse failure also triggers metric + legacy.
-func TestEvaluatorFallback_ParseFailure_LegacyMode(t *testing.T) {
+// TestEvaluatorFallback_ParseFailureIsNotActionable verifies malformed JSON stays fail-closed.
+func TestEvaluatorFallback_ParseFailureIsNotActionable(t *testing.T) {
 	t.Parallel()
 
 	m := &stubMetrics{}
 	strategyID := uuid.New()
 	e := NewEvaluator(stubEvaluatorProvider{response: &llm.CompletionResponse{Content: "bad-json"}}, "quick", nil).
-		WithMetrics(m).
-		WithFallbackMode("legacy")
+		WithMetrics(m)
 
 	got, err := e.Evaluate(context.Background(), RawSignalEvent{Source: "rss", Title: "headline"},
 		[]StrategyContext{{ID: strategyID}})
 	if err != nil {
 		t.Fatalf("Evaluate() error = %v", err)
 	}
-	if got.Urgency != 3 {
-		t.Fatalf("parse fail legacy: Urgency = %d, want 3", got.Urgency)
+	if got.Urgency != 1 {
+		t.Fatalf("Urgency = %d, want 1", got.Urgency)
 	}
-	if len(got.AffectedStrategies) != 1 {
-		t.Fatalf("parse fail legacy: AffectedStrategies len = %d, want 1", len(got.AffectedStrategies))
+	if len(got.AffectedStrategies) != 0 {
+		t.Fatalf("AffectedStrategies = %v, want empty", got.AffectedStrategies)
 	}
 	if m.parseFailures != 1 {
 		t.Fatalf("parse fail legacy: parseFailures = %d, want 1", m.parseFailures)
@@ -243,6 +240,59 @@ func TestEvaluatorFallback_NilMetrics_NoPanic(t *testing.T) {
 	}
 	if got == nil {
 		t.Fatal("Evaluate() = nil")
+	}
+}
+
+func TestEvaluatorEvaluate_NilProviderResponseFallsBack(t *testing.T) {
+	t.Parallel()
+
+	m := &stubMetrics{}
+	e := NewEvaluator(stubEvaluatorProvider{}, "quick", nil).WithMetrics(m)
+	got, err := e.Evaluate(context.Background(), RawSignalEvent{Source: "rss", Title: "headline"},
+		[]StrategyContext{{ID: uuid.New()}})
+	if err != nil {
+		t.Fatalf("Evaluate() error = %v", err)
+	}
+	if got == nil || got.Urgency != 1 || len(got.AffectedStrategies) != 0 {
+		t.Fatalf("Evaluate() = %+v, want non-actionable fallback", got)
+	}
+	if m.parseFailures != 1 {
+		t.Fatalf("parseFailures = %d, want 1", m.parseFailures)
+	}
+}
+
+func TestEvaluatorEvaluate_InvalidSchemaFallsBack(t *testing.T) {
+	t.Parallel()
+
+	knownID := uuid.New()
+	unknownID := uuid.New()
+	tests := map[string]string{
+		"missing affected strategies": `{"urgency":4,"summary":"material","recommended_action":"re-evaluate"}`,
+		"urgency above range":         `{"affected_strategy_ids":["` + knownID.String() + `"],"urgency":6,"summary":"material","recommended_action":"execute_thesis"}`,
+		"blank summary":               `{"affected_strategy_ids":["` + knownID.String() + `"],"urgency":4,"summary":" ","recommended_action":"re-evaluate"}`,
+		"invalid action":              `{"affected_strategy_ids":["` + knownID.String() + `"],"urgency":4,"summary":"material","recommended_action":"trade_now"}`,
+		"malformed strategy id":       `{"affected_strategy_ids":["not-a-uuid"],"urgency":4,"summary":"material","recommended_action":"re-evaluate"}`,
+		"unknown strategy id":         `{"affected_strategy_ids":["` + unknownID.String() + `"],"urgency":4,"summary":"material","recommended_action":"re-evaluate"}`,
+		"unknown field":               `{"affected_strategy_ids":[],"urgency":1,"summary":"noise","recommended_action":"monitor","execute":true}`,
+	}
+	for name, content := range tests {
+		name, content := name, content
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			m := &stubMetrics{}
+			e := NewEvaluator(stubEvaluatorProvider{response: &llm.CompletionResponse{Content: content}}, "quick", nil).WithMetrics(m)
+			got, err := e.Evaluate(context.Background(), RawSignalEvent{Source: "rss", Title: "headline"},
+				[]StrategyContext{{ID: knownID}})
+			if err != nil {
+				t.Fatalf("Evaluate() error = %v", err)
+			}
+			if got == nil || got.Urgency != 1 || len(got.AffectedStrategies) != 0 {
+				t.Fatalf("Evaluate() = %+v, want non-actionable fallback", got)
+			}
+			if m.parseFailures != 1 {
+				t.Fatalf("parseFailures = %d, want 1", m.parseFailures)
+			}
+		})
 	}
 }
 

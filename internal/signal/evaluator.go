@@ -38,11 +38,10 @@ type StrategyContext struct {
 
 // Evaluator uses an LLM to score RawSignalEvents against active strategies.
 type Evaluator struct {
-	provider     llm.Provider
-	model        string
-	logger       *slog.Logger
-	metrics      SignalEvalMetrics // nil-safe
-	fallbackMode string            // "drop" (default) or "legacy"
+	provider llm.Provider
+	model    string
+	logger   *slog.Logger
+	metrics  SignalEvalMetrics // nil-safe
 }
 
 // SignalEvaluator is the adapter used by the signal lifecycle.
@@ -61,18 +60,6 @@ func NewEvaluator(provider llm.Provider, model string, logger *slog.Logger) *Eva
 // WithMetrics attaches a metrics sink for parse-failure tracking.
 func (e *Evaluator) WithMetrics(m SignalEvalMetrics) *Evaluator {
 	e.metrics = m
-	return e
-}
-
-// WithFallbackMode sets the fallback behaviour on LLM/parse failures.
-// Valid values: "drop" (default, urgency=1, no strategies) or "legacy"
-// (urgency=3, all registered strategies — the old broken behaviour).
-func (e *Evaluator) WithFallbackMode(mode string) *Evaluator {
-	if mode == "legacy" {
-		e.fallbackMode = "legacy"
-	} else {
-		e.fallbackMode = "drop"
-	}
 	return e
 }
 
@@ -141,7 +128,18 @@ func (e *Evaluator) Evaluate(ctx context.Context, event RawSignalEvent, strategi
 		if e.metrics != nil {
 			e.metrics.RecordSignalParseFailure()
 		}
-		return e.fallback(event, strategies), nil
+		return e.fallback(event), nil
+	}
+
+	if resp == nil {
+		e.logger.Warn("signal evaluator: LLM returned nil response, dropping signal",
+			slog.String("source", event.Source),
+			slog.String("title", event.Title),
+		)
+		if e.metrics != nil {
+			e.metrics.RecordSignalParseFailure()
+		}
+		return e.fallback(event), nil
 	}
 
 	content := strings.TrimSpace(resp.Content)
@@ -153,31 +151,46 @@ func (e *Evaluator) Evaluate(ctx context.Context, event RawSignalEvent, strategi
 		if e.metrics != nil {
 			e.metrics.RecordSignalParseFailure()
 		}
-		return e.fallback(event, strategies), nil
+		return e.fallback(event), nil
 	}
 
 	return e.parseResponse(content, event, strategies)
 }
 
 type evaluatorOutput struct {
-	AffectedStrategyIDs []string `json:"affected_strategy_ids"`
-	Urgency             int      `json:"urgency"`
-	Summary             string   `json:"summary"`
-	RecommendedAction   string   `json:"recommended_action"`
+	AffectedStrategyIDs *[]string `json:"affected_strategy_ids"`
+	Urgency             *int      `json:"urgency"`
+	Summary             *string   `json:"summary"`
+	RecommendedAction   *string   `json:"recommended_action"`
 }
 
 func (e *Evaluator) parseResponse(content string, event RawSignalEvent, strategies []StrategyContext) (*EvaluatedSignal, error) {
 	var out evaluatorOutput
 	jsonContent := extractJSONObject(content)
-	if err := json.Unmarshal([]byte(jsonContent), &out); err != nil {
-		e.logger.Warn("signal evaluator: failed to parse LLM output, using fallback",
-			slog.String("content", content),
+	decoder := json.NewDecoder(strings.NewReader(jsonContent))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&out); err != nil {
+		e.logger.Warn("signal evaluator: failed to parse LLM output, dropping signal",
 			slog.Any("error", err),
 		)
 		if e.metrics != nil {
 			e.metrics.RecordSignalParseFailure()
 		}
-		return e.fallback(event, strategies), nil
+		return e.fallback(event), nil
+	}
+	if out.AffectedStrategyIDs == nil || out.Urgency == nil || out.Summary == nil || out.RecommendedAction == nil {
+		return e.invalidOutput(event, "missing_required_field")
+	}
+	if *out.Urgency < 1 || *out.Urgency > 5 {
+		return e.invalidOutput(event, "urgency_out_of_range")
+	}
+	if strings.TrimSpace(*out.Summary) == "" {
+		return e.invalidOutput(event, "missing_summary")
+	}
+	switch *out.RecommendedAction {
+	case "monitor", "re-evaluate", "execute_thesis":
+	default:
+		return e.invalidOutput(event, "invalid_recommended_action")
 	}
 
 	// Build known-ID set to filter LLM hallucinations.
@@ -186,38 +199,42 @@ func (e *Evaluator) parseResponse(content string, event RawSignalEvent, strategi
 		idSet[s.ID] = struct{}{}
 	}
 
-	affected := make([]uuid.UUID, 0, len(out.AffectedStrategyIDs))
-	for _, idStr := range out.AffectedStrategyIDs {
+	affected := make([]uuid.UUID, 0, len(*out.AffectedStrategyIDs))
+	seen := make(map[uuid.UUID]struct{}, len(*out.AffectedStrategyIDs))
+	for _, idStr := range *out.AffectedStrategyIDs {
 		id, err := uuid.Parse(idStr)
 		if err != nil {
-			continue
+			return e.invalidOutput(event, "invalid_strategy_id")
 		}
 		if _, ok := idSet[id]; ok {
-			affected = append(affected, id)
+			if _, duplicate := seen[id]; !duplicate {
+				affected = append(affected, id)
+				seen[id] = struct{}{}
+			}
+		} else {
+			return e.invalidOutput(event, "unknown_strategy_id")
 		}
-	}
-
-	urgency := out.Urgency
-	if urgency < 1 {
-		urgency = 1
-	} else if urgency > 5 {
-		urgency = 5
-	}
-
-	action := out.RecommendedAction
-	switch action {
-	case "monitor", "re-evaluate", "execute_thesis":
-	default:
-		action = "monitor"
 	}
 
 	return &EvaluatedSignal{
 		Raw:                event,
 		AffectedStrategies: affected,
-		Urgency:            urgency,
-		Summary:            out.Summary,
-		RecommendedAction:  action,
+		Urgency:            *out.Urgency,
+		Summary:            strings.TrimSpace(*out.Summary),
+		RecommendedAction:  *out.RecommendedAction,
 	}, nil
+}
+
+func (e *Evaluator) invalidOutput(event RawSignalEvent, reason string) (*EvaluatedSignal, error) {
+	e.logger.Warn("signal evaluator: invalid LLM output, dropping signal",
+		slog.String("source", event.Source),
+		slog.String("title", event.Title),
+		slog.String("reason", reason),
+	)
+	if e.metrics != nil {
+		e.metrics.RecordSignalParseFailure()
+	}
+	return e.fallback(event), nil
 }
 
 func extractJSONObject(content string) string {
@@ -279,22 +296,10 @@ func shouldRetrySignalEvalError(err error) bool {
 		strings.Contains(errText, "broker connection closed before response was received")
 }
 
-func (e *Evaluator) fallback(event RawSignalEvent, strategies []StrategyContext) *EvaluatedSignal {
-	if e.fallbackMode == "legacy" {
-		// Legacy: urgency=3, all registered strategies (old broken behaviour).
-		ids := make([]uuid.UUID, len(strategies))
-		for i, s := range strategies {
-			ids[i] = s.ID
-		}
-		return &EvaluatedSignal{
-			Raw:                event,
-			AffectedStrategies: ids,
-			Urgency:            3,
-			Summary:            event.Title,
-			RecommendedAction:  "monitor",
-		}
-	}
-	// Drop mode (default): urgency=1, no affected strategies → hub drops it.
+func (e *Evaluator) fallback(event RawSignalEvent) *EvaluatedSignal {
+	// Evaluator failure must never create actionable work. Urgency 1 and no
+	// affected strategies make the lifecycle retain observability while dropping
+	// the signal before trigger emission.
 	return &EvaluatedSignal{
 		Raw:                event,
 		AffectedStrategies: nil,
