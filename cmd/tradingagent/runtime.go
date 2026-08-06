@@ -71,6 +71,21 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+func newRuntimeFinnhubLimiters(requestsPerMinute int, global *data.RateLimiter) []*data.RateLimiter {
+	limiters := make([]*data.RateLimiter, 0, 2)
+	if requestsPerMinute > 0 {
+		interval := time.Minute / time.Duration(requestsPerMinute)
+		if interval <= 0 {
+			interval = time.Nanosecond
+		}
+		limiters = append(limiters, data.NewRateLimiter(1, interval))
+	}
+	if global != nil {
+		limiters = append(limiters, global)
+	}
+	return limiters
+}
+
 type watchedMarketsLoaderAdapter struct {
 	repo repository.PolymarketWatchedMarketsRepository
 }
@@ -459,14 +474,19 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 		)
 	} else {
 		// Global rate limiter: 50 req/min shared across all providers.
-		data.SetGlobalLimiter(data.NewRateLimiter(50, time.Minute))
+		globalDataLimiter := data.NewRateLimiter(50, time.Minute)
+		data.SetGlobalLimiter(globalDataLimiter)
+		// All Finnhub roles share a strictly paced limiter because they use the
+		// same API key. A full token bucket permits a startup burst that Finnhub
+		// rejects before the configured minute quota is reached.
+		finnhubLimiters := newRuntimeFinnhubLimiters(cfg.DataProviders.Finnhub.RateLimitPerMinute, globalDataLimiter)
 		kalshiDataClient, kalshiExecClient, kalshiGov, kalshiErr := newRuntimeKalshiClients(cfg, appMetrics, logger, db)
 		_ = kalshiGov
 
 		reg := data.NewProviderRegistry()
 		polygon.Register(reg)
 		alphavantage.Register(reg)
-		finnhub.Register(reg)
+		finnhub.RegisterWithLimiters(reg, finnhubLimiters...)
 		fmp.Register(reg)
 		newsapi.Register(reg)
 		yahoo.Register(reg)
@@ -541,7 +561,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 		deps.ResearchScanner = service.NewResearchScannerService(deps.OptionsProvider, deps.PolymarketClient, logger)
 		// Events provider: Finnhub provides earnings, filings, economic, IPO calendars.
 		if strings.TrimSpace(cfg.DataProviders.Finnhub.APIKey) != "" {
-			eventsClient := finnhub.NewClient(cfg.DataProviders.Finnhub.APIKey, logger)
+			eventsClient := finnhub.NewClient(cfg.DataProviders.Finnhub.APIKey, logger, finnhubLimiters...)
 			deps.EventsProvider = finnhub.NewProvider(eventsClient)
 		}
 		deps.DiscoveryDeps = &discovery.DiscoveryDeps{

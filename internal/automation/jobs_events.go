@@ -144,12 +144,12 @@ func (o *JobOrchestrator) filingMonitor(ctx context.Context) error {
 	from := now.AddDate(0, 0, -1)
 	to := now
 
-	var totalFilings, tickersChecked int
+	var totalFilings, tickersAttempted, tickersChecked int
 	for _, ticker := range tickers {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		tickersChecked++
+		tickersAttempted++
 
 		for _, formType := range []string{"8-K", "10-Q"} {
 			filings, err := o.deps.EventsProvider.GetFilings(ctx, ticker, formType, from, to)
@@ -160,7 +160,7 @@ func (o *JobOrchestrator) filingMonitor(ctx context.Context) error {
 						slog.String("form", formType),
 						slog.Any("error", err),
 					)
-					o.SetLastSummary("filing_monitor", map[string]int{"available": available, "tickers_checked": tickersChecked, "filings_found": totalFilings, "rate_limited": 1})
+					o.SetLastSummary("filing_monitor", map[string]int{"available": available, "tickers_attempted": tickersAttempted, "tickers_checked": tickersChecked, "filings_found": totalFilings, "rate_limited": 1})
 					return fmt.Errorf("filing_monitor: provider rate limited after %d filings: %w", totalFilings, err)
 				}
 				o.logger.Warn("filing_monitor: failed to fetch filings",
@@ -200,13 +200,14 @@ func (o *JobOrchestrator) filingMonitor(ctx context.Context) error {
 				}
 			}
 		}
+		tickersChecked++
 	}
 
 	o.logger.Info("filing_monitor: complete",
 		slog.Int("tickers_checked", len(tickers)),
 		slog.Int("filings_found", totalFilings),
 	)
-	o.SetLastSummary("filing_monitor", map[string]int{"available": available, "tickers_checked": len(tickers), "filings_found": totalFilings, "rate_limited": 0})
+	o.SetLastSummary("filing_monitor", map[string]int{"available": available, "tickers_attempted": tickersAttempted, "tickers_checked": tickersChecked, "filings_found": totalFilings, "rate_limited": 0})
 	return nil
 }
 

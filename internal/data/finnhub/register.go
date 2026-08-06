@@ -19,3 +19,13 @@ func Register(reg *data.ProviderRegistry) {
 		return NewProvider(NewClient(cfg.APIKey, cfg.Logger, limiters...))
 	}
 }
+
+// RegisterWithLimiters registers Finnhub clients that share the supplied
+// limiters. Sharing is important when multiple provider roles use the same API
+// key: otherwise each client can independently exhaust the provider quota.
+func RegisterWithLimiters(reg *data.ProviderRegistry, limiters ...*data.RateLimiter) {
+	shared := append([]*data.RateLimiter(nil), limiters...)
+	reg.Finnhub = func(cfg data.ProviderConfig) data.DataProvider {
+		return NewProvider(NewClient(cfg.APIKey, cfg.Logger, shared...))
+	}
+}
