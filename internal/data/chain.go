@@ -61,11 +61,42 @@ func tryChain[T any](c *ProviderChain, method, ticker string, fn func(DataProvid
 	return zero, lastErr
 }
 
-// GetOHLCV iterates providers and returns the first successful OHLCV result.
+// GetOHLCV iterates providers and returns the first non-empty successful OHLCV
+// result. An empty response is not authoritative while another configured
+// provider may have coverage for the symbol.
 func (c *ProviderChain) GetOHLCV(ctx context.Context, ticker string, timeframe Timeframe, from, to time.Time) ([]domain.OHLCV, error) {
-	return tryChain(c, "GetOHLCV", ticker, func(p DataProvider) ([]domain.OHLCV, error) {
-		return p.GetOHLCV(ctx, ticker, timeframe, from, to)
-	})
+	if len(c.providers) == 0 {
+		return nil, ErrNoProviders
+	}
+
+	var lastErr error
+	var sawEmpty bool
+	for _, provider := range c.providers {
+		bars, err := provider.GetOHLCV(ctx, ticker, timeframe, from, to)
+		if err == nil {
+			if len(bars) > 0 {
+				return bars, nil
+			}
+			sawEmpty = true
+			c.logger.Info("data provider returned no OHLCV, trying next",
+				slog.String("ticker", ticker),
+				slog.String("timeframe", timeframe.String()),
+			)
+			continue
+		}
+		if c.fallback.shouldRecord(err) {
+			c.logger.Warn("data provider failed, trying next",
+				slog.String("method", "GetOHLCV"),
+				slog.String("ticker", ticker),
+				slog.Any("error", err),
+			)
+			lastErr = err
+		}
+	}
+	if sawEmpty {
+		return []domain.OHLCV{}, nil
+	}
+	return nil, lastErr
 }
 
 // GetFundamentals iterates providers and returns fundamentals. If a provider

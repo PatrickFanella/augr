@@ -81,6 +81,23 @@ func TestProviderChainGetOHLCVFallsBackOnFailure(t *testing.T) {
 	}
 }
 
+func TestProviderChainGetOHLCVFallsBackOnEmpty(t *testing.T) {
+	want := []domain.OHLCV{{Open: 5, High: 6, Low: 4, Close: 5.5, Volume: 200}}
+	chain := data.NewProviderChain(
+		discardLogger(),
+		&stubProvider{ohlcv: []domain.OHLCV{}},
+		&stubProvider{ohlcv: want},
+	)
+
+	got, err := chain.GetOHLCV(context.Background(), "AAPL", data.Timeframe5m, time.Now(), time.Now())
+	if err != nil {
+		t.Fatalf("GetOHLCV() error = %v, want nil", err)
+	}
+	if len(got) != len(want) || got[0].Close != want[0].Close {
+		t.Fatalf("GetOHLCV() = %v, want fallback %v", got, want)
+	}
+}
+
 func TestProviderChainGetOHLCVAllFail(t *testing.T) {
 	chain := data.NewProviderChain(
 		discardLogger(),
