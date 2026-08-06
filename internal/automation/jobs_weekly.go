@@ -42,7 +42,14 @@ func (o *JobOrchestrator) universeRefresh(ctx context.Context) error {
 
 	o.logger.Info("universe_refresh: completed", slog.Int("tickers_loaded", count))
 	o.SetLastSummary("universe_refresh", map[string]int{"tickers_loaded": count})
-	return nil
+	return universeRefreshCompletionError(count)
+}
+
+func universeRefreshCompletionError(count int) error {
+	if count > 0 {
+		return nil
+	}
+	return fmt.Errorf("universe_refresh: provider returned zero active constituents")
 }
 
 // strategyTournament backtests all active strategies over the same
@@ -64,7 +71,7 @@ func (o *JobOrchestrator) strategyTournament(ctx context.Context) error {
 		sharpe float64
 	}
 	var rankings []ranked
-	var eligible, skipped, failed int
+	var eligible, skipped, failed, providerContacted, cacheOnly, stale int
 
 	for _, strat := range strategies {
 		if ctx.Err() != nil {
@@ -86,7 +93,7 @@ func (o *JobOrchestrator) strategyTournament(ctx context.Context) error {
 			continue
 		}
 
-		barsMap, err := o.deps.DataService.DownloadHistoricalOHLCV(
+		download, err := o.deps.DataService.DownloadHistoricalOHLCVWithStats(
 			ctx, strat.MarketType,
 			[]string{strat.Ticker},
 			data.Timeframe1d, histFrom, now, true,
@@ -100,12 +107,30 @@ func (o *JobOrchestrator) strategyTournament(ctx context.Context) error {
 			continue
 		}
 
-		bars := barsMap[strat.Ticker]
+		if download.ProviderRequests[strat.Ticker] == 0 {
+			failed++
+			cacheOnly++
+			o.logger.Warn("strategy_tournament: provider freshness unavailable",
+				slog.String("ticker", strat.Ticker),
+			)
+			continue
+		}
+		providerContacted++
+		bars := download.Bars[strat.Ticker]
 		if len(bars) < 50 {
 			failed++
 			o.logger.Warn("strategy_tournament: insufficient bars",
 				slog.String("ticker", strat.Ticker),
 				slog.Int("bars", len(bars)),
+			)
+			continue
+		}
+		if !dailyBarFresh(now, bars[len(bars)-1].Timestamp) {
+			failed++
+			stale++
+			o.logger.Warn("strategy_tournament: stale latest bar",
+				slog.String("ticker", strat.Ticker),
+				slog.Time("latest", bars[len(bars)-1].Timestamp),
 			)
 			continue
 		}
@@ -150,7 +175,7 @@ func (o *JobOrchestrator) strategyTournament(ctx context.Context) error {
 		}
 	}
 
-	o.SetLastSummary("strategy_tournament", map[string]int{"scanned": len(strategies), "eligible": eligible, "skipped": skipped, "ranked": len(rankings), "failed": failed})
+	o.SetLastSummary("strategy_tournament", map[string]int{"scanned": len(strategies), "eligible": eligible, "skipped": skipped, "ranked": len(rankings), "failed": failed, "provider_contacted": providerContacted, "cache_only": cacheOnly, "stale": stale})
 	o.logger.Info("strategy_tournament: completed", slog.Int("strategies_ranked", len(rankings)), slog.Int("failed", failed), slog.Int("skipped", skipped))
 	if failed > 0 {
 		return fmt.Errorf("strategy_tournament: %d of %d eligible strategies failed", failed, eligible)
