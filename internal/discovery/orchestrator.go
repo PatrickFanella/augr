@@ -207,6 +207,7 @@ func RunDiscovery(ctx context.Context, cfg DiscoveryConfig, deps DiscoveryDeps) 
 				slog.String("ticker", gen.candidate.Ticker),
 				slog.Int("bars", len(histBars)),
 			)
+			result.Errors = append(result.Errors, fmt.Sprintf("history %s: insufficient bars (%d)", gen.candidate.Ticker, len(histBars)))
 			continue
 		}
 		barsByTicker[gen.candidate.Ticker] = histBars
@@ -234,6 +235,8 @@ func RunDiscovery(ctx context.Context, cfg DiscoveryConfig, deps DiscoveryDeps) 
 				Metrics: best.Metrics, Score: best.Score, HistoryBars: len(histBars),
 				HistoryStart: histBars[0].Timestamp, HistoryEnd: histBars[len(histBars)-1].Timestamp,
 			})
+		} else {
+			result.Errors = append(result.Errors, fmt.Sprintf("sweep %s: no successful variants", gen.candidate.Ticker))
 		}
 	}
 	result.Swept = len(allBests)
@@ -265,7 +268,8 @@ func RunDiscovery(ctx context.Context, cfg DiscoveryConfig, deps DiscoveryDeps) 
 
 		ticker := tickerByConfigName[scorer.Config.Name]
 		bars := barsByTicker[ticker]
-		if len(bars) == 0 {
+		if ticker == "" || len(bars) == 0 {
+			result.Errors = append(result.Errors, fmt.Sprintf("validate %s: missing ticker or history", scorer.Config.Name))
 			continue
 		}
 
@@ -306,6 +310,15 @@ func RunDiscovery(ctx context.Context, cfg DiscoveryConfig, deps DiscoveryDeps) 
 		}
 	}
 	result.Validated = len(validated)
+	if !discoveryCanDeploy(result) {
+		result.Duration = time.Since(start)
+		logger.Warn("discovery: deployment skipped after incomplete pipeline",
+			slog.Int("errors", len(result.Errors)),
+			slog.Int("validated", result.Validated),
+			slog.Duration("duration", result.Duration),
+		)
+		return result, nil
+	}
 
 	// Step 6: Deploy top MaxWinners validated results.
 	limit := cfg.MaxWinners
@@ -403,6 +416,10 @@ func RunDiscovery(ctx context.Context, cfg DiscoveryConfig, deps DiscoveryDeps) 
 	)
 
 	return result, nil
+}
+
+func discoveryCanDeploy(result *DiscoveryResult) bool {
+	return result != nil && len(result.Errors) == 0
 }
 
 // CheckpointCandidatesFromScreenResults converts screened candidates into the

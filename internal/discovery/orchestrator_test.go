@@ -30,3 +30,16 @@ func TestCheckpointCandidateRoundTrip(t *testing.T) {
 		t.Fatalf("round trip failed: %#v", got)
 	}
 }
+
+func TestDiscoveryCanDeployOnlyCompleteResults(t *testing.T) {
+	t.Parallel()
+	if discoveryCanDeploy(nil) {
+		t.Fatal("discoveryCanDeploy(nil) = true")
+	}
+	if discoveryCanDeploy(&DiscoveryResult{Errors: []string{"generation failed"}}) {
+		t.Fatal("discoveryCanDeploy(partial result) = true")
+	}
+	if !discoveryCanDeploy(&DiscoveryResult{}) {
+		t.Fatal("discoveryCanDeploy(complete result) = false")
+	}
+}
