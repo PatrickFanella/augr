@@ -152,6 +152,13 @@ func Run(ctx context.Context, cfg Config, deps Deps) (res *Result, err error) {
 		if fetchErr != nil {
 			return res, fmt.Errorf("kalshidiscovery: fetch markets: %w", fetchErr)
 		}
+		remaining := cfg.FetchLimit - len(all)
+		if remaining <= 0 {
+			break
+		}
+		if len(page) > remaining {
+			page = page[:remaining]
+		}
 		for _, candidate := range page {
 			all = append(all, candidate)
 			if !cfg.DryRun && deps.Snapshots != nil {
@@ -160,7 +167,7 @@ func Run(ctx context.Context, cfg Config, deps Deps) (res *Result, err error) {
 				}
 			}
 		}
-		if strings.TrimSpace(cursor) == "" {
+		if strings.TrimSpace(cursor) == "" || len(all) >= cfg.FetchLimit {
 			break
 		}
 		pageOpts.Cursor = cursor

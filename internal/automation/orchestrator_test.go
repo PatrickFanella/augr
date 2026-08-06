@@ -348,7 +348,7 @@ func TestJobOrchestratorRegisterAllAddsKalshiDiscovery(t *testing.T) {
 	kalshiDiscoveryRun = func(_ context.Context, cfg kalshidiscovery.Config, deps kalshidiscovery.Deps) (*kalshidiscovery.Result, error) {
 		gotCfg = cfg
 		gotDeps = deps
-		return &kalshidiscovery.Result{}, nil
+		return &kalshidiscovery.Result{FetchedAll: 50, Screened: 15, Proposed: 2, Skipped: 1, Deployed: []kalshidiscovery.DeployedStrategy{{}}, Errors: []string{"snapshot failed"}}, nil
 	}
 
 	orch := NewJobOrchestrator(OrchestratorDeps{
@@ -369,6 +369,10 @@ func TestJobOrchestratorRegisterAllAddsKalshiDiscovery(t *testing.T) {
 		t.Fatalf("RunJob() error = %v", err)
 	}
 	waitForJobRuns(t, orch, "kalshi_discovery", 1)
+	status = singleJobStatus(t, orch, "kalshi_discovery")
+	if status.LastSummary["fetched"] != 50 || status.LastSummary["screened"] != 15 || status.LastSummary["deployed"] != 1 || status.LastSummary["errors"] != 1 {
+		t.Fatalf("Kalshi discovery summary = %#v, want persisted result counts", status.LastSummary)
+	}
 
 	if gotCfg.DryRun {
 		t.Fatal("Kalshi discovery cfg.DryRun = true, want false")

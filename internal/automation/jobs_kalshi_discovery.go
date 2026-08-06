@@ -24,6 +24,8 @@ func (o *JobOrchestrator) registerKalshiDiscoveryJob() {
 }
 
 func (o *JobOrchestrator) kalshiDiscovery(ctx context.Context) error {
+	summary := map[string]int{"fetched": 0, "screened": 0, "proposed": 0, "skipped": 0, "deployed": 0, "errors": 0, "dry_run": 0}
+	defer func() { o.SetLastSummary("kalshi_discovery", summary) }()
 	if o.deps.KalshiCatalog == nil {
 		return fmt.Errorf("kalshi_discovery: catalog client not configured")
 	}
@@ -55,6 +57,15 @@ func (o *JobOrchestrator) kalshiDiscovery(ctx context.Context) error {
 	}
 
 	if res != nil {
+		summary["fetched"] = res.FetchedAll
+		summary["screened"] = res.Screened
+		summary["proposed"] = res.Proposed
+		summary["skipped"] = res.Skipped
+		summary["deployed"] = len(res.Deployed)
+		summary["errors"] = len(res.Errors)
+		if res.DryRun {
+			summary["dry_run"] = 1
+		}
 		o.logger.Info("kalshi_discovery: run complete",
 			slog.Int("fetched", res.FetchedAll),
 			slog.Int("screened", res.Screened),

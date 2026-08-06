@@ -179,6 +179,38 @@ func TestRunFetchesScreensDeploysBoundedNumberAndRecordsRun(t *testing.T) {
 	}
 }
 
+func TestRunCapsPaginatedCatalogAtFetchLimit(t *testing.T) {
+	t.Parallel()
+
+	client := &fakeKalshiClient{pages: []fakeKalshiPage{
+		{markets: []MarketCandidate{
+			newKalshiCandidate("KX-1", "EVT-1", "Market 1?", 0.40, 0.43, 0.56, 0.59, 5000, 3000, 12*24*time.Hour),
+			newKalshiCandidate("KX-2", "EVT-2", "Market 2?", 0.41, 0.44, 0.55, 0.58, 4800, 2800, 11*24*time.Hour),
+		}, cursor: "next"},
+		{markets: []MarketCandidate{
+			newKalshiCandidate("KX-3", "EVT-3", "Market 3?", 0.39, 0.42, 0.57, 0.60, 4700, 2600, 10*24*time.Hour),
+			newKalshiCandidate("KX-4", "EVT-4", "Market 4?", 0.38, 0.41, 0.58, 0.61, 4600, 2500, 9*24*time.Hour),
+		}, cursor: "more"},
+	}}
+
+	res, err := Run(context.Background(), Config{
+		DryRun:         true,
+		FetchLimit:     3,
+		MaxDeployments: 1,
+		MinConviction:  0.55,
+		Screener:       ScreenerConfig{MaxCandidates: 5, MinVolume: 100, MinOpenInterest: 50, MaxSpreadPct: 20, MinDaysToClose: 1},
+	}, Deps{Catalog: client})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if res.FetchedAll != 3 {
+		t.Fatalf("FetchedAll = %d, want hard cap 3", res.FetchedAll)
+	}
+	if len(client.calls) != 2 {
+		t.Fatalf("ListMarkets calls = %d, want 2 pages to reach cap", len(client.calls))
+	}
+}
+
 func TestRunDryRunDoesNotPersistDiscoverySideEffects(t *testing.T) {
 	t.Parallel()
 
