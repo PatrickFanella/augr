@@ -84,8 +84,8 @@ func TestPositionReviewSummarizesActualOpenPositions(t *testing.T) {
 	})
 	orch.Register("position_review", "test", schedulerSpecEveryMinute(), orch.positionReview)
 
-	if err := orch.positionReview(context.Background()); err != nil {
-		t.Fatalf("positionReview() error = %v", err)
+	if err := orch.positionReview(context.Background()); err == nil || !strings.Contains(err.Error(), "unsafe position findings") {
+		t.Fatalf("positionReview() error = %v, want unsafe findings", err)
 	}
 	got := orch.jobs["position_review"].LastSummary
 	want := map[string]int{

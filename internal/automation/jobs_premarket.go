@@ -329,5 +329,14 @@ func (o *JobOrchestrator) positionReview(ctx context.Context) error {
 		slog.Int("positions_missing_stop_loss", summary["positions_missing_stop_loss"]),
 		slog.Int("positions_missing_price", summary["positions_missing_price"]),
 	)
-	return nil
+	return positionReviewCompletionError(summary)
+}
+
+func positionReviewCompletionError(summary map[string]int) error {
+	findings := summary["unowned_positions"] + summary["inactive_strategy_positions"] + summary["positions_missing_stop_loss"] + summary["positions_missing_price"]
+	if findings == 0 {
+		return nil
+	}
+	return fmt.Errorf("position_review: unsafe position findings: unowned=%d inactive_strategy=%d missing_stop_loss=%d missing_price=%d",
+		summary["unowned_positions"], summary["inactive_strategy_positions"], summary["positions_missing_stop_loss"], summary["positions_missing_price"])
 }
