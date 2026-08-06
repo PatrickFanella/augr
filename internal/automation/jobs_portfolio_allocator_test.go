@@ -647,35 +647,38 @@ func TestPortfolioAllocatorJobPaperModeStopsWhenPreclaimFails(t *testing.T) {
 func TestPortfolioAllocatorPaperModeRequiresCompleteFinancialState(t *testing.T) {
 	t.Parallel()
 
-	base := OrchestratorDeps{
-		OpportunityRepo:        &portfolioAllocatorOpportunityRepo{},
-		AllocationDecisionRepo: &portfolioAllocatorDecisionRepo{},
-		PortfolioAllocatorMode: portfolio.AllocatorModePaper,
+	base := func() OrchestratorDeps {
+		return OrchestratorDeps{
+			OpportunityRepo:        &portfolioAllocatorOpportunityRepo{},
+			AllocationDecisionRepo: &portfolioAllocatorDecisionRepo{},
+			PortfolioAllocatorMode: portfolio.AllocatorModePaper,
+		}
 	}
-	tests := map[string]OrchestratorDeps{
+	tests := map[string]func() OrchestratorDeps{
 		"missing positions": base,
 		"missing balance": func() OrchestratorDeps {
-			deps := base
+			deps := base()
 			deps.PositionRepo = newRecordingPositionRepo()
 			return deps
-		}(),
+		},
 		"balance error": func() OrchestratorDeps {
-			deps := base
+			deps := base()
 			deps.PositionRepo = newRecordingPositionRepo()
 			deps.PortfolioAccountBalance = portfolioAllocatorBalanceStub{err: errors.New("balance unavailable")}
 			return deps
-		}(),
+		},
 		"invalid balance": func() OrchestratorDeps {
-			deps := base
+			deps := base()
 			deps.PositionRepo = newRecordingPositionRepo()
 			deps.PortfolioAccountBalance = portfolioAllocatorBalanceStub{balance: execution.Balance{Equity: 0, BuyingPower: 100}}
 			return deps
-		}(),
+		},
 	}
-	for name, deps := range tests {
-		name, deps := name, deps
+	for name, makeDeps := range tests {
+		name, makeDeps := name, makeDeps
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
+			deps := makeDeps()
 			orch := NewJobOrchestrator(deps)
 			orch.registerPortfolioAllocatorJobs()
 			if err := orch.jobs["portfolio_allocator"].Fn(context.Background()); err == nil {
