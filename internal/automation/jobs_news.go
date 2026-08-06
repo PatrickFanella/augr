@@ -37,7 +37,7 @@ func (o *JobOrchestrator) registerNewsJobs() {
 
 // newsScan fetches RSS feeds, runs LLM triage, and persists tagged articles.
 func (o *JobOrchestrator) newsScan(ctx context.Context) error {
-	summary := map[string]int{"fetched": 0, "saved": 0, "classified": 0}
+	summary := map[string]int{"feeds_attempted": 0, "feeds_succeeded": 0, "feed_errors": 0, "fetched": 0, "saved": 0, "save_errors": 0, "triage_requested": 0, "classified": 0, "triage_missing": 0, "triage_write_errors": 0}
 	defer func() { o.SetLastSummary("news_scan", summary) }()
 	if o.deps.NewsFeedRepo == nil {
 		o.logger.Info("news_scan: skipped — news feed repo not configured")
@@ -49,11 +49,15 @@ func (o *JobOrchestrator) newsScan(ctx context.Context) error {
 		o.rssAggregator = rss.NewAggregator(rss.DefaultFeeds(), o.logger)
 	}
 
-	articles := o.rssAggregator.Fetch(ctx)
+	fetch := o.rssAggregator.FetchWithStats(ctx)
+	articles := fetch.Articles
+	summary["feeds_attempted"] = fetch.FeedsAttempted
+	summary["feeds_succeeded"] = fetch.FeedsSucceeded
+	summary["feed_errors"] = fetch.FeedsFailed
 	summary["fetched"] = len(articles)
 	if len(articles) == 0 {
 		o.logger.Info("news_scan: no new articles")
-		return nil
+		return newsScanCompletionError(summary)
 	}
 
 	o.logger.Info("news_scan: fetched new articles", slog.Int("count", len(articles)))
@@ -74,6 +78,7 @@ func (o *JobOrchestrator) newsScan(ctx context.Context) error {
 			PublishedAt: art.PublishedAt,
 		}
 		if err := o.deps.NewsFeedRepo.UpsertArticle(ctx, item); err != nil {
+			summary["save_errors"]++
 			o.logger.Warn("news_scan: persist failed",
 				slog.String("guid", key),
 				slog.Any("error", err),
@@ -93,6 +98,7 @@ func (o *JobOrchestrator) newsScan(ctx context.Context) error {
 		if len(batch) > 20 {
 			batch = batch[:20]
 		}
+		summary["triage_requested"] = len(batch)
 		triageResults := rss.Triage(ctx, o.deps.LLMProvider, "", batch, o.logger)
 		var classified int
 		for _, art := range batch {
@@ -102,6 +108,7 @@ func (o *JobOrchestrator) newsScan(ctx context.Context) error {
 			}
 			tr, ok := triageResults[key]
 			if !ok || tr == nil {
+				summary["triage_missing"]++
 				continue
 			}
 			item := &pgrepo.NewsFeedItem{
@@ -114,6 +121,7 @@ func (o *JobOrchestrator) newsScan(ctx context.Context) error {
 			}
 			// Update the already-persisted row with triage data.
 			if err := o.deps.NewsFeedRepo.UpdateTriage(ctx, item); err != nil {
+				summary["triage_write_errors"]++
 				continue
 			}
 			classified++
@@ -126,7 +134,7 @@ func (o *JobOrchestrator) newsScan(ctx context.Context) error {
 		slog.Int("new_articles", len(articles)),
 		slog.Int("saved", saved),
 	)
-	return nil
+	return newsScanCompletionError(summary)
 }
 
 // socialScan fetches StockTwits trending + sentiment for active strategy and open position tickers.
@@ -188,7 +196,7 @@ func (o *JobOrchestrator) socialScan(ctx context.Context) error {
 	}
 
 	if o.deps.PositionRepo != nil {
-		positions, err := o.deps.PositionRepo.GetOpen(ctx, repository.PositionFilter{}, 100, 0)
+		positions, err := listAllOpenPositions(ctx, o.deps.PositionRepo)
 		if err != nil {
 			summary["errors"]++
 			o.logger.Warn("social_scan: open positions fetch failed", slog.Any("error", err))
@@ -234,7 +242,23 @@ func (o *JobOrchestrator) socialScan(ctx context.Context) error {
 	}
 
 	o.logger.Info("social_scan: complete")
-	return nil
+	return socialScanCompletionError(summary)
+}
+
+func newsScanCompletionError(summary map[string]int) error {
+	errors := summary["feed_errors"] + summary["save_errors"] + summary["triage_missing"] + summary["triage_write_errors"]
+	if errors == 0 {
+		return nil
+	}
+	return fmt.Errorf("news_scan: incomplete run: feed_errors=%d save_errors=%d triage_missing=%d triage_write_errors=%d",
+		summary["feed_errors"], summary["save_errors"], summary["triage_missing"], summary["triage_write_errors"])
+}
+
+func socialScanCompletionError(summary map[string]int) error {
+	if summary["errors"] == 0 {
+		return nil
+	}
+	return fmt.Errorf("social_scan: completed with %d provider or persistence errors", summary["errors"])
 }
 
 func normalizeStocktwitsSentiment(sentiment *stocktwits.SymbolSentiment) (score, bullishRatio, bearishRatio float64) {

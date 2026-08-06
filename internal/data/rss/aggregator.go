@@ -39,6 +39,14 @@ type Article struct {
 	PublishedAt time.Time
 }
 
+// FetchResult reports source coverage as well as the newly observed articles.
+type FetchResult struct {
+	Articles       []Article
+	FeedsAttempted int
+	FeedsSucceeded int
+	FeedsFailed    int
+}
+
 // Aggregator fetches and deduplicates articles from multiple RSS feeds.
 type Aggregator struct {
 	feeds  []Feed
@@ -65,10 +73,18 @@ func NewAggregator(feeds []Feed, logger *slog.Logger) *Aggregator {
 // Fetch retrieves new articles from all feeds, deduplicating by GUID.
 // Returns only articles not seen in previous calls.
 func (a *Aggregator) Fetch(ctx context.Context) []Article {
+	return a.FetchWithStats(ctx).Articles
+}
+
+// FetchWithStats retrieves new articles and exposes per-feed completion so a
+// caller cannot confuse a partial provider outage with a clean empty result.
+func (a *Aggregator) FetchWithStats(ctx context.Context) FetchResult {
 	var (
-		mu       sync.Mutex
-		articles []Article
-		wg       sync.WaitGroup
+		mu        sync.Mutex
+		articles  []Article
+		succeeded int
+		failed    int
+		wg        sync.WaitGroup
 	)
 
 	for _, feed := range a.feeds {
@@ -77,6 +93,9 @@ func (a *Aggregator) Fetch(ctx context.Context) []Article {
 			defer wg.Done()
 			items, err := a.fetchFeed(ctx, f)
 			if err != nil {
+				mu.Lock()
+				failed++
+				mu.Unlock()
 				a.logger.Warn("rss: fetch failed",
 					slog.String("feed", f.Name),
 					slog.Any("error", err),
@@ -84,6 +103,7 @@ func (a *Aggregator) Fetch(ctx context.Context) []Article {
 				return
 			}
 			mu.Lock()
+			succeeded++
 			articles = append(articles, items...)
 			mu.Unlock()
 		}(feed)
@@ -117,7 +137,12 @@ func (a *Aggregator) Fetch(ctx context.Context) []Article {
 		}
 	}
 
-	return newArticles
+	return FetchResult{
+		Articles:       newArticles,
+		FeedsAttempted: len(a.feeds),
+		FeedsSucceeded: succeeded,
+		FeedsFailed:    failed,
+	}
 }
 
 func (a *Aggregator) fetchFeed(ctx context.Context, feed Feed) ([]Article, error) {

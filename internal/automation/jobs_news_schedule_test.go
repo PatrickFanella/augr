@@ -1,6 +1,7 @@
 package automation
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/data/stocktwits"
@@ -12,6 +13,29 @@ func TestNewsScanSpec_ReducesCadenceToThirtyMinutesWhenTwentyMinuteScheduleStill
 	const want = "7-59/30 * * * 1-5"
 	if got := newsScanSpec.Cron; got != want {
 		t.Fatalf("newsScanSpec.Cron = %q, want %q", got, want)
+	}
+}
+
+func TestNewsScanCompletionErrorRejectsPartialCoverage(t *testing.T) {
+	t.Parallel()
+
+	if err := newsScanCompletionError(map[string]int{}); err != nil {
+		t.Fatalf("newsScanCompletionError(empty) = %v, want nil", err)
+	}
+	err := newsScanCompletionError(map[string]int{"feed_errors": 1, "triage_missing": 2})
+	if err == nil || !strings.Contains(err.Error(), "feed_errors=1") || !strings.Contains(err.Error(), "triage_missing=2") {
+		t.Fatalf("newsScanCompletionError(partial) = %v", err)
+	}
+}
+
+func TestSocialScanCompletionErrorRejectsErrors(t *testing.T) {
+	t.Parallel()
+
+	if err := socialScanCompletionError(map[string]int{}); err != nil {
+		t.Fatalf("socialScanCompletionError(empty) = %v, want nil", err)
+	}
+	if err := socialScanCompletionError(map[string]int{"errors": 3}); err == nil || !strings.Contains(err.Error(), "3 provider or persistence errors") {
+		t.Fatalf("socialScanCompletionError(errors) = %v", err)
 	}
 }
 
