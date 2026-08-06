@@ -45,13 +45,9 @@ func (o *JobOrchestrator) kalshiDiscovery(ctx context.Context) error {
 		Logger:        o.logger,
 	})
 	if err != nil {
-		// Kalshi's public catalog is shared by multiple jobs and installations.
-		// A provider throttle should preserve the last good catalog and allow the
-		// next hourly run to retry, rather than tripping the orchestrator's
-		// permanent auto-disable threshold.
 		if isKalshiRateLimit(err) {
 			o.logger.Warn("kalshi_discovery: provider rate limited; retaining current catalog")
-			return nil
+			return fmt.Errorf("kalshi_discovery: provider rate limited: %w", err)
 		}
 		return err
 	}
@@ -90,6 +86,16 @@ func (o *JobOrchestrator) kalshiDiscovery(ctx context.Context) error {
 			slog.Int("reused", summary["reused"]),
 			slog.Bool("dry_run", res.DryRun),
 		)
+	}
+	return kalshiDiscoveryCompletionError(res != nil, summary["errors"])
+}
+
+func kalshiDiscoveryCompletionError(resultPresent bool, errors int) error {
+	if !resultPresent {
+		return fmt.Errorf("kalshi_discovery: runner returned no result")
+	}
+	if errors > 0 {
+		return fmt.Errorf("kalshi_discovery: completed with %d domain errors", errors)
 	}
 	return nil
 }

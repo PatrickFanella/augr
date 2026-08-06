@@ -67,6 +67,20 @@ func TestIsKalshiRateLimit(t *testing.T) {
 	}
 }
 
+func TestKalshiDiscoveryCompletionErrorRejectsMissingAndPartialResults(t *testing.T) {
+	t.Parallel()
+
+	if err := kalshiDiscoveryCompletionError(true, 0); err != nil {
+		t.Fatalf("kalshiDiscoveryCompletionError(success) = %v", err)
+	}
+	if err := kalshiDiscoveryCompletionError(false, 0); err == nil || !strings.Contains(err.Error(), "no result") {
+		t.Fatalf("kalshiDiscoveryCompletionError(missing) = %v", err)
+	}
+	if err := kalshiDiscoveryCompletionError(true, 2); err == nil || !strings.Contains(err.Error(), "2 domain errors") {
+		t.Fatalf("kalshiDiscoveryCompletionError(partial) = %v", err)
+	}
+}
+
 func TestPositionReviewSummarizesActualOpenPositions(t *testing.T) {
 	activeID := uuid.New()
 	inactiveID := uuid.New()
