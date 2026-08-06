@@ -61,7 +61,10 @@ func (o *JobOrchestrator) earningsScanner(ctx context.Context) error {
 		if s.MarketType.Normalize() != domain.MarketTypeStock {
 			continue
 		}
-		tickerSet[s.Ticker] = struct{}{}
+		ticker := strings.ToUpper(strings.TrimSpace(s.Ticker))
+		if ticker != "" {
+			tickerSet[ticker] = struct{}{}
+		}
 	}
 
 	now := time.Now().UTC()
@@ -75,7 +78,7 @@ func (o *JobOrchestrator) earningsScanner(ctx context.Context) error {
 
 	var matched int
 	for _, ev := range events {
-		if _, ok := tickerSet[ev.Symbol]; !ok {
+		if _, ok := tickerSet[strings.ToUpper(strings.TrimSpace(ev.Symbol))]; !ok {
 			continue
 		}
 		matched++
@@ -127,14 +130,18 @@ func (o *JobOrchestrator) filingMonitor(ctx context.Context) error {
 	tickerStrategy := make(map[string]string, len(strategies))
 	var tickers []string
 	for _, s := range strategies {
-		if s.MarketType != domain.MarketTypeStock {
+		if s.MarketType.Normalize() != domain.MarketTypeStock {
 			continue
 		}
-		if _, ok := tickerStrategy[s.Ticker]; ok {
+		ticker := strings.ToUpper(strings.TrimSpace(s.Ticker))
+		if ticker == "" {
 			continue
 		}
-		tickerStrategy[s.Ticker] = s.Name
-		tickers = append(tickers, s.Ticker)
+		if _, ok := tickerStrategy[ticker]; ok {
+			continue
+		}
+		tickerStrategy[ticker] = s.Name
+		tickers = append(tickers, ticker)
 	}
 	sort.Strings(tickers)
 	available := len(tickers)
