@@ -458,15 +458,42 @@ func (r *recordingTradeRepo) GetByPosition(_ context.Context, _ uuid.UUID, _ rep
 
 type auditLogRepoStub struct {
 	entries []*domain.AuditLogEntry
+	err     error
 }
 
 func (r *auditLogRepoStub) Create(_ context.Context, entry *domain.AuditLogEntry) error {
+	if r.err != nil {
+		return r.err
+	}
 	cloned := *entry
 	if len(entry.Details) > 0 {
 		cloned.Details = append([]byte(nil), entry.Details...)
 	}
 	r.entries = append(r.entries, &cloned)
 	return nil
+}
+
+func TestAlpacaReconcilerAuditPersistenceFailuresAreTerminal(t *testing.T) {
+	t.Parallel()
+
+	newReconciler := func() *AlpacaReconciler {
+		orders := newRecordingOrderRepo()
+		return NewAlpacaReconciler(AlpacaReconcilerDeps{
+			Broker:       &alpacaReconciliationBrokerStub{},
+			OrderRepo:    orders,
+			PositionRepo: newRecordingPositionRepo(),
+			TradeRepo:    newRecordingTradeRepo(orders),
+			AuditLogRepo: &auditLogRepoStub{err: errors.New("audit unavailable")},
+			Logger:       slog.New(slog.NewTextHandler(testWriter{t}, nil)),
+		})
+	}
+
+	if _, err := newReconciler().Reconcile(context.Background()); err == nil || !strings.Contains(err.Error(), "persist completion audit") {
+		t.Fatalf("Reconcile() error = %v, want completion audit failure", err)
+	}
+	if _, err := newReconciler().Verify(context.Background()); err == nil || !strings.Contains(err.Error(), "persist verification audit") {
+		t.Fatalf("Verify() error = %v, want verification audit failure", err)
+	}
 }
 
 func (r *auditLogRepoStub) Query(context.Context, repository.AuditLogFilter, int, int) ([]domain.AuditLogEntry, error) {

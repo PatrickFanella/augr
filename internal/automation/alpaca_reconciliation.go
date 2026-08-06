@@ -409,7 +409,7 @@ func (r *AlpacaReconciler) Reconcile(ctx context.Context) (AlpacaReconcileSummar
 	}
 
 	if err := r.recordAudit(ctx, "alpaca_reconcile.completed", summary.Map()); err != nil {
-		r.logger.Warn("alpaca_reconcile: failed to record audit entry", slog.Any("error", err))
+		return summary, fmt.Errorf("alpaca_reconcile: persist completion audit: %w", err)
 	}
 
 	return summary, nil
@@ -549,7 +549,7 @@ func (r *AlpacaReconciler) Verify(ctx context.Context) (AlpacaVerificationReport
 		"verified":          report.Verified,
 		"mismatches":        report.Mismatches,
 	}); err != nil {
-		r.logger.Warn("alpaca_reconcile: failed to record verification audit entry", slog.Any("error", err))
+		return report, fmt.Errorf("alpaca_reconcile: persist verification audit: %w", err)
 	}
 	return report, nil
 }
