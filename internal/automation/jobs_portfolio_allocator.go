@@ -219,15 +219,16 @@ func (o *JobOrchestrator) buildPortfolioAllocatorState(ctx context.Context, mode
 	warnings := make([]string, 0, 2)
 
 	positions := make([]domain.Position, 0)
-	if o.deps.PositionRepo != nil {
+	switch {
+	case o.deps.PositionRepo != nil:
 		items, err := listAllOpenPositions(ctx, o.deps.PositionRepo)
 		if err != nil {
 			return state, warnings, fmt.Errorf("portfolio_allocator: load open positions: %w", err)
 		}
 		positions = items
-	} else if mode == portfolio.AllocatorModePaper {
+	case mode == portfolio.AllocatorModePaper:
 		return state, warnings, fmt.Errorf("portfolio_allocator: paper mode requires position repository")
-	} else {
+	default:
 		warnings = append(warnings, "positions_unavailable")
 	}
 

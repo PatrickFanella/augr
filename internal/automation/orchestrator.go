@@ -43,12 +43,13 @@ func mustLoadEastern() *time.Location {
 	return loc
 }
 
-// autoDisableThreshold is the number of consecutive failures after which a
-// job is automatically disabled to prevent cascading damage.
-const autoDisableThreshold = 5
-
-const defaultAutomationJobTimeout = 2 * time.Hour
-const jobRunPersistenceTimeout = 10 * time.Second
+const (
+	// autoDisableThreshold is the number of consecutive failures after which a
+	// job is automatically disabled to prevent cascading damage.
+	autoDisableThreshold        = 5
+	defaultAutomationJobTimeout = 2 * time.Hour
+	jobRunPersistenceTimeout    = 10 * time.Second
+)
 
 // StrategyTrigger triggers an immediate pipeline run for a strategy.
 // The scheduler satisfies this interface.
@@ -458,7 +459,7 @@ func (o *JobOrchestrator) runDirect(job *RegisteredJob) {
 	if persistErr := o.persistRun(job.Name, start, elapsed, err); persistErr != nil {
 		o.logger.Error("automation: failed to persist job run", slog.String("job", job.Name), slog.Any("error", persistErr))
 		if err == nil {
-			err = o.applyRunPersistenceFailure(job, now, persistErr)
+			_ = o.applyRunPersistenceFailure(job, now, persistErr)
 		}
 	}
 }
@@ -670,7 +671,7 @@ func (o *JobOrchestrator) recordDependencySkip(job *RegisteredJob, at time.Time,
 			slog.String("job", job.Name),
 			slog.Any("error", err),
 		)
-		o.applyRunPersistenceFailure(job, at, err)
+		_ = o.applyRunPersistenceFailure(job, at, err)
 	}
 }
 

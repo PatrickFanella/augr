@@ -170,9 +170,8 @@ func (w *ReportWorker) generateOneReport(
 			var trades []domain.Trade
 			if err := json.Unmarshal(latestRun.TradeLog, &trades); err != nil {
 				return w.persistErrorArtifact(ctx, strategyID, timeBucket, fmt.Errorf("unmarshal trade log: %w", err))
-			} else {
-				analytics = backtest.ComputeTradeAnalytics(trades, btMetrics.StartTime, btMetrics.EndTime)
 			}
+			analytics = backtest.ComputeTradeAnalytics(trades, btMetrics.StartTime, btMetrics.EndTime)
 		} else {
 			analytics = backtest.ComputeTradeAnalytics(nil, btMetrics.StartTime, btMetrics.EndTime)
 		}

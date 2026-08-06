@@ -934,7 +934,6 @@ func TestSchedulerMetrics(t *testing.T) {
 			t.Fatalf("metrics calls = %#v, want [backtest]", got)
 		}
 	})
-
 }
 
 func TestRunStrategy_PausedIsSkipped(t *testing.T) {

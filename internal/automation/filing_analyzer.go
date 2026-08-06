@@ -52,14 +52,10 @@ type FilingAnalysis struct {
 }
 
 // AnalyzeFiling fetches the filing document from SEC and asks the LLM to analyze it.
-func AnalyzeFiling(ctx context.Context, provider llm.Provider, model string, filing domain.SECFiling, strategyName string, logger *slog.Logger) (*FilingAnalysis, error) {
+func AnalyzeFiling(ctx context.Context, provider llm.Provider, model string, filing domain.SECFiling, strategyName string, _ *slog.Logger) (*FilingAnalysis, error) {
 	if provider == nil {
 		return nil, fmt.Errorf("filing_analyzer: LLM provider is nil")
 	}
-	if logger == nil {
-		logger = slog.Default()
-	}
-
 	// Fetch filing text from SEC.
 	text, err := fetchFilingText(ctx, filing.URL)
 	if err != nil {
