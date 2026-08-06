@@ -32,12 +32,28 @@ type ScreenResult struct {
 	ATR        float64
 }
 
+const (
+	defaultScreenerMinADV = 100_000
+	defaultScreenerMinATR = 0.5
+)
+
+func normalizeScreenerConfig(cfg ScreenerConfig) ScreenerConfig {
+	if cfg.MinADV <= 0 {
+		cfg.MinADV = defaultScreenerMinADV
+	}
+	if cfg.MinATR <= 0 {
+		cfg.MinATR = defaultScreenerMinATR
+	}
+	return cfg
+}
+
 // Screen fetches data for all tickers concurrently (bounded at 10 goroutines),
 // computes indicators, and filters by MinADV and MinATR.
 func Screen(ctx context.Context, dataService *data.DataService, cfg ScreenerConfig, logger *slog.Logger) ([]ScreenResult, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
+	cfg = normalizeScreenerConfig(cfg)
 	lookback := cfg.LookbackDays
 	if lookback == 0 {
 		lookback = 60
