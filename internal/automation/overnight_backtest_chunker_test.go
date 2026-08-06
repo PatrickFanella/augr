@@ -286,8 +286,9 @@ func TestOvernightBacktestChunkerMaxAgeMarksFailedCompletedAt(t *testing.T) {
 	started := time.Now().Add(-overnightBacktestMaxRunAge - time.Hour)
 	repo := &fakeOvernightBacktestRunRepo{run: &domain.OvernightBacktestRun{ID: uuid.New(), Status: domain.OvernightBacktestStatusRunning, Phase: domain.OvernightBacktestPhaseScreen, StartedAt: started, UpdatedAt: time.Now()}}
 	c := overnightBacktestChunker{progress: repo}
-	if err := c.RunChunk(context.Background()); err != nil {
-		t.Fatal(err)
+	err := c.RunChunk(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "stale run") {
+		t.Fatalf("error = %v, want stale run failure", err)
 	}
 	if repo.run.Status != domain.OvernightBacktestStatusFailed || repo.run.CompletedAt == nil {
 		t.Fatalf("unexpected run state: %+v", repo.run)
