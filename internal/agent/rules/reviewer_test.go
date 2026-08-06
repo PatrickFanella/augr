@@ -41,7 +41,7 @@ func testState() *agent.PipelineState {
 func TestSignalReviewer_Confirm(t *testing.T) {
 	t.Parallel()
 	provider := &mockLLMProvider{
-		response: `{"verdict":"confirm","confidence":0.85,"adjusted_position_size":0,"adjusted_stop_loss":0,"adjusted_take_profit":0,"reasoning":"Signal looks solid given oversold RSI and price above SMA-200."}`,
+		response: `{"verdict":"confirm","confidence":0.85,"adjusted_position_size":0,"adjusted_stop_loss":0,"adjusted_take_profit":0,"holding_strategy":"Exit if the thesis breaks.","reasoning":"Signal looks solid given oversold RSI and price above SMA-200."}`,
 	}
 	reviewer := NewSignalReviewer(provider, "test-model", nil)
 	plan := &agent.TradingPlan{
@@ -80,7 +80,7 @@ func TestSignalReviewer_Veto(t *testing.T) {
 func TestSignalReviewer_Modify(t *testing.T) {
 	t.Parallel()
 	provider := &mockLLMProvider{
-		response: `{"verdict":"modify","confidence":0.7,"adjusted_position_size":5,"adjusted_stop_loss":143,"adjusted_take_profit":162,"reasoning":"Reduce size, tighten stop to recent support at 143."}`,
+		response: `{"verdict":"modify","confidence":0.7,"adjusted_position_size":5,"adjusted_stop_loss":143,"adjusted_take_profit":162,"holding_strategy":"Exit below support.","reasoning":"Reduce size, tighten stop to recent support at 143."}`,
 	}
 	reviewer := NewSignalReviewer(provider, "test-model", nil)
 	plan := &agent.TradingPlan{
@@ -104,18 +104,20 @@ func TestSignalReviewer_Modify(t *testing.T) {
 	}
 }
 
-func TestSignalReviewer_LLMErrorConfirmsByDefault(t *testing.T) {
+func TestSignalReviewer_IncompleteReviewVetoesEntry(t *testing.T) {
 	t.Parallel()
-	provider := &mockLLMProvider{err: context.DeadlineExceeded}
-	reviewer := NewSignalReviewer(provider, "test-model", nil)
-	plan := &agent.TradingPlan{
-		Action: domain.PipelineSignalBuy, Ticker: "AAPL", EntryPrice: 150,
-		PositionSize: 10,
-	}
-	bar := domain.OHLCV{Close: 150}
-
-	ok, _ := reviewer.Review(context.Background(), plan, testState(), bar, 50000)
-	if !ok {
-		t.Fatal("expected LLM error to confirm by default")
+	for name, provider := range map[string]llm.Provider{
+		"provider error":   &mockLLMProvider{err: context.DeadlineExceeded},
+		"malformed":        &mockLLMProvider{response: `not-json`},
+		"unknown verdict":  &mockLLMProvider{response: `{"verdict":"maybe","confidence":0.8,"reasoning":"uncertain","holding_strategy":"hold"}`},
+		"missing strategy": &mockLLMProvider{response: `{"verdict":"confirm","confidence":0.8,"reasoning":"looks good"}`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			reviewer := NewSignalReviewer(provider, "test-model", nil)
+			plan := &agent.TradingPlan{Action: domain.PipelineSignalBuy, Ticker: "AAPL", EntryPrice: 150, PositionSize: 10}
+			if ok, _ := reviewer.Review(context.Background(), plan, testState(), domain.OHLCV{Close: 150}, 50000); ok {
+				t.Fatal("incomplete review must veto entry")
+			}
+		})
 	}
 }

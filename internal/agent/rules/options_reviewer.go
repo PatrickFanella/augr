@@ -92,6 +92,9 @@ func (r *OptionsSignalReviewer) ReviewSpreadEntry(
 	underlyingPrice float64,
 	portfolioCash float64,
 ) (bool, string) {
+	if r == nil || r.provider == nil {
+		return false, ""
+	}
 	userPrompt := buildOptionsEntryPrompt(spread, chain, state, underlyingPrice, portfolioCash)
 
 	resp, err := r.provider.Complete(ctx, llm.CompletionRequest{
@@ -103,19 +106,27 @@ func (r *OptionsSignalReviewer) ReviewSpreadEntry(
 		ResponseFormat: &llm.ResponseFormat{Type: llm.ResponseFormatJSONObject},
 	})
 	if err != nil {
-		r.logger.Warn("rules/options_reviewer: LLM call failed, confirming spread by default",
+		r.logger.Warn("rules/options_reviewer: LLM call failed, vetoing spread entry",
 			slog.Any("error", err),
 		)
-		return true, ""
+		return false, ""
+	}
+	if resp == nil {
+		r.logger.Warn("rules/options_reviewer: LLM returned nil response, vetoing spread entry")
+		return false, ""
 	}
 
 	var verdict OptionsEntryVerdict
 	if err := json.Unmarshal([]byte(resp.Content), &verdict); err != nil {
-		r.logger.Warn("rules/options_reviewer: failed to parse LLM response, confirming by default",
-			slog.String("content", resp.Content),
+		r.logger.Warn("rules/options_reviewer: failed to parse LLM response, vetoing spread entry",
 			slog.Any("error", err),
 		)
-		return true, ""
+		return false, ""
+	}
+	verdictName := strings.ToLower(strings.TrimSpace(verdict.Verdict))
+	if verdict.Confidence < 0 || verdict.Confidence > 1 || strings.TrimSpace(verdict.Reasoning) == "" {
+		r.logger.Warn("rules/options_reviewer: invalid verdict schema, vetoing spread entry", slog.String("verdict", verdictName))
+		return false, ""
 	}
 
 	r.logger.Info("rules/options_reviewer: entry verdict",
@@ -127,11 +138,17 @@ func (r *OptionsSignalReviewer) ReviewSpreadEntry(
 		slog.String("underlying", spread.Underlying),
 	)
 
-	switch strings.ToLower(verdict.Verdict) {
+	switch verdictName {
 	case "veto":
 		return false, ""
-	default: // "confirm" or "modify"
+	case "confirm", "modify":
+		if strings.TrimSpace(verdict.HoldingStrategy) == "" {
+			return false, ""
+		}
 		return true, verdict.HoldingStrategy
+	default:
+		r.logger.Warn("rules/options_reviewer: unknown verdict, vetoing spread entry", slog.String("verdict", verdictName))
+		return false, ""
 	}
 }
 

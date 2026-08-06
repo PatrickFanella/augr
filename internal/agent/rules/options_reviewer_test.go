@@ -184,17 +184,17 @@ func TestOptionsSignalReviewer_ExitVeto(t *testing.T) {
 	}
 }
 
-func TestOptionsSignalReviewer_LLMErrorConfirmsByDefault(t *testing.T) {
+func TestOptionsSignalReviewer_LLMErrorVetoesEntryAndConfirmsExit(t *testing.T) {
 	t.Parallel()
 	provider := &mockLLMProvider{err: context.DeadlineExceeded}
 	reviewer := NewOptionsSignalReviewer(provider, "test-model", nil)
 
-	// Entry should confirm by default on error
+	// Entry fails closed; exit still fails toward reducing exposure.
 	ok, _ := reviewer.ReviewSpreadEntry(
 		context.Background(), testSpread(), testChain(), testOptionsState(), 150.0, 50000,
 	)
-	if !ok {
-		t.Fatal("expected LLM error to confirm entry by default")
+	if ok {
+		t.Fatal("expected LLM error to veto entry")
 	}
 
 	// Exit should confirm by default on error
@@ -210,5 +210,25 @@ func TestOptionsSignalReviewer_LLMErrorConfirmsByDefault(t *testing.T) {
 	}
 	if reason == "" {
 		t.Fatal("expected fallback reason on LLM error")
+	}
+}
+
+func TestOptionsSignalReviewer_IncompleteVerdictVetoesEntry(t *testing.T) {
+	t.Parallel()
+
+	responses := map[string]string{
+		"malformed":          `not-json`,
+		"unknown verdict":    `{"verdict":"maybe","confidence":0.8,"holding_strategy":"hold","reasoning":"uncertain"}`,
+		"invalid confidence": `{"verdict":"confirm","confidence":1.8,"holding_strategy":"hold","reasoning":"certain"}`,
+		"missing strategy":   `{"verdict":"confirm","confidence":0.8,"reasoning":"certain"}`,
+	}
+	for name, response := range responses {
+		t.Run(name, func(t *testing.T) {
+			reviewer := NewOptionsSignalReviewer(&mockLLMProvider{response: response}, "test-model", nil)
+			ok, _ := reviewer.ReviewSpreadEntry(context.Background(), testSpread(), testChain(), testOptionsState(), 150, 50000)
+			if ok {
+				t.Fatal("incomplete verdict must veto entry")
+			}
+		})
 	}
 }

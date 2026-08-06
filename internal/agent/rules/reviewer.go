@@ -71,6 +71,9 @@ func NewSignalReviewer(provider llm.Provider, model string, logger *slog.Logger)
 // Returns (confirmed, holdingStrategy). holdingStrategy is the LLM's stated thesis
 // for how to manage the position if confirmed.
 func (r *SignalReviewer) Review(ctx context.Context, plan *agent.TradingPlan, state *agent.PipelineState, bar domain.OHLCV, portfolioCash float64) (bool, string) {
+	if r == nil || r.provider == nil {
+		return false, ""
+	}
 	userPrompt := buildRichReviewPrompt(plan, state, bar, portfolioCash)
 
 	resp, err := r.provider.Complete(ctx, llm.CompletionRequest{
@@ -82,19 +85,27 @@ func (r *SignalReviewer) Review(ctx context.Context, plan *agent.TradingPlan, st
 		ResponseFormat: &llm.ResponseFormat{Type: llm.ResponseFormatJSONObject},
 	})
 	if err != nil {
-		r.logger.Warn("rules/reviewer: LLM call failed, confirming signal by default",
+		r.logger.Warn("rules/reviewer: LLM call failed, vetoing entry",
 			slog.Any("error", err),
 		)
-		return true, ""
+		return false, ""
+	}
+	if resp == nil {
+		r.logger.Warn("rules/reviewer: LLM returned nil response, vetoing entry")
+		return false, ""
 	}
 
 	var verdict ReviewVerdict
 	if err := json.Unmarshal([]byte(resp.Content), &verdict); err != nil {
-		r.logger.Warn("rules/reviewer: failed to parse LLM response, confirming by default",
-			slog.String("content", resp.Content),
+		r.logger.Warn("rules/reviewer: failed to parse LLM response, vetoing entry",
 			slog.Any("error", err),
 		)
-		return true, ""
+		return false, ""
+	}
+	verdictName := strings.ToLower(strings.TrimSpace(verdict.Verdict))
+	if verdict.Confidence < 0 || verdict.Confidence > 1 || strings.TrimSpace(verdict.Reasoning) == "" {
+		r.logger.Warn("rules/reviewer: invalid verdict schema, vetoing entry", slog.String("verdict", verdictName))
+		return false, ""
 	}
 
 	r.logger.Info("rules/reviewer: LLM verdict",
@@ -106,10 +117,13 @@ func (r *SignalReviewer) Review(ctx context.Context, plan *agent.TradingPlan, st
 		slog.String("ticker", plan.Ticker),
 	)
 
-	switch strings.ToLower(verdict.Verdict) {
+	switch verdictName {
 	case "veto":
 		return false, ""
 	case "modify":
+		if strings.TrimSpace(verdict.HoldingStrategy) == "" {
+			return false, ""
+		}
 		if verdict.AdjustedPositionSize > 0 {
 			plan.PositionSize = verdict.AdjustedPositionSize
 		}
@@ -122,10 +136,16 @@ func (r *SignalReviewer) Review(ctx context.Context, plan *agent.TradingPlan, st
 		plan.Confidence = verdict.Confidence
 		plan.Rationale = plan.Rationale + " | LLM: " + verdict.Reasoning
 		return true, verdict.HoldingStrategy
-	default: // "confirm"
+	case "confirm":
+		if strings.TrimSpace(verdict.HoldingStrategy) == "" {
+			return false, ""
+		}
 		plan.Confidence = verdict.Confidence
 		plan.Rationale = plan.Rationale + " | LLM: " + verdict.Reasoning
 		return true, verdict.HoldingStrategy
+	default:
+		r.logger.Warn("rules/reviewer: unknown verdict, vetoing entry", slog.String("verdict", verdictName))
+		return false, ""
 	}
 }
 
