@@ -1,6 +1,9 @@
 package rss
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 )
@@ -24,6 +27,27 @@ func TestCurrentRSSArticleRejectsFabricatedStaleAndFutureDates(t *testing.T) {
 				t.Fatalf("currentRSSArticle() = %t, want %t", got, test.want)
 			}
 		})
+	}
+}
+
+func TestFetchWithStatsRetriesUntilArticleIsAcknowledged(t *testing.T) {
+	t.Parallel()
+
+	published := time.Now().UTC().Format(time.RFC1123)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`<rss><channel><item><guid>x</guid><title>Title</title><pubDate>` + published + `</pubDate></item></channel></rss>`))
+	}))
+	defer server.Close()
+
+	aggregator := NewAggregator([]Feed{{Name: "test", URL: server.URL}}, nil)
+	first := aggregator.FetchWithStats(context.Background())
+	second := aggregator.FetchWithStats(context.Background())
+	if len(first.Articles) != 1 || len(second.Articles) != 1 {
+		t.Fatalf("unacknowledged fetch counts = %d, %d; want retry", len(first.Articles), len(second.Articles))
+	}
+	aggregator.MarkSeen(first.Articles[0])
+	if third := aggregator.FetchWithStats(context.Background()); len(third.Articles) != 0 {
+		t.Fatalf("acknowledged fetch count = %d, want 0", len(third.Articles))
 	}
 }
 

@@ -74,7 +74,11 @@ func NewAggregator(feeds []Feed, logger *slog.Logger) *Aggregator {
 // Fetch retrieves new articles from all feeds, deduplicating by GUID.
 // Returns only articles not seen in previous calls.
 func (a *Aggregator) Fetch(ctx context.Context) []Article {
-	return a.FetchWithStats(ctx).Articles
+	result := a.FetchWithStats(ctx)
+	for _, article := range result.Articles {
+		a.MarkSeen(article)
+	}
+	return result.Articles
 }
 
 // FetchWithStats retrieves new articles and exposes per-feed completion so a
@@ -117,6 +121,7 @@ func (a *Aggregator) FetchWithStats(ctx context.Context) FetchResult {
 	defer a.mu.Unlock()
 
 	var newArticles []Article
+	batchSeen := make(map[string]struct{}, len(articles))
 	now := time.Now()
 	rejected := 0
 	for _, art := range articles {
@@ -131,7 +136,10 @@ func (a *Aggregator) FetchWithStats(ctx context.Context) FetchResult {
 		if _, exists := a.seen[key]; exists {
 			continue
 		}
-		a.seen[key] = now
+		if _, exists := batchSeen[key]; exists {
+			continue
+		}
+		batchSeen[key] = struct{}{}
 		newArticles = append(newArticles, art)
 	}
 
@@ -150,6 +158,22 @@ func (a *Aggregator) FetchWithStats(ctx context.Context) FetchResult {
 		FeedsFailed:    failed,
 		ItemsRejected:  rejected,
 	}
+}
+
+// MarkSeen acknowledges an article only after its caller has completed the
+// required persistence and enrichment work. Failed work therefore remains
+// eligible for a later retry.
+func (a *Aggregator) MarkSeen(article Article) {
+	key := article.GUID
+	if key == "" {
+		key = article.Link
+	}
+	if key == "" {
+		return
+	}
+	a.mu.Lock()
+	a.seen[key] = time.Now()
+	a.mu.Unlock()
 }
 
 func currentRSSArticle(publishedAt, now time.Time) bool {
