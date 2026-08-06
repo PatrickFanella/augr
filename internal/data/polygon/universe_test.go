@@ -61,6 +61,33 @@ func TestListActiveTickersRespectsFreeTierRateLimit(t *testing.T) {
 	}
 }
 
+func TestListActiveTickersRejectsPartialPagination(t *testing.T) {
+	t.Parallel()
+
+	var serverURL string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("cursor") == "" {
+			_, _ = fmt.Fprintf(w, `{"results":[{"ticker":"AAA","active":true}],"next_url":"%s/v3/reference/tickers?cursor=page-2"}`, serverURL)
+			return
+		}
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte(`{"error":"rate limit exceeded"}`))
+	}))
+	defer server.Close()
+	serverURL = server.URL
+
+	client := NewClient("test-key", discardLogger())
+	client.baseURL = server.URL
+	client.SetSleeper(func(context.Context, time.Duration) error { return nil })
+	tickers, err := client.ListActiveTickers(context.Background(), "stocks", "CS")
+	if err == nil {
+		t.Fatal("ListActiveTickers() error = nil, want partial-pagination failure")
+	}
+	if len(tickers) != 1 || tickers[0].Ticker != "AAA" {
+		t.Fatalf("partial diagnostic tickers = %#v, want first page", tickers)
+	}
+}
+
 func TestTickerSnapshotUpdatedAtAcceptsProviderTimestampUnits(t *testing.T) {
 	t.Parallel()
 

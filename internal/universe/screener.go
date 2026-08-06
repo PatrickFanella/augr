@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"math"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/data/polygon"
@@ -20,6 +21,7 @@ type PreMarketConfig struct {
 	VolumeWeight     float64 // default 0.4
 	MomentumWeight   float64 // default 0.3
 	VolatilityWeight float64 // default 0.3
+	now              func() time.Time
 }
 
 // ScoredTicker is the result of the pre-market screener for a single ticker.
@@ -43,6 +45,7 @@ func DefaultPreMarketConfig() PreMarketConfig {
 		VolumeWeight:     0.4,
 		MomentumWeight:   0.3,
 		VolatilityWeight: 0.3,
+		now:              time.Now,
 	}
 }
 
@@ -59,16 +62,14 @@ func RunPreMarketScreen(
 		logger = slog.Default()
 	}
 
-	// 1. Get all active tickers from repo.
-	active := true
-	tickers, err := repo.List(ctx, ListFilter{Active: &active}, 5000, 0)
+	// 1. Get every active ticker from repo.
+	tickers, err := listAllActiveUniverseTickers(ctx, repo)
 	if err != nil {
-		return nil, fmt.Errorf("screener: list active tickers: %w", err)
+		return nil, err
 	}
 
 	if len(tickers) == 0 {
-		logger.Warn("screener: no active tickers in universe")
-		return nil, nil
+		return nil, fmt.Errorf("screener: active universe is empty")
 	}
 
 	// 2. Extract ticker symbols and batch them for the snapshot API.
@@ -81,6 +82,10 @@ func RunPreMarketScreen(
 	}
 
 	var snapshots []polygon.TickerSnapshot
+	now := time.Now()
+	if cfg.now != nil {
+		now = cfg.now()
+	}
 	for i := 0; i < len(symbols); i += batchSize {
 		end := i + batchSize
 		if end > len(symbols) {
@@ -88,12 +93,28 @@ func RunPreMarketScreen(
 		}
 		batch, err := polygonClient.BulkSnapshot(ctx, symbols[i:end])
 		if err != nil {
-			// On rate limit, return what we have so far.
-			logger.Warn("screener: snapshot batch failed, using partial results",
-				slog.Int("batches_completed", i/batchSize),
-				slog.Any("error", err),
-			)
-			break
+			return nil, fmt.Errorf("screener: snapshot batch %d failed after %d complete snapshots: %w", i/batchSize+1, len(snapshots), err)
+		}
+		requested := make(map[string]struct{}, len(symbols[i:end]))
+		for _, symbol := range symbols[i:end] {
+			requested[strings.ToUpper(strings.TrimSpace(symbol))] = struct{}{}
+		}
+		seen := make(map[string]struct{}, len(batch))
+		for _, snapshot := range batch {
+			symbol := strings.ToUpper(strings.TrimSpace(snapshot.Ticker))
+			if _, ok := requested[symbol]; !ok {
+				return nil, fmt.Errorf("screener: snapshot batch %d returned unexpected ticker %q", i/batchSize+1, symbol)
+			}
+			if _, duplicate := seen[symbol]; duplicate {
+				return nil, fmt.Errorf("screener: snapshot batch %d returned duplicate ticker %q", i/batchSize+1, symbol)
+			}
+			if !currentEasternSnapshot(now, snapshot.UpdatedAt()) {
+				return nil, fmt.Errorf("screener: snapshot batch %d returned stale ticker %q updated_at=%s", i/batchSize+1, symbol, snapshot.UpdatedAt())
+			}
+			seen[symbol] = struct{}{}
+		}
+		if len(seen) != len(requested) {
+			return nil, fmt.Errorf("screener: snapshot batch %d incomplete: requested=%d received=%d", i/batchSize+1, len(requested), len(seen))
 		}
 		snapshots = append(snapshots, batch...)
 
@@ -179,13 +200,18 @@ func RunPreMarketScreen(
 	})
 
 	// 6. Update repo watch_score for each scored ticker.
+	scoreErrors := 0
 	for _, s := range scored {
 		if err := repo.UpdateScore(ctx, s.Ticker, s.Score); err != nil {
+			scoreErrors++
 			logger.Warn("screener: failed to update score",
 				slog.String("ticker", s.Ticker),
 				slog.Any("error", err),
 			)
 		}
+	}
+	if scoreErrors > 0 {
+		return nil, fmt.Errorf("screener: failed to persist %d of %d scores", scoreErrors, len(scored))
 	}
 
 	// 7. Return top N.
@@ -195,4 +221,40 @@ func RunPreMarketScreen(
 
 	logger.Info("screener: complete", slog.Int("scored", len(scored)))
 	return scored, nil
+}
+
+func listAllActiveUniverseTickers(ctx context.Context, repo UniverseRepository) ([]TrackedTicker, error) {
+	active := true
+	const pageSize = 1000
+	var tickers []TrackedTicker
+	for offset := 0; ; {
+		page, err := repo.List(ctx, ListFilter{Active: &active}, pageSize, offset)
+		if err != nil {
+			return nil, fmt.Errorf("screener: list active tickers at offset %d: %w", offset, err)
+		}
+		tickers = append(tickers, page...)
+		if len(page) < pageSize {
+			return tickers, nil
+		}
+		offset += len(page)
+	}
+}
+
+func currentEasternSnapshot(now, updated time.Time) bool {
+	if updated.IsZero() {
+		return false
+	}
+	loc, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		return false
+	}
+	nowET := now.In(loc)
+	updatedET := updated.In(loc)
+	nowYear, nowMonth, nowDay := nowET.Date()
+	updatedYear, updatedMonth, updatedDay := updatedET.Date()
+	if nowYear != updatedYear || nowMonth != updatedMonth || nowDay != updatedDay {
+		return false
+	}
+	sessionStart := time.Date(nowYear, nowMonth, nowDay, 4, 0, 0, 0, loc)
+	return !updatedET.Before(sessionStart) && !updatedET.After(nowET.Add(5*time.Minute))
 }

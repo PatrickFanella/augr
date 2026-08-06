@@ -3,22 +3,13 @@ package polygon
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"log/slog"
 	"net/url"
 	"strings"
 	"time"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 )
-
-func isRateLimitError(err error, polyErr **ErrorResponse) bool {
-	if errors.As(err, polyErr) && (*polyErr).StatusCode() == 429 {
-		return true
-	}
-	return false
-}
 
 // TickerInfo represents a single ticker entry from the Polygon reference API.
 type TickerInfo struct {
@@ -112,15 +103,7 @@ func (c *Client) ListActiveTickers(ctx context.Context, market, tickerType strin
 	for {
 		body, err := c.Get(ctx, requestPath, params)
 		if err != nil {
-			// On rate limit (429), return what we have so far instead of failing.
-			var polyErr *ErrorResponse
-			if len(tickers) > 0 && isRateLimitError(err, &polyErr) {
-				c.logger.Warn("polygon: rate limited during ticker list, returning partial results",
-					slog.Int("tickers_fetched", len(tickers)),
-				)
-				return tickers, nil
-			}
-			return nil, fmt.Errorf("polygon: list active tickers: %w", err)
+			return tickers, fmt.Errorf("polygon: list active tickers after %d results: %w", len(tickers), err)
 		}
 
 		var resp tickerListResponse

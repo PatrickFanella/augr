@@ -3,6 +3,7 @@ package universe
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -68,7 +69,7 @@ func (m *mockUniverseRepo) UpsertBatch(_ context.Context, tickers []TrackedTicke
 	return nil
 }
 
-func (m *mockUniverseRepo) List(_ context.Context, filter ListFilter, limit, _ int) ([]TrackedTicker, error) {
+func (m *mockUniverseRepo) List(_ context.Context, filter ListFilter, limit, offset int) ([]TrackedTicker, error) {
 	var result []TrackedTicker
 	for _, t := range m.tickers {
 		if filter.Active != nil && t.Active != *filter.Active {
@@ -85,9 +86,13 @@ func (m *mockUniverseRepo) List(_ context.Context, filter ListFilter, limit, _ i
 			}
 		}
 		result = append(result, t)
-		if limit > 0 && len(result) >= limit {
-			break
-		}
+	}
+	if offset >= len(result) {
+		return nil, nil
+	}
+	result = result[offset:]
+	if limit > 0 && len(result) > limit {
+		result = result[:limit]
 	}
 	return result, nil
 }
@@ -110,6 +115,7 @@ func (m *mockUniverseRepo) Count(_ context.Context) (int, error) {
 
 func TestRunPreMarketScreen(t *testing.T) {
 	t.Parallel()
+	testNow := time.Date(2026, time.August, 6, 10, 30, 0, 0, mustEastern(t))
 
 	snapshots := []polygon.TickerSnapshot{
 		{
@@ -137,6 +143,9 @@ func TestRunPreMarketScreen(t *testing.T) {
 			PrevDay:         polygon.SnapshotBarForTest(50, 51, 49, 50, 200, 50.0),
 		},
 	}
+	for i := range snapshots {
+		snapshots[i].Updated = testNow.UnixNano()
+	}
 
 	snapshotBody, _ := json.Marshal(map[string]any{"tickers": snapshots})
 
@@ -158,6 +167,7 @@ func TestRunPreMarketScreen(t *testing.T) {
 
 	cfg := DefaultPreMarketConfig()
 	cfg.TopN = 10
+	cfg.now = func() time.Time { return testNow }
 
 	results, err := RunPreMarketScreen(context.Background(), client, repo, cfg, discardLogger())
 	if err != nil {
@@ -204,13 +214,50 @@ func TestRunPreMarketScreenEmptyUniverse(t *testing.T) {
 	client := polygon.NewClient("test-key", discardLogger())
 	cfg := DefaultPreMarketConfig()
 
-	results, err := RunPreMarketScreen(context.Background(), client, repo, cfg, discardLogger())
+	if _, err := RunPreMarketScreen(context.Background(), client, repo, cfg, discardLogger()); err == nil {
+		t.Fatal("RunPreMarketScreen() error = nil, want empty-universe failure")
+	}
+}
+
+func TestListAllActiveUniverseTickersPaginatesCompleteUniverse(t *testing.T) {
+	t.Parallel()
+
+	tickers := make([]TrackedTicker, 1203)
+	for i := range tickers {
+		tickers[i] = TrackedTicker{Ticker: fmt.Sprintf("T%04d", i), Active: true}
+	}
+	got, err := listAllActiveUniverseTickers(context.Background(), newMockRepo(tickers))
 	if err != nil {
-		t.Fatalf("RunPreMarketScreen() error = %v", err)
+		t.Fatalf("listAllActiveUniverseTickers() error = %v", err)
 	}
-	if results != nil {
-		t.Fatalf("got %d results, want nil", len(results))
+	if len(got) != len(tickers) || got[1202].Ticker != "T1202" {
+		t.Fatalf("complete ticker count/last = %d/%q, want 1203/T1202", len(got), got[len(got)-1].Ticker)
 	}
+}
+
+func TestCurrentEasternSnapshotRejectsStaleAndFutureData(t *testing.T) {
+	t.Parallel()
+
+	loc := mustEastern(t)
+	now := time.Date(2026, time.August, 6, 10, 30, 0, 0, loc)
+	if !currentEasternSnapshot(now, time.Date(2026, time.August, 6, 10, 29, 0, 0, loc)) {
+		t.Fatal("current-session snapshot should be accepted")
+	}
+	if currentEasternSnapshot(now, time.Date(2026, time.August, 5, 15, 59, 0, 0, loc)) {
+		t.Fatal("prior-session snapshot should be rejected")
+	}
+	if currentEasternSnapshot(now, now.Add(6*time.Minute)) {
+		t.Fatal("future snapshot should be rejected")
+	}
+}
+
+func mustEastern(t *testing.T) *time.Location {
+	t.Helper()
+	loc, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return loc
 }
 
 func TestDefaultPreMarketConfig(t *testing.T) {
