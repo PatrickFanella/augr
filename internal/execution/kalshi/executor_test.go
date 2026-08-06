@@ -13,11 +13,14 @@ func TestDeterministicNativeExecutor_KalshiBuyYesWhenMetadataValid(t *testing.T)
 	t.Parallel()
 
 	strategy := kalshiStrategyWithMeta(t, discoveryMeta{
-		Template:      "microstructure",
-		Direction:     "YES",
-		Confidence:    0.72,
-		TimeHorizon:   "days",
-		EntryPriceMax: 0.50,
+		Template:         "microstructure",
+		Direction:        "YES",
+		Confidence:       0.72,
+		FairProbability:  0.72,
+		Calibration:      "external_model_v1",
+		SourceReferences: []string{"model_run:test-1"},
+		TimeHorizon:      "days",
+		EntryPriceMax:    0.50,
 	})
 
 	decision, err := DeterministicNativeExecutor{}.Execute(context.Background(), strategy, Snapshot{
@@ -70,7 +73,7 @@ func TestDeterministicNativeExecutor_KalshiHoldWhenMarketClosed(t *testing.T) {
 
 func TestDeterministicNativeExecutor_KalshiHoldWithoutNetProbabilityEdge(t *testing.T) {
 	t.Parallel()
-	strategy := kalshiStrategyWithMeta(t, discoveryMeta{Template: "microstructure", Direction: "YES", Confidence: 0.72, EntryPriceMax: 0.80})
+	strategy := kalshiStrategyWithMeta(t, discoveryMeta{Template: "microstructure", Direction: "YES", Confidence: 0.72, FairProbability: 0.72, Calibration: "external_model_v1", SourceReferences: []string{"model_run:test-1"}, EntryPriceMax: 0.80})
 	decision, err := DeterministicNativeExecutor{}.Execute(context.Background(), strategy, Snapshot{
 		Ticker: strategy.Ticker, Title: "Will test happen?", Status: "active",
 		BestBidYes: 0.69, BestAskYes: 0.70, BestBidNo: 0.29, BestAskNo: 0.30,
@@ -81,6 +84,25 @@ func TestDeterministicNativeExecutor_KalshiHoldWithoutNetProbabilityEdge(t *test
 	}
 	if decision.Signal != domain.PipelineSignalHold || decision.Action != "hold" {
 		t.Fatalf("decision = %+v, want deterministic hold", decision)
+	}
+}
+
+func TestDeterministicNativeExecutor_KalshiHoldWithoutCalibratedFairProbability(t *testing.T) {
+	t.Parallel()
+	strategy := kalshiStrategyWithMeta(t, discoveryMeta{Template: "microstructure", Direction: "YES", Confidence: 0.88, EntryPriceMax: 0.03})
+	decision, err := DeterministicNativeExecutor{}.Execute(context.Background(), strategy, Snapshot{
+		Ticker: strategy.Ticker, Title: "Will test happen?", Status: "active",
+		BestBidYes: 0.01, BestAskYes: 0.01, BestBidNo: 0.99, BestAskNo: 0.99,
+		Volume: 355_000_000, CloseTime: time.Now().UTC().Add(365 * 24 * time.Hour), FetchedAt: time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if decision.Signal != domain.PipelineSignalHold || decision.Action != "hold" {
+		t.Fatalf("decision = %+v, want fail-closed hold", decision)
+	}
+	if decision.FairProbability != 0 || decision.NetEdge != 0 {
+		t.Fatalf("decision invents probability edge: %+v", decision)
 	}
 }
 

@@ -77,13 +77,18 @@ func (DeterministicNativeExecutor) Execute(ctx context.Context, strategy domain.
 	if confidence <= 0 || confidence < minNativeConfidence {
 		return holdDecisionWithMeta(meta, "kalshi native executor: confidence below entry threshold"), nil
 	}
+	fairProbability := meta.FairProbability
+	calibration := strings.TrimSpace(meta.Calibration)
+	if fairProbability <= 0 || fairProbability > 1 || calibration == "" || strings.Contains(strings.ToLower(calibration), "uncalibrated") || len(meta.SourceReferences) == 0 {
+		return holdDecisionWithMeta(meta, "kalshi native executor: calibrated fair probability is required"), nil
+	}
 
 	maxEntryPrice := meta.priceCeiling()
 	if maxEntryPrice > 0 && entryPrice > maxEntryPrice {
 		return holdDecisionWithMeta(meta, "kalshi native executor: quote is above configured entry ceiling"), nil
 	}
 	spread, _ := snapshot.SpreadForSide(side)
-	if confidence-entryPrice-spread < minimumNativeEdge {
+	if fairProbability-entryPrice-spread < minimumNativeEdge {
 		return holdDecisionWithMeta(meta, "kalshi native executor: net probability edge below entry threshold"), nil
 	}
 
@@ -99,15 +104,15 @@ func (DeterministicNativeExecutor) Execute(ctx context.Context, strategy domain.
 		Rationale:       "kalshi native executor: template passed deterministic gates",
 		RiskReward:      1,
 		MaxEntryPrice:   maxEntryPrice,
-		FairProbability: confidence,
+		FairProbability: fairProbability,
 		Spread:          spread,
 		Depth:           snapshot.liquidityScore(),
-		GrossEdge:       confidence - entryPrice,
-		NetEdge:         confidence - entryPrice - spread,
+		GrossEdge:       fairProbability - entryPrice,
+		NetEdge:         fairProbability - entryPrice - spread,
 		Template:        template,
 		EvidenceSources: append([]string(nil), meta.SourceReferences...),
-		Calibration:     "discovery_conviction_proxy_uncalibrated",
-		GateResults:     []string{"side_valid", "template_supported", "market_active", "quote_executable", "confidence_threshold", "net_edge_threshold"},
+		Calibration:     calibration,
+		GateResults:     []string{"side_valid", "template_supported", "market_active", "quote_executable", "confidence_threshold", "fair_probability_calibrated", "net_edge_threshold"},
 	}, nil
 }
 
@@ -116,6 +121,8 @@ type discoveryMeta struct {
 	Direction              string   `json:"direction"`
 	Confidence             float64  `json:"confidence"`
 	Conviction             float64  `json:"conviction"`
+	FairProbability        float64  `json:"fair_probability"`
+	Calibration            string   `json:"calibration"`
 	TimeHorizon            string   `json:"time_horizon"`
 	EntryPriceMax          float64  `json:"entry_price_max"`
 	PriceCeiling           float64  `json:"price_ceiling"`
@@ -174,10 +181,10 @@ func holdDecisionWithMeta(meta discoveryMeta, reason string) NativeDecision {
 		Reason:          reason,
 		Rationale:       reason,
 		MaxEntryPrice:   meta.priceCeiling(),
-		FairProbability: meta.confidence(),
+		FairProbability: meta.FairProbability,
 		Template:        normalizeTemplate(meta.Template),
 		EvidenceSources: append([]string(nil), meta.SourceReferences...),
-		Calibration:     "discovery_conviction_proxy_uncalibrated",
+		Calibration:     strings.TrimSpace(meta.Calibration),
 		GateResults:     []string{"deterministic_hold"},
 	}
 }
