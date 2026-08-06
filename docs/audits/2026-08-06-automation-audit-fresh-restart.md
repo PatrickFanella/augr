@@ -19,7 +19,7 @@ Captured immediately after the boundary from the current worktree, deployed cont
 | Local HEAD | `498af47` |
 | Deployed app/web | immutable `augr-app:audit-3c69f34f8912` / matching web image; local fixes not deployed |
 | Service health | app, PostgreSQL, Redis, and OpenCode healthy; web running |
-| Registered production jobs | 27, all enabled |
+| Registered production jobs | 27 database-ledger orchestrator jobs, all enabled; plus one enabled scheduler-level ticker-discovery job |
 | Configured-off registry branch | 4 Polymarket jobs omitted by the production disable flag |
 | Unavailable registry branch | `kalshi_reconcile` omitted because the reconciler dependency is not configured |
 | Active strategies | 141 stock paper + 22 Kalshi paper; zero active live strategies |
@@ -43,6 +43,7 @@ Eastern Time schedules are shown because the production orchestrator uses `Ameri
 | `deep_scan` | enabled | deployed :00 hourly, market hours; local pending fix :10 hourly | after hot scan | pending valid market window |
 | `gap_scanner` | enabled | 08:00 weekdays, premarket | upstream of discovery | pending valid premarket window |
 | `discovery_run` | enabled | 08:30 weekdays, premarket | after gap scanner | pending valid premarket window |
+| `ticker_discovery` (scheduler) | enabled | 10:30 weekdays (`TICKER_DISCOVERY_CRON=30 10 * * 1-5`) | full active universe → Polygon snapshots → discovery pipeline; outside the automation run ledger | pending today's configured window; active log/domain/financial observation armed |
 | `position_review` | enabled | 09:00 weekdays, premarket | current positions/strategies | pending valid premarket window |
 | `earnings_scanner` | enabled | 10:00 weekdays, market hours | current watchlist/provider data | pending valid market window |
 | `filing_monitor` | enabled | every 4 hours weekdays | shared Finnhub quota | qualifying failed sample; next valid window and postdeploy proof pending |
@@ -170,6 +171,8 @@ The behavior repeated after RTX completed and logged HOLD at 08:42:09 UTC: a new
 A third observation followed the WAB/DDOG pair. EXPE was explicitly queued at 10:16:43 UTC; WAB became terminal at 10:18:39 and DDOG at 10:21:36, yet no later pipeline row existed by 10:30:30. With both database runs terminal and the automation scheduler continuing normally, the two execution slots remained unavailable for at least 8m54s after the last debate completed. This further supports the bounded-notification fix; only a postdeployment run can prove slot release within 30 seconds.
 
 Scheduler source review found a separate amplification path behind those two slots: per-strategy deduplication occurred only after acquiring capacity. Repeated signals for an already running or queued strategy could therefore accumulate blocked goroutines and later replay serial duplicate pipelines; queued goroutines also did not observe scheduler cancellation while waiting. Commit `c47c955` moves the in-flight claim ahead of the semaphore and makes capacity waits cancellation-aware. Focused scheduler tests, race detection, and vet pass. Fresh postdeployment queue/release timing remains required and tests do not substitute for it.
+
+Inventory reconciliation found an additional enabled production automation outside the database-backed job orchestrator: scheduler-level `ticker_discovery`. The deployed environment registers it at 10:30 ET on weekdays with a maximum of 30 output tickers. Its implementation calls a function named “pre-market screen” during the regular session, has no `automation_job_runs` row, and therefore requires direct scheduler-log plus domain/financial-state observation. Source review also found that its active-universe read stopped at 5,000 rows, Polygon reference pagination converted a later-page 429 into a successful partial universe, bulk snapshots could be partial or stale without failing, and score-write errors could coexist with a successful screen. Commit `125d601` paginates the full stored universe and fails empty, partial, duplicate, unexpected, stale, or non-persisted inputs; the Polygon reference client now surfaces partial-pagination failure. Focused Polygon, universe, scheduler, runtime tests and vet pass. This is code verification only; today's deployed 10:30 ET run remains required as fresh predeploy evidence, and the corrected path requires postdeployment proof.
 
 ### P1 — rules-based entry review fails open on model/schema errors
 
@@ -330,6 +333,7 @@ Kalshi discovery automation run `484a138a-e429-4a25-bfed-9327136afee1` began at 
 | `2192a2a` | nil or malformed exit-review output could panic or retain exposure while entry schemas remained lenient to unknown fields | strict stock/options review schema; incomplete entries veto and incomplete exits confirm exposure reduction; postdeployment proof pending |
 | `13f4c80` | regular-session market jobs could succeed with absent/empty core inputs; hot scan hid strategy lookup failure after detecting movers | missing/empty inputs now fail visibly and trigger-lookup failure participates in completion health; fresh regular-session/postdeployment proof pending |
 | `a9114ab` | paper allocator could size order intents from synthetic buying power and without a position snapshot | paper mode now requires restored broker balance and complete positions; shadow mode remains non-executing; fresh postdeployment allocator proof pending |
+| `125d601` | scheduler ticker discovery could screen a capped, provider-partial, stale, or incompletely persisted universe while reporting completion | full stored-universe pagination plus exact current-session snapshot and persistence coverage; today's deployed 10:30 ET run and fresh postdeployment proof pending |
 
 ## Findings, remediation, and release
 
