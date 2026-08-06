@@ -58,7 +58,12 @@ func (o *JobOrchestrator) kalshiSettlement(ctx context.Context) error {
 			return fmt.Errorf("kalshi_settlement: get market %s: %w", ticker, err)
 		}
 		if market == nil {
-			continue
+			missing := fmt.Errorf("catalog returned no market")
+			if _, persistErr := o.kalshiSettlementRecordFailure(ctx, threshold, fetched, resolved, wouldSettleMarkets, wouldSettleDecisions, missing.Error()); persistErr != nil {
+				return persistErr
+			}
+			o.recordKalshiSettlementMetrics(false, true)
+			return fmt.Errorf("kalshi_settlement: get market %s: %w", ticker, missing)
 		}
 		winner := strings.ToUpper(strings.TrimSpace(market.Result))
 		if winner != "YES" && winner != "NO" {

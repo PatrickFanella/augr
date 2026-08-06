@@ -149,6 +149,25 @@ func TestKalshiSettlementManualDryRunAccumulatesGateAndSkipsMutation(t *testing.
 	}
 }
 
+func TestKalshiSettlementFailsWhenPendingMarketIsMissingFromCatalog(t *testing.T) {
+	settler := &kalshiPendingSettlerStub{pending: []string{"KX-MISSING"}}
+	gate := &kalshiGateRepoStub{}
+	orch := NewJobOrchestrator(OrchestratorDeps{
+		KalshiCatalog:            &kalshiSettlementCatalogStub{},
+		PredictionSettler:        settler,
+		KalshiSettlementGateRepo: gate,
+	})
+	orch.Register("kalshi_settlement", "test", schedulerSpecEveryMinute(), orch.kalshiSettlement)
+
+	err := orch.kalshiSettlement(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "catalog returned no market") {
+		t.Fatalf("kalshiSettlement() error = %v, want missing catalog market", err)
+	}
+	if gate.state == nil || gate.state.LastOutcome != "failure" {
+		t.Fatalf("gate state = %#v, want recorded failure", gate.state)
+	}
+}
+
 func TestKalshiSettlementLivePathBuildsGateEvidenceBeforeMutation(t *testing.T) {
 	cat := &kalshiSettlementCatalogStub{getMarkets: map[string]*kalshidiscovery.MarketCandidate{"KX-A": {Ticker: "KX-A", Result: "yes"}}}
 	settler := &kalshiPendingSettlerStub{pending: []string{"KX-A"}, preview: map[string]int{"KX-A": 1}}

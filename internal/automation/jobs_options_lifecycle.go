@@ -63,8 +63,14 @@ func (o *JobOrchestrator) optionsExpirySettlement(ctx context.Context) error {
 	prices := make(map[string]float64, len(underlyings))
 	for underlying := range underlyings {
 		bars, err := o.deps.DataService.GetOHLCV(ctx, domain.MarketTypeStock, underlying, data.Timeframe1d, now.Add(-7*24*time.Hour), now)
-		if err != nil || len(bars) == 0 || bars[len(bars)-1].Close <= 0 {
-			return fmt.Errorf("options_expiry_settlement: closing price unavailable for %s: %w", underlying, err)
+		if err != nil {
+			return fmt.Errorf("options_expiry_settlement: closing price lookup for %s: %w", underlying, err)
+		}
+		if len(bars) == 0 || bars[len(bars)-1].Close <= 0 {
+			return fmt.Errorf("options_expiry_settlement: closing price unavailable for %s", underlying)
+		}
+		if !dailyBarFresh(now, bars[len(bars)-1].Timestamp) {
+			return fmt.Errorf("options_expiry_settlement: stale closing price for %s at %s", underlying, bars[len(bars)-1].Timestamp.UTC().Format(time.RFC3339))
 		}
 		prices[underlying] = bars[len(bars)-1].Close
 	}
