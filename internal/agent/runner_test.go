@@ -23,6 +23,7 @@ type runnerSpyPersister struct {
 	runs        map[uuid.UUID]domain.PipelineRun
 	decisions   map[uuid.UUID][]persistedDecision
 	completeErr error
+	eventErr    error
 }
 
 type persistedDecision struct {
@@ -65,7 +66,11 @@ func (*runnerSpyPersister) SupportsSnapshots() bool { return false }
 func (*runnerSpyPersister) PersistSnapshot(context.Context, *domain.PipelineRunSnapshot) error {
 	return nil
 }
-func (*runnerSpyPersister) PersistEvent(context.Context, *domain.AgentEvent) error { return nil }
+
+func (p *runnerSpyPersister) PersistEvent(context.Context, *domain.AgentEvent) error {
+	return p.eventErr
+}
+
 func (p *runnerSpyPersister) PersistDecision(_ context.Context, runID uuid.UUID, node Node, roundNumber *int, output string, _ *DecisionLLMResponse) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -667,5 +672,33 @@ func TestRunnerRun_TerminalPersistenceFailureFailsClosed(t *testing.T) {
 	}
 	if completed != 0 || failed == 0 {
 		t.Fatalf("terminal events: completed=%d failed=%d, want completed=0 failed>0", completed, failed)
+	}
+}
+
+func TestRunnerRun_TerminalEventFailureFailsClosed(t *testing.T) {
+	t.Parallel()
+
+	persister := newRunnerSpyPersister()
+	persister.eventErr = errors.New("event store unavailable")
+	events := make(chan PipelineEvent, 64)
+	runner := NewRunner(defaultRunnerDefinition(), Dependencies{Persister: persister, Events: events})
+	prepared, err := runner.Prepare(strategyWithDebateRounds(t, "TEST", 1), GlobalSettings{})
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+
+	result, runErr := runner.Run(context.Background(), prepared)
+	if runErr == nil || !strings.Contains(runErr.Error(), "persist completed terminal event") {
+		t.Fatalf("Run() error = %v, want terminal event failure", runErr)
+	}
+	if result == nil || result.Run.Status != domain.PipelineStatusFailed {
+		t.Fatalf("Run() result = %+v, want failed result", result)
+	}
+
+	close(events)
+	for event := range events {
+		if event.Type == PipelineCompleted {
+			t.Fatal("emitted PipelineCompleted after terminal event persistence failure")
+		}
 	}
 }

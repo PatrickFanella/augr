@@ -280,7 +280,7 @@ func (r *Runner) Run(ctx context.Context, prepared PreparedRun) (result *RunResu
 			r.helper.emitCacheStats(state, cacheStatsCollector, run.ID, prepared.Strategy.ID, prepared.Strategy.Ticker)
 		}
 		if run.ID != uuid.Nil {
-			r.helper.persistStructuredTerminalEvent(r.helper.newStructuredEvent(
+			if eventErr := r.helper.persistStructuredTerminalEvent(r.helper.newStructuredEvent(
 				run.ID,
 				prepared.Strategy.ID,
 				AgentEventKindPipelineFailed,
@@ -289,7 +289,9 @@ func (r *Runner) Run(ctx context.Context, prepared PreparedRun) (result *RunResu
 				panicErr.Error(),
 				map[string]any{"phase": "panic", "error_message": panicErr.Error()},
 				[]string{"pipeline", "failed"},
-			))
+			)); eventErr != nil {
+				panicErr = errors.Join(panicErr, eventErr)
+			}
 		}
 		r.helper.emitEvent(PipelineEvent{
 			Type:          PipelineError,
@@ -404,7 +406,7 @@ func (r *Runner) Run(ctx context.Context, prepared PreparedRun) (result *RunResu
 				err = errors.Join(err, fmt.Errorf("agent/runner: persist failed terminal status: %w", persistErr))
 			}
 			r.helper.emitCacheStats(state, cacheStatsCollector, run.ID, prepared.Strategy.ID, prepared.Strategy.Ticker)
-			r.helper.persistStructuredTerminalEvent(r.helper.newStructuredEvent(
+			if eventErr := r.helper.persistStructuredTerminalEvent(r.helper.newStructuredEvent(
 				run.ID,
 				prepared.Strategy.ID,
 				AgentEventKindPipelineFailed,
@@ -413,7 +415,9 @@ func (r *Runner) Run(ctx context.Context, prepared PreparedRun) (result *RunResu
 				err.Error(),
 				map[string]any{"phase": phase.name, "error_message": err.Error()},
 				[]string{"pipeline", "failed"},
-			))
+			)); eventErr != nil {
+				err = errors.Join(err, eventErr)
+			}
 			r.helper.emitEvent(PipelineEvent{
 				Type:          PipelineError,
 				PipelineRunID: run.ID,
@@ -447,7 +451,7 @@ func (r *Runner) Run(ctx context.Context, prepared PreparedRun) (result *RunResu
 	if persistErr := r.persister.RecordRunComplete(ctx, run.ID, run.TradeDate, domain.PipelineStatusCompleted, completedAt, "", phaseTimingsJSON); persistErr != nil {
 		err := fmt.Errorf("agent/runner: persist completed terminal status: %w", persistErr)
 		r.helper.emitCacheStats(state, cacheStatsCollector, run.ID, prepared.Strategy.ID, prepared.Strategy.Ticker)
-		r.helper.persistStructuredTerminalEvent(r.helper.newStructuredEvent(
+		if eventErr := r.helper.persistStructuredTerminalEvent(r.helper.newStructuredEvent(
 			run.ID,
 			prepared.Strategy.ID,
 			AgentEventKindPipelineFailed,
@@ -456,7 +460,9 @@ func (r *Runner) Run(ctx context.Context, prepared PreparedRun) (result *RunResu
 			err.Error(),
 			map[string]any{"phase": "terminal_persistence", "error_message": err.Error()},
 			[]string{"pipeline", "failed"},
-		))
+		)); eventErr != nil {
+			err = errors.Join(err, eventErr)
+		}
 		r.helper.emitEvent(PipelineEvent{
 			Type:          PipelineError,
 			PipelineRunID: run.ID,
@@ -471,7 +477,7 @@ func (r *Runner) Run(ctx context.Context, prepared PreparedRun) (result *RunResu
 		return &RunResult{Run: run, Signal: r.canonicalSignal(state), State: snapshotState(state), Warnings: warnings}, err
 	}
 	r.helper.emitCacheStats(state, cacheStatsCollector, run.ID, prepared.Strategy.ID, prepared.Strategy.Ticker)
-	r.helper.persistStructuredTerminalEvent(r.helper.newStructuredEvent(
+	if eventErr := r.helper.persistStructuredTerminalEvent(r.helper.newStructuredEvent(
 		run.ID,
 		prepared.Strategy.ID,
 		AgentEventKindPipelineCompleted,
@@ -480,7 +486,24 @@ func (r *Runner) Run(ctx context.Context, prepared PreparedRun) (result *RunResu
 		"",
 		nil,
 		[]string{"pipeline", "completed"},
-	))
+	)); eventErr != nil {
+		err := fmt.Errorf("agent/runner: persist completed terminal event: %w", eventErr)
+		if persistErr := r.persister.RecordRunComplete(ctx, run.ID, run.TradeDate, domain.PipelineStatusFailed, completedAt, err.Error(), phaseTimingsJSON); persistErr != nil {
+			err = errors.Join(err, fmt.Errorf("agent/runner: persist terminal-event failure status: %w", persistErr))
+		}
+		r.helper.emitEvent(PipelineEvent{
+			Type:          PipelineError,
+			PipelineRunID: run.ID,
+			StrategyID:    prepared.Strategy.ID,
+			Ticker:        prepared.Strategy.Ticker,
+			Error:         err.Error(),
+			OccurredAt:    r.currentTime().UTC(),
+		})
+		run.Status = domain.PipelineStatusFailed
+		run.CompletedAt = &completedAt
+		run.ErrorMessage = err.Error()
+		return &RunResult{Run: run, Signal: r.canonicalSignal(state), State: snapshotState(state), Warnings: warnings}, err
+	}
 	r.helper.emitEvent(PipelineEvent{
 		Type:          PipelineCompleted,
 		PipelineRunID: run.ID,

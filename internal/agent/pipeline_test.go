@@ -30,6 +30,7 @@ type capturePersister struct {
 	completedAt   time.Time
 	completedStat domain.PipelineStatus
 	completeErr   error
+	eventErr      error
 }
 
 func (p *capturePersister) RecordRunStart(_ context.Context, run *domain.PipelineRun) error {
@@ -76,6 +77,28 @@ func TestPipelineExecute_TerminalPersistenceFailureFailsClosed(t *testing.T) {
 	}
 }
 
+func TestPipelineExecute_TerminalEventFailureFailsClosed(t *testing.T) {
+	t.Parallel()
+
+	persister := &capturePersister{eventErr: errors.New("event store unavailable")}
+	events := make(chan PipelineEvent, 16)
+	pipeline := NewPipeline(PipelineConfig{SkipPhases: map[Phase]bool{
+		PhaseAnalysis: true, PhaseResearchDebate: true, PhaseTrading: true, PhaseRiskDebate: true,
+	}}, persister, events, slog.Default())
+
+	_, err := pipeline.Execute(context.Background(), uuid.New(), "TEST")
+	if err == nil || !strings.Contains(err.Error(), "persist completed terminal event") {
+		t.Fatalf("Execute() error = %v, want terminal event failure", err)
+	}
+
+	close(events)
+	for event := range events {
+		if event.Type == PipelineCompleted {
+			t.Fatal("emitted PipelineCompleted after terminal event persistence failure")
+		}
+	}
+}
+
 func (*capturePersister) SupportsSnapshots() bool { return false }
 
 func (*capturePersister) PersistDecision(context.Context, uuid.UUID, Node, *int, string, *DecisionLLMResponse) error {
@@ -86,8 +109,8 @@ func (*capturePersister) PersistSnapshot(context.Context, *domain.PipelineRunSna
 	return nil
 }
 
-func (*capturePersister) PersistEvent(context.Context, *domain.AgentEvent) error {
-	return nil
+func (p *capturePersister) PersistEvent(context.Context, *domain.AgentEvent) error {
+	return p.eventErr
 }
 
 // mockAnalystNode is a test double for a PhaseAnalysis Node.

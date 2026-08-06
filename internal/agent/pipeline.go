@@ -565,7 +565,7 @@ func (p *Pipeline) Execute(ctx context.Context, strategyID uuid.UUID, ticker str
 				err = errors.Join(err, fmt.Errorf("agent/pipeline: persist failed terminal status: %w", persistErr))
 			}
 			p.helper.emitCacheStats(state, cacheStatsCollector, run.ID, strategyID, ticker)
-			p.helper.persistStructuredTerminalEvent(p.helper.newStructuredEvent(
+			if eventErr := p.helper.persistStructuredTerminalEvent(p.helper.newStructuredEvent(
 				run.ID,
 				strategyID,
 				AgentEventKindPipelineFailed,
@@ -577,7 +577,9 @@ func (p *Pipeline) Execute(ctx context.Context, strategyID uuid.UUID, ticker str
 					"error_message": err.Error(),
 				},
 				[]string{"pipeline", "failed"},
-			))
+			)); eventErr != nil {
+				err = errors.Join(err, eventErr)
+			}
 
 			p.helper.emitEvent(PipelineEvent{
 				Type:          PipelineError,
@@ -613,7 +615,7 @@ func (p *Pipeline) Execute(ctx context.Context, strategyID uuid.UUID, ticker str
 	if persistErr := p.persister.RecordRunComplete(ctx, run.ID, run.TradeDate, domain.PipelineStatusCompleted, completedAt, "", phaseTimingsJSON); persistErr != nil {
 		err := fmt.Errorf("agent/pipeline: persist completed terminal status: %w", persistErr)
 		p.helper.emitCacheStats(state, cacheStatsCollector, run.ID, strategyID, ticker)
-		p.helper.persistStructuredTerminalEvent(p.helper.newStructuredEvent(
+		if eventErr := p.helper.persistStructuredTerminalEvent(p.helper.newStructuredEvent(
 			run.ID,
 			strategyID,
 			AgentEventKindPipelineFailed,
@@ -625,7 +627,9 @@ func (p *Pipeline) Execute(ctx context.Context, strategyID uuid.UUID, ticker str
 				"error_message": err.Error(),
 			},
 			[]string{"pipeline", "failed"},
-		))
+		)); eventErr != nil {
+			err = errors.Join(err, eventErr)
+		}
 		p.helper.emitEvent(PipelineEvent{
 			Type:          PipelineError,
 			PipelineRunID: run.ID,
@@ -637,7 +641,7 @@ func (p *Pipeline) Execute(ctx context.Context, strategyID uuid.UUID, ticker str
 		return state, err
 	}
 	p.helper.emitCacheStats(state, cacheStatsCollector, run.ID, strategyID, ticker)
-	p.helper.persistStructuredTerminalEvent(p.helper.newStructuredEvent(
+	if eventErr := p.helper.persistStructuredTerminalEvent(p.helper.newStructuredEvent(
 		run.ID,
 		strategyID,
 		AgentEventKindPipelineCompleted,
@@ -646,7 +650,21 @@ func (p *Pipeline) Execute(ctx context.Context, strategyID uuid.UUID, ticker str
 		"",
 		nil,
 		[]string{"pipeline", "completed"},
-	))
+	)); eventErr != nil {
+		err := fmt.Errorf("agent/pipeline: persist completed terminal event: %w", eventErr)
+		if persistErr := p.persister.RecordRunComplete(ctx, run.ID, run.TradeDate, domain.PipelineStatusFailed, completedAt, err.Error(), phaseTimingsJSON); persistErr != nil {
+			err = errors.Join(err, fmt.Errorf("agent/pipeline: persist terminal-event failure status: %w", persistErr))
+		}
+		p.helper.emitEvent(PipelineEvent{
+			Type:          PipelineError,
+			PipelineRunID: run.ID,
+			StrategyID:    strategyID,
+			Ticker:        ticker,
+			Error:         err.Error(),
+			OccurredAt:    p.currentTime().UTC(),
+		})
+		return state, err
+	}
 
 	p.helper.emitEvent(PipelineEvent{
 		Type:          PipelineCompleted,
