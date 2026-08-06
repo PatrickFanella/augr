@@ -113,7 +113,44 @@ func TestNearestExpiryRejectsMalformedFallback(t *testing.T) {
 	defer server.Close()
 	provider := NewOptionsProvider("token", true, nil)
 	provider.baseURL = server.URL
-	if _, err := provider.nearestExpiry(context.Background(), "AAPL"); err == nil || !strings.Contains(err.Error(), "invalid expiration") {
+	if _, err := provider.nearestExpiry(context.Background(), "AAPL"); err == nil || !strings.Contains(err.Error(), "no valid expirations") {
 		t.Fatalf("nearestExpiry() error = %v", err)
+	}
+}
+
+func TestOptionsProviderRetriesClosestListedExpirationWhenExactDateIsEmpty(t *testing.T) {
+	t.Parallel()
+
+	var chainExpirations []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/markets/options/chains":
+			expiry := r.URL.Query().Get("expiration")
+			chainExpirations = append(chainExpirations, expiry)
+			if expiry == "2026-09-04" {
+				_, _ = w.Write([]byte(`{"options":{"option":[{"symbol":"AAPL260904C00150000","strike":150,"bid":2,"ask":4,"last":2.5,"volume":12,"open_interest":30,"contract_size":100,"option_type":"call","expiration_date":"2026-09-04"}]}}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"options":null}`))
+		case "/v1/markets/options/expirations":
+			_, _ = w.Write([]byte(`{"expirations":{"date":["2026-09-04","2026-09-11"]}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	provider := NewOptionsProvider("token", true, nil)
+	provider.baseURL = server.URL
+	chain, err := provider.GetOptionsChain(context.Background(), "AAPL", time.Date(2026, 9, 6, 0, 0, 0, 0, time.UTC), "")
+	if err != nil {
+		t.Fatalf("GetOptionsChain() error = %v", err)
+	}
+	if len(chain) != 1 || chain[0].Contract.Expiry.Format("2006-01-02") != "2026-09-04" {
+		t.Fatalf("resolved chain = %#v", chain)
+	}
+	wantRequests := []string{"2026-09-06", "2026-09-04"}
+	if len(chainExpirations) != len(wantRequests) || chainExpirations[0] != wantRequests[0] || chainExpirations[1] != wantRequests[1] {
+		t.Fatalf("chain expirations = %#v, want %#v", chainExpirations, wantRequests)
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 
@@ -109,6 +110,23 @@ func (p *OptionsProvider) GetOptionsChain(
 		return nil, fmt.Errorf("tradier/options: decode response: %w", err)
 	}
 
+	if resp.Options == nil && !expiry.IsZero() {
+		resolved, resolveErr := p.nearestExpiryTo(ctx, underlying, expiry)
+		if resolveErr != nil {
+			return nil, fmt.Errorf("tradier/options: resolve expiration near %s: %w", expiry.Format("2006-01-02"), resolveErr)
+		}
+		if resolved.Format("2006-01-02") != expiry.Format("2006-01-02") {
+			params.Set("expiration", resolved.Format("2006-01-02"))
+			body, err = p.get(ctx, "/v1/markets/options/chains", params)
+			if err != nil {
+				return nil, fmt.Errorf("tradier/options: resolved chain request failed: %w", err)
+			}
+			if err := json.Unmarshal(body, &resp); err != nil {
+				return nil, fmt.Errorf("tradier/options: decode resolved response: %w", err)
+			}
+		}
+	}
+
 	if resp.Options == nil {
 		return nil, nil
 	}
@@ -134,41 +152,73 @@ func (p *OptionsProvider) GetOptionsOHLCV(
 
 // nearestExpiry fetches available expiration dates and returns the nearest one.
 func (p *OptionsProvider) nearestExpiry(ctx context.Context, underlying string) (time.Time, error) {
-	params := url.Values{"symbol": {underlying}}
-	body, err := p.get(ctx, "/v1/markets/options/expirations", params)
+	expirations, err := p.listedExpirations(ctx, underlying)
+	if err != nil {
+		return time.Time{}, err
+	}
+	minimum := time.Now().AddDate(0, 0, 7)
+	for _, expiry := range expirations {
+		if expiry.After(minimum) {
+			return expiry, nil
+		}
+	}
+	return expirations[len(expirations)-1], nil
+}
+
+// nearestExpiryTo returns the listed expiration closest to the requested date.
+func (p *OptionsProvider) nearestExpiryTo(ctx context.Context, underlying string, target time.Time) (time.Time, error) {
+	expirations, err := p.listedExpirations(ctx, underlying)
 	if err != nil {
 		return time.Time{}, err
 	}
 
+	nearest := expirations[0]
+	nearestDistance := nearest.Sub(target)
+	if nearestDistance < 0 {
+		nearestDistance = -nearestDistance
+	}
+	for _, expiry := range expirations[1:] {
+		distance := expiry.Sub(target)
+		if distance < 0 {
+			distance = -distance
+		}
+		if distance < nearestDistance {
+			nearest = expiry
+			nearestDistance = distance
+		}
+	}
+	return nearest, nil
+}
+
+func (p *OptionsProvider) listedExpirations(ctx context.Context, underlying string) ([]time.Time, error) {
+	params := url.Values{"symbol": {underlying}}
+	body, err := p.get(ctx, "/v1/markets/options/expirations", params)
+	if err != nil {
+		return nil, err
+	}
+
 	var resp tradierExpirationsResponse
 	if err := json.Unmarshal(body, &resp); err != nil {
-		return time.Time{}, fmt.Errorf("tradier/options: decode expirations: %w", err)
+		return nil, fmt.Errorf("tradier/options: decode expirations: %w", err)
 	}
 
 	if resp.Expirations == nil || len(resp.Expirations.Date) == 0 {
-		return time.Time{}, fmt.Errorf("tradier/options: no expirations for %s", underlying)
+		return nil, fmt.Errorf("tradier/options: no expirations for %s", underlying)
 	}
 
-	// Find the nearest expiry at least 7 days out.
-	now := time.Now()
-	minExpiry := now.AddDate(0, 0, 7)
+	expirations := make([]time.Time, 0, len(resp.Expirations.Date))
 	for _, dateStr := range resp.Expirations.Date {
 		t, err := time.Parse("2006-01-02", dateStr)
 		if err != nil {
 			continue
 		}
-		if t.After(minExpiry) {
-			return t, nil
-		}
+		expirations = append(expirations, t)
 	}
-
-	// Fallback: return the last available.
-	last := resp.Expirations.Date[len(resp.Expirations.Date)-1]
-	t, err := time.Parse("2006-01-02", last)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("tradier/options: invalid expiration %q: %w", last, err)
+	if len(expirations) == 0 {
+		return nil, fmt.Errorf("tradier/options: no valid expirations for %s", underlying)
 	}
-	return t, nil
+	sort.Slice(expirations, func(i, j int) bool { return expirations[i].Before(expirations[j]) })
+	return expirations, nil
 }
 
 // get performs an authenticated GET request.
