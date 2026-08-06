@@ -138,11 +138,11 @@ func TestOvernightBacktestChunkerRejectsUnwrappedGeneratedConfig(t *testing.T) {
 	}
 }
 
-func TestOvernightBacktestChunkerRunChunkCreatesRun(t *testing.T) {
+func TestOvernightBacktestChunkerRunChunkCreatesFailedRunWithoutUniverse(t *testing.T) {
 	repo := &fakeOvernightBacktestRunRepo{}
 	c := overnightBacktestChunker{progress: repo, generatePerChunk: 2}
-	if err := c.RunChunk(context.Background()); err != nil {
-		t.Fatal(err)
+	if err := c.RunChunk(context.Background()); err == nil || !strings.Contains(err.Error(), "universe not configured") {
+		t.Fatalf("error = %v, want missing universe", err)
 	}
 	if repo.run == nil {
 		t.Fatal("run nil")
@@ -150,13 +150,16 @@ func TestOvernightBacktestChunkerRunChunkCreatesRun(t *testing.T) {
 	if repo.run.Phase != domain.OvernightBacktestPhaseDone {
 		t.Fatalf("got %s", repo.run.Phase)
 	}
+	if repo.run.Status != domain.OvernightBacktestStatusFailed {
+		t.Fatalf("status = %s, want failed", repo.run.Status)
+	}
 }
 
 func TestOvernightBacktestChunkerRunChunkCreatesRunWhenActiveMissing(t *testing.T) {
 	repo := &fakeOvernightBacktestRunRepo{getActive: repository.ErrNotFound}
 	c := overnightBacktestChunker{progress: repo, generatePerChunk: 2}
-	if err := c.RunChunk(context.Background()); err != nil {
-		t.Fatal(err)
+	if err := c.RunChunk(context.Background()); err == nil || !strings.Contains(err.Error(), "universe not configured") {
+		t.Fatalf("error = %v, want missing universe", err)
 	}
 	if !repo.created {
 		t.Fatal("expected run creation")
@@ -185,6 +188,9 @@ func TestOvernightBacktestChunkerRunGenerateChunkRequiresLLMProvider(t *testing.
 	err := c.runGenerateChunk(context.Background(), run)
 	if err == nil || err.Error() != "overnight_backtest: LLM provider not configured" {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if run.Status != domain.OvernightBacktestStatusFailed || run.CompletedAt == nil {
+		t.Fatalf("run = %+v, want terminal failure", run)
 	}
 }
 
@@ -253,14 +259,14 @@ func TestOvernightBacktestChunkerPersistsProgressAfterGenerateTimeout(t *testing
 		generateTimeout:  5 * time.Millisecond,
 		progressTimeout:  100 * time.Millisecond,
 	}
-	if err := c.runGenerateChunk(context.Background(), run); err != nil {
-		t.Fatal(err)
+	if err := c.runGenerateChunk(context.Background(), run); err == nil || !strings.Contains(err.Error(), "candidate generations failed") {
+		t.Fatalf("error = %v, want candidate generation failure", err)
 	}
 	if run.CandidateIndex != 1 {
 		t.Fatalf("candidate index = %d, want 1", run.CandidateIndex)
 	}
-	if run.Phase != domain.OvernightBacktestPhaseSweepValidateDeploy {
-		t.Fatalf("phase = %s, want %s", run.Phase, domain.OvernightBacktestPhaseSweepValidateDeploy)
+	if run.Phase != domain.OvernightBacktestPhaseDone || run.Status != domain.OvernightBacktestStatusFailed {
+		t.Fatalf("run state = %s/%s, want failed/done", run.Status, run.Phase)
 	}
 	if len(run.Errors) == 0 || !strings.Contains(strings.Join(run.Errors, " "), "deadline") {
 		t.Fatalf("errors = %#v, want deadline", run.Errors)
@@ -270,14 +276,14 @@ func TestOvernightBacktestChunkerPersistsProgressAfterGenerateTimeout(t *testing
 	}
 }
 
-func TestOvernightBacktestChunkerMissingUniverseCompletesRun(t *testing.T) {
+func TestOvernightBacktestChunkerMissingUniverseFailsRun(t *testing.T) {
 	now := time.Now()
 	repo := &fakeOvernightBacktestRunRepo{run: &domain.OvernightBacktestRun{ID: uuid.New(), Status: domain.OvernightBacktestStatusRunning, Phase: domain.OvernightBacktestPhaseScreen, StartedAt: now, UpdatedAt: now}}
 	c := overnightBacktestChunker{progress: repo, deps: OrchestratorDeps{DataService: nil, Universe: nil}}
-	if err := c.runScreen(context.Background(), repo.run); err != nil {
-		t.Fatal(err)
+	if err := c.runScreen(context.Background(), repo.run); err == nil || !strings.Contains(err.Error(), "universe not configured") {
+		t.Fatalf("error = %v, want missing universe failure", err)
 	}
-	if repo.run.Status != domain.OvernightBacktestStatusCompleted || repo.run.Phase != domain.OvernightBacktestPhaseDone || repo.run.CompletedAt == nil {
+	if repo.run.Status != domain.OvernightBacktestStatusFailed || repo.run.Phase != domain.OvernightBacktestPhaseDone || repo.run.CompletedAt == nil {
 		t.Fatalf("unexpected run state: %+v", repo.run)
 	}
 }

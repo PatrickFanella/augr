@@ -116,7 +116,7 @@ func (c overnightBacktestChunker) RunChunk(ctx context.Context) error {
 	case domain.OvernightBacktestPhaseSweepValidateDeploy:
 		return c.runSweepValidateDeploy(chunkCtx, run)
 	default:
-		return fmt.Errorf("overnight_backtest: unknown phase %q", run.Phase)
+		return c.failRun(run, fmt.Errorf("overnight_backtest: unknown phase %q", run.Phase))
 	}
 }
 
@@ -128,40 +128,48 @@ func sameEasternDate(a, b time.Time) bool {
 
 func (c overnightBacktestChunker) runScreen(ctx context.Context, run *domain.OvernightBacktestRun) error {
 	if c.deps.Universe == nil {
-		run.Status = domain.OvernightBacktestStatusCompleted
-		run.Phase = domain.OvernightBacktestPhaseDone
-		now := time.Now()
-		run.CompletedAt = &now
-		run.UpdatedAt = now
-		return c.updateProgress(run)
+		return c.failRun(run, fmt.Errorf("overnight_backtest: universe not configured"))
 	}
 	if c.deps.DataService == nil {
-		return fmt.Errorf("overnight_backtest: data service not configured")
+		return c.failRun(run, fmt.Errorf("overnight_backtest: data service not configured"))
 	}
 	watchlist, err := c.deps.Universe.GetWatchlist(ctx, overnightBacktestWatchlistLimit)
 	if err != nil {
-		return err
+		return c.failRun(run, fmt.Errorf("overnight_backtest: get watchlist: %w", err))
 	}
 	tickers := make([]string, len(watchlist))
 	for i, t := range watchlist {
 		tickers[i] = t.Ticker
 	}
+	if len(tickers) == 0 {
+		return c.failRun(run, fmt.Errorf("overnight_backtest: watchlist empty"))
+	}
 	history, err := c.deps.DataService.DownloadHistoricalOHLCV(ctx, domain.MarketTypeStock, tickers, data.Timeframe1d, time.Now().AddDate(-5, 0, 0), time.Now(), true)
 	if err != nil {
-		return fmt.Errorf("overnight_backtest: refresh screen inputs: %w", err)
+		return c.failRun(run, fmt.Errorf("overnight_backtest: refresh screen inputs: %w", err))
 	}
 	refreshedTickers := make([]string, 0, len(tickers))
+	empty := 0
+	stale := 0
+	now := time.Now()
 	for _, ticker := range tickers {
-		if len(history[ticker]) > 0 {
-			refreshedTickers = append(refreshedTickers, ticker)
+		bars := history[ticker]
+		if len(bars) == 0 {
+			empty++
+			continue
 		}
+		if !dailyBarFresh(now, bars[len(bars)-1].Timestamp) {
+			stale++
+			continue
+		}
+		refreshedTickers = append(refreshedTickers, ticker)
 	}
-	if len(refreshedTickers) == 0 {
-		return fmt.Errorf("overnight_backtest: no refreshed screen inputs")
+	if empty > 0 || stale > 0 {
+		return c.failRun(run, fmt.Errorf("overnight_backtest: incomplete screen inputs: empty=%d stale=%d requested=%d", empty, stale, len(tickers)))
 	}
 	screened, err := discovery.Screen(ctx, c.deps.DataService, discovery.ScreenerConfig{Tickers: refreshedTickers, MarketType: domain.MarketTypeStock}, c.logger)
 	if err != nil {
-		return err
+		return c.failRun(run, fmt.Errorf("overnight_backtest: screen: %w", err))
 	}
 	run.Candidates = discovery.CheckpointCandidatesFromScreenResults(screened)
 	run.Summary.Candidates = len(run.Candidates)
@@ -173,8 +181,9 @@ func (c overnightBacktestChunker) runScreen(ctx context.Context, run *domain.Ove
 
 func (c overnightBacktestChunker) runGenerateChunk(ctx context.Context, run *domain.OvernightBacktestRun) error {
 	if c.deps.LLMProvider == nil {
-		return fmt.Errorf("overnight_backtest: LLM provider not configured")
+		return c.failRun(run, fmt.Errorf("overnight_backtest: LLM provider not configured"))
 	}
+	initialErrors := len(run.Errors)
 	start := run.CandidateIndex
 	end := c.nextGenerateEnd(start, len(run.Candidates))
 	for i := start; i < end; i++ {
@@ -204,20 +213,24 @@ func (c overnightBacktestChunker) runGenerateChunk(ctx context.Context, run *dom
 			return updateErr
 		}
 	}
+	if failures := len(run.Errors) - initialErrors; failures > 0 {
+		return c.failRun(run, fmt.Errorf("overnight_backtest: %d candidate generations failed", failures))
+	}
 	return nil
 }
 
 func (c overnightBacktestChunker) runSweepValidateDeploy(ctx context.Context, run *domain.OvernightBacktestRun) error {
 	if c.deps.DataService == nil {
-		return fmt.Errorf("overnight_backtest: data service not configured")
+		return c.failRun(run, fmt.Errorf("overnight_backtest: data service not configured"))
 	}
 	if c.deps.StrategyRepo == nil {
-		return fmt.Errorf("overnight_backtest: strategy repository not configured")
+		return c.failRun(run, fmt.Errorf("overnight_backtest: strategy repository not configured"))
 	}
 	logger := c.logger
 	if logger == nil {
 		logger = slog.Default()
 	}
+	initialErrors := len(run.Errors)
 	type generated struct {
 		ticker string
 		config rules.RulesEngineConfig
@@ -226,7 +239,7 @@ func (c overnightBacktestChunker) runSweepValidateDeploy(ctx context.Context, ru
 	for _, gen := range run.Generated {
 		rulesCfg, err := decodeOvernightGeneratedConfig(gen.Config)
 		if err != nil {
-			return err
+			return c.failRun(run, err)
 		}
 		generatedConfigs = append(generatedConfigs, generated{ticker: gen.Ticker, config: rulesCfg})
 	}
@@ -244,6 +257,11 @@ func (c overnightBacktestChunker) runSweepValidateDeploy(ctx context.Context, ru
 		}
 		bars := history[gen.ticker]
 		if len(bars) < 50 {
+			run.Errors = append(run.Errors, fmt.Sprintf("history %s: insufficient bars %d", gen.ticker, len(bars)))
+			continue
+		}
+		if !dailyBarFresh(time.Now(), bars[len(bars)-1].Timestamp) {
+			run.Errors = append(run.Errors, fmt.Sprintf("history %s: stale latest bar %s", gen.ticker, bars[len(bars)-1].Timestamp.UTC().Format(time.RFC3339)))
 			continue
 		}
 		barsByTicker[gen.ticker] = bars
@@ -292,6 +310,9 @@ func (c overnightBacktestChunker) runSweepValidateDeploy(ctx context.Context, ru
 	if len(passed) > maxWinners {
 		passed = passed[:maxWinners]
 	}
+	if failures := len(run.Errors) - initialErrors; failures > 0 {
+		return c.failRun(run, fmt.Errorf("overnight_backtest: %d sweep or validation inputs failed", failures))
+	}
 	for _, scorer := range passed {
 		ticker := configNameToTicker[scorer.Config.Name]
 		configJSON, err := json.Marshal(map[string]any{"rules_engine": scorer.Config})
@@ -308,12 +329,31 @@ func (c overnightBacktestChunker) runSweepValidateDeploy(ctx context.Context, ru
 	}
 	run.Summary.Validated = validated
 	run.Summary.Deployed = deployed
+	if failures := len(run.Errors) - initialErrors; failures > 0 {
+		return c.failRun(run, fmt.Errorf("overnight_backtest: %d deployment steps failed", failures))
+	}
 	run.Phase = domain.OvernightBacktestPhaseDone
 	run.Status = domain.OvernightBacktestStatusCompleted
 	now := time.Now()
 	run.CompletedAt = &now
 	run.UpdatedAt = now
 	return c.updateProgress(run)
+}
+
+func (c overnightBacktestChunker) failRun(run *domain.OvernightBacktestRun, cause error) error {
+	if run == nil {
+		return cause
+	}
+	run.Errors = append(run.Errors, cause.Error())
+	run.Status = domain.OvernightBacktestStatusFailed
+	run.Phase = domain.OvernightBacktestPhaseDone
+	now := time.Now()
+	run.CompletedAt = &now
+	run.UpdatedAt = now
+	if err := c.updateProgress(run); err != nil {
+		return fmt.Errorf("%v; persist failed run: %w", cause, err)
+	}
+	return cause
 }
 
 func (c overnightBacktestChunker) updateProgress(run *domain.OvernightBacktestRun) error {
