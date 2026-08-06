@@ -381,7 +381,7 @@ func (o *JobOrchestrator) positionReview(ctx context.Context) error {
 		active[s.ID] = s
 	}
 	withPositions := make(map[uuid.UUID]struct{})
-	var unowned, inactiveStrategy, missingStop, missingPrice int
+	var unowned, inactiveStrategy, eventPositions, protectedPositions, missingStop, missingPrice int
 	for _, position := range positions {
 		if position.StrategyID == nil {
 			unowned++
@@ -390,11 +390,16 @@ func (o *JobOrchestrator) positionReview(ctx context.Context) error {
 		} else {
 			inactiveStrategy++
 		}
-		if position.StopLoss == nil {
-			missingStop++
-		}
-		if position.CurrentPrice == nil {
-			missingPrice++
+		if position.MarketType == domain.MarketTypeKalshi || position.MarketType == domain.MarketTypePolymarket {
+			eventPositions++
+		} else {
+			protectedPositions++
+			if position.StopLoss == nil {
+				missingStop++
+			}
+			if position.CurrentPrice == nil {
+				missingPrice++
+			}
 		}
 		o.logger.Info("position_review: open position",
 			slog.String("ticker", position.Ticker),
@@ -406,13 +411,15 @@ func (o *JobOrchestrator) positionReview(ctx context.Context) error {
 	}
 
 	summary := map[string]int{
-		"active_strategies":           len(strategies),
-		"open_positions":              len(positions),
-		"strategies_with_positions":   len(withPositions),
-		"unowned_positions":           unowned,
-		"inactive_strategy_positions": inactiveStrategy,
-		"positions_missing_stop_loss": missingStop,
-		"positions_missing_price":     missingPrice,
+		"active_strategies":              len(strategies),
+		"open_positions":                 len(positions),
+		"strategies_with_positions":      len(withPositions),
+		"unowned_positions":              unowned,
+		"inactive_strategy_positions":    inactiveStrategy,
+		"event_positions":                eventPositions,
+		"positions_requiring_protection": protectedPositions,
+		"positions_missing_stop_loss":    missingStop,
+		"positions_missing_price":        missingPrice,
 	}
 	o.SetLastSummary("position_review", summary)
 	o.logger.Info("position_review: complete",
@@ -421,6 +428,8 @@ func (o *JobOrchestrator) positionReview(ctx context.Context) error {
 		slog.Int("strategies_with_positions", summary["strategies_with_positions"]),
 		slog.Int("unowned_positions", summary["unowned_positions"]),
 		slog.Int("inactive_strategy_positions", summary["inactive_strategy_positions"]),
+		slog.Int("event_positions", summary["event_positions"]),
+		slog.Int("positions_requiring_protection", summary["positions_requiring_protection"]),
 		slog.Int("positions_missing_stop_loss", summary["positions_missing_stop_loss"]),
 		slog.Int("positions_missing_price", summary["positions_missing_price"]),
 	)

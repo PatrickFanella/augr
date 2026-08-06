@@ -155,3 +155,28 @@ func TestPositionReviewSummarizesActualOpenPositions(t *testing.T) {
 		}
 	}
 }
+
+func TestPositionReviewDoesNotRequireEquityProtectionFieldsForEventPositions(t *testing.T) {
+	strategyID := uuid.New()
+	orch := NewJobOrchestrator(OrchestratorDeps{
+		StrategyRepo: &positionReviewStrategyRepo{&kalshiStrategyRepoStub{strategies: []domain.Strategy{{
+			ID: strategyID, Ticker: "KXTEST:YES", MarketType: domain.MarketTypeKalshi, Status: domain.StrategyStatusActive,
+		}}}},
+		PositionRepo: &polymarketPositionRepoStub{positions: []domain.Position{{
+			ID: uuid.New(), StrategyID: &strategyID, MarketType: domain.MarketTypeKalshi,
+			Ticker: "KXTEST:YES", Side: domain.PositionSideLong, Quantity: 1,
+		}}},
+	})
+	orch.Register("position_review", "test", schedulerSpecEveryMinute(), orch.positionReview)
+
+	if err := orch.positionReview(context.Background()); err != nil {
+		t.Fatalf("positionReview() error = %v, want nil", err)
+	}
+	got := orch.jobs["position_review"].LastSummary
+	if got["event_positions"] != 1 || got["positions_requiring_protection"] != 0 {
+		t.Fatalf("position market summary = %v, want one event and zero protected positions", got)
+	}
+	if got["positions_missing_stop_loss"] != 0 || got["positions_missing_price"] != 0 {
+		t.Fatalf("event position must not require equity stop/price fields: %v", got)
+	}
+}
