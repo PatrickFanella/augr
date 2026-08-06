@@ -68,6 +68,25 @@ func TestRiskMonitor_ErrorKeepsContextAlive(t *testing.T) {
 	}
 }
 
+func TestRiskMonitor_PanicCancelsContextFailClosed(t *testing.T) {
+	re := &mockRiskEngine{panicKillSwitch: true}
+	mon := &riskMonitor{
+		riskEngine:   re,
+		pollInterval: 10 * time.Millisecond,
+		logger:       testLogger(),
+	}
+
+	ctx, cancel := mon.monitorContext(context.Background())
+	defer cancel()
+
+	select {
+	case <-ctx.Done():
+		// The panic is contained and the unmonitored pipeline is cancelled.
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for context cancellation after monitor panic")
+	}
+}
+
 func TestRiskMonitor_ParentCancelStopsMonitor(t *testing.T) {
 	re := &mockRiskEngine{}
 	mon := &riskMonitor{

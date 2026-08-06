@@ -341,6 +341,7 @@ func (m *mockBacktestServiceRunner) firstCall() (uuid.UUID, string, bool) {
 type mockRiskEngine struct {
 	killSwitchActive bool
 	killSwitchErr    error
+	panicKillSwitch  bool
 	blockKillSwitch  bool
 	enteredCh        chan struct{}
 	enteredOnce      sync.Once
@@ -365,6 +366,9 @@ func (m *mockRiskEngine) TripCircuitBreaker(context.Context, string) error { ret
 func (m *mockRiskEngine) ResetCircuitBreaker(context.Context) error { return nil }
 
 func (m *mockRiskEngine) IsKillSwitchActive(ctx context.Context) (bool, error) {
+	if m.panicKillSwitch {
+		panic("sensitive provider detail")
+	}
 	m.mu.Lock()
 	m.ctxs = append(m.ctxs, ctx)
 	m.mu.Unlock()

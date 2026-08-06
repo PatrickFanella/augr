@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -30,6 +31,18 @@ func (m *riskMonitor) monitorContext(parent context.Context) (context.Context, c
 	}
 
 	go func() {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				if m.logger != nil {
+					m.logger.Error("scheduler: kill-switch monitor panic contained",
+						slog.String("panic_type", fmt.Sprintf("%T", recovered)),
+					)
+				}
+				// Losing the kill-switch monitor must stop the pipeline rather
+				// than leave it running without its fail-closed safety poll.
+				cancel()
+			}
+		}()
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 
