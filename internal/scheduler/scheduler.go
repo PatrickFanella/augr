@@ -405,7 +405,19 @@ func (s *Scheduler) runTriggeredStrategy(strategy domain.Strategy) {
 	s.runStrategyWithAdmission(strategy, false)
 }
 
+func (s *Scheduler) containStrategyPanic(strategy domain.Strategy) {
+	if recovered := recover(); recovered != nil && s.logger != nil {
+		s.logger.Error("scheduler: strategy panic contained",
+			slog.String("strategy_id", strategy.ID.String()),
+			slog.String("ticker", strategy.Ticker),
+			slog.String("panic_type", fmt.Sprintf("%T", recovered)),
+		)
+	}
+}
+
 func (s *Scheduler) runStrategyWithAdmission(strategy domain.Strategy, waitForCapacity bool) {
+	defer s.containStrategyPanic(strategy)
+
 	if s.metrics != nil {
 		s.metrics.RecordSchedulerTick("strategy")
 	}
@@ -570,6 +582,8 @@ func (s *Scheduler) runStrategyWithAdmission(strategy domain.Strategy, waitForCa
 }
 
 func (s *Scheduler) runBacktest(config domain.BacktestConfig) {
+	defer s.containBacktestPanic(config)
+
 	if s.metrics != nil {
 		s.metrics.RecordSchedulerTick("backtest")
 	}
@@ -643,6 +657,17 @@ func (s *Scheduler) runBacktest(config domain.BacktestConfig) {
 		slog.String("backtest_config_id", config.ID.String()),
 		slog.String("name", config.Name),
 	)
+}
+
+func (s *Scheduler) containBacktestPanic(config domain.BacktestConfig) {
+	if recovered := recover(); recovered != nil && s.logger != nil {
+		s.logger.Error("scheduler: backtest panic contained",
+			slog.String("backtest_config_id", config.ID.String()),
+			slog.String("strategy_id", config.StrategyID.String()),
+			slog.String("name", config.Name),
+			slog.String("panic_type", fmt.Sprintf("%T", recovered)),
+		)
+	}
 }
 
 func (s *Scheduler) clearStateLocked() (cronEngine, context.CancelFunc) {

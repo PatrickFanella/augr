@@ -1,12 +1,14 @@
 package scheduler
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
 	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -274,6 +276,12 @@ type mockBacktestRunner struct {
 	ctxs   []context.Context
 }
 
+type backtestRunnerFunc func(context.Context, domain.BacktestConfig) (*backtest.OrchestratorResult, error)
+
+func (fn backtestRunnerFunc) Run(ctx context.Context, config domain.BacktestConfig) (*backtest.OrchestratorResult, error) {
+	return fn(ctx, config)
+}
+
 func (m *mockBacktestRunner) Run(ctx context.Context, config domain.BacktestConfig) (*backtest.OrchestratorResult, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -503,6 +511,61 @@ func TestSchedulerStartTriggersPipelineExecution(t *testing.T) {
 	}
 	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
 		t.Fatal("expected pipeline context to carry a deadline")
+	}
+}
+
+func TestSchedulerContainsStrategyExecutionPanic(t *testing.T) {
+	t.Parallel()
+
+	strategy := domain.Strategy{ID: uuid.New(), Ticker: "BTCUSD", MarketType: domain.MarketTypeCrypto, Status: domain.StrategyStatusActive}
+	repo := &mockStrategyRepo{strategies: []domain.Strategy{strategy}}
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+	s := NewScheduler(repo, nil, &mockRiskEngine{}, logger, WithStrategyExecution(func(context.Context, domain.Strategy) error {
+		panic("credential-shaped strategy panic")
+	}))
+	s.ctx = context.Background()
+
+	s.runStrategy(strategy)
+
+	if got := s.InFlightCount(); got != 0 {
+		t.Fatalf("InFlightCount() = %d after panic, want 0", got)
+	}
+	if got := len(s.strategySem); got != 0 {
+		t.Fatalf("strategy semaphore occupancy = %d after panic, want 0", got)
+	}
+	if !strings.Contains(logs.String(), "strategy panic contained") || !strings.Contains(logs.String(), "panic_type=string") {
+		t.Fatalf("logs missing redacted panic evidence: %q", logs.String())
+	}
+	if strings.Contains(logs.String(), "credential-shaped") {
+		t.Fatalf("logs leaked strategy panic value: %q", logs.String())
+	}
+}
+
+func TestSchedulerContainsBacktestExecutionPanic(t *testing.T) {
+	t.Parallel()
+
+	config := domain.BacktestConfig{ID: uuid.New(), StrategyID: uuid.New(), Name: "nightly"}
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+	runner := backtestRunnerFunc(func(context.Context, domain.BacktestConfig) (*backtest.OrchestratorResult, error) {
+		panic("credential-shaped backtest panic")
+	})
+	s := NewScheduler(&mockStrategyRepo{}, &mockPipeline{}, &mockRiskEngine{}, logger,
+		WithBacktestScheduling(&mockBacktestConfigRepo{}, backtest.NewRepoPersister(&mockBacktestRunRepo{}), runner),
+	)
+	s.ctx = context.Background()
+
+	s.runBacktest(config)
+
+	if got := s.backtestDedup.Count(); got != 0 {
+		t.Fatalf("backtest in-flight count = %d after panic, want 0", got)
+	}
+	if !strings.Contains(logs.String(), "backtest panic contained") || !strings.Contains(logs.String(), "panic_type=string") {
+		t.Fatalf("logs missing redacted panic evidence: %q", logs.String())
+	}
+	if strings.Contains(logs.String(), "credential-shaped") {
+		t.Fatalf("logs leaked backtest panic value: %q", logs.String())
 	}
 }
 
