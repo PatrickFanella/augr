@@ -826,6 +826,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 			StrategyLoader:   strategyRepo,
 			ThesisLoader:     strategyRepo,
 			Runner:           sched,
+			EventRecorder:    signal.NewAgentEventRecorder(eventRepo),
 			Logger:           logger,
 		},
 	)

@@ -40,7 +40,16 @@ type TriggerHandler struct {
 	thesis     ThesisLoader // optional; nil disables thesis-aware fast-path
 	runner     StrategyTriggerer
 	store      *EventStore // optional; nil = no trigger persistence
+	recorder   EventRecorder
 	logger     *slog.Logger
+}
+
+// WithEventRecorder enables fail-closed durable trigger-request lineage.
+func (h *TriggerHandler) WithEventRecorder(recorder EventRecorder) *TriggerHandler {
+	if h != nil {
+		h.recorder = recorder
+	}
+	return h
 }
 
 // NewTriggerHandler constructs a TriggerHandler. thesisLoader and store may be nil.
@@ -104,6 +113,9 @@ func (h *TriggerHandler) handle(ctx context.Context, evt TriggerEvent) {
 			log.Warn("signal trigger: strategy load failed", slog.Any("error", err))
 			return
 		}
+		if !h.recordTriggerRequest(ctx, evt, log) {
+			return
+		}
 		log.Info("signal trigger: queuing pipeline run")
 		h.runner.TriggerStrategy(*strategy)
 
@@ -123,10 +135,24 @@ func (h *TriggerHandler) handle(ctx context.Context, evt TriggerEvent) {
 		} else {
 			log.Info("signal trigger: no valid thesis, queuing pipeline run")
 		}
+		if !h.recordTriggerRequest(ctx, evt, log) {
+			return
+		}
 		// In both cases dispatch a pipeline run; the runner uses the stored
 		// thesis for fast-track execution if it has one.
 		h.runner.TriggerStrategy(*strategy)
 	}
+}
+
+func (h *TriggerHandler) recordTriggerRequest(ctx context.Context, evt TriggerEvent, log *slog.Logger) bool {
+	if h.recorder == nil {
+		return true
+	}
+	if err := h.recorder.RecordTriggerRequest(ctx, evt); err != nil {
+		log.Error("signal trigger: failed to persist trigger request; dropping", slog.Any("error", err))
+		return false
+	}
+	return true
 }
 
 func (h *TriggerHandler) loadStrategy(ctx context.Context, id uuid.UUID) (*domain.Strategy, error) {

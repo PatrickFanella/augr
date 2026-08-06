@@ -25,6 +25,7 @@ type OrchestratorDeps struct {
 	StrategyLoader   StrategyLoader   // required for trigger handler to look up strategies
 	ThesisLoader     ThesisLoader     // optional; nil disables thesis fast-path
 	Runner           StrategyTriggerer
+	EventRecorder    EventRecorder
 	Logger           *slog.Logger
 }
 
@@ -55,11 +56,13 @@ func NewOrchestrator(cfg OrchestratorConfig, deps OrchestratorDeps) *Orchestrato
 	store := NewEventStore(storeSize)
 	watchIndex := NewWatchIndex()
 	triggerCh := make(chan TriggerEvent, trigSize)
-	lifecycle := NewLifecycle(watchIndex, deps.StrategyProvider, cfg.LLMEvaluator, triggerCh, store, deps.Logger)
+	lifecycle := NewLifecycle(watchIndex, deps.StrategyProvider, cfg.LLMEvaluator, triggerCh, store, deps.Logger).
+		WithEventRecorder(deps.EventRecorder)
 
 	hub := NewSignalHub(cfg.Sources, lifecycle, deps.Logger)
 
-	handler := NewTriggerHandler(triggerCh, deps.StrategyLoader, deps.ThesisLoader, deps.Runner, store, deps.Logger)
+	handler := NewTriggerHandler(triggerCh, deps.StrategyLoader, deps.ThesisLoader, deps.Runner, store, deps.Logger).
+		WithEventRecorder(deps.EventRecorder)
 
 	return &Orchestrator{
 		store:      store,

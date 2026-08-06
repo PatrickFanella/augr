@@ -14,7 +14,16 @@ type Lifecycle struct {
 	evaluator  SignalEvaluator
 	triggerCh  chan<- TriggerEvent
 	store      *EventStore
+	recorder   EventRecorder
 	logger     *slog.Logger
+}
+
+// WithEventRecorder enables fail-closed durable signal evaluation lineage.
+func (l *Lifecycle) WithEventRecorder(recorder EventRecorder) *Lifecycle {
+	if l != nil {
+		l.recorder = recorder
+	}
+	return l
 }
 
 // NewLifecycle assembles the explicit signal flow.
@@ -77,6 +86,16 @@ func (l *Lifecycle) Process(ctx context.Context, evt RawSignalEvent) {
 	evaluated := l.evaluate(ctx, evt, strategies)
 	if evaluated == nil {
 		return
+	}
+	if l.recorder != nil {
+		if err := l.recorder.RecordEvaluated(ctx, *evaluated); err != nil {
+			l.logger.Error("signal lifecycle: failed to persist evaluated event; dropping",
+				slog.String("source", evt.Source),
+				slog.String("title", evt.Title),
+				slog.Any("error", err),
+			)
+			return
+		}
 	}
 
 	if l.store != nil {
