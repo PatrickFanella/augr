@@ -48,6 +48,7 @@ func mustLoadEastern() *time.Location {
 const autoDisableThreshold = 5
 
 const defaultAutomationJobTimeout = 2 * time.Hour
+const jobRunPersistenceTimeout = 10 * time.Second
 
 // StrategyTrigger triggers an immediate pipeline run for a strategy.
 // The scheduler satisfies this interface.
@@ -442,7 +443,12 @@ func (o *JobOrchestrator) runDirect(job *RegisteredJob) {
 	}
 	job.mu.Unlock()
 
-	o.persistRun(job.Name, start, elapsed, err)
+	if persistErr := o.persistRun(job.Name, start, elapsed, err); persistErr != nil {
+		o.logger.Error("automation: failed to persist job run", slog.String("job", job.Name), slog.Any("error", persistErr))
+		if err == nil {
+			err = o.applyRunPersistenceFailure(job, now, persistErr)
+		}
+	}
 }
 
 // SetEnabled enables or disables a job.
@@ -559,7 +565,12 @@ func (o *JobOrchestrator) wrapAndRun(job *RegisteredJob) {
 	}
 	job.mu.Unlock()
 
-	o.persistRun(job.Name, start, elapsed, err)
+	if persistErr := o.persistRun(job.Name, start, elapsed, err); persistErr != nil {
+		o.logger.Error("automation: failed to persist job run", slog.String("job", job.Name), slog.Any("error", persistErr))
+		if err == nil {
+			err = o.applyRunPersistenceFailure(job, now, persistErr)
+		}
+	}
 
 	if err != nil {
 		o.logger.Error("automation: job failed",
@@ -640,18 +651,46 @@ func (o *JobOrchestrator) recordDependencySkip(job *RegisteredJob, at time.Time,
 		LastErrorAt:         lastErrorAt,
 		ConsecutiveFailures: consecutiveFailures,
 	}
-	if err := o.deps.JobRunRepo.Create(context.Background(), run); err != nil {
-		o.logger.Warn("automation: failed to persist dependency skip",
+	persistCtx, cancel := context.WithTimeout(context.Background(), jobRunPersistenceTimeout)
+	defer cancel()
+	if err := o.deps.JobRunRepo.Create(persistCtx, run); err != nil {
+		o.logger.Error("automation: failed to persist dependency skip",
 			slog.String("job", job.Name),
 			slog.Any("error", err),
 		)
+		o.applyRunPersistenceFailure(job, at, err)
 	}
 }
 
 // persistRun writes a job run to the database.
-func (o *JobOrchestrator) persistRun(jobName string, start time.Time, elapsed time.Duration, jobErr error) {
+func (o *JobOrchestrator) applyRunPersistenceFailure(job *RegisteredJob, at time.Time, persistErr error) error {
+	err := fmt.Errorf("automation: persist completed run: %w", persistErr)
+	job.mu.Lock()
+	job.ErrorCount++
+	job.LastError = err.Error()
+	job.LastErrorAt = &at
+	job.ConsecutiveFailures++
+	job.LastResult = "failed: run persistence"
+	disable := job.ConsecutiveFailures >= autoDisableThreshold
+	if disable {
+		job.Enabled = false
+	}
+	job.mu.Unlock()
+	if o.metrics != nil {
+		o.metrics.RecordAutomationJobError(job.Name)
+	}
+	if disable {
+		o.logger.Error("automation: auto-disabled job after consecutive persistence failures",
+			slog.String("job", job.Name),
+			slog.Int("consecutive_failures", autoDisableThreshold),
+		)
+	}
+	return err
+}
+
+func (o *JobOrchestrator) persistRun(jobName string, start time.Time, elapsed time.Duration, jobErr error) error {
 	if o.deps.JobRunRepo == nil {
-		return
+		return nil
 	}
 
 	completed := start.Add(elapsed)
@@ -686,12 +725,9 @@ func (o *JobOrchestrator) persistRun(jobName string, start time.Time, elapsed ti
 		ConsecutiveFailures: consecutiveFailures,
 	}
 
-	if err := o.deps.JobRunRepo.Create(context.Background(), run); err != nil {
-		o.logger.Warn("automation: failed to persist job run",
-			slog.String("job", jobName),
-			slog.Any("error", err),
-		)
-	}
+	persistCtx, cancel := context.WithTimeout(context.Background(), jobRunPersistenceTimeout)
+	defer cancel()
+	return o.deps.JobRunRepo.Create(persistCtx, run)
 }
 
 // hydrateFromDB loads historical run stats from the database to restore
