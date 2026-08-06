@@ -49,16 +49,51 @@ type DeployedStrategy struct {
 	Score       float64                 `json:"score"`
 }
 
+type CandidateEvidence struct {
+	Ticker     string    `json:"ticker"`
+	Close      float64   `json:"close"`
+	ADV        float64   `json:"adv"`
+	ATR        float64   `json:"atr"`
+	Bars       int       `json:"bars"`
+	FirstBarAt time.Time `json:"first_bar_at,omitempty"`
+	LastBarAt  time.Time `json:"last_bar_at,omitempty"`
+}
+
+type SweepEvidence struct {
+	Ticker       string                  `json:"ticker"`
+	Label        string                  `json:"label"`
+	Config       rules.RulesEngineConfig `json:"config"`
+	Metrics      backtest.Metrics        `json:"metrics"`
+	Score        float64                 `json:"score"`
+	HistoryBars  int                     `json:"history_bars"`
+	HistoryStart time.Time               `json:"history_start,omitempty"`
+	HistoryEnd   time.Time               `json:"history_end,omitempty"`
+}
+
+type ValidationEvidence struct {
+	Ticker      string                  `json:"ticker"`
+	Config      rules.RulesEngineConfig `json:"config"`
+	Passed      bool                    `json:"passed"`
+	InSample    backtest.Metrics        `json:"in_sample"`
+	OutOfSample backtest.Metrics        `json:"out_of_sample"`
+	OOSRatio    float64                 `json:"oos_ratio"`
+	Reason      string                  `json:"reason,omitempty"`
+}
+
 // DiscoveryResult summarises the pipeline execution.
 type DiscoveryResult struct {
-	Candidates int                `json:"candidates"`
-	Generated  int                `json:"generated"`
-	Swept      int                `json:"swept"`
-	Validated  int                `json:"validated"`
-	Deployed   int                `json:"deployed"`
-	Winners    []DeployedStrategy `json:"winners"`
-	Duration   time.Duration      `json:"duration"`
-	Errors     []string           `json:"errors,omitempty"`
+	Candidates         int                  `json:"candidates"`
+	Generated          int                  `json:"generated"`
+	Swept              int                  `json:"swept"`
+	Validated          int                  `json:"validated"`
+	Deployed           int                  `json:"deployed"`
+	CandidateEvidence  []CandidateEvidence  `json:"candidate_evidence,omitempty"`
+	GenerationEvidence []GenerationEvidence `json:"generation_evidence,omitempty"`
+	SweepEvidence      []SweepEvidence      `json:"sweep_evidence,omitempty"`
+	ValidationEvidence []ValidationEvidence `json:"validation_evidence,omitempty"`
+	Winners            []DeployedStrategy   `json:"winners"`
+	Duration           time.Duration        `json:"duration"`
+	Errors             []string             `json:"errors,omitempty"`
 }
 
 // RunDiscovery executes the full autonomous strategy discovery pipeline.
@@ -83,6 +118,14 @@ func RunDiscovery(ctx context.Context, cfg DiscoveryConfig, deps DiscoveryDeps) 
 		return nil, fmt.Errorf("discovery: screening failed: %w", err)
 	}
 	result.Candidates = len(candidates)
+	for _, candidate := range candidates {
+		evidence := CandidateEvidence{Ticker: candidate.Ticker, Close: candidate.Close, ADV: candidate.ADV, ATR: candidate.ATR, Bars: len(candidate.Bars)}
+		if len(candidate.Bars) > 0 {
+			evidence.FirstBarAt = candidate.Bars[0].Timestamp
+			evidence.LastBarAt = candidate.Bars[len(candidate.Bars)-1].Timestamp
+		}
+		result.CandidateEvidence = append(result.CandidateEvidence, evidence)
+	}
 	logger.Info("discovery: screened candidates",
 		slog.Int("candidates", len(candidates)),
 		slog.Int("tickers", len(cfg.Screener.Tickers)),
@@ -108,7 +151,10 @@ func RunDiscovery(ctx context.Context, cfg DiscoveryConfig, deps DiscoveryDeps) 
 			return nil, fmt.Errorf("discovery: context cancelled during generation: %w", err)
 		}
 
-		rulesConfig, genErr := GenerateStrategy(ctx, generatorCfg, candidate, logger)
+		rulesConfig, generationEvidence, genErr := GenerateStrategyWithEvidence(ctx, generatorCfg, candidate, logger)
+		if generationEvidence != nil {
+			result.GenerationEvidence = append(result.GenerationEvidence, *generationEvidence)
+		}
 		if genErr != nil {
 			logger.Warn("discovery: strategy generation failed",
 				slog.String("ticker", candidate.Ticker),
@@ -181,7 +227,13 @@ func RunDiscovery(ctx context.Context, cfg DiscoveryConfig, deps DiscoveryDeps) 
 			continue
 		}
 		if len(sweepResults) > 0 {
-			allBests = append(allBests, sweepResults[0])
+			best := sweepResults[0]
+			allBests = append(allBests, best)
+			result.SweepEvidence = append(result.SweepEvidence, SweepEvidence{
+				Ticker: gen.candidate.Ticker, Label: best.Label, Config: best.Config,
+				Metrics: best.Metrics, Score: best.Score, HistoryBars: len(histBars),
+				HistoryStart: histBars[0].Timestamp, HistoryEnd: histBars[len(histBars)-1].Timestamp,
+			})
 		}
 	}
 	result.Swept = len(allBests)
@@ -233,6 +285,11 @@ func RunDiscovery(ctx context.Context, cfg DiscoveryConfig, deps DiscoveryDeps) 
 			result.Errors = append(result.Errors, fmt.Sprintf("validate %s: %v", ticker, valErr))
 			continue
 		}
+		result.ValidationEvidence = append(result.ValidationEvidence, ValidationEvidence{
+			Ticker: ticker, Config: scorer.Config, Passed: valResult.Passed,
+			InSample: valResult.InSample, OutOfSample: valResult.OutOfSample,
+			OOSRatio: valResult.OOSRatio, Reason: valResult.Reason,
+		})
 
 		if valResult.Passed {
 			validated = append(validated, validatedResult{

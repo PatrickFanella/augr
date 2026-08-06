@@ -28,6 +28,35 @@ type GeneratorMetrics interface {
 	RecordGeneratorOutcome(asset, outcome string)
 }
 
+// GenerationAttemptEvidence is the compact, non-content provenance for one
+// provider attempt. Hashes allow exact correlation with logs without storing
+// prompts or model output.
+type GenerationAttemptEvidence struct {
+	Attempt          int     `json:"attempt"`
+	RequestedModel   string  `json:"requested_model,omitempty"`
+	ResponseModel    string  `json:"response_model,omitempty"`
+	ContentSHA256    string  `json:"content_sha256,omitempty"`
+	CacheHits        int     `json:"cache_hits"`
+	CacheMisses      int     `json:"cache_misses"`
+	PromptTokens     int     `json:"prompt_tokens,omitempty"`
+	CompletionTokens int     `json:"completion_tokens,omitempty"`
+	LatencyMS        int     `json:"latency_ms,omitempty"`
+	CostUSD          float64 `json:"cost_usd,omitempty"`
+	UsedFallback     bool    `json:"used_fallback,omitempty"`
+	TimedOut         bool    `json:"timed_out,omitempty"`
+	Outcome          string  `json:"outcome"`
+}
+
+// GenerationEvidence records prompt identity and every provider attempt for a
+// candidate without persisting raw prompts or responses.
+type GenerationEvidence struct {
+	Ticker             string                      `json:"ticker"`
+	SystemPromptSHA256 string                      `json:"system_prompt_sha256"`
+	UserPromptSHA256   string                      `json:"user_prompt_sha256"`
+	Attempts           []GenerationAttemptEvidence `json:"attempts"`
+	Config             *rules.RulesEngineConfig    `json:"config,omitempty"`
+}
+
 const generatorSystemPrompt = `You are a quantitative trading strategy designer. Given recent market data and technical indicators for a ticker, generate a complete RulesEngineConfig as JSON.
 
 The JSON schema is:
@@ -97,6 +126,13 @@ Respond with ONLY the JSON object, no markdown fences.`
 // GenerateStrategy asks the LLM to create a RulesEngineConfig for the given candidate.
 // Retries up to MaxRetries on validation errors, feeding the error back to the LLM.
 func GenerateStrategy(ctx context.Context, cfg GeneratorConfig, candidate ScreenResult, logger *slog.Logger) (*rules.RulesEngineConfig, error) {
+	generated, _, err := GenerateStrategyWithEvidence(ctx, cfg, candidate, logger)
+	return generated, err
+}
+
+// GenerateStrategyWithEvidence generates a strategy and returns compact,
+// durable model-call provenance for discovery-run persistence.
+func GenerateStrategyWithEvidence(ctx context.Context, cfg GeneratorConfig, candidate ScreenResult, logger *slog.Logger) (*rules.RulesEngineConfig, *GenerationEvidence, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -106,6 +142,11 @@ func GenerateStrategy(ctx context.Context, cfg GeneratorConfig, candidate Screen
 	}
 
 	userPrompt := buildGeneratorUserPrompt(candidate)
+	evidence := &GenerationEvidence{
+		Ticker:             candidate.Ticker,
+		SystemPromptSHA256: fmt.Sprintf("%x", sha256.Sum256([]byte(generatorSystemPrompt))),
+		UserPromptSHA256:   fmt.Sprintf("%x", sha256.Sum256([]byte(userPrompt))),
+	}
 
 	messages := []llm.Message{
 		{Role: "system", Content: generatorSystemPrompt},
@@ -121,16 +162,27 @@ func GenerateStrategy(ctx context.Context, cfg GeneratorConfig, candidate Screen
 			ResponseFormat: &llm.ResponseFormat{Type: llm.ResponseFormatJSONObject},
 		})
 		if err != nil {
+			evidence.Attempts = append(evidence.Attempts, GenerationAttemptEvidence{
+				Attempt: attempt + 1, RequestedModel: cfg.Model, Outcome: "provider_error",
+			})
 			recordGeneratorOutcome(cfg.Metrics, "stock", "provider_error")
-			return nil, fmt.Errorf("discovery/generator: LLM call failed: %w", err)
+			return nil, evidence, fmt.Errorf("discovery/generator: LLM call failed: %w", err)
 		}
 		stats := cacheStats.Snapshot()
+		responseHash := fmt.Sprintf("%x", sha256.Sum256([]byte(resp.Content)))
+		attemptEvidence := GenerationAttemptEvidence{
+			Attempt: attempt + 1, RequestedModel: cfg.Model, ResponseModel: resp.Model,
+			ContentSHA256: responseHash, CacheHits: stats.Hits, CacheMisses: stats.Misses,
+			PromptTokens: resp.Usage.PromptTokens, CompletionTokens: resp.Usage.CompletionTokens,
+			LatencyMS: resp.LatencyMS, CostUSD: resp.CostUSD, UsedFallback: resp.UsedFallback, TimedOut: resp.TimedOut,
+		}
 		if stats.Hits > 0 {
+			attemptEvidence.Outcome = "cache_rejected"
+			evidence.Attempts = append(evidence.Attempts, attemptEvidence)
 			recordGeneratorOutcome(cfg.Metrics, "stock", "cache_rejected")
-			return nil, fmt.Errorf("discovery/generator: cached model response rejected")
+			return nil, evidence, fmt.Errorf("discovery/generator: cached model response rejected")
 		}
 
-		responseHash := fmt.Sprintf("%x", sha256.Sum256([]byte(resp.Content)))
 		logger.Debug("discovery/generator: LLM response received",
 			slog.String("ticker", candidate.Ticker),
 			slog.Int("attempt", attempt+1),
@@ -160,17 +212,22 @@ func GenerateStrategy(ctx context.Context, cfg GeneratorConfig, candidate Screen
 			if attempt > 0 {
 				outcome = "success_after_retry"
 			}
+			attemptEvidence.Outcome = outcome
+			evidence.Attempts = append(evidence.Attempts, attemptEvidence)
+			evidence.Config = parsed
 			recordGeneratorOutcome(cfg.Metrics, "stock", outcome)
 			logger.Info("discovery/generator: strategy generated",
 				slog.String("ticker", candidate.Ticker),
 				slog.String("name", parsed.Name),
 				slog.Int("attempt", attempt+1),
 			)
-			return parsed, nil
+			return parsed, evidence, nil
 		}
 
 		lastErr = parseErr
+		attemptEvidence.Outcome = "validation_exhausted"
 		if attempt < maxRetries {
+			attemptEvidence.Outcome = "validation_retry"
 			logger.Warn("discovery/generator: parse/validation failed, retrying",
 				slog.String("ticker", candidate.Ticker),
 				slog.Int("attempt", attempt+1),
@@ -186,10 +243,11 @@ func GenerateStrategy(ctx context.Context, cfg GeneratorConfig, candidate Screen
 				)},
 			)
 		}
+		evidence.Attempts = append(evidence.Attempts, attemptEvidence)
 	}
 
 	recordGeneratorOutcome(cfg.Metrics, "stock", "validation_exhausted")
-	return nil, fmt.Errorf("discovery/generator: failed after %d retries: %w", maxRetries+1, lastErr)
+	return nil, evidence, fmt.Errorf("discovery/generator: failed after %d retries: %w", maxRetries+1, lastErr)
 }
 
 func recordGeneratorOutcome(metrics GeneratorMetrics, asset, outcome string) {

@@ -3,12 +3,45 @@ package discovery
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"log/slog"
 	"strings"
 	"testing"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/llm"
 )
+
+func TestGenerateStrategyWithEvidenceRecordsHashesAndAttemptsWithoutContent(t *testing.T) {
+	t.Parallel()
+
+	provider := &stubCompletionProvider{responses: []*llm.CompletionResponse{
+		{Content: ""},
+		{Content: "SECRET_REASONING\n" + validStrategyJSON, Model: "openai/test", Usage: llm.CompletionUsage{PromptTokens: 11, CompletionTokens: 22}, LatencyMS: 333, CostUSD: 0.01, UsedFallback: true},
+	}}
+	generated, evidence, err := GenerateStrategyWithEvidence(context.Background(), GeneratorConfig{
+		Provider: provider, Model: "requested/test", MaxRetries: 1,
+	}, ScreenResult{Ticker: "TRACE"}, nil)
+	if err != nil || generated == nil {
+		t.Fatalf("GenerateStrategyWithEvidence() = (%#v, %v), want success", generated, err)
+	}
+	if evidence == nil || evidence.Ticker != "TRACE" || len(evidence.Attempts) != 2 || evidence.Config == nil {
+		t.Fatalf("generation evidence = %#v", evidence)
+	}
+	if evidence.Attempts[0].Outcome != "validation_retry" || evidence.Attempts[1].Outcome != "success_after_retry" {
+		t.Fatalf("attempt outcomes = %#v", evidence.Attempts)
+	}
+	terminal := evidence.Attempts[1]
+	if terminal.ResponseModel != "openai/test" || terminal.PromptTokens != 11 || terminal.CompletionTokens != 22 || terminal.LatencyMS != 333 || !terminal.UsedFallback || terminal.ContentSHA256 == "" {
+		t.Fatalf("terminal attempt evidence = %#v", terminal)
+	}
+	encoded, marshalErr := json.Marshal(evidence)
+	if marshalErr != nil {
+		t.Fatal(marshalErr)
+	}
+	if strings.Contains(string(encoded), "SECRET_REASONING") {
+		t.Fatalf("raw model content leaked into evidence: %s", encoded)
+	}
+}
 
 func TestGenerateStrategy_RetriesAfterEmptyResponse(t *testing.T) {
 	t.Parallel()
