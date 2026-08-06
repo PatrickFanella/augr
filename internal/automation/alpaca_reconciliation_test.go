@@ -972,6 +972,51 @@ func TestAlpacaReconcilerVerify_NormalizesBrokerOrderPrecisionToStorage(t *testi
 	}
 }
 
+func TestAlpacaReconcilerReconcile_NormalizesBrokerOrderPrecisionToStorage(t *testing.T) {
+	t.Parallel()
+
+	orders := newRecordingOrderRepo(&domain.Order{
+		ID:             uuid.New(),
+		ExternalID:     "expired-order",
+		Ticker:         "DAL",
+		Side:           domain.OrderSideBuy,
+		OrderType:      domain.OrderTypeLimit,
+		Quantity:       215.01595699,
+		FilledQuantity: 0,
+		Status:         domain.OrderStatusCancelled,
+		Broker:         "alpaca",
+	})
+	reconciler := NewAlpacaReconciler(AlpacaReconcilerDeps{
+		Broker: &alpacaReconciliationBrokerStub{
+			orders: []BrokerOrderSnapshot{{
+				ExternalID:     "expired-order",
+				Ticker:         "DAL",
+				Side:           domain.OrderSideBuy,
+				OrderType:      domain.OrderTypeLimit,
+				Quantity:       215.015956989,
+				FilledQuantity: 0,
+				Status:         domain.OrderStatusCancelled,
+				Broker:         "alpaca",
+			}},
+		},
+		OrderRepo:    orders,
+		PositionRepo: newRecordingPositionRepo(),
+		TradeRepo:    newRecordingTradeRepo(orders),
+		Logger:       slog.New(slog.NewTextHandler(testWriter{t}, nil)),
+	})
+
+	summary, err := reconciler.Reconcile(context.Background())
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v", err)
+	}
+	if summary.OrdersUpdated != 0 {
+		t.Fatalf("OrdersUpdated = %d, want 0", summary.OrdersUpdated)
+	}
+	if len(orders.updated) != 0 {
+		t.Fatalf("updated orders = %d, want 0", len(orders.updated))
+	}
+}
+
 func TestAlpacaReconcilerVerify_IgnoresVolatilePositionMarkToMarketFields(t *testing.T) {
 	t.Parallel()
 

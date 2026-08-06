@@ -635,7 +635,7 @@ func applyOrderSnapshot(order *domain.Order, snapshot BrokerOrderSnapshot, strat
 		order.OrderType = snapshot.OrderType
 		changed = true
 	}
-	if order.Quantity != snapshot.Quantity {
+	if !normalizedQuantityEqual(order.Quantity, snapshot.Quantity) {
 		order.Quantity = snapshot.Quantity
 		changed = true
 	}
@@ -647,7 +647,7 @@ func applyOrderSnapshot(order *domain.Order, snapshot BrokerOrderSnapshot, strat
 		order.StopPrice = cloneFloatPtr(snapshot.StopPrice)
 		changed = true
 	}
-	if order.FilledQuantity != snapshot.FilledQuantity {
+	if !normalizedQuantityEqual(order.FilledQuantity, snapshot.FilledQuantity) {
 		order.FilledQuantity = snapshot.FilledQuantity
 		changed = true
 	}
