@@ -18,7 +18,7 @@ import (
 
 func (o *JobOrchestrator) registerWeeklyJobs() {
 	o.Register("universe_refresh", "Reload universe constituents from Polygon", universeRefreshSpec, o.universeRefresh)
-	o.Register("strategy_tournament", "Pit all strategies against each other, prune losers", strategyTournamentSpec, o.strategyTournament)
+	o.Register("strategy_tournament", "Rank active strategies and recommend review candidates", strategyTournamentSpec, o.strategyTournament)
 }
 
 var (
