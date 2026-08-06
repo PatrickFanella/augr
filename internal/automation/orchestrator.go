@@ -46,10 +46,14 @@ func mustLoadEastern() *time.Location {
 const (
 	// autoDisableThreshold is the number of consecutive failures after which a
 	// job is automatically disabled to prevent cascading damage.
-	autoDisableThreshold        = 5
-	defaultAutomationJobTimeout = 2 * time.Hour
-	jobRunPersistenceTimeout    = 10 * time.Second
+	autoDisableThreshold         = 5
+	defaultAutomationJobTimeout  = 2 * time.Hour
+	jobRunPersistenceTimeout     = 10 * time.Second
+	jobControlPersistenceTimeout = 5 * time.Second
 )
+
+// ErrJobControlPersistence identifies a failed durable enable/disable write.
+var ErrJobControlPersistence = errors.New("automation: job control persistence failed")
 
 // StrategyTrigger triggers an immediate pipeline run for a strategy.
 // The scheduler satisfies this interface.
@@ -85,6 +89,7 @@ type OrchestratorDeps struct {
 	AllocationDecisionRepo repository.AllocationDecisionRepository
 	RunRepo                repository.PipelineRunRepository
 	JobRunRepo             *pgrepo.JobRunRepo
+	JobControlRepo         repository.AutomationJobControlRepository
 	OptionsScanRepo        *pgrepo.OptionsScanRepo
 	NewsFeedRepo           *pgrepo.NewsFeedRepo
 	StrategyTrigger        StrategyTrigger                        // optional; nil = no event-driven triggers
@@ -504,15 +509,43 @@ func (o *JobOrchestrator) runClaimedDirect(job *RegisteredJob, startedAt time.Ti
 
 // SetEnabled enables or disables a job.
 func (o *JobOrchestrator) SetEnabled(name string, enabled bool) error {
+	return o.SetEnabledBy(context.Background(), name, enabled, "system")
+}
+
+// SetEnabledBy durably records an operator override before changing the
+// in-memory scheduler state. If persistence fails, the current state is kept.
+func (o *JobOrchestrator) SetEnabledBy(ctx context.Context, name string, enabled bool, actor string) error {
 	job, ok := o.jobs[name]
 	if !ok {
 		return fmt.Errorf("automation: unknown job %q", name)
 	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	actor = strings.TrimSpace(actor)
+	if actor == "" {
+		actor = "unknown"
+	}
+	// Serialize persistence and memory mutation with scheduler admission. This
+	// prevents a run from starting while a disable is being committed and keeps
+	// concurrent control requests in the same order in PostgreSQL and memory.
 	job.mu.Lock()
 	previous := job.Enabled
+	if o.deps.JobControlRepo != nil {
+		persistCtx, cancel := context.WithTimeout(ctx, jobControlPersistenceTimeout)
+		err := o.deps.JobControlRepo.SetEnabled(persistCtx, name, enabled, actor)
+		cancel()
+		if err != nil {
+			job.mu.Unlock()
+			return fmt.Errorf("%w for %q: %v", ErrJobControlPersistence, name, err)
+		}
+	}
 	job.Enabled = enabled
 	if name == "kalshi_settlement" && o.deps.KalshiSettlementGateRepo != nil {
-		if state, err := o.deps.KalshiSettlementGateRepo.Get(context.Background(), name); err == nil {
+		gateCtx, gateCancel := context.WithTimeout(ctx, jobControlPersistenceTimeout)
+		state, err := o.deps.KalshiSettlementGateRepo.Get(gateCtx, name)
+		gateCancel()
+		if err == nil {
 			job.SettlementGate = settlementGateStatusFromState(state)
 		}
 	}
@@ -523,6 +556,7 @@ func (o *JobOrchestrator) SetEnabled(name string, enabled bool) error {
 	o.logger.Info("automation: job enabled state changed",
 		slog.String("job", name),
 		slog.Bool("enabled", enabled),
+		slog.String("actor", actor),
 	)
 	return nil
 }
@@ -784,6 +818,7 @@ func (o *JobOrchestrator) persistRun(jobName string, start time.Time, elapsed ti
 // hydrateFromDB loads historical run stats from the database to restore
 // counters after a server restart.
 func (o *JobOrchestrator) hydrateFromDB() {
+	o.hydrateJobControls()
 	if o.deps.JobRunRepo == nil {
 		return
 	}
@@ -827,6 +862,33 @@ func (o *JobOrchestrator) hydrateFromDB() {
 	}
 
 	o.logger.Info("automation: hydrated job stats from DB", slog.Int("jobs", len(summaries)))
+}
+
+func (o *JobOrchestrator) hydrateJobControls() {
+	if o.deps.JobControlRepo == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), jobControlPersistenceTimeout)
+	defer cancel()
+	controls, err := o.deps.JobControlRepo.List(ctx)
+	if err != nil {
+		for _, job := range o.jobs {
+			job.mu.Lock()
+			job.Enabled = false
+			job.mu.Unlock()
+		}
+		o.logger.Error("automation: failed to hydrate durable job controls; all jobs disabled", slog.Any("error", err))
+		return
+	}
+	for _, control := range controls {
+		job, ok := o.jobs[control.JobName]
+		if !ok {
+			continue
+		}
+		job.mu.Lock()
+		job.Enabled = control.Enabled
+		job.mu.Unlock()
+	}
 }
 
 func shouldDisableAfterHydration(consecutiveFailures int) bool {

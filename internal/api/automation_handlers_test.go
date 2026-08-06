@@ -3,15 +3,27 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/automation"
+	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/scheduler"
 	"github.com/go-chi/chi/v5"
 )
+
+type failingAutomationJobControlRepo struct{}
+
+func (failingAutomationJobControlRepo) List(context.Context) ([]domain.AutomationJobControl, error) {
+	return nil, nil
+}
+
+func (failingAutomationJobControlRepo) SetEnabled(context.Context, string, bool, string) error {
+	return errors.New("database unavailable")
+}
 
 // newTestOrchestrator creates a minimal orchestrator with no DB deps.
 func newTestOrchestrator() *automation.JobOrchestrator {
@@ -213,5 +225,24 @@ func TestAutomationEnableAllowsKalshiPreviewSchedulingWithoutGate(t *testing.T) 
 	s.handleSetAutomationJobEnabled(rr, req)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status=%d, want 200: %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestAutomationEnablePersistenceFailureIsServiceUnavailable(t *testing.T) {
+	t.Parallel()
+
+	o := automation.NewJobOrchestrator(automation.OrchestratorDeps{JobControlRepo: failingAutomationJobControlRepo{}})
+	registerJob(o, "job")
+	s := &Server{automation: o}
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/automation/jobs/job/enable", strings.NewReader(`{"enabled":false}`))
+	routeCtx := chi.NewRouteContext()
+	routeCtx.URLParams.Add("name", "job")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, routeCtx))
+	rr := httptest.NewRecorder()
+
+	s.handleSetAutomationJobEnabled(rr, req)
+
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status=%d, want 503: %s", rr.Code, rr.Body.String())
 	}
 }

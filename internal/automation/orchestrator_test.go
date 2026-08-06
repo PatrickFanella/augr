@@ -212,6 +212,91 @@ func TestJobOrchestratorRunJob_RejectsDisabledJob(t *testing.T) {
 	}
 }
 
+type automationJobControlRepoStub struct {
+	controls []domain.AutomationJobControl
+	listErr  error
+	setErr   error
+	writes   []domain.AutomationJobControl
+}
+
+func (r *automationJobControlRepoStub) List(context.Context) ([]domain.AutomationJobControl, error) {
+	if r.listErr != nil {
+		return nil, r.listErr
+	}
+	return append([]domain.AutomationJobControl(nil), r.controls...), nil
+}
+
+func (r *automationJobControlRepoStub) SetEnabled(_ context.Context, name string, enabled bool, actor string) error {
+	if r.setErr != nil {
+		return r.setErr
+	}
+	r.writes = append(r.writes, domain.AutomationJobControl{JobName: name, Enabled: enabled, UpdatedBy: actor})
+	return nil
+}
+
+func TestJobOrchestratorSetEnabledPersistsBeforeMemory(t *testing.T) {
+	t.Parallel()
+
+	controls := &automationJobControlRepoStub{setErr: errors.New("database unavailable")}
+	orch := NewJobOrchestrator(OrchestratorDeps{JobControlRepo: controls})
+	orch.Register("job", "controlled job", schedulerSpecEveryMinute(), func(context.Context) error { return nil })
+
+	err := orch.SetEnabled("job", false)
+	if err == nil || !strings.Contains(err.Error(), "database unavailable") {
+		t.Fatalf("SetEnabled() error = %v, want persistence failure", err)
+	}
+	if status := singleJobStatus(t, orch, "job"); !status.Enabled {
+		t.Fatal("job changed in memory after control persistence failed")
+	}
+}
+
+func TestJobOrchestratorSetEnabledPersistsActor(t *testing.T) {
+	t.Parallel()
+
+	controls := &automationJobControlRepoStub{}
+	orch := NewJobOrchestrator(OrchestratorDeps{JobControlRepo: controls})
+	orch.Register("job", "controlled job", schedulerSpecEveryMinute(), func(context.Context) error { return nil })
+
+	if err := orch.SetEnabledBy(context.Background(), "job", false, "operator@example.com"); err != nil {
+		t.Fatalf("SetEnabledBy() error = %v", err)
+	}
+	if len(controls.writes) != 1 || controls.writes[0].JobName != "job" || controls.writes[0].Enabled || controls.writes[0].UpdatedBy != "operator@example.com" {
+		t.Fatalf("control writes = %+v", controls.writes)
+	}
+	if status := singleJobStatus(t, orch, "job"); status.Enabled {
+		t.Fatal("durably disabled job remained enabled in memory")
+	}
+}
+
+func TestJobOrchestratorHydratesDurableDisabledControl(t *testing.T) {
+	t.Parallel()
+
+	controls := &automationJobControlRepoStub{controls: []domain.AutomationJobControl{{JobName: "job", Enabled: false, UpdatedBy: "operator"}}}
+	orch := NewJobOrchestrator(OrchestratorDeps{JobControlRepo: controls})
+	orch.Register("job", "controlled job", schedulerSpecEveryMinute(), func(context.Context) error { return nil })
+	orch.hydrateFromDB()
+
+	if status := singleJobStatus(t, orch, "job"); status.Enabled {
+		t.Fatal("durably disabled job hydrated enabled")
+	}
+}
+
+func TestJobOrchestratorControlHydrationFailureDisablesAll(t *testing.T) {
+	t.Parallel()
+
+	controls := &automationJobControlRepoStub{listErr: errors.New("database unavailable")}
+	orch := NewJobOrchestrator(OrchestratorDeps{JobControlRepo: controls})
+	orch.Register("first", "controlled job", schedulerSpecEveryMinute(), func(context.Context) error { return nil })
+	orch.Register("second", "controlled job", schedulerSpecEveryMinute(), func(context.Context) error { return nil })
+	orch.hydrateFromDB()
+
+	for _, status := range orch.Status() {
+		if status.Enabled {
+			t.Fatalf("job %s remained enabled after control hydration failure", status.Name)
+		}
+	}
+}
+
 func TestJobOrchestratorRunJobRejectsOutsideConfiguredSession(t *testing.T) {
 	t.Parallel()
 

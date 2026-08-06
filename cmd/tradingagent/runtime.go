@@ -317,6 +317,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 	conversationRepo := pgrepo.NewConversationRepo(db.Pool)
 	marketDataCacheRepo := pgrepo.NewMarketDataCacheRepo(db.Pool)
 	jobRunRepo := pgrepo.NewJobRunRepo(db.Pool)
+	jobControlRepo := pgrepo.NewAutomationJobControlRepo(db.Pool)
 	optionsScanRepo := pgrepo.NewOptionsScanRepo(db.Pool)
 	newsFeedRepo := pgrepo.NewNewsFeedRepo(db.Pool)
 	polymarketAccountRepo := pgrepo.NewPolymarketAccountRepo(db.Pool)
@@ -722,6 +723,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 					PortfolioPaperProcessor:     portfolioPaperProcessor,
 					PortfolioAccountBalance:     strategyRunner.localPaperBroker,
 					JobRunRepo:                  jobRunRepo,
+					JobControlRepo:              jobControlRepo,
 					OptionsScanRepo:             optionsScanRepo,
 					NewsFeedRepo:                newsFeedRepo,
 					PolymarketAccountRepo:       polymarketAccountRepo,

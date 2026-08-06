@@ -330,6 +330,13 @@ type AgentEventRepository interface {
 	Count(ctx context.Context, filter AgentEventFilter) (int, error)
 }
 
+// AutomationJobControlRepository persists operator enable/disable overrides
+// independently from execution history.
+type AutomationJobControlRepository interface {
+	List(ctx context.Context) ([]domain.AutomationJobControl, error)
+	SetEnabled(ctx context.Context, name string, enabled bool, actor string) error
+}
+
 // ConversationRepository provides access to conversations and their messages.
 type ConversationRepository interface {
 	CreateConversation(ctx context.Context, conv *domain.Conversation) error

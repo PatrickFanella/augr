@@ -2,9 +2,11 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
+	"github.com/PatrickFanella/get-rich-quick/internal/automation"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -147,7 +149,11 @@ func (s *Server) handleSetAutomationJobEnabled(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	if err := s.automation.SetEnabled(name, req.Enabled); err != nil {
+	if err := s.automation.SetEnabledBy(r.Context(), name, req.Enabled, actorOf(r)); err != nil {
+		if errors.Is(err, automation.ErrJobControlPersistence) {
+			respondError(w, http.StatusServiceUnavailable, "failed to persist automation control", ErrCodeInternal)
+			return
+		}
 		respondError(w, http.StatusBadRequest, err.Error(), ErrCodeBadRequest)
 		return
 	}
