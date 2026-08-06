@@ -2,6 +2,7 @@ package automation
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution"
 	"github.com/PatrickFanella/get-rich-quick/internal/portfolio"
+	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 	"github.com/PatrickFanella/get-rich-quick/internal/scheduler"
 	"github.com/google/uuid"
 )
@@ -56,9 +58,17 @@ func (o *JobOrchestrator) runPortfolioAllocator(ctx context.Context) error {
 		return err
 	}
 
+	validOpportunities, sourceRejected, err := o.validatePortfolioOpportunitySources(ctx, opportunities, mode)
+	if err != nil {
+		return err
+	}
+
 	allocCfg := portfolio.DefaultAllocatorConfig()
 	allocCfg.Mode = mode
-	result := portfolio.AllocateShadow(opportunities, state, allocCfg)
+	result := portfolio.AllocateShadow(validOpportunities, state, allocCfg)
+	result.Decisions = append(sourceRejected, result.Decisions...)
+	result.Summary.Evaluated += len(sourceRejected)
+	result.Summary.Rejected += len(sourceRejected)
 	opportunityByID := make(map[uuid.UUID]domain.Opportunity, len(opportunities))
 	for _, opportunity := range opportunities {
 		opportunityByID[opportunity.ID] = opportunity
@@ -93,6 +103,7 @@ func (o *JobOrchestrator) runPortfolioAllocator(ctx context.Context) error {
 		"rejected":            result.Summary.Rejected,
 		"executed":            countDecisionActions(result.Decisions, domain.AllocationDecisionActionExecuted),
 		"execution_rejected":  countDecisionActions(result.Decisions, domain.AllocationDecisionActionExecutionRejected),
+		"source_rejected":     len(sourceRejected),
 		"persisted_decisions": len(result.Decisions),
 		"warnings":            len(warnings),
 	}
@@ -108,6 +119,7 @@ func (o *JobOrchestrator) runPortfolioAllocator(ctx context.Context) error {
 		slog.Int("rejected", result.Summary.Rejected),
 		slog.Int("executed", countDecisionActions(result.Decisions, domain.AllocationDecisionActionExecuted)),
 		slog.Int("execution_rejected", countDecisionActions(result.Decisions, domain.AllocationDecisionActionExecutionRejected)),
+		slog.Int("source_rejected", len(sourceRejected)),
 		slog.Int("persisted_decisions", len(result.Decisions)),
 	}
 	for _, warning := range warnings {
@@ -115,6 +127,59 @@ func (o *JobOrchestrator) runPortfolioAllocator(ctx context.Context) error {
 	}
 	o.logger.Info("portfolio_allocator: completed", fields...)
 	return nil
+}
+
+func (o *JobOrchestrator) validatePortfolioOpportunitySources(ctx context.Context, opportunities []domain.Opportunity, mode portfolio.AllocatorMode) ([]domain.Opportunity, []domain.AllocationDecision, error) {
+	if len(opportunities) == 0 {
+		return nil, nil, nil
+	}
+	if o.deps.RunRepo == nil {
+		if mode == portfolio.AllocatorModePaper {
+			return nil, nil, fmt.Errorf("portfolio_allocator: paper mode requires pipeline run repository")
+		}
+		return opportunities, nil, nil
+	}
+
+	valid := make([]domain.Opportunity, 0, len(opportunities))
+	rejected := make([]domain.AllocationDecision, 0)
+	for i := range opportunities {
+		opportunity := opportunities[i]
+		reason := ""
+		if opportunity.PipelineRunID == nil || *opportunity.PipelineRunID == uuid.Nil {
+			reason = "source_run_missing"
+		} else {
+			run, err := o.deps.RunRepo.GetByID(ctx, *opportunity.PipelineRunID)
+			switch {
+			case err == nil && run == nil:
+				reason = "source_run_missing"
+			case errors.Is(err, repository.ErrNotFound):
+				reason = "source_run_missing"
+			case err != nil:
+				return nil, nil, fmt.Errorf("portfolio_allocator: load source run: %w", err)
+			case run.Status != domain.PipelineStatusCompleted:
+				reason = "source_run_not_completed"
+			case run.StrategyID != opportunity.StrategyID:
+				reason = "source_strategy_mismatch"
+			case run.Signal != opportunity.Signal || (run.Signal != domain.PipelineSignalBuy && run.Signal != domain.PipelineSignalSell):
+				reason = "source_signal_mismatch"
+			}
+		}
+		if reason == "" {
+			valid = append(valid, opportunity)
+			continue
+		}
+		opportunityID := opportunity.ID
+		strategyID := opportunity.StrategyID
+		rejected = append(rejected, domain.AllocationDecision{
+			OpportunityID: &opportunityID,
+			StrategyID:    &strategyID,
+			Mode:          domain.AllocationDecisionMode(mode),
+			Action:        domain.AllocationDecisionActionShadowRejected,
+			Score:         -1,
+			Reasons:       []string{reason},
+		})
+	}
+	return valid, rejected, nil
 }
 
 func (o *JobOrchestrator) updateOpportunityStatus(ctx context.Context, decision domain.AllocationDecision) error {
