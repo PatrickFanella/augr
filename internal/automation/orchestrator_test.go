@@ -200,6 +200,36 @@ func TestJobOrchestratorWrapAndRun_AutoDisabledJobsAreSkipped(t *testing.T) {
 	}
 }
 
+func TestDependencyBlockerRequiresSuccessfulSameDayRun(t *testing.T) {
+	t.Parallel()
+
+	orch := NewJobOrchestrator(OrchestratorDeps{})
+	orch.Register("upstream", "upstream", schedulerSpecEveryMinute(), func(context.Context) error { return nil })
+	orch.Register("consumer", "consumer", schedulerSpecEveryMinute(), func(context.Context) error { return nil }, "upstream")
+	now := time.Date(2026, time.August, 6, 8, 30, 0, 0, easternTime)
+	upstream := orch.jobs["upstream"]
+	consumer := orch.jobs["consumer"]
+
+	if dep, reason := orch.dependencyBlocker(consumer, now); dep != "upstream" || !strings.Contains(reason, "has not completed") {
+		t.Fatalf("never-run blocker = (%q, %q)", dep, reason)
+	}
+	priorDay := now.AddDate(0, 0, -1)
+	upstream.LastRun = &priorDay
+	upstream.LastResult = "ok"
+	if dep, reason := orch.dependencyBlocker(consumer, now); dep != "upstream" || !strings.Contains(reason, "prior") {
+		t.Fatalf("prior-day blocker = (%q, %q)", dep, reason)
+	}
+	upstream.LastRun = &now
+	upstream.LastResult = "error"
+	if dep, reason := orch.dependencyBlocker(consumer, now); dep != "upstream" || !strings.Contains(reason, "not successful") {
+		t.Fatalf("failed blocker = (%q, %q)", dep, reason)
+	}
+	upstream.LastResult = "ok in 2s"
+	if dep, reason := orch.dependencyBlocker(consumer, now); dep != "" || reason != "" {
+		t.Fatalf("successful blocker = (%q, %q), want none", dep, reason)
+	}
+}
+
 type stubAutomationMetrics struct {
 	alpacaRuns     map[string]int
 	kalshiDryRuns  map[string]int

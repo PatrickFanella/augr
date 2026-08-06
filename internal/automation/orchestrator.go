@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -391,23 +392,11 @@ func (o *JobOrchestrator) runDirect(job *RegisteredJob) {
 	job.StartedAt = &startedAt
 	job.mu.Unlock()
 
-	// Check dependencies.
-	for _, dep := range job.DependsOn {
-		if depJob, ok := o.jobs[dep]; ok {
-			depJob.mu.Lock()
-			running := depJob.Running
-			depJob.mu.Unlock()
-			if running {
-				o.logger.Info("automation: skipping job, dependency still running",
-					slog.String("job", job.Name),
-					slog.String("blocked_by", dep),
-				)
-				job.mu.Lock()
-				job.Running = false
-				job.mu.Unlock()
-				return
-			}
-		}
+	// Require every dependency to have completed successfully in today's
+	// Eastern automation cycle, not merely to be idle at this instant.
+	if dep, reason := o.dependencyBlocker(job, startedAt); dep != "" {
+		o.recordDependencySkip(job, startedAt, dep, reason)
+		return
 	}
 
 	defer func() {
@@ -523,23 +512,9 @@ func (o *JobOrchestrator) wrapAndRun(job *RegisteredJob) {
 	job.StartedAt = &startedAt
 	job.mu.Unlock()
 
-	// Check dependencies — skip if any dependency is currently running.
-	for _, dep := range job.DependsOn {
-		if depJob, ok := o.jobs[dep]; ok {
-			depJob.mu.Lock()
-			running := depJob.Running
-			depJob.mu.Unlock()
-			if running {
-				o.logger.Info("automation: skipping job, dependency still running",
-					slog.String("job", job.Name),
-					slog.String("blocked_by", dep),
-				)
-				job.mu.Lock()
-				job.Running = false
-				job.mu.Unlock()
-				return
-			}
-		}
+	if dep, reason := o.dependencyBlocker(job, startedAt); dep != "" {
+		o.recordDependencySkip(job, startedAt, dep, reason)
+		return
 	}
 
 	defer func() {
@@ -596,6 +571,79 @@ func (o *JobOrchestrator) wrapAndRun(job *RegisteredJob) {
 		o.logger.Info("automation: job completed",
 			slog.String("job", job.Name),
 			slog.Duration("elapsed", elapsed),
+		)
+	}
+}
+
+func (o *JobOrchestrator) dependencyBlocker(job *RegisteredJob, now time.Time) (string, string) {
+	for _, dep := range job.DependsOn {
+		depJob, ok := o.jobs[dep]
+		if !ok {
+			return dep, "not registered"
+		}
+		depJob.mu.Lock()
+		running := depJob.Running
+		enabled := depJob.Enabled
+		lastRun := depJob.LastRun
+		lastResult := depJob.LastResult
+		depJob.mu.Unlock()
+
+		switch {
+		case !enabled:
+			return dep, "disabled"
+		case running:
+			return dep, "still running"
+		case lastRun == nil:
+			return dep, "has not completed"
+		case !sameMarketDate(lastRun.In(easternTime), now.In(easternTime)):
+			return dep, "latest run is from a prior automation day"
+		case !successfulJobResult(lastResult):
+			return dep, "latest run was not successful"
+		}
+	}
+	return "", ""
+}
+
+func successfulJobResult(result string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(result))
+	return normalized == "ok" || normalized == "success" || strings.HasPrefix(normalized, "ok in ")
+}
+
+func (o *JobOrchestrator) recordDependencySkip(job *RegisteredJob, at time.Time, dep, reason string) {
+	message := fmt.Sprintf("dependency %s %s", dep, reason)
+	o.logger.Warn("automation: skipping job, dependency unavailable",
+		slog.String("job", job.Name),
+		slog.String("blocked_by", dep),
+		slog.String("reason", reason),
+	)
+
+	job.mu.Lock()
+	job.Running = false
+	job.StartedAt = nil
+	job.LastRun = &at
+	job.LastResult = "skipped: " + message
+	job.RunCount++
+	lastErrorAt := job.LastErrorAt
+	consecutiveFailures := job.ConsecutiveFailures
+	job.mu.Unlock()
+
+	if o.deps.JobRunRepo == nil {
+		return
+	}
+	completed := at
+	run := &pgrepo.JobRun{
+		JobName:             job.Name,
+		Status:              "skipped",
+		StartedAt:           at.UTC(),
+		CompletedAt:         &completed,
+		Result:              map[string]int{"dependency_blocked": 1},
+		LastErrorAt:         lastErrorAt,
+		ConsecutiveFailures: consecutiveFailures,
+	}
+	if err := o.deps.JobRunRepo.Create(context.Background(), run); err != nil {
+		o.logger.Warn("automation: failed to persist dependency skip",
+			slog.String("job", job.Name),
+			slog.Any("error", err),
 		)
 	}
 }
