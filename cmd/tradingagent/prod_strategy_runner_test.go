@@ -633,6 +633,107 @@ func TestValidateRequiredAnalysisInputs(t *testing.T) {
 	}
 }
 
+type recordingStrategyPreparationEventRepo struct {
+	events []domain.AgentEvent
+	err    error
+}
+
+func (r *recordingStrategyPreparationEventRepo) Create(_ context.Context, event *domain.AgentEvent) error {
+	if r.err != nil {
+		return r.err
+	}
+	r.events = append(r.events, *event)
+	return nil
+}
+
+func (r *recordingStrategyPreparationEventRepo) List(context.Context, repository.AgentEventFilter, int, int) ([]domain.AgentEvent, error) {
+	return append([]domain.AgentEvent(nil), r.events...), nil
+}
+
+func (r *recordingStrategyPreparationEventRepo) Count(context.Context, repository.AgentEventFilter) (int, error) {
+	return len(r.events), nil
+}
+
+func TestRecordStrategyPreparationFailurePersistsBoundedReason(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		failure    error
+		wantReason string
+	}{
+		{name: "news coverage", failure: fmt.Errorf("required analyst role news: direct news coverage below threshold: secret-provider-body"), wantReason: "news_coverage_insufficient"},
+		{name: "stale news", failure: fmt.Errorf("newest direct news article is older than 36h: secret-provider-body"), wantReason: "news_stale"},
+		{name: "fundamentals", failure: fmt.Errorf("fundamentals completeness below threshold: secret-provider-body"), wantReason: "fundamentals_incomplete"},
+		{name: "generic", failure: fmt.Errorf("provider rejected credential secret-provider-body"), wantReason: "preparation_failed"},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			repo := &recordingStrategyPreparationEventRepo{}
+			runner := &realStrategyRunner{eventRepo: repo}
+			strategy := domain.Strategy{ID: uuid.New(), Ticker: "SAFE", MarketType: domain.MarketTypeStock}
+			if err := runner.recordStrategyPreparationFailure(context.Background(), strategy, tc.failure); err != nil {
+				t.Fatalf("recordStrategyPreparationFailure() error = %v", err)
+			}
+			if len(repo.events) != 1 {
+				t.Fatalf("created events = %d, want 1", len(repo.events))
+			}
+			event := repo.events[0]
+			if event.EventKind != "strategy.preparation_rejected" || event.StrategyID == nil || *event.StrategyID != strategy.ID {
+				t.Fatalf("event identity = %+v", event)
+			}
+			var metadata map[string]string
+			if err := json.Unmarshal(event.Metadata, &metadata); err != nil {
+				t.Fatalf("unmarshal metadata: %v", err)
+			}
+			if metadata["reason_code"] != tc.wantReason {
+				t.Fatalf("reason_code = %q, want %q", metadata["reason_code"], tc.wantReason)
+			}
+			encoded, err := json.Marshal(event)
+			if err != nil {
+				t.Fatalf("marshal event: %v", err)
+			}
+			if strings.Contains(string(encoded), "secret-provider-body") {
+				t.Fatalf("event leaked raw preparation error: %s", encoded)
+			}
+		})
+	}
+}
+
+func TestRecordStrategyPreparationFailureSurfacesPersistenceFailure(t *testing.T) {
+	t.Parallel()
+
+	runner := &realStrategyRunner{eventRepo: &recordingStrategyPreparationEventRepo{err: fmt.Errorf("write unavailable")}}
+	err := runner.recordStrategyPreparationFailure(context.Background(), domain.Strategy{ID: uuid.New()}, fmt.Errorf("preparation failed"))
+	if err == nil || !strings.Contains(err.Error(), "write unavailable") {
+		t.Fatalf("recordStrategyPreparationFailure() error = %v, want persistence failure", err)
+	}
+}
+
+func TestRunStrategyPersistsPreparationRejection(t *testing.T) {
+	t.Parallel()
+
+	repo := &recordingStrategyPreparationEventRepo{}
+	runner := &realStrategyRunner{eventRepo: repo}
+	strategy := domain.Strategy{
+		ID:         uuid.New(),
+		Ticker:     "SAFE",
+		MarketType: domain.MarketTypeStock,
+		Config:     json.RawMessage(`{"agents":`),
+	}
+	_, err := runner.RunStrategy(context.Background(), strategy)
+	if err == nil {
+		t.Fatal("RunStrategy() error = nil, want invalid configuration rejection")
+	}
+	if len(repo.events) != 1 || repo.events[0].EventKind != "strategy.preparation_rejected" {
+		t.Fatalf("preparation rejection events = %+v", repo.events)
+	}
+}
+
 func TestValidateFundamentalsInputUsesProviderMissingFieldMetadata(t *testing.T) {
 	now := time.Date(2026, 8, 4, 18, 0, 0, 0, time.UTC)
 	fundamentals := &data.Fundamentals{

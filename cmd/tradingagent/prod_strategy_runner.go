@@ -219,6 +219,9 @@ func (r *realStrategyRunner) RunStrategy(ctx context.Context, strategy domain.St
 
 	runner, prepared, strategyConfig, eventsCh, err := r.prepareStrategyRun(ctx, strategy)
 	if err != nil {
+		if persistErr := r.recordStrategyPreparationFailure(ctx, strategy, err); persistErr != nil {
+			return nil, errors.Join(err, persistErr)
+		}
 		return nil, err
 	}
 
@@ -1148,6 +1151,61 @@ func normalizePolymarketStrategySide(side string) (string, error) {
 		return "", fmt.Errorf("trader did not specify Side (YES/NO/Up/Down/Over/Under)")
 	default:
 		return "", fmt.Errorf("invalid Side %q (want YES, NO, Up, Down, Over, or Under)", side)
+	}
+}
+
+func (r *realStrategyRunner) recordStrategyPreparationFailure(ctx context.Context, strategy domain.Strategy, preparationErr error) error {
+	if r.eventRepo == nil {
+		return errors.New("record strategy preparation failure: agent event repository is required")
+	}
+
+	metadata, err := json.Marshal(map[string]string{
+		"reason_code": strategyPreparationFailureReason(preparationErr),
+	})
+	if err != nil {
+		return fmt.Errorf("record strategy preparation failure: marshal metadata: %w", err)
+	}
+
+	persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	event := &domain.AgentEvent{
+		StrategyID: &strategy.ID,
+		EventKind:  "strategy.preparation_rejected",
+		Title:      "Strategy preparation rejected",
+		Summary:    "Required strategy inputs or runtime preparation did not pass preflight.",
+		Tags:       []string{"strategy", "preflight", "rejected"},
+		Metadata:   metadata,
+	}
+	if err := r.eventRepo.Create(persistCtx, event); err != nil {
+		return fmt.Errorf("record strategy preparation failure: persist event: %w", err)
+	}
+	return nil
+}
+
+func strategyPreparationFailureReason(err error) string {
+	message := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(message, "direct news coverage below threshold"):
+		return "news_coverage_insufficient"
+	case strings.Contains(message, "newest direct news article is older"):
+		return "news_stale"
+	case strings.Contains(message, "fundamentals completeness below threshold"):
+		return "fundamentals_incomplete"
+	case strings.Contains(message, "fundamentals unavailable"),
+		strings.Contains(message, "fundamentals snapshot is older"),
+		strings.Contains(message, "fundamentals ticker"):
+		return "fundamentals_invalid"
+	case strings.Contains(message, "daily market data stale"),
+		strings.Contains(message, "latest daily bar has a non-positive close"):
+		return "market_data_stale"
+	case strings.Contains(message, "market bars unavailable"):
+		return "market_data_unavailable"
+	case strings.Contains(message, "social sentiment"):
+		return "social_data_invalid"
+	case strings.Contains(message, "build llm provider"):
+		return "llm_provider_unavailable"
+	default:
+		return "preparation_failed"
 	}
 }
 
