@@ -17,6 +17,7 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/config"
 	"github.com/PatrickFanella/get-rich-quick/internal/data"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
+	"github.com/PatrickFanella/get-rich-quick/internal/execution"
 	kalshiexecution "github.com/PatrickFanella/get-rich-quick/internal/execution/kalshi"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution/paper"
 	polymarketexecution "github.com/PatrickFanella/get-rich-quick/internal/execution/polymarket"
@@ -340,6 +341,68 @@ func TestRunStrategy_KalshiSafeHoldPath(t *testing.T) {
 	}
 	if len(eventRepo.events) != 2 || eventRepo.events[0].EventKind != agent.AgentEventKindPipelineStarted.String() || eventRepo.events[1].EventKind != agent.AgentEventKindPipelineCompleted.String() {
 		t.Fatalf("events = %+v, want pipeline_started then pipeline_completed", eventRepo.events)
+	}
+}
+
+type recordingOpportunityRepo struct {
+	queued []domain.Opportunity
+}
+
+func (r *recordingOpportunityRepo) Create(_ context.Context, opportunity *domain.Opportunity) error {
+	r.queued = append(r.queued, *opportunity)
+	return nil
+}
+
+func (r *recordingOpportunityRepo) UpsertQueuedByDedupeKey(_ context.Context, opportunity *domain.Opportunity) error {
+	r.queued = append(r.queued, *opportunity)
+	return nil
+}
+
+func (*recordingOpportunityRepo) Get(context.Context, uuid.UUID) (*domain.Opportunity, error) {
+	return nil, repository.ErrNotFound
+}
+
+func (*recordingOpportunityRepo) List(context.Context, repository.OpportunityFilter, int, int) ([]domain.Opportunity, error) {
+	return nil, nil
+}
+
+func (*recordingOpportunityRepo) ExpireQueuedBefore(context.Context, time.Time) (int64, error) {
+	return 0, nil
+}
+
+func (*recordingOpportunityRepo) ListQueuedForAllocation(context.Context, time.Time) ([]domain.Opportunity, error) {
+	return nil, nil
+}
+
+func (*recordingOpportunityRepo) Count(context.Context, repository.OpportunityFilter) (int, error) {
+	return 0, nil
+}
+
+func (*recordingOpportunityRepo) UpdateStatus(context.Context, uuid.UUID, domain.OpportunityStatus, string) error {
+	return nil
+}
+
+func TestRecordPortfolioOpportunityRequiresCompletedSourceRun(t *testing.T) {
+	t.Parallel()
+
+	repo := &recordingOpportunityRepo{}
+	runner := &realStrategyRunner{opportunityRepo: repo}
+	strategy := domain.Strategy{ID: uuid.New(), Ticker: "SAFE", MarketType: domain.MarketTypeStock, Status: domain.StrategyStatusActive, IsPaper: true}
+	finalSignal := execution.FinalSignal{Signal: domain.PipelineSignalBuy, Confidence: 0.8}
+	plan := execution.TradingPlan{EntryPrice: 100, PositionSize: 2, RiskReward: 3, Confidence: 0.8}
+
+	failed := &domain.PipelineRun{ID: uuid.New(), Status: domain.PipelineStatusFailed, Signal: domain.PipelineSignalHold}
+	runner.recordPortfolioOpportunity(context.Background(), strategy, failed, finalSignal, plan)
+	mismatched := &domain.PipelineRun{ID: uuid.New(), Status: domain.PipelineStatusCompleted, Signal: domain.PipelineSignalSell}
+	runner.recordPortfolioOpportunity(context.Background(), strategy, mismatched, finalSignal, plan)
+	if len(repo.queued) != 0 {
+		t.Fatalf("queued opportunities = %#v, want none from failed or mismatched runs", repo.queued)
+	}
+
+	completed := &domain.PipelineRun{ID: uuid.New(), Status: domain.PipelineStatusCompleted, Signal: domain.PipelineSignalBuy}
+	runner.recordPortfolioOpportunity(context.Background(), strategy, completed, finalSignal, plan)
+	if len(repo.queued) != 1 || repo.queued[0].PipelineRunID == nil || *repo.queued[0].PipelineRunID != completed.ID {
+		t.Fatalf("queued opportunities = %#v, want one linked to completed run %s", repo.queued, completed.ID)
 	}
 }
 

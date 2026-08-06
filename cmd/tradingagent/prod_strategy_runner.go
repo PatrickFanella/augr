@@ -302,8 +302,6 @@ func (r *realStrategyRunner) RunStrategy(ctx context.Context, strategy domain.St
 		Side:             result.State.TradingPlan.Side,
 		DecisionMetadata: decisionMetadata,
 	}
-	r.recordPortfolioOpportunity(ctx, strategy, &run.ID, finalSignal, tradingPlan)
-
 	if strategy.MarketType.Normalize() == domain.MarketTypeOptions {
 		if err := r.executeOptionsSignal(ctx, strategy, run.ID, finalSignal); err != nil {
 			return nil, err
@@ -317,6 +315,7 @@ func (r *realStrategyRunner) RunStrategy(ctx context.Context, strategy domain.St
 			return nil, err
 		}
 	}
+	r.recordPortfolioOpportunity(ctx, strategy, run, finalSignal, tradingPlan)
 
 	// Notification delivery is an optional side effect and must not monopolize a
 	// scheduler execution slot when a webhook is slow or rate limited.
@@ -705,7 +704,6 @@ func (r *realStrategyRunner) runPolymarketNative(ctx context.Context, strategy d
 		Features:   predictionNativeFeatures(decision),
 		RegimeTags: []string{"event_market", "deterministic_execution", decision.Template},
 	}
-	r.recordPortfolioOpportunity(ctx, strategy, &run.ID, finalSignal, tradingPlan)
 	if !r.portfolioAllocatorOwnsPaperExecution(strategy, signal) {
 		if err := orderManager.ProcessSignal(ctx, finalSignal, tradingPlan, strategy.ID, run.ID); err != nil {
 			return failRun(err)
@@ -715,6 +713,7 @@ func (r *realStrategyRunner) runPolymarketNative(ctx context.Context, strategy d
 	if err := completeRun(domain.PipelineStatusCompleted, signal, ""); err != nil {
 		return nil, err
 	}
+	r.recordPortfolioOpportunity(ctx, strategy, &run, finalSignal, tradingPlan)
 	orders, err := r.orderRepo.GetByRun(ctx, run.ID, repository.OrderFilter{}, 10, 0)
 	if err != nil {
 		return nil, err
@@ -820,7 +819,6 @@ func (r *realStrategyRunner) runKalshiNative(ctx context.Context, strategy domai
 	}
 	finalSignal := execution.FinalSignal{Signal: signal, Confidence: decision.Confidence}
 	tradingPlan := kalshiTradingPlan(signal, snapshot, decision, strategy.Ticker)
-	r.recordPortfolioOpportunity(ctx, strategy, &run.ID, finalSignal, tradingPlan)
 	if !r.portfolioAllocatorOwnsPaperExecution(strategy, signal) {
 		if err := orderManager.ProcessSignal(ctx, finalSignal, tradingPlan, strategy.ID, run.ID); err != nil {
 			return failRun(err)
@@ -830,6 +828,7 @@ func (r *realStrategyRunner) runKalshiNative(ctx context.Context, strategy domai
 	if err := completeRun(domain.PipelineStatusCompleted, signal, ""); err != nil {
 		return nil, err
 	}
+	r.recordPortfolioOpportunity(ctx, strategy, &run, finalSignal, tradingPlan)
 
 	var orders []domain.Order
 	if r.orderRepo != nil {
@@ -1959,18 +1958,27 @@ func (r *realStrategyRunner) newOrderManager(ctx context.Context, strategy domai
 	}()), nil
 }
 
-func (r *realStrategyRunner) recordPortfolioOpportunity(ctx context.Context, strategy domain.Strategy, runID *uuid.UUID, finalSignal execution.FinalSignal, plan execution.TradingPlan) {
+func (r *realStrategyRunner) recordPortfolioOpportunity(ctx context.Context, strategy domain.Strategy, run *domain.PipelineRun, finalSignal execution.FinalSignal, plan execution.TradingPlan) {
 	if r == nil || r.opportunityRepo == nil {
 		return
 	}
 	if finalSignal.Signal != domain.PipelineSignalBuy && finalSignal.Signal != domain.PipelineSignalSell {
 		return
 	}
+	if run == nil || run.ID == uuid.Nil || run.Status != domain.PipelineStatusCompleted || run.Signal != finalSignal.Signal {
+		if r.logger != nil {
+			r.logger.WarnContext(ctx, "portfolio opportunity skipped: source run is not durably completed",
+				"strategy_id", strategy.ID,
+				"ticker", strategy.Ticker,
+			)
+		}
+		return
+	}
 	maxLossPct := opportunityMaxLossPct(finalSignal.Signal, plan.EntryPrice, plan.StopLoss)
 	proposedNotional := plan.PositionSize * plan.EntryPrice
 	opportunity, reason, err := portfolio.BuildOpportunity(portfolio.OpportunityBuildInput{
 		Strategy:          strategy,
-		Run:               runFromID(runID),
+		Run:               run,
 		Signal:            finalSignal.Signal,
 		PredictionSide:    plan.Side,
 		Confidence:        firstPositive(finalSignal.Confidence, plan.Confidence),
@@ -1999,13 +2007,6 @@ func (r *realStrategyRunner) portfolioAllocatorOwnsPaperExecution(strategy domai
 		return false
 	}
 	return signal == domain.PipelineSignalBuy || signal == domain.PipelineSignalSell
-}
-
-func runFromID(id *uuid.UUID) *domain.PipelineRun {
-	if id == nil || *id == uuid.Nil {
-		return nil
-	}
-	return &domain.PipelineRun{ID: *id}
 }
 
 func firstPositive(values ...float64) float64 {
