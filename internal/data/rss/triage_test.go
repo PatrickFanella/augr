@@ -85,7 +85,7 @@ func TestTriageParsesOllamaProsePrefixedJSON(t *testing.T) {
 		"**Classifying headlines with ticker identification**\n" +
 			`{"results":[{"tickers":[" aapl "],"category":"Company","sentiment":"Bullish","relevance":0.9,"summary":" Apple demand stays strong "}]}`,
 	}}
-	articles := []Article{{GUID: "guid-1", Source: "Reuters", Title: "Apple demand stays strong"}}
+	articles := []Article{{GUID: "guid-1", Source: "Reuters", Title: "Apple (AAPL) demand stays strong"}}
 
 	results := Triage(context.Background(), provider, "", articles, nil)
 	if len(results) != 1 {
@@ -94,6 +94,24 @@ func TestTriageParsesOllamaProsePrefixedJSON(t *testing.T) {
 	got := results["guid-1"]
 	if got == nil || len(got.Tickers) != 1 || got.Tickers[0] != "AAPL" || got.Category != "company" || got.Sentiment != "bullish" || got.Summary != "Apple demand stays strong" {
 		t.Fatalf("results[guid-1] = %#v, want normalized parsed result", got)
+	}
+}
+
+func TestTriageDropsTickerInferredFromCompanyName(t *testing.T) {
+	t.Parallel()
+
+	provider := &stubTriageProvider{responses: []string{
+		`{"results":[{"tickers":["DEI"],"category":"company","sentiment":"neutral","relevance":0.7,"summary":"Diversified Energy declares dividend"}]}`,
+	}}
+	articles := []Article{{GUID: "guid-1", Source: "Business Wire", Title: "Diversified Energy declares dividend"}}
+
+	results := Triage(context.Background(), provider, "", articles, nil)
+	got := results["guid-1"]
+	if got == nil {
+		t.Fatal("results[guid-1] = nil, want classified result")
+	}
+	if len(got.Tickers) != 0 {
+		t.Fatalf("results[guid-1].Tickers = %#v, want ungrounded ticker removed", got.Tickers)
 	}
 }
 

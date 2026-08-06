@@ -37,6 +37,8 @@ func (o *JobOrchestrator) registerNewsJobs() {
 
 // newsScan fetches RSS feeds, runs LLM triage, and persists tagged articles.
 func (o *JobOrchestrator) newsScan(ctx context.Context) error {
+	summary := map[string]int{"fetched": 0, "saved": 0, "classified": 0}
+	defer func() { o.SetLastSummary("news_scan", summary) }()
 	if o.deps.NewsFeedRepo == nil {
 		o.logger.Info("news_scan: skipped — news feed repo not configured")
 		return nil
@@ -48,6 +50,7 @@ func (o *JobOrchestrator) newsScan(ctx context.Context) error {
 	}
 
 	articles := o.rssAggregator.Fetch(ctx)
+	summary["fetched"] = len(articles)
 	if len(articles) == 0 {
 		o.logger.Info("news_scan: no new articles")
 		return nil
@@ -79,6 +82,7 @@ func (o *JobOrchestrator) newsScan(ctx context.Context) error {
 		}
 		saved++
 	}
+	summary["saved"] = saved
 
 	o.logger.Info("news_scan: articles saved", slog.Int("saved", saved))
 
@@ -115,6 +119,7 @@ func (o *JobOrchestrator) newsScan(ctx context.Context) error {
 			classified++
 		}
 		o.logger.Info("news_scan: triage complete", slog.Int("classified", classified))
+		summary["classified"] = classified
 	}
 
 	o.logger.Info("news_scan: complete",
@@ -126,6 +131,8 @@ func (o *JobOrchestrator) newsScan(ctx context.Context) error {
 
 // socialScan fetches StockTwits trending + sentiment for active strategy and open position tickers.
 func (o *JobOrchestrator) socialScan(ctx context.Context) error {
+	summary := map[string]int{"trending_fetched": 0, "trending_saved": 0, "tickers": 0, "sentiment_saved": 0, "errors": 0}
+	defer func() { o.SetLastSummary("social_scan", summary) }()
 	if o.deps.NewsFeedRepo == nil {
 		o.logger.Info("social_scan: skipped — news feed repo not configured")
 		return nil
@@ -136,17 +143,23 @@ func (o *JobOrchestrator) socialScan(ctx context.Context) error {
 	// Fetch trending symbols.
 	trending, err := client.GetTrending(ctx)
 	if err != nil {
+		summary["errors"]++
 		o.logger.Warn("social_scan: trending fetch failed", slog.Any("error", err))
 	} else {
+		summary["trending_fetched"] = len(trending)
 		now := time.Now()
 		for _, t := range trending {
-			_ = o.deps.NewsFeedRepo.InsertSocialSentiment(ctx, &pgrepo.SocialSentimentRow{
+			if err := o.deps.NewsFeedRepo.InsertSocialSentiment(ctx, &pgrepo.SocialSentimentRow{
 				Ticker:     t.Symbol,
 				Source:     "stocktwits",
 				Trending:   true,
 				PostCount:  t.WatchlistCount,
 				MeasuredAt: now,
-			})
+			}); err != nil {
+				summary["errors"]++
+				continue
+			}
+			summary["trending_saved"]++
 		}
 		o.logger.Info("social_scan: trending symbols saved", slog.Int("count", len(trending)))
 	}
@@ -177,6 +190,7 @@ func (o *JobOrchestrator) socialScan(ctx context.Context) error {
 	if o.deps.PositionRepo != nil {
 		positions, err := o.deps.PositionRepo.GetOpen(ctx, repository.PositionFilter{}, 100, 0)
 		if err != nil {
+			summary["errors"]++
 			o.logger.Warn("social_scan: open positions fetch failed", slog.Any("error", err))
 		} else {
 			for _, pos := range positions {
@@ -188,10 +202,12 @@ func (o *JobOrchestrator) socialScan(ctx context.Context) error {
 			}
 		}
 	}
+	summary["tickers"] = len(tickers)
 
 	for ticker := range tickers {
 		sentiment, err := client.GetSymbolSentiment(ctx, ticker)
 		if err != nil {
+			summary["errors"]++
 			o.logger.Warn("social_scan: sentiment fetch failed",
 				slog.String("ticker", ticker),
 				slog.Any("error", err),
@@ -200,20 +216,34 @@ func (o *JobOrchestrator) socialScan(ctx context.Context) error {
 		}
 
 		if sentiment.Total > 0 {
-			_ = o.deps.NewsFeedRepo.InsertSocialSentiment(ctx, &pgrepo.SocialSentimentRow{
+			score, bullishRatio, bearishRatio := normalizeStocktwitsSentiment(sentiment)
+			if err := o.deps.NewsFeedRepo.InsertSocialSentiment(ctx, &pgrepo.SocialSentimentRow{
 				Ticker:     sentiment.Symbol,
 				Source:     "stocktwits",
-				Sentiment:  sentiment.Score,
-				Bullish:    float64(sentiment.Bullish),
-				Bearish:    float64(sentiment.Bearish),
+				Sentiment:  score,
+				Bullish:    bullishRatio,
+				Bearish:    bearishRatio,
 				PostCount:  sentiment.Total,
 				MeasuredAt: sentiment.MeasuredAt,
-			})
+			}); err != nil {
+				summary["errors"]++
+				continue
+			}
+			summary["sentiment_saved"]++
 		}
 	}
 
 	o.logger.Info("social_scan: complete")
 	return nil
+}
+
+func normalizeStocktwitsSentiment(sentiment *stocktwits.SymbolSentiment) (score, bullishRatio, bearishRatio float64) {
+	if sentiment == nil || sentiment.Total <= 0 {
+		return 0, 0, 0
+	}
+	bullishRatio = float64(sentiment.Bullish) / float64(sentiment.Total)
+	bearishRatio = float64(sentiment.Bearish) / float64(sentiment.Total)
+	return bullishRatio - bearishRatio, bullishRatio, bearishRatio
 }
 
 func listAllStrategies(ctx context.Context, repo repository.StrategyRepository, filter repository.StrategyFilter) ([]domain.Strategy, error) {

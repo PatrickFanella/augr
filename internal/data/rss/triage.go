@@ -37,7 +37,7 @@ const triageSystemPrompt = `You are a financial news classifier. For the provide
 
 Rules:
 - Return one object in results for each headline, in the same order as the input headlines.
-- tickers: extract any stock tickers mentioned or clearly affected. Use standard symbols (AAPL not Apple). Empty array if none.
+- tickers: include only stock symbols explicitly printed in the supplied headline or description. Never infer or guess a symbol from a company name. Empty array if none.
 - category: one of "earnings", "macro", "sector", "company", "geopolitical", "other"
 - sentiment: "bullish", "bearish", or "neutral" for the market/mentioned stocks
 - relevance: 0-1 how relevant this is to stock/options trading. Personal finance articles = 0.1, Fed rate decisions = 0.9
@@ -159,6 +159,7 @@ func triageBatch(ctx context.Context, provider llm.Provider, model string, batch
 			break
 		}
 		tr := tr
+		tr.Tickers = groundedTickers(tr.Tickers, batch[i])
 		key := batch[i].GUID
 		if key == "" {
 			key = batch[i].Link
@@ -167,6 +168,43 @@ func triageBatch(ctx context.Context, provider llm.Provider, model string, batch
 	}
 
 	return results
+}
+
+func groundedTickers(tickers []string, article Article) []string {
+	text := article.Title + "\n" + article.Description
+	grounded := make([]string, 0, len(tickers))
+	seen := make(map[string]struct{}, len(tickers))
+	for _, raw := range tickers {
+		ticker := strings.ToUpper(strings.TrimSpace(raw))
+		if ticker == "" || !explicitTickerMention(text, ticker) {
+			continue
+		}
+		if _, ok := seen[ticker]; ok {
+			continue
+		}
+		seen[ticker] = struct{}{}
+		grounded = append(grounded, ticker)
+	}
+	return grounded
+}
+
+func explicitTickerMention(text, ticker string) bool {
+	for index := 0; ; {
+		relative := strings.Index(text[index:], ticker)
+		if relative < 0 {
+			return false
+		}
+		start := index + relative
+		end := start + len(ticker)
+		if (start == 0 || !tickerRune(text[start-1])) && (end == len(text) || !tickerRune(text[end])) {
+			return true
+		}
+		index = end
+	}
+}
+
+func tickerRune(char byte) bool {
+	return char >= 'A' && char <= 'Z' || char >= 'a' && char <= 'z' || char >= '0' && char <= '9' || char == '.'
 }
 
 func normalizeTriageContent(content string) string {
