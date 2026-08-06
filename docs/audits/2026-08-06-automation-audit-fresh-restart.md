@@ -79,6 +79,8 @@ Eastern Time schedules are shown because the production automation orchestrator 
 
 Because the desktop timer interface is unavailable in this runtime, bounded secret-redacting production log observers are armed before each required window instead of using retrospective log reads. The 15:45 UTC regular-session scan and 16:00 filing windows have now been captured and reconciled. Remaining armed targets are the 20:00 and 00:00 filing boundaries, which should prove suppression after auto-disable, plus a continuous observer beginning 20:14 UTC for the after-hours, overnight, and next 10:30 UTC ticker-discovery windows. Each run still counts only after terminal database/output and downstream-state reconciliation. Separate Sunday 12:00/14:00 ET observers remain to be armed closer to the weekly windows.
 
+The 16:15 UTC `portfolio_allocator` cron boundary was also observed while NYSE trading was open. No allocator start log or durable run row appeared, while other due jobs started normally. This confirms the deployed after-hours session gate suppressed the tick; it is schedule-control evidence only and does not count as the required allocator execution.
+
 ## Qualifying fresh-run ledger
 
 The monitor was running before the 06:45 UTC cron boundary and captured start and completion logs plus terminal database rows.
