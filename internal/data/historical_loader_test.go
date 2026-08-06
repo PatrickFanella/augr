@@ -197,9 +197,13 @@ func TestDataServiceDownloadHistoricalOHLCVIncrementalFetchesOnlyMissingRanges(t
 		now:         func() time.Time { return day5.Add(time.Hour) },
 	}
 
-	got, err := service.DownloadHistoricalOHLCV(context.Background(), domain.MarketTypeStock, []string{"AAPL"}, Timeframe1d, from, day5, true)
+	download, err := service.DownloadHistoricalOHLCVWithStats(context.Background(), domain.MarketTypeStock, []string{"AAPL"}, Timeframe1d, from, day5, true)
 	if err != nil {
-		t.Fatalf("DownloadHistoricalOHLCV() error = %v", err)
+		t.Fatalf("DownloadHistoricalOHLCVWithStats() error = %v", err)
+	}
+	got := download.Bars
+	if download.ProviderRequests["AAPL"] != 1 || download.FreshBars["AAPL"] != 3 {
+		t.Fatalf("download stats = requests:%d fresh_bars:%d, want 1/3", download.ProviderRequests["AAPL"], download.FreshBars["AAPL"])
 	}
 
 	if len(provider.calls) != 1 {
@@ -268,6 +272,37 @@ func TestDataServiceDownloadHistoricalOHLCVDoesNotTrackRecentEmptyCoverage(t *te
 	}
 	if len(repo.coverage) != 0 {
 		t.Fatalf("coverage entries = %d, want 0", len(repo.coverage))
+	}
+}
+
+func TestDataServiceDownloadHistoricalOHLCVWithStatsIdentifiesCacheOnlyTicker(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	providerName := cacheProviderStockChain
+	from := time.Date(2026, 3, 7, 0, 0, 0, 0, time.UTC)
+	to := from.Add(24 * time.Hour)
+
+	repo := newFakeHistoricalOHLCVRepo()
+	_ = repo.UpsertHistoricalOHLCV(context.Background(), []domain.HistoricalOHLCV{
+		{Ticker: "AAPL", Provider: providerName, Timeframe: Timeframe1d.String(), Timestamp: from, Open: 100, High: 101, Low: 99, Close: 100.5, Volume: 1000},
+		{Ticker: "AAPL", Provider: providerName, Timeframe: Timeframe1d.String(), Timestamp: to, Open: 101, High: 102, Low: 100, Close: 101.5, Volume: 1100},
+	})
+	_ = repo.UpsertHistoricalOHLCVCoverage(context.Background(), domain.HistoricalOHLCVCoverage{
+		Ticker: "AAPL", Provider: providerName, Timeframe: Timeframe1d.String(), DateFrom: from, DateTo: to, FetchedAt: to,
+	})
+	provider := &historicalStubProvider{getFn: func(string, Timeframe, time.Time, time.Time) ([]domain.OHLCV, error) {
+		return nil, errors.New("provider should not be called for complete incremental coverage")
+	}}
+	service := &DataService{stockChain: provider, historyRepo: repo, logger: logger, now: func() time.Time { return to.Add(time.Hour) }}
+
+	download, err := service.DownloadHistoricalOHLCVWithStats(context.Background(), domain.MarketTypeStock, []string{"AAPL"}, Timeframe1d, from, to, true)
+	if err != nil {
+		t.Fatalf("DownloadHistoricalOHLCVWithStats() error = %v", err)
+	}
+	if len(download.Bars["AAPL"]) != 2 {
+		t.Fatalf("stored bars = %d, want 2", len(download.Bars["AAPL"]))
+	}
+	if download.ProviderRequests["AAPL"] != 0 || download.FreshBars["AAPL"] != 0 || len(provider.calls) != 0 {
+		t.Fatalf("cache-only stats = requests:%d fresh_bars:%d provider_calls:%d, want 0/0/0", download.ProviderRequests["AAPL"], download.FreshBars["AAPL"], len(provider.calls))
 	}
 }
 
@@ -376,12 +411,16 @@ func TestDataServiceDownloadHistoricalOHLCVBypassesCache(t *testing.T) {
 		now:         func() time.Time { return to.Add(time.Hour) },
 	}
 
-	got, err := service.DownloadHistoricalOHLCV(context.Background(), domain.MarketTypeStock, []string{"AAPL"}, Timeframe1d, from, to, false)
+	download, err := service.DownloadHistoricalOHLCVWithStats(context.Background(), domain.MarketTypeStock, []string{"AAPL"}, Timeframe1d, from, to, false)
 	if err != nil {
-		t.Fatalf("DownloadHistoricalOHLCV() error = %v", err)
+		t.Fatalf("DownloadHistoricalOHLCVWithStats() error = %v", err)
 	}
+	got := download.Bars
 	if len(got["AAPL"]) != 2 {
 		t.Fatalf("len(got[\"AAPL\"]) = %d, want 2", len(got["AAPL"]))
+	}
+	if download.ProviderRequests["AAPL"] != 1 || download.FreshBars["AAPL"] != 2 {
+		t.Fatalf("download stats = requests:%d fresh_bars:%d, want 1/2", download.ProviderRequests["AAPL"], download.FreshBars["AAPL"])
 	}
 	if cacheRepo.getCalls != 0 {
 		t.Fatalf("cache get calls = %d, want 0", cacheRepo.getCalls)

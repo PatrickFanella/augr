@@ -218,6 +218,16 @@ func (s *DataService) GetNews(ctx context.Context, marketType domain.MarketType,
 	return articles, nil
 }
 
+// HistoricalOHLCVDownload describes both the stored result and provider work
+// performed by one historical download. Callers that must prove current-source
+// freshness should use ProviderRequests and FreshBars rather than treating
+// previously stored bars as newly downloaded.
+type HistoricalOHLCVDownload struct {
+	Bars             map[string][]domain.OHLCV
+	ProviderRequests map[string]int
+	FreshBars        map[string]int
+}
+
 // DownloadHistoricalOHLCV bulk downloads and persists OHLCV history for the
 // provided tickers. When incremental is true, only uncovered date ranges are fetched.
 func (s *DataService) DownloadHistoricalOHLCV(
@@ -228,6 +238,23 @@ func (s *DataService) DownloadHistoricalOHLCV(
 	from, to time.Time,
 	incremental bool,
 ) (map[string][]domain.OHLCV, error) {
+	result, err := s.DownloadHistoricalOHLCVWithStats(ctx, marketType, tickers, timeframe, from, to, incremental)
+	if err != nil {
+		return nil, err
+	}
+	return result.Bars, nil
+}
+
+// DownloadHistoricalOHLCVWithStats performs the same download while exposing
+// whether each ticker contacted the provider and how many fresh bars it returned.
+func (s *DataService) DownloadHistoricalOHLCVWithStats(
+	ctx context.Context,
+	marketType domain.MarketType,
+	tickers []string,
+	timeframe Timeframe,
+	from, to time.Time,
+	incremental bool,
+) (*HistoricalOHLCVDownload, error) {
 	if s == nil || s.historyRepo == nil {
 		return nil, ErrHistoricalOHLCVUnavailable
 	}
@@ -243,7 +270,11 @@ func (s *DataService) DownloadHistoricalOHLCV(
 		return nil, err
 	}
 
-	results := make(map[string][]domain.OHLCV, len(tickers))
+	result := &HistoricalOHLCVDownload{
+		Bars:             make(map[string][]domain.OHLCV, len(tickers)),
+		ProviderRequests: make(map[string]int, len(tickers)),
+		FreshBars:        make(map[string]int, len(tickers)),
+	}
 	for _, ticker := range tickers {
 		trimmedTicker := strings.TrimSpace(ticker)
 		if trimmedTicker == "" {
@@ -269,12 +300,14 @@ func (s *DataService) DownloadHistoricalOHLCV(
 		}
 
 		for _, gap := range gaps {
+			result.ProviderRequests[trimmedTicker]++
 			bars, err := chain.GetOHLCV(ctx, trimmedTicker, timeframe, gap.From, gap.To)
 			if err != nil {
 				return nil, fmt.Errorf("data: download historical ohlcv for %s: %w", trimmedTicker, err)
 			}
 
 			if len(bars) > 0 {
+				result.FreshBars[trimmedTicker] += len(bars)
 				if err := s.historyRepo.UpsertHistoricalOHLCV(ctx, toHistoricalOHLCV(trimmedTicker, providerName, timeframe, bars)); err != nil {
 					return nil, fmt.Errorf("data: persist historical ohlcv for %s: %w", trimmedTicker, err)
 				}
@@ -295,10 +328,10 @@ func (s *DataService) DownloadHistoricalOHLCV(
 		if err != nil {
 			return nil, fmt.Errorf("data: list persisted historical ohlcv for %s: %w", trimmedTicker, err)
 		}
-		results[trimmedTicker] = stored
+		result.Bars[trimmedTicker] = stored
 	}
 
-	return results, nil
+	return result, nil
 }
 
 // GetSocialSentiment aggregates social sentiment from all configured social

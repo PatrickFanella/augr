@@ -252,7 +252,7 @@ func (o *JobOrchestrator) overnightGenerate(ctx context.Context) error {
 // the universe, batching 10 at a time with a 1-second pause for rate
 // limiting.
 func (o *JobOrchestrator) historyRefresh(ctx context.Context) error {
-	summary := map[string]int{"tickers": 0, "updated": 0, "empty": 0, "failed": 0, "batches": 0}
+	summary := map[string]int{"tickers": 0, "updated": 0, "cache_revalidated": 0, "empty": 0, "failed": 0, "batches": 0}
 	defer func() { o.SetLastSummary("history_refresh", summary) }()
 	o.logger.Info("history_refresh: starting")
 
@@ -284,7 +284,7 @@ func (o *JobOrchestrator) historyRefresh(ctx context.Context) error {
 		batch := allTickers[i:end]
 		summary["batches"]++
 
-		barsByTicker, err := o.deps.DataService.DownloadHistoricalOHLCV(
+		download, err := o.deps.DataService.DownloadHistoricalOHLCVWithStats(
 			ctx, domain.MarketTypeStock,
 			batch, data.Timeframe1d,
 			histFrom, now, true,
@@ -296,8 +296,46 @@ func (o *JobOrchestrator) historyRefresh(ctx context.Context) error {
 				slog.Any("error", err),
 			)
 		} else {
+			cacheOnly := make([]string, 0, len(batch))
 			for _, ticker := range batch {
-				if len(barsByTicker[ticker]) == 0 {
+				if download.ProviderRequests[ticker] == 0 {
+					cacheOnly = append(cacheOnly, ticker)
+				}
+			}
+			revalidationFailed := make(map[string]struct{}, len(cacheOnly))
+			if len(cacheOnly) > 0 {
+				trailingFrom := now.AddDate(0, 0, -10)
+				revalidated, refreshErr := o.deps.DataService.DownloadHistoricalOHLCVWithStats(
+					ctx, domain.MarketTypeStock,
+					cacheOnly, data.Timeframe1d,
+					trailingFrom, now, false,
+				)
+				if refreshErr != nil {
+					summary["failed"] += len(cacheOnly)
+					for _, ticker := range cacheOnly {
+						revalidationFailed[ticker] = struct{}{}
+					}
+					o.logger.Warn("history_refresh: cache revalidation failed",
+						slog.Int("batch_start", i),
+						slog.Int("tickers", len(cacheOnly)),
+						slog.Any("error", refreshErr),
+					)
+				} else {
+					for _, ticker := range cacheOnly {
+						download.ProviderRequests[ticker] += revalidated.ProviderRequests[ticker]
+						download.FreshBars[ticker] += revalidated.FreshBars[ticker]
+						if revalidated.FreshBars[ticker] > 0 {
+							summary["cache_revalidated"]++
+						}
+					}
+				}
+			}
+
+			for _, ticker := range batch {
+				if _, failed := revalidationFailed[ticker]; failed {
+					continue
+				}
+				if download.FreshBars[ticker] == 0 {
 					summary["empty"]++
 					continue
 				}
@@ -321,6 +359,7 @@ func (o *JobOrchestrator) historyRefresh(ctx context.Context) error {
 	o.logger.Info("history_refresh: completed",
 		slog.Int("tickers", summary["tickers"]),
 		slog.Int("updated", summary["updated"]),
+		slog.Int("cache_revalidated", summary["cache_revalidated"]),
 		slog.Int("empty", summary["empty"]),
 		slog.Int("failed", summary["failed"]),
 	)
