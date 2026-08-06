@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"math"
 	"strings"
@@ -96,7 +97,7 @@ func (r *SignalReviewer) Review(ctx context.Context, plan *agent.TradingPlan, st
 	}
 
 	var verdict ReviewVerdict
-	if err := json.Unmarshal([]byte(resp.Content), &verdict); err != nil {
+	if err := decodeStrictReviewJSON(resp.Content, &verdict); err != nil {
 		r.logger.Warn("rules/reviewer: failed to parse LLM response, vetoing entry",
 			slog.Any("error", err),
 		)
@@ -174,6 +175,9 @@ Respond with JSON only:
 // ReviewExit asks the LLM to evaluate an exit signal with full position context
 // including decision history. Returns true if the exit should proceed.
 func (r *SignalReviewer) ReviewExit(ctx context.Context, pos *OpenPosition, state *agent.PipelineState, bar domain.OHLCV, portfolioCash float64) (bool, string) {
+	if r == nil || r.provider == nil {
+		return true, "LLM unavailable, confirming exit"
+	}
 	positionContext := FormatDecisionHistory(pos, bar.Close, bar.Timestamp)
 	marketContext := buildRichReviewPrompt(&agent.TradingPlan{
 		Action: domain.PipelineSignalSell, Ticker: pos.Ticker, EntryPrice: bar.Close,
@@ -193,11 +197,20 @@ func (r *SignalReviewer) ReviewExit(ctx context.Context, pos *OpenPosition, stat
 		r.logger.Warn("rules/reviewer: exit review LLM call failed, confirming exit by default", slog.Any("error", err))
 		return true, "LLM unavailable, confirming exit"
 	}
+	if resp == nil {
+		r.logger.Warn("rules/reviewer: exit review LLM returned nil response, confirming exit")
+		return true, "LLM returned no response, confirming exit"
+	}
 
 	var verdict ReviewVerdict
-	if err := json.Unmarshal([]byte(resp.Content), &verdict); err != nil {
-		r.logger.Warn("rules/reviewer: failed to parse exit review response, confirming exit", slog.String("content", resp.Content), slog.Any("error", err))
+	if err := decodeStrictReviewJSON(resp.Content, &verdict); err != nil {
+		r.logger.Warn("rules/reviewer: failed to parse exit review response, confirming exit", slog.Any("error", err))
 		return true, "LLM parse error, confirming exit"
+	}
+	verdictName := strings.ToLower(strings.TrimSpace(verdict.Verdict))
+	if verdict.Confidence < 0 || verdict.Confidence > 1 || strings.TrimSpace(verdict.Reasoning) == "" {
+		r.logger.Warn("rules/reviewer: invalid exit verdict schema, confirming exit", slog.String("verdict", verdictName))
+		return true, "Invalid LLM exit review, confirming exit"
 	}
 
 	r.logger.Info("rules/reviewer: exit verdict",
@@ -207,12 +220,28 @@ func (r *SignalReviewer) ReviewExit(ctx context.Context, pos *OpenPosition, stat
 		slog.String("ticker", pos.Ticker),
 	)
 
-	switch strings.ToLower(verdict.Verdict) {
+	switch verdictName {
 	case "veto":
 		return false, verdict.Reasoning
 	default:
 		return true, verdict.Reasoning
 	}
+}
+
+func decodeStrictReviewJSON(content string, dst any) error {
+	decoder := json.NewDecoder(strings.NewReader(content))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(dst); err != nil {
+		return err
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		if err == nil {
+			return fmt.Errorf("unexpected trailing JSON value")
+		}
+		return err
+	}
+	return nil
 }
 
 func buildRichReviewPrompt(plan *agent.TradingPlan, state *agent.PipelineState, bar domain.OHLCV, portfolioCash float64) string {

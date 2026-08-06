@@ -7,6 +7,7 @@ import (
 
 	"github.com/PatrickFanella/get-rich-quick/internal/agent"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
+	"github.com/PatrickFanella/get-rich-quick/internal/llm"
 )
 
 func testSpread() *domain.OptionSpread {
@@ -221,6 +222,7 @@ func TestOptionsSignalReviewer_IncompleteVerdictVetoesEntry(t *testing.T) {
 		"unknown verdict":    `{"verdict":"maybe","confidence":0.8,"holding_strategy":"hold","reasoning":"uncertain"}`,
 		"invalid confidence": `{"verdict":"confirm","confidence":1.8,"holding_strategy":"hold","reasoning":"certain"}`,
 		"missing strategy":   `{"verdict":"confirm","confidence":0.8,"reasoning":"certain"}`,
+		"unknown field":      `{"verdict":"confirm","confidence":0.8,"holding_strategy":"hold","reasoning":"certain","override":true}`,
 	}
 	for name, response := range responses {
 		t.Run(name, func(t *testing.T) {
@@ -228,6 +230,29 @@ func TestOptionsSignalReviewer_IncompleteVerdictVetoesEntry(t *testing.T) {
 			ok, _ := reviewer.ReviewSpreadEntry(context.Background(), testSpread(), testChain(), testOptionsState(), 150, 50000)
 			if ok {
 				t.Fatal("incomplete verdict must veto entry")
+			}
+		})
+	}
+}
+
+func TestOptionsSignalReviewer_IncompleteExitReviewConfirmsExit(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]llm.Provider{
+		"nil provider":       nil,
+		"nil response":       &mockLLMProvider{nilResponse: true},
+		"unknown field":      &mockLLMProvider{response: `{"verdict":"veto","confidence":0.8,"reasoning":"hold","override":true}`},
+		"invalid confidence": &mockLLMProvider{response: `{"verdict":"veto","confidence":2,"reasoning":"hold"}`},
+		"missing reasoning":  &mockLLMProvider{response: `{"verdict":"veto","confidence":0.8}`},
+	}
+	for name, provider := range tests {
+		name, provider := name, provider
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			reviewer := NewOptionsSignalReviewer(provider, "test-model", nil)
+			pos := &OpenPosition{Ticker: "AAPL", EntryPrice: 1.5, Quantity: 1}
+			if closePosition, _ := reviewer.ReviewSpreadExit(context.Background(), testSpread(), pos, testChain(), testOptionsState(), 150, 50000); !closePosition {
+				t.Fatal("incomplete exit review must confirm exposure reduction")
 			}
 		})
 	}

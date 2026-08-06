@@ -2,7 +2,6 @@ package rules
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"math"
@@ -117,7 +116,7 @@ func (r *OptionsSignalReviewer) ReviewSpreadEntry(
 	}
 
 	var verdict OptionsEntryVerdict
-	if err := json.Unmarshal([]byte(resp.Content), &verdict); err != nil {
+	if err := decodeStrictReviewJSON(resp.Content, &verdict); err != nil {
 		r.logger.Warn("rules/options_reviewer: failed to parse LLM response, vetoing spread entry",
 			slog.Any("error", err),
 		)
@@ -163,6 +162,9 @@ func (r *OptionsSignalReviewer) ReviewSpreadExit(
 	underlyingPrice float64,
 	portfolioCash float64,
 ) (bool, string) {
+	if r == nil || r.provider == nil {
+		return true, "LLM unavailable, confirming exit"
+	}
 	userPrompt := buildOptionsExitPrompt(spread, pos, chain, state, underlyingPrice, portfolioCash)
 
 	resp, err := r.provider.Complete(ctx, llm.CompletionRequest{
@@ -179,14 +181,22 @@ func (r *OptionsSignalReviewer) ReviewSpreadExit(
 		)
 		return true, "LLM unavailable, confirming exit"
 	}
+	if resp == nil {
+		r.logger.Warn("rules/options_reviewer: exit review LLM returned nil response, confirming exit")
+		return true, "LLM returned no response, confirming exit"
+	}
 
 	var verdict OptionsExitVerdict
-	if err := json.Unmarshal([]byte(resp.Content), &verdict); err != nil {
+	if err := decodeStrictReviewJSON(resp.Content, &verdict); err != nil {
 		r.logger.Warn("rules/options_reviewer: failed to parse exit response, confirming exit",
-			slog.String("content", resp.Content),
 			slog.Any("error", err),
 		)
 		return true, "LLM parse error, confirming exit"
+	}
+	verdictName := strings.ToLower(strings.TrimSpace(verdict.Verdict))
+	if verdict.Confidence < 0 || verdict.Confidence > 1 || strings.TrimSpace(verdict.Reasoning) == "" {
+		r.logger.Warn("rules/options_reviewer: invalid exit verdict schema, confirming exit", slog.String("verdict", verdictName))
+		return true, "Invalid LLM exit review, confirming exit"
 	}
 
 	r.logger.Info("rules/options_reviewer: exit verdict",
@@ -196,7 +206,7 @@ func (r *OptionsSignalReviewer) ReviewSpreadExit(
 		slog.String("underlying", spread.Underlying),
 	)
 
-	switch strings.ToLower(verdict.Verdict) {
+	switch verdictName {
 	case "veto":
 		return false, verdict.Reasoning
 	default:

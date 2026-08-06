@@ -10,13 +10,17 @@ import (
 )
 
 type mockLLMProvider struct {
-	response string
-	err      error
+	response    string
+	err         error
+	nilResponse bool
 }
 
 func (m *mockLLMProvider) Complete(_ context.Context, _ llm.CompletionRequest) (*llm.CompletionResponse, error) {
 	if m.err != nil {
 		return nil, m.err
+	}
+	if m.nilResponse {
+		return nil, nil
 	}
 	return &llm.CompletionResponse{Content: m.response}, nil
 }
@@ -111,12 +115,35 @@ func TestSignalReviewer_IncompleteReviewVetoesEntry(t *testing.T) {
 		"malformed":        &mockLLMProvider{response: `not-json`},
 		"unknown verdict":  &mockLLMProvider{response: `{"verdict":"maybe","confidence":0.8,"reasoning":"uncertain","holding_strategy":"hold"}`},
 		"missing strategy": &mockLLMProvider{response: `{"verdict":"confirm","confidence":0.8,"reasoning":"looks good"}`},
+		"unknown field":    &mockLLMProvider{response: `{"verdict":"confirm","confidence":0.8,"holding_strategy":"hold","reasoning":"looks good","override":true}`},
 	} {
 		t.Run(name, func(t *testing.T) {
 			reviewer := NewSignalReviewer(provider, "test-model", nil)
 			plan := &agent.TradingPlan{Action: domain.PipelineSignalBuy, Ticker: "AAPL", EntryPrice: 150, PositionSize: 10}
 			if ok, _ := reviewer.Review(context.Background(), plan, testState(), domain.OHLCV{Close: 150}, 50000); ok {
 				t.Fatal("incomplete review must veto entry")
+			}
+		})
+	}
+}
+
+func TestSignalReviewer_IncompleteExitReviewConfirmsExit(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]llm.Provider{
+		"nil reviewer provider": nil,
+		"nil response":          &mockLLMProvider{nilResponse: true},
+		"unknown field":         &mockLLMProvider{response: `{"verdict":"veto","confidence":0.8,"reasoning":"hold","override":true}`},
+		"invalid confidence":    &mockLLMProvider{response: `{"verdict":"veto","confidence":2,"reasoning":"hold"}`},
+		"missing reasoning":     &mockLLMProvider{response: `{"verdict":"veto","confidence":0.8}`},
+	}
+	for name, provider := range tests {
+		name, provider := name, provider
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			reviewer := NewSignalReviewer(provider, "test-model", nil)
+			if closePosition, _ := reviewer.ReviewExit(context.Background(), &OpenPosition{Ticker: "AAPL"}, testState(), domain.OHLCV{Close: 150}, 50000); !closePosition {
+				t.Fatal("incomplete exit review must confirm exposure reduction")
 			}
 		})
 	}
