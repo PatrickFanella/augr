@@ -2,9 +2,18 @@ package automation
 
 import (
 	"testing"
+	"time"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 )
+
+func TestEasternDayStartUTCUsesTradingDayAcrossUTCMidnight(t *testing.T) {
+	got := easternDayStartUTC(time.Date(2026, time.August, 6, 0, 30, 0, 0, time.UTC))
+	want := time.Date(2026, time.August, 5, 4, 0, 0, 0, time.UTC)
+	if !got.Equal(want) {
+		t.Fatalf("easternDayStartUTC() = %s, want %s", got, want)
+	}
+}
 
 func TestSummarizePipelineRunsSeparatesStatusFromDecision(t *testing.T) {
 	t.Parallel()

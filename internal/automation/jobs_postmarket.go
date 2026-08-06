@@ -40,7 +40,7 @@ func (o *JobOrchestrator) dailyReview(ctx context.Context) error {
 		return fmt.Errorf("daily_review: list strategies: %w", err)
 	}
 
-	today := time.Now().UTC().Truncate(24 * time.Hour)
+	today := easternDayStartUTC(time.Now())
 
 	summary := map[string]int{"strategies": len(strategies)}
 	for _, strat := range strategies {
@@ -81,6 +81,11 @@ func (o *JobOrchestrator) dailyReview(ctx context.Context) error {
 	return nil
 }
 
+func easternDayStartUTC(now time.Time) time.Time {
+	local := now.In(easternTime)
+	return time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, easternTime).UTC()
+}
+
 func summarizePipelineRuns(runs []domain.PipelineRun) map[string]int {
 	summary := map[string]int{"runs": len(runs)}
 	for _, run := range runs {
@@ -103,11 +108,14 @@ func summarizePipelineRuns(runs []domain.PipelineRun) map[string]int {
 // variant scores significantly better.
 func (o *JobOrchestrator) strategyResweep(ctx context.Context) error {
 	o.logger.Info("strategy_resweep: starting")
+	summary := map[string]int{"strategies": 0, "eligible": 0, "swept": 0, "improved": 0, "skipped": 0, "failed": 0}
+	defer func() { o.SetLastSummary("strategy_resweep", summary) }()
 
 	strategies, err := listAllStrategies(ctx, o.deps.StrategyRepo, repository.StrategyFilter{Status: "active"})
 	if err != nil {
 		return fmt.Errorf("strategy_resweep: list strategies: %w", err)
 	}
+	summary["strategies"] = len(strategies)
 
 	scoring := discovery.DefaultScoringConfig()
 	now := time.Now()
@@ -119,6 +127,7 @@ func (o *JobOrchestrator) strategyResweep(ctx context.Context) error {
 		}
 
 		if !eventmarkets.SupportsOHLCVResweep(strat.MarketType) {
+			summary["skipped"]++
 			o.logger.Info("strategy_resweep: skipped unsupported market type",
 				slog.String("ticker", strat.Ticker),
 				slog.String("strategy", strat.Name),
@@ -130,12 +139,14 @@ func (o *JobOrchestrator) strategyResweep(ctx context.Context) error {
 		// Extract rules_engine config from strategy config JSON.
 		rulesConfig, err := extractRulesConfig(strat.Config)
 		if err != nil {
+			summary["skipped"]++
 			o.logger.Warn("strategy_resweep: bad config",
 				slog.String("strategy", strat.Name),
 				slog.Any("error", err),
 			)
 			continue
 		}
+		summary["eligible"]++
 
 		// Download 1 year of OHLCV.
 		barsMap, err := o.deps.DataService.DownloadHistoricalOHLCV(
@@ -144,6 +155,7 @@ func (o *JobOrchestrator) strategyResweep(ctx context.Context) error {
 			data.Timeframe1d, histFrom, now, true,
 		)
 		if err != nil {
+			summary["failed"]++
 			o.logger.Warn("strategy_resweep: download failed",
 				slog.String("ticker", strat.Ticker),
 				slog.Any("error", err),
@@ -153,6 +165,7 @@ func (o *JobOrchestrator) strategyResweep(ctx context.Context) error {
 
 		bars := barsMap[strat.Ticker]
 		if len(bars) < 50 {
+			summary["skipped"]++
 			o.logger.Warn("strategy_resweep: insufficient bars",
 				slog.String("ticker", strat.Ticker),
 				slog.Int("bars", len(bars)),
@@ -172,6 +185,7 @@ func (o *JobOrchestrator) strategyResweep(ctx context.Context) error {
 
 		results, err := discovery.RunSweep(ctx, *rulesConfig, sweepCfg, scoring, o.logger)
 		if err != nil {
+			summary["failed"]++
 			o.logger.Warn("strategy_resweep: sweep failed",
 				slog.String("ticker", strat.Ticker),
 				slog.Any("error", err),
@@ -180,8 +194,10 @@ func (o *JobOrchestrator) strategyResweep(ctx context.Context) error {
 		}
 
 		if len(results) == 0 {
+			summary["skipped"]++
 			continue
 		}
+		summary["swept"]++
 
 		// Score the current config (the "base" variant is always index 0 in results
 		// but let's find it explicitly).
@@ -195,6 +211,7 @@ func (o *JobOrchestrator) strategyResweep(ctx context.Context) error {
 
 		best := results[0]
 		if currentScore > 0 && best.Score > currentScore*1.20 {
+			summary["improved"]++
 			o.logger.Info("strategy_resweep: improvement found",
 				slog.String("ticker", strat.Ticker),
 				slog.String("strategy", strat.Name),
@@ -220,6 +237,8 @@ func (o *JobOrchestrator) strategyResweep(ctx context.Context) error {
 // setups with elevated IV, unusual volume, or favourable put/call skew.
 func (o *JobOrchestrator) optionsScan(ctx context.Context) error {
 	o.logger.Info("options_scan: starting")
+	summary := map[string]int{"universe": 0, "optionable": 0, "chains": 0, "setups": 0, "fetch_failed": 0, "persist_failed": 0}
+	defer func() { o.SetLastSummary("options_scan", summary) }()
 
 	if o.deps.OptionsProvider == nil {
 		o.logger.Info("options_scan: skipped — options data provider not configured")
@@ -236,6 +255,7 @@ func (o *JobOrchestrator) optionsScan(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("options_scan: get tickers: %w", err)
 	}
+	summary["universe"] = len(allTickers)
 
 	type optionable struct {
 		ticker string
@@ -262,6 +282,7 @@ func (o *JobOrchestrator) optionsScan(ctx context.Context) error {
 		slog.Int("universe", len(allTickers)),
 		slog.Int("optionable", len(candidates)),
 	)
+	summary["optionable"] = len(candidates)
 
 	// Target expiry window: 20-50 DTE (sweet spot for premium selling).
 	now := time.Now()
@@ -275,6 +296,7 @@ func (o *JobOrchestrator) optionsScan(ctx context.Context) error {
 
 		chain, err := o.deps.OptionsProvider.GetOptionsChain(ctx, candidate.ticker, targetExpiry, "")
 		if err != nil {
+			summary["fetch_failed"]++
 			o.logger.Warn("options_scan: chain fetch failed",
 				slog.String("ticker", candidate.ticker),
 				slog.Any("error", err),
@@ -284,6 +306,7 @@ func (o *JobOrchestrator) optionsScan(ctx context.Context) error {
 		if len(chain) < 10 { // need at least 10 contracts for a meaningful chain
 			continue
 		}
+		summary["chains"]++
 
 		o.logger.Info("options_scan: chain found",
 			slog.String("ticker", candidate.ticker),
@@ -296,6 +319,7 @@ func (o *JobOrchestrator) optionsScan(ctx context.Context) error {
 		}
 
 		hits++
+		summary["setups"]++
 		o.logger.Info("options_scan: setup found",
 			slog.String("ticker", candidate.ticker),
 			slog.Float64("atm_iv", result.atmIV),
@@ -309,20 +333,26 @@ func (o *JobOrchestrator) optionsScan(ctx context.Context) error {
 
 		// Persist scan result and IV history.
 		if o.deps.OptionsScanRepo != nil {
-			scanDate := now.Truncate(24 * time.Hour)
-			_ = o.deps.OptionsScanRepo.UpsertScanResult(ctx, &pgrepo.OptionsScanResult{
+			scanDate := easternDayStartUTC(now)
+			if err := o.deps.OptionsScanRepo.UpsertScanResult(ctx, &pgrepo.OptionsScanResult{
 				Ticker:       candidate.ticker,
 				ScanDate:     scanDate,
 				ATMIV:        result.atmIV,
 				PutCallRatio: result.putCallRatio,
 				ChainDepth:   result.totalContracts,
 				ATMOI:        result.maxOI,
-			})
-			_ = o.deps.OptionsScanRepo.UpsertIVHistory(ctx, &pgrepo.IVHistoryRecord{
+			}); err != nil {
+				summary["persist_failed"]++
+				o.logger.Warn("options_scan: persist scan result failed", slog.String("ticker", candidate.ticker), slog.Any("error", err))
+			}
+			if err := o.deps.OptionsScanRepo.UpsertIVHistory(ctx, &pgrepo.IVHistoryRecord{
 				Ticker: candidate.ticker,
 				Date:   scanDate,
 				ATMIV:  result.atmIV,
-			})
+			}); err != nil {
+				summary["persist_failed"]++
+				o.logger.Warn("options_scan: persist IV history failed", slog.String("ticker", candidate.ticker), slog.Any("error", err))
+			}
 		}
 	}
 
@@ -330,6 +360,9 @@ func (o *JobOrchestrator) optionsScan(ctx context.Context) error {
 		slog.Int("tickers_scanned", len(candidates)),
 		slog.Int("setups_found", hits),
 	)
+	if summary["persist_failed"] > 0 {
+		return fmt.Errorf("options_scan: %d persistence writes failed", summary["persist_failed"])
+	}
 	return nil
 }
 

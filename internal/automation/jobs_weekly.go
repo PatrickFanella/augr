@@ -41,6 +41,7 @@ func (o *JobOrchestrator) universeRefresh(ctx context.Context) error {
 	}
 
 	o.logger.Info("universe_refresh: completed", slog.Int("tickers_loaded", count))
+	o.SetLastSummary("universe_refresh", map[string]int{"tickers_loaded": count})
 	return nil
 }
 

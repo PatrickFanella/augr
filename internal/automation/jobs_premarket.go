@@ -46,6 +46,8 @@ func (o *JobOrchestrator) registerPreMarketJobs() {
 
 // gapScanner detects overnight gaps and unusual volume in the top 500 tickers.
 func (o *JobOrchestrator) gapScanner(ctx context.Context) error {
+	summary := map[string]int{"requested": 0, "snapshot_batches": 0, "failed_batches": 0, "snapshots": 0, "gaps": 0, "score_failed": 0, "triggered": 0, "strategy_list_failed": 0}
+	defer func() { o.SetLastSummary("gap_scanner", summary) }()
 	if o.deps.Universe == nil {
 		o.logger.Info("gap_scanner: skipped — Universe not configured")
 		return nil
@@ -64,6 +66,7 @@ func (o *JobOrchestrator) gapScanner(ctx context.Context) error {
 	for i, t := range tickers {
 		symbols[i] = t.Ticker
 	}
+	summary["requested"] = len(symbols)
 
 	// Batch snapshot 100 at a time.
 	const batchSize = 100
@@ -81,15 +84,18 @@ func (o *JobOrchestrator) gapScanner(ctx context.Context) error {
 			end = len(symbols)
 		}
 		batch := symbols[i:end]
+		summary["snapshot_batches"]++
 
 		snapshots, snapErr := o.deps.Polygon.BulkSnapshot(ctx, batch)
 		if snapErr != nil {
+			summary["failed_batches"]++
 			o.logger.Warn("gap_scanner: snapshot batch failed",
 				slog.Int("offset", i),
 				slog.Any("error", snapErr),
 			)
 			continue
 		}
+		summary["snapshots"] += len(snapshots)
 
 		for _, snap := range snapshots {
 			// Calculate gap percentage: (today open - prev close) / prev close.
@@ -116,6 +122,7 @@ func (o *JobOrchestrator) gapScanner(ctx context.Context) error {
 				bonus := math.Abs(gapPct)*0.5 + math.Max(0, volRatio-1)*0.3
 				baseScore := scoreFromSnapshot(snap.TodaysChangePct, snap.Day.Volume, snap.PrevDay.Volume, snap.Day.Close) * universe.IndexBoost(snap.Ticker)
 				if err := o.deps.Universe.UpdateScore(ctx, snap.Ticker, baseScore+bonus); err != nil {
+					summary["score_failed"]++
 					o.logger.Warn("gap_scanner: update score failed",
 						slog.String("ticker", snap.Ticker),
 						slog.Any("error", err),
@@ -151,15 +158,23 @@ func (o *JobOrchestrator) gapScanner(ctx context.Context) error {
 						slog.String("strategy_id", s.ID.String()),
 					)
 					o.deps.StrategyTrigger.TriggerStrategy(s)
+					summary["triggered"]++
 				}
 			}
+		} else {
+			summary["strategy_list_failed"]++
+			o.logger.Warn("gap_scanner: failed to list strategies for triggers", slog.Any("error", listErr))
 		}
 	}
+	summary["gaps"] = len(gaps)
 
 	o.logger.Info("gap_scanner: complete",
 		slog.Int("scanned", len(symbols)),
 		slog.Int("gaps_found", len(gaps)),
 	)
+	if summary["failed_batches"] > 0 || summary["score_failed"] > 0 || summary["strategy_list_failed"] > 0 {
+		return fmt.Errorf("gap_scanner: incomplete run: failed_batches=%d score_failed=%d strategy_list_failed=%d", summary["failed_batches"], summary["score_failed"], summary["strategy_list_failed"])
+	}
 	return nil
 }
 
