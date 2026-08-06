@@ -47,7 +47,7 @@ func TestRiskMonitor_KillSwitchActiveCancelsContext(t *testing.T) {
 	}
 }
 
-func TestRiskMonitor_ErrorKeepsContextAlive(t *testing.T) {
+func TestRiskMonitor_ErrorCancelsContextFailClosed(t *testing.T) {
 	re := &mockRiskEngine{killSwitchErr: errors.New("network error")}
 	mon := &riskMonitor{
 		riskEngine:   re,
@@ -58,13 +58,11 @@ func TestRiskMonitor_ErrorKeepsContextAlive(t *testing.T) {
 	ctx, cancel := mon.monitorContext(context.Background())
 	defer cancel()
 
-	// Let a few poll cycles run.
-	time.Sleep(50 * time.Millisecond)
-
 	select {
 	case <-ctx.Done():
-		t.Fatal("context should not be cancelled on poll errors")
-	default:
+		// Unknown kill-switch state must stop the pipeline.
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for context cancellation after poll error")
 	}
 }
 

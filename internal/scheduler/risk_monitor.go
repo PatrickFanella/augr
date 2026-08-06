@@ -53,10 +53,13 @@ func (m *riskMonitor) monitorContext(parent context.Context) (context.Context, c
 			case <-ticker.C:
 				active, err := m.riskEngine.IsKillSwitchActive(ctx)
 				if err != nil {
-					m.logger.Warn("scheduler: failed to poll kill switch",
-						slog.Any("error", err),
-					)
-					continue
+					if m.logger != nil {
+						m.logger.Error("scheduler: failed to poll kill switch; cancelling pipeline",
+							slog.String("error_type", fmt.Sprintf("%T", err)),
+						)
+					}
+					cancel()
+					return
 				}
 				if active {
 					m.logger.Warn("scheduler: kill switch activated during pipeline execution; cancelling")
