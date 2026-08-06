@@ -58,6 +58,18 @@ func TestOptionsDiscoveryCompletionErrorRejectsReportedErrors(t *testing.T) {
 	}
 }
 
+func TestHistoryRefreshCompletionErrorRejectsEmptyAndStaleCoverage(t *testing.T) {
+	t.Parallel()
+
+	if err := historyRefreshCompletionError(map[string]int{}); err != nil {
+		t.Fatalf("historyRefreshCompletionError(empty) = %v, want nil", err)
+	}
+	err := historyRefreshCompletionError(map[string]int{"tickers": 10, "empty": 2, "stale": 1})
+	if err == nil || !strings.Contains(err.Error(), "empty=2 stale=1") {
+		t.Fatalf("historyRefreshCompletionError(partial) = %v", err)
+	}
+}
+
 func TestOvernightGenerationCoversEveryUniverseIndexGroup(t *testing.T) {
 	for _, group := range []string{"nasdaq", "nyse", "other"} {
 		if !slices.Contains(overnightIndexGroups, group) {

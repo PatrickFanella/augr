@@ -291,13 +291,15 @@ func overnightGenerateCompletionError(errors int) error {
 // the universe, batching 10 at a time with a 1-second pause for rate
 // limiting.
 func (o *JobOrchestrator) historyRefresh(ctx context.Context) error {
-	summary := map[string]int{"tickers": 0, "updated": 0, "cache_revalidated": 0, "empty": 0, "failed": 0, "batches": 0}
+	summary := map[string]int{"tickers": 0, "updated": 0, "cache_revalidated": 0, "provider_requests": 0, "fresh_bars": 0, "empty": 0, "stale": 0, "failed": 0, "batches": 0}
 	defer func() { o.SetLastSummary("history_refresh", summary) }()
 	o.logger.Info("history_refresh: starting")
 
 	if o.deps.Universe == nil {
-		o.logger.Info("history_refresh: skipped — Universe not configured")
-		return nil
+		return fmt.Errorf("history_refresh: universe not configured")
+	}
+	if o.deps.DataService == nil {
+		return fmt.Errorf("history_refresh: data service not configured")
 	}
 
 	allTickers, err := o.deps.Universe.GetActiveTickers(ctx, "", 0)
@@ -307,6 +309,9 @@ func (o *JobOrchestrator) historyRefresh(ctx context.Context) error {
 
 	now := time.Now()
 	summary["tickers"] = len(allTickers)
+	if len(allTickers) == 0 {
+		return fmt.Errorf("history_refresh: active universe empty")
+	}
 	histFrom := now.AddDate(-5, 0, 0)
 	batchSize := 10
 	processed := 0
@@ -363,6 +368,9 @@ func (o *JobOrchestrator) historyRefresh(ctx context.Context) error {
 					for _, ticker := range cacheOnly {
 						download.ProviderRequests[ticker] += revalidated.ProviderRequests[ticker]
 						download.FreshBars[ticker] += revalidated.FreshBars[ticker]
+						if len(revalidated.Bars[ticker]) > 0 {
+							download.Bars[ticker] = revalidated.Bars[ticker]
+						}
 						if revalidated.FreshBars[ticker] > 0 {
 							summary["cache_revalidated"]++
 						}
@@ -374,8 +382,23 @@ func (o *JobOrchestrator) historyRefresh(ctx context.Context) error {
 				if _, failed := revalidationFailed[ticker]; failed {
 					continue
 				}
+				summary["provider_requests"] += download.ProviderRequests[ticker]
+				summary["fresh_bars"] += download.FreshBars[ticker]
+				if download.ProviderRequests[ticker] == 0 {
+					summary["failed"]++
+					continue
+				}
 				if download.FreshBars[ticker] == 0 {
 					summary["empty"]++
+					continue
+				}
+				bars := download.Bars[ticker]
+				if len(bars) == 0 {
+					summary["empty"]++
+					continue
+				}
+				if !dailyBarFresh(now, bars[len(bars)-1].Timestamp) {
+					summary["stale"]++
 					continue
 				}
 				summary["updated"]++
@@ -402,10 +425,15 @@ func (o *JobOrchestrator) historyRefresh(ctx context.Context) error {
 		slog.Int("empty", summary["empty"]),
 		slog.Int("failed", summary["failed"]),
 	)
-	if summary["failed"] > 0 {
-		return fmt.Errorf("history_refresh: %d/%d tickers failed", summary["failed"], summary["tickers"])
+	return historyRefreshCompletionError(summary)
+}
+
+func historyRefreshCompletionError(summary map[string]int) error {
+	if summary["failed"] == 0 && summary["empty"] == 0 && summary["stale"] == 0 {
+		return nil
 	}
-	return nil
+	return fmt.Errorf("history_refresh: incomplete coverage: failed=%d empty=%d stale=%d tickers=%d",
+		summary["failed"], summary["empty"], summary["stale"], summary["tickers"])
 }
 
 // optionsDiscovery runs the full options strategy discovery pipeline.
@@ -413,16 +441,16 @@ func (o *JobOrchestrator) optionsDiscovery(ctx context.Context) error {
 	o.logger.Info("options_discovery: starting")
 
 	if o.deps.OptionsProvider == nil {
-		o.logger.Info("options_discovery: skipped — options provider not configured")
-		return nil
+		return fmt.Errorf("options_discovery: options provider not configured")
 	}
 	if o.deps.Universe == nil {
-		o.logger.Info("options_discovery: skipped — universe not configured")
-		return nil
+		return fmt.Errorf("options_discovery: universe not configured")
 	}
 	if o.deps.LLMProvider == nil {
-		o.logger.Info("options_discovery: skipped — LLM provider not configured")
-		return nil
+		return fmt.Errorf("options_discovery: LLM provider not configured")
+	}
+	if o.deps.DataService == nil || o.deps.StrategyRepo == nil {
+		return fmt.Errorf("options_discovery: data service and strategy repository are required")
 	}
 
 	// Get tradeable watchlist candidates.
