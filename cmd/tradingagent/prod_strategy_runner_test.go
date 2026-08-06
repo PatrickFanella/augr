@@ -23,6 +23,12 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 )
 
+func withNativeAuditDeps(runner *realStrategyRunner) *realStrategyRunner {
+	runner.runRepo = &stubPipelineRunRepo{}
+	runner.eventRepo = &recordingStrategyPreparationEventRepo{}
+	return runner
+}
+
 func TestNormalizePolymarketStrategySide(t *testing.T) {
 	t.Parallel()
 
@@ -67,7 +73,7 @@ func TestNormalizePolymarketStrategySide(t *testing.T) {
 func TestRunStrategy_PolymarketUsesNativePathBeforeLegacyOHLCV(t *testing.T) {
 	t.Parallel()
 
-	runner := &realStrategyRunner{polymarketMarketData: failingPolymarketMarketData{err: fmt.Errorf("native data used")}}
+	runner := withNativeAuditDeps(&realStrategyRunner{polymarketMarketData: failingPolymarketMarketData{err: fmt.Errorf("native data used")}})
 	_, err := runner.RunStrategy(context.Background(), domain.Strategy{
 		Name:       "native disabled",
 		Ticker:     "will-example-happen",
@@ -82,7 +88,7 @@ func TestRunStrategy_PolymarketUsesNativePathBeforeLegacyOHLCV(t *testing.T) {
 func TestRunStrategy_KalshiUsesNativePathBeforeLegacyOHLCV(t *testing.T) {
 	t.Parallel()
 
-	runner := &realStrategyRunner{kalshiMarketData: failingKalshiMarketData{err: fmt.Errorf("kalshi native data used")}}
+	runner := withNativeAuditDeps(&realStrategyRunner{kalshiMarketData: failingKalshiMarketData{err: fmt.Errorf("kalshi native data used")}})
 	_, err := runner.RunStrategy(context.Background(), domain.Strategy{
 		Name:       "kalshi native disabled",
 		Ticker:     "KXTEST-YESNO",
@@ -181,7 +187,7 @@ func TestRunStrategy_KalshiLiveRoutingRespectsGatesAndClientInitialization(t *te
 	t.Run("live disabled is denied by gate before broker route", func(t *testing.T) {
 		t.Parallel()
 
-		runner := &realStrategyRunner{kalshiDataProvider: &fakeKalshiMarketData{label: "shared-data"}, kalshiMarketData: snapshot, logger: slogDiscardLogger()}
+		runner := withNativeAuditDeps(&realStrategyRunner{kalshiDataProvider: &fakeKalshiMarketData{label: "shared-data"}, kalshiMarketData: snapshot, logger: slogDiscardLogger()})
 		_, err := runner.RunStrategy(context.Background(), strategy)
 		if err == nil || !strings.Contains(err.Error(), "live trading disabled") {
 			t.Fatalf("RunStrategy() error = %v, want live gate denial", err)
@@ -191,7 +197,7 @@ func TestRunStrategy_KalshiLiveRoutingRespectsGatesAndClientInitialization(t *te
 	t.Run("missing broker allowlist is denied by gate", func(t *testing.T) {
 		t.Parallel()
 
-		runner := &realStrategyRunner{
+		runner := withNativeAuditDeps(&realStrategyRunner{
 			cfg: config.Config{
 				Features:                     config.FeatureFlags{EnableLiveTrading: true},
 				LiveTradingAllowedStrategies: []string{strategy.ID.String()},
@@ -199,7 +205,7 @@ func TestRunStrategy_KalshiLiveRoutingRespectsGatesAndClientInitialization(t *te
 			kalshiDataProvider: &fakeKalshiMarketData{label: "shared-data"},
 			kalshiMarketData:   snapshot,
 			logger:             slogDiscardLogger(),
-		}
+		})
 		_, err := runner.RunStrategy(context.Background(), strategy)
 		if err == nil || !strings.Contains(err.Error(), "broker not live-allowlisted") {
 			t.Fatalf("RunStrategy() error = %v, want broker allowlist denial", err)
@@ -209,7 +215,7 @@ func TestRunStrategy_KalshiLiveRoutingRespectsGatesAndClientInitialization(t *te
 	t.Run("missing credentials fails clearly", func(t *testing.T) {
 		t.Parallel()
 
-		runner := &realStrategyRunner{
+		runner := withNativeAuditDeps(&realStrategyRunner{
 			cfg: config.Config{
 				Features:                     config.FeatureFlags{EnableLiveTrading: true},
 				LiveTradingAllowedStrategies: []string{strategy.ID.String()},
@@ -218,7 +224,7 @@ func TestRunStrategy_KalshiLiveRoutingRespectsGatesAndClientInitialization(t *te
 			kalshiDataProvider: &fakeKalshiMarketData{label: "shared-data"},
 			kalshiMarketData:   snapshot,
 			logger:             slogDiscardLogger(),
-		}
+		})
 		_, err := runner.RunStrategy(context.Background(), strategy)
 		if err == nil || !strings.Contains(err.Error(), "KALSHI_API_KEY_ID and KALSHI_PRIVATE_KEY_PEM_B64") {
 			t.Fatalf("RunStrategy() error = %v, want credential error", err)
@@ -228,7 +234,7 @@ func TestRunStrategy_KalshiLiveRoutingRespectsGatesAndClientInitialization(t *te
 	t.Run("all gates and credentials reach blocked live client", func(t *testing.T) {
 		t.Parallel()
 
-		runner := &realStrategyRunner{
+		runner := withNativeAuditDeps(&realStrategyRunner{
 			cfg: config.Config{
 				Features:                     config.FeatureFlags{EnableLiveTrading: true},
 				LiveTradingAllowedStrategies: []string{strategy.ID.String()},
@@ -241,7 +247,7 @@ func TestRunStrategy_KalshiLiveRoutingRespectsGatesAndClientInitialization(t *te
 			kalshiDataProvider: &fakeKalshiMarketData{label: "shared-data"},
 			kalshiMarketData:   snapshot,
 			logger:             slogDiscardLogger(),
-		}
+		})
 		_, err := runner.RunStrategy(context.Background(), strategy)
 		if err == nil || !strings.Contains(err.Error(), "kalshi live client is not initialised") {
 			t.Fatalf("RunStrategy() error = %v, want uninitialised live client error", err)
@@ -254,7 +260,7 @@ func TestRunStrategy_KalshiLiveRoutingRespectsGatesAndClientInitialization(t *te
 		holdStrategy := strategy
 		holdStrategy.ID = uuid.New()
 		holdStrategy.Config = mustKalshiConfig(t, map[string]any{"template": "microstructure", "direction": "NO", "confidence": 0.72, "entry_price_max": 0.60})
-		runner := &realStrategyRunner{
+		runner := withNativeAuditDeps(&realStrategyRunner{
 			cfg: config.Config{
 				Features:                     config.FeatureFlags{EnableLiveTrading: true},
 				LiveTradingAllowedStrategies: []string{holdStrategy.ID.String()},
@@ -266,7 +272,7 @@ func TestRunStrategy_KalshiLiveRoutingRespectsGatesAndClientInitialization(t *te
 			},
 			kalshiMarketData: snapshot,
 			logger:           slogDiscardLogger(),
-		}
+		})
 		_, err := runner.RunStrategy(context.Background(), holdStrategy)
 		if err == nil || !strings.Contains(err.Error(), "kalshi live client is not initialised") {
 			t.Fatalf("RunStrategy() error = %v, want uninitialised live client error", err)
@@ -306,9 +312,10 @@ func TestRunStrategy_KalshiSafeHoldPath(t *testing.T) {
 		Config:     mustKalshiConfig(t, map[string]any{"template": "microstructure", "direction": "NO", "confidence": 0.72, "entry_price_max": 0.60}),
 	}
 	snapshotRepo := &recordingNativeSnapshotRepo{}
+	eventRepo := &recordingStrategyPreparationEventRepo{}
 	runner := &realStrategyRunner{
 		runRepo:      &stubPipelineRunRepo{},
-		eventRepo:    &recordingStrategyPreparationEventRepo{},
+		eventRepo:    eventRepo,
 		snapshotRepo: snapshotRepo,
 		kalshiMarketData: staticKalshiMarketData{snapshot: kalshiexecution.Snapshot{
 			Ticker:     "KXTEST-YESNO",
@@ -330,6 +337,9 @@ func TestRunStrategy_KalshiSafeHoldPath(t *testing.T) {
 	}
 	if len(snapshotRepo.snapshots) != 1 || snapshotRepo.snapshots[0].DataType != "kalshi_native_snapshot" {
 		t.Fatalf("snapshots = %+v, want one kalshi_native_snapshot", snapshotRepo.snapshots)
+	}
+	if len(eventRepo.events) != 2 || eventRepo.events[0].EventKind != agent.AgentEventKindPipelineStarted.String() || eventRepo.events[1].EventKind != agent.AgentEventKindPipelineCompleted.String() {
+		t.Fatalf("events = %+v, want pipeline_started then pipeline_completed", eventRepo.events)
 	}
 }
 
@@ -375,6 +385,28 @@ func TestCompleteNativeRunEventFailureReclassifiesCompletion(t *testing.T) {
 	}
 	if len(runRepo.updates) != 2 || runRepo.updates[0].Status != domain.PipelineStatusCompleted || runRepo.updates[1].Status != domain.PipelineStatusFailed {
 		t.Fatalf("run updates = %+v, want completed then failed fallback", runRepo.updates)
+	}
+	if run.Status != domain.PipelineStatusFailed {
+		t.Fatalf("run status = %q, want failed", run.Status)
+	}
+}
+
+func TestStartNativeRunEventFailureMarksRunFailed(t *testing.T) {
+	t.Parallel()
+
+	runRepo := &stubPipelineRunRepo{}
+	runner := &realStrategyRunner{
+		runRepo:   runRepo,
+		eventRepo: &recordingStrategyPreparationEventRepo{err: errors.New("event store unavailable")},
+	}
+	run := domain.PipelineRun{ID: uuid.New(), StrategyID: uuid.New(), TradeDate: time.Now().UTC(), Status: domain.PipelineStatusRunning}
+
+	err := runner.startNativeRun(context.Background(), "kalshi", &run)
+	if err == nil || !strings.Contains(err.Error(), "persist start event") {
+		t.Fatalf("startNativeRun() error = %v, want event persistence failure", err)
+	}
+	if runRepo.created == nil || len(runRepo.updates) != 1 || runRepo.updates[0].Status != domain.PipelineStatusFailed {
+		t.Fatalf("created=%+v updates=%+v, want created run then failed update", runRepo.created, runRepo.updates)
 	}
 	if run.Status != domain.PipelineStatusFailed {
 		t.Fatalf("run status = %q, want failed", run.Status)

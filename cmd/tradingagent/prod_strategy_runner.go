@@ -634,10 +634,8 @@ func (r *realStrategyRunner) runPolymarketNative(ctx context.Context, strategy d
 		StartedAt:      now,
 		ConfigSnapshot: strategy.Config,
 	}
-	if r.runRepo != nil {
-		if err := r.runRepo.Create(ctx, &run); err != nil {
-			return nil, fmt.Errorf("polymarket native: create run: %w", err)
-		}
+	if err := r.startNativeRun(ctx, "polymarket", &run); err != nil {
+		return nil, err
 	}
 
 	completeRun := func(status domain.PipelineStatus, signal domain.PipelineSignal, errMsg string) error {
@@ -744,10 +742,8 @@ func (r *realStrategyRunner) runKalshiNative(ctx context.Context, strategy domai
 		StartedAt:      now,
 		ConfigSnapshot: strategy.Config,
 	}
-	if r.runRepo != nil {
-		if err := r.runRepo.Create(ctx, &run); err != nil {
-			return nil, fmt.Errorf("kalshi native: create run: %w", err)
-		}
+	if err := r.startNativeRun(ctx, "kalshi", &run); err != nil {
+		return nil, err
 	}
 
 	completeRun := func(status domain.PipelineStatus, signal domain.PipelineSignal, errMsg string) error {
@@ -851,6 +847,65 @@ func (r *realStrategyRunner) runKalshiNative(ctx context.Context, strategy domai
 	}
 
 	return &api.StrategyRunResult{Run: run, Signal: signal, Orders: orders, Positions: positions}, nil
+}
+
+func (r *realStrategyRunner) startNativeRun(ctx context.Context, source string, run *domain.PipelineRun) error {
+	if run == nil {
+		return fmt.Errorf("%s native: pipeline run is required", source)
+	}
+	if r.runRepo == nil {
+		return fmt.Errorf("%s native: pipeline run repository is required", source)
+	}
+	if r.eventRepo == nil {
+		return fmt.Errorf("%s native: agent event repository is required", source)
+	}
+	persistCtx, cancel := context.WithTimeout(ctx, nativeTerminalTimeout)
+	if err := r.runRepo.Create(persistCtx, run); err != nil {
+		cancel()
+		return fmt.Errorf("%s native: create run: %w", source, err)
+	}
+	cancel()
+
+	metadata, err := json.Marshal(map[string]string{"execution_path": source + "_native"})
+	if err != nil {
+		return fmt.Errorf("%s native: marshal start event: %w", source, err)
+	}
+	event := &domain.AgentEvent{
+		PipelineRunID: &run.ID,
+		StrategyID:    &run.StrategyID,
+		EventKind:     agent.AgentEventKindPipelineStarted.String(),
+		Title:         "Pipeline started",
+		Summary:       "Native deterministic pipeline admitted for evaluation.",
+		Tags:          []string{"pipeline", "native", source},
+		Metadata:      metadata,
+	}
+	eventCtx, eventCancel := context.WithTimeout(ctx, nativeTerminalTimeout)
+	eventErr := r.eventRepo.Create(eventCtx, event)
+	eventCancel()
+	if eventErr == nil {
+		return nil
+	}
+
+	completedAt := time.Now().UTC()
+	fallbackSignal := domain.PipelineSignalHold
+	fallbackErr := fmt.Errorf("%s native: start audit event persistence failed", source)
+	run.Status = domain.PipelineStatusFailed
+	run.Signal = fallbackSignal
+	run.CompletedAt = &completedAt
+	run.ErrorMessage = fallbackErr.Error()
+	update := repository.PipelineRunStatusUpdate{
+		Status: domain.PipelineStatusFailed, Signal: &fallbackSignal, CompletedAt: &completedAt, ErrorMessage: fallbackErr.Error(),
+	}
+	updateCtx, updateCancel := context.WithTimeout(context.WithoutCancel(ctx), nativeTerminalTimeout)
+	updateErr := r.runRepo.UpdateStatus(updateCtx, run.ID, run.TradeDate, update)
+	updateCancel()
+	if updateErr != nil {
+		return errors.Join(
+			fmt.Errorf("%s native: persist start event: %w", source, eventErr),
+			fmt.Errorf("%s native: persist start-event failure status: %w", source, updateErr),
+		)
+	}
+	return fmt.Errorf("%s native: persist start event: %w", source, eventErr)
 }
 
 func (r *realStrategyRunner) completeNativeRun(
