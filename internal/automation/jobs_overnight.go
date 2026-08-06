@@ -75,6 +75,9 @@ func optionsDiscoveryCompletionError(errors []string) error {
 // improvement is found.
 func (o *JobOrchestrator) overnightSweep(ctx context.Context) error {
 	o.logger.Info("overnight_sweep: starting")
+	if o.deps.StrategyRepo == nil || o.deps.DataService == nil {
+		return fmt.Errorf("overnight_sweep: strategy repository and data service are required")
+	}
 
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Hour)
 	defer cancel()
@@ -88,9 +91,9 @@ func (o *JobOrchestrator) overnightSweep(ctx context.Context) error {
 	now := time.Now()
 	histFrom := now.AddDate(-1, 0, 0)
 
-	var improved, total, swept, skipped, failed int
+	var improved, total, swept, skipped, failed, insufficient, stale int
 	defer func() {
-		o.SetLastSummary("overnight_sweep", map[string]int{"strategies": total, "swept": swept, "improved": improved, "skipped": skipped, "failed": failed})
+		o.SetLastSummary("overnight_sweep", map[string]int{"strategies": total, "swept": swept, "improved": improved, "skipped": skipped, "failed": failed, "insufficient": insufficient, "stale": stale})
 	}()
 	for _, strat := range strategies {
 		if ctx.Err() != nil {
@@ -124,7 +127,13 @@ func (o *JobOrchestrator) overnightSweep(ctx context.Context) error {
 
 		bars := barsMap[strat.Ticker]
 		if len(bars) < 50 {
-			skipped++
+			failed++
+			insufficient++
+			continue
+		}
+		if !dailyBarFresh(now, bars[len(bars)-1].Timestamp) {
+			failed++
+			stale++
 			continue
 		}
 
@@ -149,7 +158,7 @@ func (o *JobOrchestrator) overnightSweep(ctx context.Context) error {
 		}
 
 		if len(results) == 0 {
-			skipped++
+			failed++
 			continue
 		}
 		swept++
@@ -196,12 +205,11 @@ func (o *JobOrchestrator) overnightGenerate(ctx context.Context) error {
 	o.logger.Info("overnight_generate: starting")
 
 	if o.deps.Universe == nil {
-		o.logger.Info("overnight_generate: skipped — Universe not configured")
-		return nil
+		return fmt.Errorf("overnight_generate: universe not configured")
 	}
 
 	indexGroups := overnightIndexGroups
-	summary := map[string]int{"groups": len(indexGroups), "candidates": 0, "deployed": 0, "errors": 0}
+	summary := map[string]int{"groups": len(indexGroups), "groups_attempted": 0, "candidates": 0, "deployed": 0, "pipeline_errors": 0, "errors": 0}
 	defer func() { o.SetLastSummary("overnight_generate", summary) }()
 
 	deps := discovery.DiscoveryDeps{
@@ -216,6 +224,7 @@ func (o *JobOrchestrator) overnightGenerate(ctx context.Context) error {
 			return ctx.Err()
 		}
 
+		summary["groups_attempted"]++
 		tickers, err := o.deps.Universe.GetActiveTickers(ctx, indexGroup, 5)
 		if err != nil {
 			summary["errors"]++
@@ -227,7 +236,8 @@ func (o *JobOrchestrator) overnightGenerate(ctx context.Context) error {
 		}
 
 		if len(tickers) == 0 {
-			o.logger.Info("overnight_generate: no tickers for index group",
+			summary["errors"]++
+			o.logger.Warn("overnight_generate: no tickers for index group",
 				slog.String("index_group", indexGroup),
 			)
 			continue
@@ -249,6 +259,14 @@ func (o *JobOrchestrator) overnightGenerate(ctx context.Context) error {
 				slog.Any("error", err),
 			)
 			continue
+		}
+		if len(result.Errors) > 0 {
+			summary["errors"]++
+			summary["pipeline_errors"] += len(result.Errors)
+			o.logger.Warn("overnight_generate: discovery returned partial errors",
+				slog.String("index_group", indexGroup),
+				slog.Int("errors", len(result.Errors)),
+			)
 		}
 
 		summary["candidates"] += result.Candidates
