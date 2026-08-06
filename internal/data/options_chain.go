@@ -29,8 +29,15 @@ func (c *OptionsProviderChain) GetOptionsChain(ctx context.Context, underlying s
 	var lastErr error
 	for _, p := range c.providers {
 		result, err := p.GetOptionsChain(ctx, underlying, expiry, optionType)
-		if err == nil {
+		if err == nil && len(result) > 0 {
 			return result, nil
+		}
+		if err == nil {
+			c.logger.Debug("options chain provider returned no contracts, trying next",
+				slog.String("underlying", underlying),
+				slog.String("expiry", expiry.Format("2006-01-02")),
+			)
+			continue
 		}
 		if c.fallback.shouldRecord(err) {
 			c.logger.Warn("options chain provider failed, trying next",
@@ -43,7 +50,7 @@ func (c *OptionsProviderChain) GetOptionsChain(ctx context.Context, underlying s
 	if lastErr != nil {
 		return nil, lastErr
 	}
-	return nil, fmt.Errorf("options: no provider available for chain data")
+	return nil, fmt.Errorf("options: no provider returned chain data for %s", underlying)
 }
 
 func (c *OptionsProviderChain) GetOptionsOHLCV(ctx context.Context, occSymbol string, timeframe Timeframe, from, to time.Time) ([]domain.OHLCV, error) {

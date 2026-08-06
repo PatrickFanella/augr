@@ -2,9 +2,11 @@ package options
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"math"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/data"
@@ -70,9 +72,11 @@ func ScreenOptions(
 	targetExpiry := now.AddDate(0, 0, cfg.TargetDTE)
 
 	var (
-		mu      sync.Mutex
-		results []OptionsScreenResult
-		wg      sync.WaitGroup
+		mu            sync.Mutex
+		results       []OptionsScreenResult
+		wg            sync.WaitGroup
+		chainAttempts atomic.Int64
+		chainErrors   atomic.Int64
 	)
 
 	sem := make(chan struct{}, 10) // concurrency limit
@@ -111,8 +115,17 @@ func ScreenOptions(
 			}
 
 			// Check options chain exists.
+			chainAttempts.Add(1)
 			chain, err := optionsProvider.GetOptionsChain(ctx, ticker, targetExpiry, "")
-			if err != nil || len(chain) < cfg.MinChainWidth {
+			if err != nil {
+				chainErrors.Add(1)
+				logger.Debug("options/screen: chain fetch failed",
+					slog.String("ticker", ticker),
+					slog.Any("error", err),
+				)
+				return
+			}
+			if len(chain) < cfg.MinChainWidth {
 				return
 			}
 
@@ -163,7 +176,19 @@ func ScreenOptions(
 	logger.Info("options/screen: complete",
 		slog.Int("input", len(cfg.Tickers)),
 		slog.Int("passed", len(results)),
+		slog.Int64("chain_attempts", chainAttempts.Load()),
+		slog.Int64("chain_errors", chainErrors.Load()),
 	)
+	if err := optionsScreenCompletionError(chainAttempts.Load(), chainErrors.Load()); err != nil {
+		return nil, err
+	}
 
 	return results, nil
+}
+
+func optionsScreenCompletionError(chainAttempts, chainErrors int64) error {
+	if chainAttempts > 0 && chainErrors == chainAttempts {
+		return fmt.Errorf("all %d eligible options chain lookups failed", chainAttempts)
+	}
+	return nil
 }

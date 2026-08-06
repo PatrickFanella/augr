@@ -188,3 +188,33 @@ func TestOptionsProviderChainFallbackOrder(t *testing.T) {
 		t.Fatalf("ohlcv calls = %d/%d/%d, want 1/1/0", first.ohlcvCalls, second.ohlcvCalls, third.ohlcvCalls)
 	}
 }
+
+func TestOptionsProviderChainFallsThroughEmptyResults(t *testing.T) {
+	first := &optionsStubProvider{}
+	second := &optionsStubProvider{chain: []domain.OptionSnapshot{{Contract: domain.OptionContract{OCCSymbol: "AAPL240119C00150000"}}}}
+	chain := NewOptionsProviderChain(slog.New(slog.NewTextHandler(io.Discard, nil)), first, second)
+
+	result, err := chain.GetOptionsChain(context.Background(), "AAPL", time.Time{}, "")
+	if err != nil {
+		t.Fatalf("GetOptionsChain() error = %v", err)
+	}
+	if len(result) != 1 || result[0].Contract.OCCSymbol != "AAPL240119C00150000" {
+		t.Fatalf("GetOptionsChain() = %#v, want second provider result", result)
+	}
+	if first.chainCalls != 1 || second.chainCalls != 1 {
+		t.Fatalf("chain calls = %d/%d, want 1/1", first.chainCalls, second.chainCalls)
+	}
+}
+
+func TestOptionsProviderChainErrorsWhenEveryProviderIsEmpty(t *testing.T) {
+	first := &optionsStubProvider{}
+	second := &optionsStubProvider{}
+	chain := NewOptionsProviderChain(slog.New(slog.NewTextHandler(io.Discard, nil)), first, second)
+
+	if _, err := chain.GetOptionsChain(context.Background(), "AAPL", time.Time{}, ""); err == nil {
+		t.Fatal("GetOptionsChain() error = nil, want empty-chain error")
+	}
+	if first.chainCalls != 1 || second.chainCalls != 1 {
+		t.Fatalf("chain calls = %d/%d, want 1/1", first.chainCalls, second.chainCalls)
+	}
+}
