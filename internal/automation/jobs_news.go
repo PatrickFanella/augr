@@ -40,8 +40,10 @@ func (o *JobOrchestrator) newsScan(ctx context.Context) error {
 	summary := map[string]int{"feeds_attempted": 0, "feeds_succeeded": 0, "feed_errors": 0, "items_rejected": 0, "fetched": 0, "saved": 0, "save_errors": 0, "triage_requested": 0, "classified": 0, "triage_missing": 0, "triage_write_errors": 0}
 	defer func() { o.SetLastSummary("news_scan", summary) }()
 	if o.deps.NewsFeedRepo == nil {
-		o.logger.Info("news_scan: skipped — news feed repo not configured")
-		return nil
+		return fmt.Errorf("news_scan: news feed repo not configured")
+	}
+	if o.deps.LLMProvider == nil {
+		return fmt.Errorf("news_scan: LLM provider not configured")
 	}
 
 	// Lazily initialize the RSS aggregator.
@@ -98,7 +100,7 @@ func (o *JobOrchestrator) newsScan(ctx context.Context) error {
 	// Classify every fetched article. The triage layer batches requests and
 	// respects the job deadline; any omitted result remains unacknowledged so a
 	// later run can retry it.
-	if o.deps.LLMProvider != nil && len(articles) > 0 {
+	if len(articles) > 0 {
 		batch := articles
 		summary["triage_requested"] = len(batch)
 		triageResults := rss.Triage(ctx, o.deps.LLMProvider, "", batch, o.logger)
@@ -133,10 +135,6 @@ func (o *JobOrchestrator) newsScan(ctx context.Context) error {
 		}
 		o.logger.Info("news_scan: triage complete", slog.Int("classified", classified))
 		summary["classified"] = classified
-	} else {
-		for key := range savedArticles {
-			acknowledged[key] = true
-		}
 	}
 	for _, article := range articles {
 		key := article.GUID

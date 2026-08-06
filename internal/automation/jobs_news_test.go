@@ -19,6 +19,16 @@ type roundTripperFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripperFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
+func TestNewsScanRequiresTriageProviderBeforeFetching(t *testing.T) {
+	t.Parallel()
+
+	orch := NewJobOrchestrator(OrchestratorDeps{NewsFeedRepo: &pgrepo.NewsFeedRepo{}})
+	err := orch.newsScan(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "LLM provider not configured") {
+		t.Fatalf("newsScan() error = %v, want missing LLM provider", err)
+	}
+}
+
 func TestJobOrchestratorSocialScan_SkipsStockTwitsForPolymarketStrategies(t *testing.T) {
 	origTransport := http.DefaultTransport
 	t.Cleanup(func() {
