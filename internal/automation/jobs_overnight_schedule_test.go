@@ -46,6 +46,18 @@ func TestOvernightCompletionErrorsExposePartialCoverage(t *testing.T) {
 	}
 }
 
+func TestOptionsDiscoveryCompletionErrorRejectsReportedErrors(t *testing.T) {
+	t.Parallel()
+
+	if err := optionsDiscoveryCompletionError(nil); err != nil {
+		t.Fatalf("optionsDiscoveryCompletionError(nil) = %v, want nil", err)
+	}
+	err := optionsDiscoveryCompletionError([]string{"screen AAPL", "generate MSFT"})
+	if err == nil || !strings.Contains(err.Error(), "2 pipeline errors") {
+		t.Fatalf("optionsDiscoveryCompletionError(errors) = %v", err)
+	}
+}
+
 func TestOvernightGenerationCoversEveryUniverseIndexGroup(t *testing.T) {
 	for _, group := range []string{"nasdaq", "nyse", "other"} {
 		if !slices.Contains(overnightIndexGroups, group) {

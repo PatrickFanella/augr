@@ -63,6 +63,13 @@ func (o *JobOrchestrator) overnightBacktest(ctx context.Context) error {
 	return nil
 }
 
+func optionsDiscoveryCompletionError(errors []string) error {
+	if len(errors) == 0 {
+		return nil
+	}
+	return fmt.Errorf("options_discovery: completed with %d pipeline errors", len(errors))
+}
+
 // overnightSweep runs a heavy parameter sweep (50 variants) on all
 // active strategies, logging recommendations when significant
 // improvement is found.
@@ -467,5 +474,5 @@ func (o *JobOrchestrator) optionsDiscovery(ctx context.Context) error {
 		)
 	}
 
-	return nil
+	return optionsDiscoveryCompletionError(result.Errors)
 }
