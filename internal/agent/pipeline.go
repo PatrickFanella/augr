@@ -561,7 +561,9 @@ func (p *Pipeline) Execute(ctx context.Context, strategyID uuid.UUID, ticker str
 
 			completedAt := p.currentTime().UTC()
 			phaseTimingsJSON, _ := json.Marshal(phaseTimingsMap)
-			_ = p.persister.RecordRunComplete(ctx, run.ID, run.TradeDate, domain.PipelineStatusFailed, completedAt, err.Error(), phaseTimingsJSON)
+			if persistErr := p.persister.RecordRunComplete(ctx, run.ID, run.TradeDate, domain.PipelineStatusFailed, completedAt, err.Error(), phaseTimingsJSON); persistErr != nil {
+				err = errors.Join(err, fmt.Errorf("agent/pipeline: persist failed terminal status: %w", persistErr))
+			}
 			p.helper.emitCacheStats(state, cacheStatsCollector, run.ID, strategyID, ticker)
 			p.helper.persistStructuredTerminalEvent(p.helper.newStructuredEvent(
 				run.ID,
@@ -608,7 +610,32 @@ func (p *Pipeline) Execute(ctx context.Context, strategyID uuid.UUID, ticker str
 	// All phases succeeded – mark the run as completed.
 	completedAt := p.currentTime().UTC()
 	phaseTimingsJSON, _ := json.Marshal(phaseTimingsMap)
-	_ = p.persister.RecordRunComplete(ctx, run.ID, run.TradeDate, domain.PipelineStatusCompleted, completedAt, "", phaseTimingsJSON)
+	if persistErr := p.persister.RecordRunComplete(ctx, run.ID, run.TradeDate, domain.PipelineStatusCompleted, completedAt, "", phaseTimingsJSON); persistErr != nil {
+		err := fmt.Errorf("agent/pipeline: persist completed terminal status: %w", persistErr)
+		p.helper.emitCacheStats(state, cacheStatsCollector, run.ID, strategyID, ticker)
+		p.helper.persistStructuredTerminalEvent(p.helper.newStructuredEvent(
+			run.ID,
+			strategyID,
+			AgentEventKindPipelineFailed,
+			"",
+			"Pipeline failed",
+			err.Error(),
+			map[string]any{
+				"phase":         "terminal_persistence",
+				"error_message": err.Error(),
+			},
+			[]string{"pipeline", "failed"},
+		))
+		p.helper.emitEvent(PipelineEvent{
+			Type:          PipelineError,
+			PipelineRunID: run.ID,
+			StrategyID:    strategyID,
+			Ticker:        ticker,
+			Error:         err.Error(),
+			OccurredAt:    p.currentTime().UTC(),
+		})
+		return state, err
+	}
 	p.helper.emitCacheStats(state, cacheStatsCollector, run.ID, strategyID, ticker)
 	p.helper.persistStructuredTerminalEvent(p.helper.newStructuredEvent(
 		run.ID,

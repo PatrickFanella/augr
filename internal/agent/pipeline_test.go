@@ -29,6 +29,7 @@ type capturePersister struct {
 	startRun      *domain.PipelineRun
 	completedAt   time.Time
 	completedStat domain.PipelineStatus
+	completeErr   error
 }
 
 func (p *capturePersister) RecordRunStart(_ context.Context, run *domain.PipelineRun) error {
@@ -38,9 +39,41 @@ func (p *capturePersister) RecordRunStart(_ context.Context, run *domain.Pipelin
 }
 
 func (p *capturePersister) RecordRunComplete(_ context.Context, _ uuid.UUID, _ time.Time, status domain.PipelineStatus, completedAt time.Time, _ string, _ json.RawMessage) error {
+	if p.completeErr != nil {
+		return p.completeErr
+	}
 	p.completedStat = status
 	p.completedAt = completedAt
 	return nil
+}
+
+func TestPipelineExecute_TerminalPersistenceFailureFailsClosed(t *testing.T) {
+	t.Parallel()
+
+	persister := &capturePersister{completeErr: errors.New("database unavailable")}
+	events := make(chan PipelineEvent, 16)
+	pipeline := NewPipeline(PipelineConfig{SkipPhases: map[Phase]bool{
+		PhaseAnalysis: true, PhaseResearchDebate: true, PhaseTrading: true, PhaseRiskDebate: true,
+	}}, persister, events, slog.Default())
+
+	_, err := pipeline.Execute(context.Background(), uuid.New(), "TEST")
+	if err == nil || !strings.Contains(err.Error(), "persist completed terminal status") {
+		t.Fatalf("Execute() error = %v, want terminal persistence failure", err)
+	}
+
+	close(events)
+	var completed, failed int
+	for event := range events {
+		switch event.Type {
+		case PipelineCompleted:
+			completed++
+		case PipelineError:
+			failed++
+		}
+	}
+	if completed != 0 || failed == 0 {
+		t.Fatalf("terminal events: completed=%d failed=%d, want completed=0 failed>0", completed, failed)
+	}
 }
 
 func (*capturePersister) SupportsSnapshots() bool { return false }

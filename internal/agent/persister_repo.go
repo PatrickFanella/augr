@@ -71,9 +71,7 @@ func (p *RepoPersister) RecordRunComplete(_ context.Context, runID uuid.UUID, tr
 	}
 
 	if err := p.pipelineRunRepo.UpdateStatus(dbCtx, runID, tradeDate, update); err != nil {
-		p.logger.Error("agent/pipeline: failed to update run status",
-			slog.Any("error", err),
-		)
+		return fmt.Errorf("agent/pipeline: update run status: %w", err)
 	}
 	return nil
 }

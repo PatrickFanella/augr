@@ -2,6 +2,8 @@ package agent
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -86,6 +88,7 @@ func TestRepoPersister_RecordRunCompleteCompletedStatusWithCancelledContext(t *t
 type captureUpdateRunRepo struct {
 	updateCalled atomic.Bool
 	lastStatus   domain.PipelineStatus
+	updateErr    error
 }
 
 func (r *captureUpdateRunRepo) Create(_ context.Context, _ *domain.PipelineRun) error { return nil }
@@ -113,7 +116,21 @@ func (r *captureUpdateRunRepo) UpdateStatus(ctx context.Context, _ uuid.UUID, _ 
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
+	if r.updateErr != nil {
+		return r.updateErr
+	}
 	r.updateCalled.Store(true)
 	r.lastStatus = update.Status
 	return nil
+}
+
+func TestRepoPersister_RecordRunCompletePropagatesUpdateFailure(t *testing.T) {
+	t.Parallel()
+
+	repo := &captureUpdateRunRepo{updateErr: errors.New("database unavailable")}
+	persister := NewRepoPersister(repo, nil, nil, nil, nil)
+	err := persister.RecordRunComplete(context.Background(), uuid.New(), time.Now().UTC(), domain.PipelineStatusCompleted, time.Now().UTC(), "", nil)
+	if err == nil || !strings.Contains(err.Error(), "update run status") {
+		t.Fatalf("RecordRunComplete() error = %v, want propagated update failure", err)
+	}
 }

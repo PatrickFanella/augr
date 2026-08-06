@@ -19,9 +19,10 @@ import (
 )
 
 type runnerSpyPersister struct {
-	mu        sync.Mutex
-	runs      map[uuid.UUID]domain.PipelineRun
-	decisions map[uuid.UUID][]persistedDecision
+	mu          sync.Mutex
+	runs        map[uuid.UUID]domain.PipelineRun
+	decisions   map[uuid.UUID][]persistedDecision
+	completeErr error
 }
 
 type persistedDecision struct {
@@ -49,6 +50,9 @@ func (p *runnerSpyPersister) RecordRunStart(_ context.Context, run *domain.Pipel
 func (p *runnerSpyPersister) RecordRunComplete(_ context.Context, runID uuid.UUID, _ time.Time, status domain.PipelineStatus, completedAt time.Time, errMsg string, _ json.RawMessage) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.completeErr != nil {
+		return p.completeErr
+	}
 	run := p.runs[runID]
 	run.Status = status
 	run.CompletedAt = &completedAt
@@ -628,5 +632,40 @@ func TestRunnerRun_PanicInPhaseMarksRunFailed(t *testing.T) {
 	}
 	if pipelineErrors == 0 {
 		t.Fatal("expected at least one PipelineError event after panic recovery")
+	}
+}
+
+func TestRunnerRun_TerminalPersistenceFailureFailsClosed(t *testing.T) {
+	t.Parallel()
+
+	persister := newRunnerSpyPersister()
+	persister.completeErr = errors.New("database unavailable")
+	events := make(chan PipelineEvent, 64)
+	runner := NewRunner(defaultRunnerDefinition(), Dependencies{Persister: persister, Events: events})
+	prepared, err := runner.Prepare(strategyWithDebateRounds(t, "TEST", 1), GlobalSettings{})
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+
+	result, runErr := runner.Run(context.Background(), prepared)
+	if runErr == nil || !strings.Contains(runErr.Error(), "persist completed terminal status") {
+		t.Fatalf("Run() error = %v, want terminal persistence failure", runErr)
+	}
+	if result == nil || result.Run.Status != domain.PipelineStatusFailed {
+		t.Fatalf("Run() result = %+v, want failed result", result)
+	}
+
+	close(events)
+	var completed, failed int
+	for event := range events {
+		switch event.Type {
+		case PipelineCompleted:
+			completed++
+		case PipelineError:
+			failed++
+		}
+	}
+	if completed != 0 || failed == 0 {
+		t.Fatalf("terminal events: completed=%d failed=%d, want completed=0 failed>0", completed, failed)
 	}
 }

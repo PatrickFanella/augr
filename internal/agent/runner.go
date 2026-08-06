@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"runtime/debug"
@@ -263,7 +264,7 @@ func (r *Runner) Run(ctx context.Context, prepared PreparedRun) (result *RunResu
 		completedAt := r.currentTime().UTC()
 		phaseTimingsJSON, _ := json.Marshal(phaseTimings)
 		if run.ID != uuid.Nil {
-			_ = r.persister.RecordRunComplete(
+			if persistErr := r.persister.RecordRunComplete(
 				context.Background(),
 				run.ID,
 				run.TradeDate,
@@ -271,7 +272,9 @@ func (r *Runner) Run(ctx context.Context, prepared PreparedRun) (result *RunResu
 				completedAt,
 				panicErr.Error(),
 				phaseTimingsJSON,
-			)
+			); persistErr != nil {
+				panicErr = errors.Join(panicErr, fmt.Errorf("agent/runner: persist panic terminal status: %w", persistErr))
+			}
 		}
 		if cacheStatsCollector != nil {
 			r.helper.emitCacheStats(state, cacheStatsCollector, run.ID, prepared.Strategy.ID, prepared.Strategy.Ticker)
@@ -397,7 +400,9 @@ func (r *Runner) Run(ctx context.Context, prepared PreparedRun) (result *RunResu
 			phaseTimings[phase.name+"_ms"] = time.Since(phaseStart).Milliseconds()
 			completedAt := r.currentTime().UTC()
 			phaseTimingsJSON, _ := json.Marshal(phaseTimings)
-			_ = r.persister.RecordRunComplete(ctx, run.ID, run.TradeDate, domain.PipelineStatusFailed, completedAt, err.Error(), phaseTimingsJSON)
+			if persistErr := r.persister.RecordRunComplete(ctx, run.ID, run.TradeDate, domain.PipelineStatusFailed, completedAt, err.Error(), phaseTimingsJSON); persistErr != nil {
+				err = errors.Join(err, fmt.Errorf("agent/runner: persist failed terminal status: %w", persistErr))
+			}
 			r.helper.emitCacheStats(state, cacheStatsCollector, run.ID, prepared.Strategy.ID, prepared.Strategy.Ticker)
 			r.helper.persistStructuredTerminalEvent(r.helper.newStructuredEvent(
 				run.ID,
@@ -439,7 +444,32 @@ func (r *Runner) Run(ctx context.Context, prepared PreparedRun) (result *RunResu
 
 	completedAt := r.currentTime().UTC()
 	phaseTimingsJSON, _ := json.Marshal(phaseTimings)
-	_ = r.persister.RecordRunComplete(ctx, run.ID, run.TradeDate, domain.PipelineStatusCompleted, completedAt, "", phaseTimingsJSON)
+	if persistErr := r.persister.RecordRunComplete(ctx, run.ID, run.TradeDate, domain.PipelineStatusCompleted, completedAt, "", phaseTimingsJSON); persistErr != nil {
+		err := fmt.Errorf("agent/runner: persist completed terminal status: %w", persistErr)
+		r.helper.emitCacheStats(state, cacheStatsCollector, run.ID, prepared.Strategy.ID, prepared.Strategy.Ticker)
+		r.helper.persistStructuredTerminalEvent(r.helper.newStructuredEvent(
+			run.ID,
+			prepared.Strategy.ID,
+			AgentEventKindPipelineFailed,
+			"",
+			"Pipeline failed",
+			err.Error(),
+			map[string]any{"phase": "terminal_persistence", "error_message": err.Error()},
+			[]string{"pipeline", "failed"},
+		))
+		r.helper.emitEvent(PipelineEvent{
+			Type:          PipelineError,
+			PipelineRunID: run.ID,
+			StrategyID:    prepared.Strategy.ID,
+			Ticker:        prepared.Strategy.Ticker,
+			Error:         err.Error(),
+			OccurredAt:    r.currentTime().UTC(),
+		})
+		run.Status = domain.PipelineStatusFailed
+		run.CompletedAt = &completedAt
+		run.ErrorMessage = err.Error()
+		return &RunResult{Run: run, Signal: r.canonicalSignal(state), State: snapshotState(state), Warnings: warnings}, err
+	}
 	r.helper.emitCacheStats(state, cacheStatsCollector, run.ID, prepared.Strategy.ID, prepared.Strategy.Ticker)
 	r.helper.persistStructuredTerminalEvent(r.helper.newStructuredEvent(
 		run.ID,
