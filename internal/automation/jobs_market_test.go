@@ -106,15 +106,19 @@ func TestMarketBarFreshnessUsesRegularSessionAndTradingDate(t *testing.T) {
 	if intradayBarFresh(time.Date(2026, time.August, 6, 9, 20, 0, 0, easternTime), time.Date(2026, time.August, 5, 15, 55, 0, 0, easternTime)) {
 		t.Fatal("premarket bar must not qualify for a regular-session refresh")
 	}
-	if !dailyBarFresh(now, time.Date(2026, time.August, 6, 9, 30, 0, 0, easternTime)) {
-		t.Fatal("current-session daily bar should be fresh after open")
+	if dailyBarFresh(now, time.Date(2026, time.August, 6, 9, 30, 0, 0, easternTime)) {
+		t.Fatal("incomplete current-session daily bar must not be fresh during market hours")
 	}
-	if dailyBarFresh(now, time.Date(2026, time.August, 5, 9, 30, 0, 0, easternTime)) {
-		t.Fatal("prior-session daily bar should be stale after open")
+	if !dailyBarFresh(now, time.Date(2026, time.August, 5, 9, 30, 0, 0, easternTime)) {
+		t.Fatal("prior completed-session daily bar should be fresh during market hours")
 	}
 	preMarketMonday := time.Date(2026, time.August, 10, 8, 0, 0, 0, easternTime)
 	if !dailyBarFresh(preMarketMonday, time.Date(2026, time.August, 7, 9, 30, 0, 0, easternTime)) {
 		t.Fatal("Friday daily bar should be fresh before Monday open")
+	}
+	postClose := time.Date(2026, time.August, 6, 16, 5, 0, 0, easternTime)
+	if !dailyBarFresh(postClose, time.Date(2026, time.August, 6, 16, 0, 0, 0, easternTime)) {
+		t.Fatal("completed current-session daily bar should be fresh after close")
 	}
 }
 

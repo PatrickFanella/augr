@@ -208,7 +208,8 @@ func (o *JobOrchestrator) currentDataRefresh(ctx context.Context) error {
 	return currentDataRefreshCompletionError(summary)
 }
 
-// hotScan scores the top 200 watchlist tickers using locally stored OHLCV data.
+// hotScan scores the top 200 watchlist tickers using current-session intraday
+// OHLCV populated by current_data_refresh.
 func (o *JobOrchestrator) hotScan(ctx context.Context) error {
 	summary := map[string]int{"watchlist": 0, "scored": 0, "fetch_errors": 0, "insufficient": 0, "stale": 0, "score_errors": 0, "significant_tickers": 0, "trigger_requests": 0, "strategy_list_failed": 0}
 	defer func() { o.SetLastSummary("hot_scan", summary) }()
@@ -231,10 +232,10 @@ func (o *JobOrchestrator) hotScan(ctx context.Context) error {
 	var topMovers []mover
 
 	now := time.Now()
-	from := now.AddDate(0, 0, -10) // last 10 days for quick scoring
+	from := now.Add(-2 * time.Hour)
 
 	for _, t := range tickers {
-		bars, fetchErr := o.deps.DataService.GetOHLCV(ctx, "stock", t.Ticker, data.Timeframe1d, from, now)
+		bars, fetchErr := o.deps.DataService.GetOHLCV(ctx, "stock", t.Ticker, data.Timeframe5m, from, now)
 		if fetchErr != nil {
 			summary["fetch_errors"]++
 			continue
@@ -245,7 +246,7 @@ func (o *JobOrchestrator) hotScan(ctx context.Context) error {
 		}
 
 		lastBar := bars[len(bars)-1]
-		if !dailyBarFresh(now, lastBar.Timestamp) {
+		if !intradayBarFresh(now, lastBar.Timestamp) {
 			summary["stale"]++
 			continue
 		}
@@ -491,7 +492,11 @@ func intradayBarFresh(now, latest time.Time) bool {
 func dailyBarFresh(now, latest time.Time) bool {
 	expected := now.In(easternTime)
 	minutes := expected.Hour()*60 + expected.Minute()
-	if !scheduler.IsNYSETradingDay(expected) || minutes < 9*60+30 {
+	// Daily providers publish completed candles. During an open session, today's
+	// candle is still provisional (and some providers omit it entirely), so the
+	// latest trustworthy daily bar is the prior NYSE session. After the close,
+	// today's completed candle may be used.
+	if !scheduler.IsNYSETradingDay(expected) || minutes < 16*60 {
 		expected = expected.AddDate(0, 0, -1)
 		for !scheduler.IsNYSETradingDay(expected) {
 			expected = expected.AddDate(0, 0, -1)
