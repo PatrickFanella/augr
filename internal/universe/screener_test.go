@@ -18,6 +18,25 @@ func discardLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
+func TestGetActiveTickersNormalizesAndDeduplicatesRepositoryRows(t *testing.T) {
+	repo := newMockRepo([]TrackedTicker{
+		{Ticker: "BF.B", Active: true},
+		{Ticker: " bf.b ", Active: true},
+		{Ticker: "BIO.B", Active: true},
+		{Ticker: "INACTIVE", Active: false},
+	})
+	manager := NewUniverse(repo, nil, discardLogger())
+
+	got, err := manager.GetActiveTickers(context.Background(), "", 0)
+	if err != nil {
+		t.Fatalf("GetActiveTickers() error = %v", err)
+	}
+	want := []string{"BF.B", "BIO.B"}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("GetActiveTickers() = %#v, want %#v", got, want)
+	}
+}
+
 // mockUniverseRepo is a minimal in-memory implementation for testing.
 type mockUniverseRepo struct {
 	tickers []TrackedTicker

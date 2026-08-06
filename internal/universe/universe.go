@@ -105,9 +105,26 @@ func (u *Universe) GetActiveTickers(ctx context.Context, indexGroup string, limi
 		return nil, fmt.Errorf("universe: get active tickers: %w", err)
 	}
 
-	symbols := make([]string, len(tickers))
-	for i, t := range tickers {
-		symbols[i] = t.Ticker
+	symbols := make([]string, 0, len(tickers))
+	seen := make(map[string]struct{}, len(tickers))
+	duplicates := 0
+	for _, t := range tickers {
+		symbol := strings.ToUpper(strings.TrimSpace(t.Ticker))
+		if symbol == "" {
+			continue
+		}
+		if _, exists := seen[symbol]; exists {
+			duplicates++
+			continue
+		}
+		seen[symbol] = struct{}{}
+		symbols = append(symbols, symbol)
+	}
+	if duplicates > 0 {
+		u.logger.Warn("universe: omitted duplicate active tickers",
+			slog.Int("duplicates", duplicates),
+			slog.Int("unique", len(symbols)),
+		)
 	}
 	return symbols, nil
 }
