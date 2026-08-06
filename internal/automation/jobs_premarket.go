@@ -49,9 +49,8 @@ func (o *JobOrchestrator) registerPreMarketJobs() {
 func (o *JobOrchestrator) gapScanner(ctx context.Context) error {
 	summary := map[string]int{"requested": 0, "snapshot_batches": 0, "failed_batches": 0, "snapshots": 0, "missing_snapshots": 0, "stale_snapshots": 0, "gaps": 0, "score_failed": 0, "trigger_requests": 0, "strategy_list_failed": 0}
 	defer func() { o.SetLastSummary("gap_scanner", summary) }()
-	if o.deps.Universe == nil {
-		o.logger.Info("gap_scanner: skipped — Universe not configured")
-		return nil
+	if o.deps.Universe == nil || o.deps.Polygon == nil {
+		return fmt.Errorf("gap_scanner: universe and Polygon providers are required")
 	}
 
 	tickers, err := o.deps.Universe.GetWatchlist(ctx, 500)

@@ -158,8 +158,7 @@ func (o *JobOrchestrator) socialScan(ctx context.Context) error {
 	summary := map[string]int{"trending_fetched": 0, "trending_saved": 0, "tickers": 0, "sentiment_saved": 0, "errors": 0}
 	defer func() { o.SetLastSummary("social_scan", summary) }()
 	if o.deps.NewsFeedRepo == nil {
-		o.logger.Info("social_scan: skipped — news feed repo not configured")
-		return nil
+		return fmt.Errorf("social_scan: news feed repo not configured")
 	}
 
 	client := stocktwits.NewClient(o.logger)

@@ -24,11 +24,10 @@ func (o *JobOrchestrator) registerBrokerReconciliationJobs() {
 
 func (o *JobOrchestrator) alpacaReconcile(ctx context.Context) error {
 	if o.deps.AlpacaReconciler == nil {
-		o.logger.Info("alpaca_reconcile: skipped — reconciler not configured")
 		if o.metrics != nil {
-			o.metrics.RecordAlpacaReconcileRun("skipped")
+			o.metrics.RecordAlpacaReconcileRun("error")
 		}
-		return nil
+		return fmt.Errorf("alpaca_reconcile: reconciler not configured")
 	}
 
 	o.logger.Info("alpaca_reconcile: starting")

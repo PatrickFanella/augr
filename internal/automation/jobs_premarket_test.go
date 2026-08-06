@@ -57,10 +57,10 @@ func TestDiscoveryRunCompletionErrorRejectsReportedErrors(t *testing.T) {
 	}
 }
 
-func TestGapScannerSkipsWhenUniverseIsNotConfigured(t *testing.T) {
+func TestGapScannerFailsWhenProvidersAreNotConfigured(t *testing.T) {
 	orch := NewJobOrchestrator(OrchestratorDeps{})
-	if err := orch.gapScanner(context.Background()); err != nil {
-		t.Fatalf("gapScanner() error = %v, want nil", err)
+	if err := orch.gapScanner(context.Background()); err == nil || !strings.Contains(err.Error(), "providers are required") {
+		t.Fatalf("gapScanner() error = %v, want missing providers", err)
 	}
 }
 

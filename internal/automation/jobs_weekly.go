@@ -31,8 +31,7 @@ func (o *JobOrchestrator) universeRefresh(ctx context.Context) error {
 	o.logger.Info("universe_refresh: starting")
 
 	if o.deps.Universe == nil {
-		o.logger.Info("universe_refresh: skipped — Universe not configured")
-		return nil
+		return fmt.Errorf("universe_refresh: universe provider not configured")
 	}
 
 	count, err := o.deps.Universe.RefreshConstituents(ctx)

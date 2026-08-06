@@ -40,8 +40,7 @@ func (o *JobOrchestrator) registerEventJobs() {
 // earningsScanner checks this week's earnings and cross-references with active strategy tickers.
 func (o *JobOrchestrator) earningsScanner(ctx context.Context) error {
 	if o.deps.EventsProvider == nil {
-		o.logger.Info("earnings_scanner: skipped — events provider not configured")
-		return nil
+		return fmt.Errorf("earnings_scanner: events provider not configured")
 	}
 
 	strategies, err := listAllStrategies(ctx, o.deps.StrategyRepo, repository.StrategyFilter{
@@ -111,8 +110,7 @@ func (o *JobOrchestrator) filingMonitor(ctx context.Context) error {
 	defer func() { o.SetLastSummary("filing_monitor", summary) }()
 
 	if o.deps.EventsProvider == nil {
-		o.logger.Info("filing_monitor: skipped — events provider not configured")
-		return nil
+		return fmt.Errorf("filing_monitor: events provider not configured")
 	}
 
 	strategies, err := listAllStrategies(ctx, o.deps.StrategyRepo, repository.StrategyFilter{
