@@ -66,7 +66,7 @@ func (w *ReportWorker) RunPaperValidationReport(ctx context.Context) error {
 
 	w.logger.Info("paper_validation_report: starting")
 
-	strategies, err := w.deps.StrategyRepo.List(ctx, repository.StrategyFilter{Status: domain.StrategyStatusActive}, 0, 0)
+	strategies, err := listAllStrategies(ctx, w.deps.StrategyRepo, repository.StrategyFilter{Status: domain.StrategyStatusActive})
 	if err != nil {
 		return fmt.Errorf("paper_validation_report: list strategies: %w", err)
 	}
@@ -169,10 +169,7 @@ func (w *ReportWorker) generateOneReport(
 		if len(latestRun.TradeLog) > 0 {
 			var trades []domain.Trade
 			if err := json.Unmarshal(latestRun.TradeLog, &trades); err != nil {
-				w.logger.Warn("paper_validation_report: unmarshal trade log failed, using zero analytics",
-					slog.String("strategy", strategyName),
-					slog.Any("error", err),
-				)
+				return w.persistErrorArtifact(ctx, strategyID, timeBucket, fmt.Errorf("unmarshal trade log: %w", err))
 			} else {
 				analytics = backtest.ComputeTradeAnalytics(trades, btMetrics.StartTime, btMetrics.EndTime)
 			}

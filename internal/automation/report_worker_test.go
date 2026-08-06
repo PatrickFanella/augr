@@ -41,22 +41,37 @@ func (s *stubReportStrategyRepo) Get(_ context.Context, id uuid.UUID) (*domain.S
 	return nil, repository.ErrNotFound
 }
 
-func (s *stubReportStrategyRepo) List(_ context.Context, filter repository.StrategyFilter, _, _ int) ([]domain.Strategy, error) {
+func (s *stubReportStrategyRepo) List(_ context.Context, filter repository.StrategyFilter, limit, offset int) ([]domain.Strategy, error) {
 	s.lastFilter = filter
+	var out []domain.Strategy
 	if filter.Status == domain.StrategyStatusActive {
-		out := make([]domain.Strategy, 0, len(s.strategies))
+		out = make([]domain.Strategy, 0, len(s.strategies))
 		for _, strat := range s.strategies {
 			if strat.Status == domain.StrategyStatusActive {
 				out = append(out, strat)
 			}
 		}
-		return out, nil
+	} else {
+		out = append([]domain.Strategy(nil), s.strategies...)
 	}
-	return append([]domain.Strategy(nil), s.strategies...), nil
+	if offset >= len(out) {
+		return nil, nil
+	}
+	end := len(out)
+	if limit > 0 && offset+limit < end {
+		end = offset + limit
+	}
+	return out[offset:end], nil
 }
 
-func (s *stubReportStrategyRepo) Count(_ context.Context, _ repository.StrategyFilter) (int, error) {
-	return len(s.strategies), nil
+func (s *stubReportStrategyRepo) Count(_ context.Context, filter repository.StrategyFilter) (int, error) {
+	count := 0
+	for _, strategy := range s.strategies {
+		if filter.Status == "" || strategy.Status == filter.Status {
+			count++
+		}
+	}
+	return count, nil
 }
 func (s *stubReportStrategyRepo) Update(_ context.Context, _ *domain.Strategy) error { return nil }
 func (s *stubReportStrategyRepo) Delete(_ context.Context, _ uuid.UUID) error        { return nil }
@@ -306,6 +321,30 @@ func TestGenerateOneReport_PersistsErrorArtifactWhenBacktestConfigMissing(t *tes
 	}
 	if !strings.Contains(artifact.ErrorMessage, "no backtest configs") {
 		t.Fatalf("error message = %q, want backtest config failure", artifact.ErrorMessage)
+	}
+}
+
+func TestGenerateOneReportRejectsMalformedTradeLog(t *testing.T) {
+	t.Parallel()
+
+	strategyID := uuid.New()
+	configID := uuid.New()
+	fixedNow := time.Date(2026, 6, 11, 15, 4, 5, 0, time.UTC)
+	reportRepo := &stubReportArtifactRepo{}
+	worker := newTestReportWorker(t,
+		[]domain.Strategy{{ID: strategyID, Name: "paper", Status: domain.StrategyStatusActive, IsPaper: true, CreatedAt: fixedNow.Add(-70 * 24 * time.Hour)}},
+		map[uuid.UUID][]domain.BacktestConfig{strategyID: {{ID: configID, StrategyID: strategyID}}},
+		map[uuid.UUID][]domain.BacktestRun{configID: {{ID: uuid.New(), BacktestConfigID: configID, Metrics: mustMarshal(t, backtest.Metrics{}), TradeLog: json.RawMessage(`{`)}}},
+		reportRepo,
+		&captureReportMetrics{},
+	)
+
+	err := worker.generateOneReport(context.Background(), strategyID, "paper", fixedNow.Truncate(24*time.Hour), fixedNow)
+	if err == nil || !strings.Contains(err.Error(), "unmarshal trade log") {
+		t.Fatalf("generateOneReport() error = %v, want malformed trade log", err)
+	}
+	if len(reportRepo.artifacts) != 1 || reportRepo.artifacts[0].Status != "error" {
+		t.Fatalf("artifacts = %#v, want one error artifact", reportRepo.artifacts)
 	}
 }
 
