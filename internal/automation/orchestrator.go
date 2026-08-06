@@ -119,6 +119,7 @@ type OrchestratorDeps struct {
 	ReportArtifactRepo        *pgrepo.ReportArtifactRepo          // optional; nil = skip report jobs
 	BacktestConfigRepo        repository.BacktestConfigRepository // optional; needed by report jobs
 	BacktestRunRepo           repository.BacktestRunRepository    // optional; needed by report jobs
+	DiscoveryRunRepo          discovery.RunRepository             // required by stock discovery jobs
 	OvernightBacktestRuns     repository.OvernightBacktestRunRepository
 	JobTimeout                time.Duration
 	Logger                    *slog.Logger

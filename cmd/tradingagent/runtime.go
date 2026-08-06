@@ -312,6 +312,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 	auditLogRepo := pgrepo.NewAuditLogRepo(db.Pool)
 	backtestConfigRepo := pgrepo.NewBacktestConfigRepo(db.Pool)
 	backtestRunRepo := pgrepo.NewBacktestRunRepo(db.Pool)
+	discoveryRunRepo := pgrepo.NewDiscoveryRunRepo(db.Pool)
 	userRepo := pgrepo.NewUserRepo(db.Pool)
 	conversationRepo := pgrepo.NewConversationRepo(db.Pool)
 	marketDataCacheRepo := pgrepo.NewMarketDataCacheRepo(db.Pool)
@@ -388,7 +389,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 		DivergenceSrc:          backtest.NewRepositoryDivergenceSource(backtestConfigRepo, backtestRunRepo, tradeDecisionRepo, positionRepo),
 		NewsFeedRepo:           newsFeedRepo,
 		MarketDataHistory:      marketDataCacheRepo,
-		DiscoveryRunRepo:       pgrepo.NewDiscoveryRunRepo(db.Pool),
+		DiscoveryRunRepo:       discoveryRunRepo,
 		JobRunRepo:             jobRunRepo,
 		ReportArtifacts:        reportArtifactRepo,
 		ReportMetrics:          appMetrics,
@@ -743,6 +744,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 					ReportArtifactRepo:          reportArtifactRepo,
 					BacktestConfigRepo:          backtestConfigRepo,
 					BacktestRunRepo:             backtestRunRepo,
+					DiscoveryRunRepo:            discoveryRunRepo,
 					OvernightBacktestRuns:       overnightBacktestRunRepo,
 					JobTimeout:                  cfg.Features.SchedulerJobTimeout,
 					StrategyTrigger:             sched,

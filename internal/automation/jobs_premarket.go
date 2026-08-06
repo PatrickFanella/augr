@@ -65,8 +65,8 @@ func (o *JobOrchestrator) registerTickerDiscoveryJob() {
 func (o *JobOrchestrator) tickerDiscovery(ctx context.Context) error {
 	summary := map[string]int{"universe_refreshed": 0, "scored": 0, "candidates": 0, "generated": 0, "swept": 0, "validated": 0, "deployed": 0, "errors": 0}
 	defer func() { o.SetLastSummary("ticker_discovery", summary) }()
-	if o.deps.Universe == nil || o.deps.DataService == nil || o.deps.LLMProvider == nil || o.deps.StrategyRepo == nil {
-		return fmt.Errorf("ticker_discovery: universe, data, LLM, and strategy dependencies are required")
+	if o.deps.Universe == nil || o.deps.DataService == nil || o.deps.LLMProvider == nil || o.deps.StrategyRepo == nil || o.deps.DiscoveryRunRepo == nil {
+		return fmt.Errorf("ticker_discovery: universe, data, LLM, strategy, and discovery run dependencies are required")
 	}
 
 	if time.Now().In(easternTime).Weekday() == time.Monday {
@@ -96,12 +96,14 @@ func (o *JobOrchestrator) tickerDiscovery(ctx context.Context) error {
 		symbols[i] = scored[i].Ticker
 	}
 
-	result, err := discovery.RunDiscovery(ctx, discovery.DiscoveryConfig{
+	discoveryStartedAt := time.Now().UTC()
+	discoveryCfg := discovery.DiscoveryConfig{
 		Screener:  discovery.ScreenerConfig{Tickers: symbols, MinADV: cfg.MinADV, MinATR: 0.5, MarketType: domain.MarketTypeStock},
 		Generator: discovery.GeneratorConfig{Provider: o.deps.LLMProvider, MaxRetries: 3, Metrics: o.deps.GeneratorMetrics},
 		Sweep:     discovery.SweepConfig{InitialCash: 100000, Variations: 20},
 		Scoring:   discovery.DefaultScoringConfig(), Validation: discovery.ValidationConfig{}, MaxWinners: 3,
-	}, discovery.DiscoveryDeps{
+	}
+	result, err := discovery.RunDiscovery(ctx, discoveryCfg, discovery.DiscoveryDeps{
 		DataService: o.deps.DataService, LLMProvider: o.deps.LLMProvider, Strategies: o.deps.StrategyRepo,
 		BacktestConfigs: o.deps.BacktestConfigRepo, GeneratorMetrics: o.deps.GeneratorMetrics, Logger: o.logger,
 	})
@@ -110,6 +112,9 @@ func (o *JobOrchestrator) tickerDiscovery(ctx context.Context) error {
 	}
 	if result == nil {
 		return fmt.Errorf("ticker_discovery: pipeline returned nil result")
+	}
+	if err := discovery.PersistRun(ctx, o.deps.DiscoveryRunRepo, discoveryCfg, result, discoveryStartedAt); err != nil {
+		return fmt.Errorf("ticker_discovery: %w", err)
 	}
 	summary["candidates"] = result.Candidates
 	summary["generated"] = result.Generated
@@ -262,6 +267,9 @@ func (o *JobOrchestrator) gapScanner(ctx context.Context) error {
 
 // discoveryRun runs the full strategy discovery pipeline on top watchlist tickers.
 func (o *JobOrchestrator) discoveryRun(ctx context.Context) error {
+	if o.deps.DiscoveryRunRepo == nil {
+		return fmt.Errorf("discovery_run: discovery run repository is required")
+	}
 	tickers, err := tradeableWatchlistTickers(ctx, o.logger, o.deps.Universe, o.deps.DataService, 300, 30)
 	if err != nil {
 		return fmt.Errorf("discovery_run: get watchlist: %w", err)
@@ -297,8 +305,12 @@ func (o *JobOrchestrator) discoveryRun(ctx context.Context) error {
 		Logger:          o.logger,
 	}
 
+	startedAt := time.Now().UTC()
 	result, err := discovery.RunDiscovery(ctx, cfg, deps)
 	if err != nil {
+		return fmt.Errorf("discovery_run: %w", err)
+	}
+	if err := discovery.PersistRun(ctx, o.deps.DiscoveryRunRepo, cfg, result, startedAt); err != nil {
 		return fmt.Errorf("discovery_run: %w", err)
 	}
 

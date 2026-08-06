@@ -69,12 +69,11 @@ func (s *Server) handleRunDiscovery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Persist the run if we have the discovery runs table
+	// Persist the complete terminal run if we have the discovery runs table.
 	if s.discoveryRunRepo != nil {
-		configJSON, _ := json.Marshal(cfg)
-		resultJSON, _ := json.Marshal(result)
-		if err := s.discoveryRunRepo.Create(r.Context(), configJSON, resultJSON, startedAt, result.Duration, result.Candidates, result.Deployed); err != nil {
-			s.logger.Warn("persist discovery run", "error", err)
+		if err := discovery.PersistRun(r.Context(), s.discoveryRunRepo, cfg, result, startedAt); err != nil {
+			respondError(w, http.StatusInternalServerError, "persist discovery run failed", ErrCodeInternal)
+			return
 		}
 	}
 
