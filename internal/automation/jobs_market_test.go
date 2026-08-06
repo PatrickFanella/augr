@@ -120,6 +120,18 @@ func TestMarketBarFreshnessUsesRegularSessionAndTradingDate(t *testing.T) {
 	if !dailyBarFresh(postClose, time.Date(2026, time.August, 6, 16, 0, 0, 0, easternTime)) {
 		t.Fatal("completed current-session daily bar should be fresh after close")
 	}
+	series := []domain.OHLCV{
+		{Timestamp: time.Date(2026, time.August, 4, 16, 0, 0, 0, easternTime)},
+		{Timestamp: time.Date(2026, time.August, 5, 16, 0, 0, 0, easternTime)},
+		{Timestamp: time.Date(2026, time.August, 6, 10, 0, 0, 0, easternTime)},
+	}
+	completed := completedDailyBars(now, series)
+	if len(completed) != 2 || !sameMarketDate(completed[1].Timestamp.In(easternTime), time.Date(2026, time.August, 5, 0, 0, 0, 0, easternTime)) {
+		t.Fatalf("completed daily bars = %#v, want through prior session only", completed)
+	}
+	if !dailySeriesFresh(now, series) {
+		t.Fatal("series containing a fresh completed bar plus a provisional candle should be fresh")
+	}
 }
 
 func TestCurrentDataRefreshCompletionErrorRejectsCacheOnlyAndStale(t *testing.T) {

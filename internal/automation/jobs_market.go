@@ -151,7 +151,7 @@ func (o *JobOrchestrator) currentDataRefresh(ctx context.Context) error {
 		batch := tickers[start:end]
 		summary["batches"]++
 
-		refresh := func(timeframe data.Timeframe, from time.Time, prefix string, fresh func(time.Time, time.Time) bool) {
+		refresh := func(timeframe data.Timeframe, from time.Time, prefix string, fresh func(time.Time, []domain.OHLCV) bool) {
 			updatedKey := prefix + "updated"
 			emptyKey := prefix + "empty"
 			cacheOnlyKey := prefix + "cache_only"
@@ -181,15 +181,17 @@ func (o *JobOrchestrator) currentDataRefresh(ctx context.Context) error {
 					summary[emptyKey]++
 					continue
 				}
-				if !fresh(now, bars[len(bars)-1].Timestamp) {
+				if !fresh(now, bars) {
 					summary[staleKey]++
 					continue
 				}
 				summary[updatedKey]++
 			}
 		}
-		refresh(data.Timeframe5m, intradayFrom, "", intradayBarFresh)
-		refresh(data.Timeframe1d, dailyFrom, "daily_", dailyBarFresh)
+		refresh(data.Timeframe5m, intradayFrom, "", func(now time.Time, bars []domain.OHLCV) bool {
+			return len(bars) > 0 && intradayBarFresh(now, bars[len(bars)-1].Timestamp)
+		})
+		refresh(data.Timeframe1d, dailyFrom, "daily_", dailySeriesFresh)
 
 		if end < len(tickers) {
 			time.Sleep(150 * time.Millisecond)
@@ -385,6 +387,7 @@ func (o *JobOrchestrator) deepScan(ctx context.Context) error {
 			summary["fetch_errors"]++
 			continue
 		}
+		bars = completedDailyBars(now, bars)
 		if len(bars) < 5 {
 			summary["insufficient"]++
 			continue
@@ -490,6 +493,11 @@ func intradayBarFresh(now, latest time.Time) bool {
 }
 
 func dailyBarFresh(now, latest time.Time) bool {
+	expected := expectedCompletedNYSESession(now)
+	return sameMarketDate(expected, latest.In(easternTime))
+}
+
+func expectedCompletedNYSESession(now time.Time) time.Time {
 	expected := now.In(easternTime)
 	minutes := expected.Hour()*60 + expected.Minute()
 	// Daily providers publish completed candles. During an open session, today's
@@ -502,7 +510,25 @@ func dailyBarFresh(now, latest time.Time) bool {
 			expected = expected.AddDate(0, 0, -1)
 		}
 	}
-	return sameMarketDate(expected, latest.In(easternTime))
+	return expected
+}
+
+func completedDailyBars(now time.Time, bars []domain.OHLCV) []domain.OHLCV {
+	expected := expectedCompletedNYSESession(now)
+	completed := make([]domain.OHLCV, 0, len(bars))
+	for _, bar := range bars {
+		barDate := bar.Timestamp.In(easternTime)
+		if barDate.After(expected) && !sameMarketDate(barDate, expected) {
+			continue
+		}
+		completed = append(completed, bar)
+	}
+	return completed
+}
+
+func dailySeriesFresh(now time.Time, bars []domain.OHLCV) bool {
+	completed := completedDailyBars(now, bars)
+	return len(completed) > 0 && dailyBarFresh(now, completed[len(completed)-1].Timestamp)
 }
 
 func sameMarketDate(a, b time.Time) bool {
