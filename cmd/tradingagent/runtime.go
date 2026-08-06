@@ -629,6 +629,13 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 			}
 		}
 
+		if cfg.Features.EnableTickerDiscovery && strings.TrimSpace(cfg.DataProviders.Polygon.APIKey) != "" {
+			polygonClient := polygon.NewClient(cfg.DataProviders.Polygon.APIKey, logger)
+			universeRepo := pgrepo.NewUniverseRepo(db.Pool)
+			deps.Universe = universe.NewUniverse(universeRepo, polygonClient, logger)
+			deps.UniverseRepo = universeRepo
+		}
+
 		if cfg.Features.EnableScheduler {
 			schedOpts := []scheduler.Option{
 				scheduler.WithStrategyExecution(func(ctx context.Context, strategy domain.Strategy) error {
@@ -641,19 +648,6 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 			}
 			backtestSvc := service.NewBacktestService(backtestConfigRepo, backtestRunRepo, strategyRepo, auditLogRepo, dataService, deps.LLMProvider, logger)
 			schedOpts = append(schedOpts, scheduler.WithBacktestServiceScheduling(backtestConfigRepo, backtestSvc, "scheduler"))
-
-			if cfg.Features.EnableTickerDiscovery && strings.TrimSpace(cfg.DataProviders.Polygon.APIKey) != "" {
-				polygonClient := polygon.NewClient(cfg.DataProviders.Polygon.APIKey, logger)
-				universeRepo := pgrepo.NewUniverseRepo(db.Pool)
-				univ := universe.NewUniverse(universeRepo, polygonClient, logger)
-				deps.Universe = univ
-				deps.UniverseRepo = universeRepo
-				schedOpts = append(schedOpts, scheduler.WithTickerDiscovery(univ, polygonClient, *deps.DiscoveryDeps, scheduler.TickerDiscoveryConfig{
-					Cron:       cfg.TickerDiscovery.Cron,
-					MinADV:     cfg.TickerDiscovery.MinADV,
-					MaxTickers: cfg.TickerDiscovery.MaxTickers,
-				}))
-			}
 
 			sched = scheduler.NewScheduler(
 				strategyRepo,
@@ -701,13 +695,19 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 					PaperBroker:            strategyRunner.localPaperBroker,
 				})
 				orch := automation.NewJobOrchestrator(automation.OrchestratorDeps{
-					Universe:                    deps.Universe,
-					Polygon:                     polygonClientForAuto,
-					DataService:                 dataService,
-					AlpacaReconciler:            alpacaReconciler,
-					OptionsProvider:             deps.OptionsProvider,
-					LLMProvider:                 deps.LLMProvider,
-					GeneratorMetrics:            appMetrics,
+					Universe:         deps.Universe,
+					Polygon:          polygonClientForAuto,
+					DataService:      dataService,
+					AlpacaReconciler: alpacaReconciler,
+					OptionsProvider:  deps.OptionsProvider,
+					LLMProvider:      deps.LLMProvider,
+					GeneratorMetrics: appMetrics,
+					TickerDiscovery: automation.TickerDiscoveryJobConfig{
+						Enabled:    cfg.Features.EnableTickerDiscovery,
+						Cron:       cfg.TickerDiscovery.Cron,
+						MinADV:     cfg.TickerDiscovery.MinADV,
+						MaxTickers: cfg.TickerDiscovery.MaxTickers,
+					},
 					EmbeddingProvider:           embeddingProvider,
 					EventsProvider:              deps.EventsProvider,
 					StrategyRepo:                strategyRepo,

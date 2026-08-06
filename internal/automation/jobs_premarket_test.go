@@ -64,6 +64,32 @@ func TestGapScannerFailsWhenProvidersAreNotConfigured(t *testing.T) {
 	}
 }
 
+func TestTickerDiscoveryRegistersInAutomationLedger(t *testing.T) {
+	t.Parallel()
+
+	orch := NewJobOrchestrator(OrchestratorDeps{TickerDiscovery: TickerDiscoveryJobConfig{
+		Enabled: true, Cron: "30 10 * * 1-5", MinADV: 100000, MaxTickers: 30,
+	}})
+	orch.registerTickerDiscoveryJob()
+	job := orch.jobs["ticker_discovery"]
+	if job == nil {
+		t.Fatal("ticker_discovery job not registered")
+	}
+	if job.Schedule.Cron != "30 10 * * 1-5" || job.Schedule.Type != "market_hours" {
+		t.Fatalf("ticker_discovery schedule = %+v", job.Schedule)
+	}
+}
+
+func TestTickerDiscoveryFailsWhenCoreDependenciesAreMissing(t *testing.T) {
+	t.Parallel()
+
+	orch := NewJobOrchestrator(OrchestratorDeps{TickerDiscovery: TickerDiscoveryJobConfig{Enabled: true}})
+	orch.registerTickerDiscoveryJob()
+	if err := orch.tickerDiscovery(context.Background()); err == nil || !strings.Contains(err.Error(), "dependencies are required") {
+		t.Fatalf("tickerDiscovery() error = %v, want missing dependencies", err)
+	}
+}
+
 func TestIsKalshiRateLimit(t *testing.T) {
 	for _, test := range []struct {
 		name string

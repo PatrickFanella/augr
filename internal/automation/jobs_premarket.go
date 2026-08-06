@@ -45,6 +45,84 @@ func (o *JobOrchestrator) registerPreMarketJobs() {
 	o.Register("position_review", "Review open positions before market open", positionReviewSpec, o.positionReview)
 }
 
+func (o *JobOrchestrator) registerTickerDiscoveryJob() {
+	cfg := o.deps.TickerDiscovery
+	if !cfg.Enabled {
+		return
+	}
+	cron := cfg.Cron
+	if cron == "" {
+		cron = "30 10 * * 1-5"
+	}
+	o.Register("ticker_discovery", "Screen the full universe and run stock strategy discovery", scheduler.ScheduleSpec{
+		Type:         scheduler.ScheduleTypeMarketHours,
+		Cron:         cron,
+		SkipWeekends: true,
+		SkipHolidays: true,
+	}, o.tickerDiscovery)
+}
+
+func (o *JobOrchestrator) tickerDiscovery(ctx context.Context) error {
+	summary := map[string]int{"universe_refreshed": 0, "scored": 0, "candidates": 0, "generated": 0, "swept": 0, "validated": 0, "deployed": 0, "errors": 0}
+	defer func() { o.SetLastSummary("ticker_discovery", summary) }()
+	if o.deps.Universe == nil || o.deps.DataService == nil || o.deps.LLMProvider == nil || o.deps.StrategyRepo == nil {
+		return fmt.Errorf("ticker_discovery: universe, data, LLM, and strategy dependencies are required")
+	}
+
+	if time.Now().In(easternTime).Weekday() == time.Monday {
+		count, err := o.deps.Universe.RefreshConstituents(ctx)
+		if err != nil {
+			return fmt.Errorf("ticker_discovery: refresh universe: %w", err)
+		}
+		summary["universe_refreshed"] = count
+	}
+
+	cfg := o.deps.TickerDiscovery
+	scored, err := o.deps.Universe.RunPreMarketScreen(ctx, cfg.MinADV, cfg.MaxTickers)
+	if err != nil {
+		return fmt.Errorf("ticker_discovery: screen universe: %w", err)
+	}
+	summary["scored"] = len(scored)
+	if len(scored) == 0 {
+		return nil
+	}
+
+	maxTickers := cfg.MaxTickers
+	if maxTickers <= 0 || maxTickers > len(scored) {
+		maxTickers = len(scored)
+	}
+	symbols := make([]string, maxTickers)
+	for i := range symbols {
+		symbols[i] = scored[i].Ticker
+	}
+
+	result, err := discovery.RunDiscovery(ctx, discovery.DiscoveryConfig{
+		Screener:  discovery.ScreenerConfig{Tickers: symbols, MinADV: cfg.MinADV, MinATR: 0.5, MarketType: domain.MarketTypeStock},
+		Generator: discovery.GeneratorConfig{Provider: o.deps.LLMProvider, MaxRetries: 3, Metrics: o.deps.GeneratorMetrics},
+		Sweep:     discovery.SweepConfig{InitialCash: 100000, Variations: 20},
+		Scoring:   discovery.DefaultScoringConfig(), Validation: discovery.ValidationConfig{}, MaxWinners: 3,
+	}, discovery.DiscoveryDeps{
+		DataService: o.deps.DataService, LLMProvider: o.deps.LLMProvider, Strategies: o.deps.StrategyRepo,
+		BacktestConfigs: o.deps.BacktestConfigRepo, GeneratorMetrics: o.deps.GeneratorMetrics, Logger: o.logger,
+	})
+	if err != nil {
+		return fmt.Errorf("ticker_discovery: pipeline: %w", err)
+	}
+	if result == nil {
+		return fmt.Errorf("ticker_discovery: pipeline returned nil result")
+	}
+	summary["candidates"] = result.Candidates
+	summary["generated"] = result.Generated
+	summary["swept"] = result.Swept
+	summary["validated"] = result.Validated
+	summary["deployed"] = result.Deployed
+	summary["errors"] = len(result.Errors)
+	if len(result.Errors) > 0 {
+		return fmt.Errorf("ticker_discovery: pipeline completed with %d errors", len(result.Errors))
+	}
+	return nil
+}
+
 // gapScanner detects overnight gaps and unusual volume in the top 500 tickers.
 func (o *JobOrchestrator) gapScanner(ctx context.Context) error {
 	summary := map[string]int{"requested": 0, "snapshot_batches": 0, "failed_batches": 0, "snapshots": 0, "missing_snapshots": 0, "stale_snapshots": 0, "gaps": 0, "score_failed": 0, "trigger_requests": 0, "strategy_list_failed": 0}

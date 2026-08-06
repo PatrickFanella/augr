@@ -56,6 +56,14 @@ type StrategyTrigger interface {
 	TriggerStrategy(strategy domain.Strategy)
 }
 
+// TickerDiscoveryJobConfig configures the database-ledger ticker-discovery job.
+type TickerDiscoveryJobConfig struct {
+	Enabled    bool
+	Cron       string
+	MinADV     float64
+	MaxTickers int
+}
+
 // OrchestratorDeps bundles external dependencies required by the orchestrator.
 type OrchestratorDeps struct {
 	Universe               *universe.Universe
@@ -65,6 +73,7 @@ type OrchestratorDeps struct {
 	OptionsProvider        data.OptionsDataProvider
 	LLMProvider            llm.Provider
 	GeneratorMetrics       discovery.GeneratorMetrics
+	TickerDiscovery        TickerDiscoveryJobConfig
 	EmbeddingProvider      embedding.Provider // optional; nil = skip embedding during triage
 	EventsProvider         data.EventsProvider
 	StrategyRepo           repository.StrategyRepository
@@ -269,6 +278,7 @@ func (o *JobOrchestrator) RegisterAll() {
 	o.registerBrokerReconciliationJobs()
 	o.registerMarketJobs()
 	o.registerPreMarketJobs()
+	o.registerTickerDiscoveryJob()
 	o.registerPostMarketJobs()
 	o.registerOptionsLifecycleJobs()
 	o.registerEventJobs()
