@@ -15,29 +15,49 @@ import (
 )
 
 func (o *JobOrchestrator) registerOvernightJobs() {
-	o.Register("overnight_backtest", "Heavy 5-year backtests on promising candidates", overnightBacktestSpec, o.overnightBacktest, "history_refresh")
-	o.Register("overnight_sweep", "Parameter optimization on deployed strategies", overnightSweepSpec, o.overnightSweep, "overnight_backtest")
-	o.Register("overnight_generate", "LLM generates new strategy ideas per sector", overnightGenerateSpec, o.overnightGenerate, "overnight_sweep", "overnight_backtest")
+	o.Register("overnight_backtest", "Heavy 5-year backtests on promising candidates", overnightBacktestSpec, o.overnightBacktest, "history_refresh", "overnight_sweep")
+	o.Register("overnight_sweep", "Parameter optimization on deployed strategies", overnightSweepSpec, o.overnightSweep, "history_refresh")
+	o.Register("overnight_generate", "LLM generates new strategy ideas per index group", overnightGenerateSpec, o.overnightGenerate, "overnight_sweep", "overnight_backtest")
 	o.Register("history_refresh", "Download latest OHLCV for all universe tickers", historyRefreshSpec, o.historyRefresh)
 	o.Register("options_discovery", "Full options strategy discovery pipeline", optionsDiscoverySpec, o.optionsDiscovery, "overnight_generate")
 }
 
-var optionsDiscoverySpec = scheduler.ScheduleSpec{Type: scheduler.ScheduleTypeCron, Cron: "30 3 * * 2-6", SkipWeekends: false, SkipHolidays: false}
+var optionsDiscoverySpec = scheduler.ScheduleSpec{Type: scheduler.ScheduleTypeCron, Cron: "30 6 * * 2-6", SkipWeekends: false, SkipHolidays: false}
 
 var (
 	overnightBacktestSpec = scheduler.ScheduleSpec{Type: scheduler.ScheduleTypeCron, Cron: "*/30 1-5 * * 2-6", SkipWeekends: false, SkipHolidays: false}
-	overnightSweepSpec    = scheduler.ScheduleSpec{Type: scheduler.ScheduleTypeCron, Cron: "0 2 * * 2-6", SkipWeekends: false, SkipHolidays: false}
-	overnightGenerateSpec = scheduler.ScheduleSpec{Type: scheduler.ScheduleTypeCron, Cron: "0 3 * * 2-6", SkipWeekends: false, SkipHolidays: false}
-	historyRefreshSpec    = scheduler.ScheduleSpec{Type: scheduler.ScheduleTypeCron, Cron: "0 4 * * 2-6", SkipWeekends: false, SkipHolidays: false}
+	overnightSweepSpec    = scheduler.ScheduleSpec{Type: scheduler.ScheduleTypeCron, Cron: "30 0 * * 2-6", SkipWeekends: false, SkipHolidays: false}
+	overnightGenerateSpec = scheduler.ScheduleSpec{Type: scheduler.ScheduleTypeCron, Cron: "0 6 * * 2-6", SkipWeekends: false, SkipHolidays: false}
+	historyRefreshSpec    = scheduler.ScheduleSpec{Type: scheduler.ScheduleTypeCron, Cron: "0 0 * * 2-6", SkipWeekends: false, SkipHolidays: false}
 )
 
 const overnightBacktestWatchlistLimit = 20
+
+var overnightIndexGroups = []string{"nasdaq", "nyse", "other"}
 
 func (o *JobOrchestrator) overnightBacktest(ctx context.Context) error {
 	o.logger.Info("overnight_backtest: chunk starting")
 	chunker := newOvernightBacktestChunker(o.deps, o.logger)
 	if err := chunker.RunChunk(ctx); err != nil {
 		return fmt.Errorf("overnight_backtest: chunk failed: %w", err)
+	}
+	if o.deps.OvernightBacktestRuns != nil {
+		runs, err := o.deps.OvernightBacktestRuns.ListLatest(ctx, 1)
+		if err != nil {
+			return fmt.Errorf("overnight_backtest: load chunk summary: %w", err)
+		}
+		if len(runs) > 0 {
+			run := runs[0]
+			o.SetLastSummary("overnight_backtest", map[string]int{
+				"candidates":      run.Summary.Candidates,
+				"generated":       run.Summary.Generated,
+				"swept":           run.Summary.Swept,
+				"validated":       run.Summary.Validated,
+				"deployed":        run.Summary.Deployed,
+				"errors":          len(run.Errors),
+				"candidate_index": run.CandidateIndex,
+			})
+		}
 	}
 	o.logger.Info("overnight_backtest: chunk completed")
 	return nil
@@ -52,7 +72,7 @@ func (o *JobOrchestrator) overnightSweep(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Hour)
 	defer cancel()
 
-	strategies, err := o.deps.StrategyRepo.List(ctx, repository.StrategyFilter{Status: "active"}, 100, 0)
+	strategies, err := listAllStrategies(ctx, o.deps.StrategyRepo, repository.StrategyFilter{Status: domain.StrategyStatusActive, MarketType: domain.MarketTypeStock})
 	if err != nil {
 		return fmt.Errorf("overnight_sweep: list strategies: %w", err)
 	}
@@ -61,7 +81,10 @@ func (o *JobOrchestrator) overnightSweep(ctx context.Context) error {
 	now := time.Now()
 	histFrom := now.AddDate(-1, 0, 0)
 
-	var improved, total int
+	var improved, total, swept, skipped, failed int
+	defer func() {
+		o.SetLastSummary("overnight_sweep", map[string]int{"strategies": total, "swept": swept, "improved": improved, "skipped": skipped, "failed": failed})
+	}()
 	for _, strat := range strategies {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -70,6 +93,7 @@ func (o *JobOrchestrator) overnightSweep(ctx context.Context) error {
 
 		rulesConfig, err := extractRulesConfig(strat.Config)
 		if err != nil {
+			skipped++
 			o.logger.Warn("overnight_sweep: bad config",
 				slog.String("strategy", strat.Name),
 				slog.Any("error", err),
@@ -83,6 +107,7 @@ func (o *JobOrchestrator) overnightSweep(ctx context.Context) error {
 			data.Timeframe1d, histFrom, now, true,
 		)
 		if err != nil {
+			failed++
 			o.logger.Warn("overnight_sweep: download failed",
 				slog.String("ticker", strat.Ticker),
 				slog.Any("error", err),
@@ -92,6 +117,7 @@ func (o *JobOrchestrator) overnightSweep(ctx context.Context) error {
 
 		bars := barsMap[strat.Ticker]
 		if len(bars) < 50 {
+			skipped++
 			continue
 		}
 
@@ -107,6 +133,7 @@ func (o *JobOrchestrator) overnightSweep(ctx context.Context) error {
 
 		results, err := discovery.RunSweep(ctx, *rulesConfig, sweepCfg, scoring, o.logger)
 		if err != nil {
+			failed++
 			o.logger.Warn("overnight_sweep: sweep failed",
 				slog.String("ticker", strat.Ticker),
 				slog.Any("error", err),
@@ -115,8 +142,10 @@ func (o *JobOrchestrator) overnightSweep(ctx context.Context) error {
 		}
 
 		if len(results) == 0 {
+			skipped++
 			continue
 		}
+		swept++
 
 		var currentScore float64
 		for _, r := range results {
@@ -147,8 +176,8 @@ func (o *JobOrchestrator) overnightSweep(ctx context.Context) error {
 	return nil
 }
 
-// overnightGenerate uses the LLM to generate new strategy ideas for
-// each sector, running discovery on a per-sector ticker subset.
+// overnightGenerate uses the LLM to generate new strategy ideas for each
+// distinct index group represented by the universe schema.
 func (o *JobOrchestrator) overnightGenerate(ctx context.Context) error {
 	o.logger.Info("overnight_generate: starting")
 
@@ -157,16 +186,9 @@ func (o *JobOrchestrator) overnightGenerate(ctx context.Context) error {
 		return nil
 	}
 
-	sectors := []struct {
-		name       string
-		indexGroup string
-	}{
-		{name: "tech", indexGroup: "nasdaq"},
-		{name: "finance", indexGroup: "nyse"},
-		{name: "healthcare", indexGroup: "nyse"},
-		{name: "energy", indexGroup: "nyse"},
-		{name: "consumer", indexGroup: "nasdaq"},
-	}
+	indexGroups := overnightIndexGroups
+	summary := map[string]int{"groups": len(indexGroups), "candidates": 0, "deployed": 0, "errors": 0}
+	defer func() { o.SetLastSummary("overnight_generate", summary) }()
 
 	deps := discovery.DiscoveryDeps{
 		DataService: o.deps.DataService,
@@ -175,23 +197,24 @@ func (o *JobOrchestrator) overnightGenerate(ctx context.Context) error {
 		Logger:      o.logger,
 	}
 
-	for _, sector := range sectors {
+	for _, indexGroup := range indexGroups {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
 
-		tickers, err := o.deps.Universe.GetActiveTickers(ctx, sector.indexGroup, 5)
+		tickers, err := o.deps.Universe.GetActiveTickers(ctx, indexGroup, 5)
 		if err != nil {
+			summary["errors"]++
 			o.logger.Warn("overnight_generate: failed to get tickers",
-				slog.String("sector", sector.name),
+				slog.String("index_group", indexGroup),
 				slog.Any("error", err),
 			)
 			continue
 		}
 
 		if len(tickers) == 0 {
-			o.logger.Info("overnight_generate: no tickers for sector",
-				slog.String("sector", sector.name),
+			o.logger.Info("overnight_generate: no tickers for index group",
+				slog.String("index_group", indexGroup),
 			)
 			continue
 		}
@@ -206,15 +229,18 @@ func (o *JobOrchestrator) overnightGenerate(ctx context.Context) error {
 
 		result, err := discovery.RunDiscovery(ctx, cfg, deps)
 		if err != nil {
+			summary["errors"]++
 			o.logger.Warn("overnight_generate: discovery failed",
-				slog.String("sector", sector.name),
+				slog.String("index_group", indexGroup),
 				slog.Any("error", err),
 			)
 			continue
 		}
 
+		summary["candidates"] += result.Candidates
+		summary["deployed"] += result.Deployed
 		o.logger.Info(fmt.Sprintf("overnight_generate: %s — %d candidates, %d deployed",
-			sector.name, result.Candidates, result.Deployed),
+			indexGroup, result.Candidates, result.Deployed),
 		)
 	}
 
@@ -226,6 +252,8 @@ func (o *JobOrchestrator) overnightGenerate(ctx context.Context) error {
 // the universe, batching 10 at a time with a 1-second pause for rate
 // limiting.
 func (o *JobOrchestrator) historyRefresh(ctx context.Context) error {
+	summary := map[string]int{"tickers": 0, "updated": 0, "empty": 0, "failed": 0, "batches": 0}
+	defer func() { o.SetLastSummary("history_refresh", summary) }()
 	o.logger.Info("history_refresh: starting")
 
 	if o.deps.Universe == nil {
@@ -233,15 +261,16 @@ func (o *JobOrchestrator) historyRefresh(ctx context.Context) error {
 		return nil
 	}
 
-	allTickers, err := o.deps.Universe.GetActiveTickers(ctx, "", 5000)
+	allTickers, err := o.deps.Universe.GetActiveTickers(ctx, "", 0)
 	if err != nil {
 		return fmt.Errorf("history_refresh: get active tickers: %w", err)
 	}
 
 	now := time.Now()
+	summary["tickers"] = len(allTickers)
 	histFrom := now.AddDate(-5, 0, 0)
 	batchSize := 10
-	updated := 0
+	processed := 0
 
 	for i := 0; i < len(allTickers); i += batchSize {
 		if ctx.Err() != nil {
@@ -253,22 +282,31 @@ func (o *JobOrchestrator) historyRefresh(ctx context.Context) error {
 			end = len(allTickers)
 		}
 		batch := allTickers[i:end]
+		summary["batches"]++
 
-		_, err := o.deps.DataService.DownloadHistoricalOHLCV(
+		barsByTicker, err := o.deps.DataService.DownloadHistoricalOHLCV(
 			ctx, domain.MarketTypeStock,
 			batch, data.Timeframe1d,
 			histFrom, now, true,
 		)
 		if err != nil {
+			summary["failed"] += len(batch)
 			o.logger.Warn("history_refresh: batch download failed",
 				slog.Int("batch_start", i),
 				slog.Any("error", err),
 			)
-			// Continue with next batch.
+		} else {
+			for _, ticker := range batch {
+				if len(barsByTicker[ticker]) == 0 {
+					summary["empty"]++
+					continue
+				}
+				summary["updated"]++
+			}
 		}
 
-		updated += len(batch)
-		o.logger.Info(fmt.Sprintf("history_refresh: %d/%d tickers updated", updated, len(allTickers)))
+		processed += len(batch)
+		o.logger.Info(fmt.Sprintf("history_refresh: %d/%d tickers processed", processed, len(allTickers)))
 
 		// Rate limit pause between batches.
 		if end < len(allTickers) {
@@ -280,7 +318,15 @@ func (o *JobOrchestrator) historyRefresh(ctx context.Context) error {
 		}
 	}
 
-	o.logger.Info("history_refresh: completed", slog.Int("tickers", updated))
+	o.logger.Info("history_refresh: completed",
+		slog.Int("tickers", summary["tickers"]),
+		slog.Int("updated", summary["updated"]),
+		slog.Int("empty", summary["empty"]),
+		slog.Int("failed", summary["failed"]),
+	)
+	if summary["failed"] > 0 {
+		return fmt.Errorf("history_refresh: %d/%d tickers failed", summary["failed"], summary["tickers"])
+	}
 	return nil
 }
 

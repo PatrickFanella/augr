@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	overnightBacktestGeneratePerChunk     = 2
+	overnightBacktestGeneratePerChunk     = 3
 	overnightBacktestChunkTimeout         = 20 * time.Minute
 	overnightBacktestGenerateTimeout      = 8 * time.Minute
 	overnightBacktestProgressTimeout      = 30 * time.Second
@@ -79,6 +79,18 @@ func (c overnightBacktestChunker) RunChunk(ctx context.Context) error {
 	}
 	if run == nil {
 		now := time.Now()
+		latest, latestErr := c.progress.ListLatest(ctx, 1)
+		if latestErr != nil {
+			return latestErr
+		}
+		if len(latest) > 0 && latest[0].Status == domain.OvernightBacktestStatusCompleted && sameEasternDate(latest[0].StartedAt, now) {
+			logger := c.logger
+			if logger == nil {
+				logger = slog.Default()
+			}
+			logger.Info("overnight_backtest: today's run already completed", slog.String("run_id", latest[0].ID.String()))
+			return nil
+		}
 		run = &domain.OvernightBacktestRun{ID: uuid.New(), Status: domain.OvernightBacktestStatusRunning, Phase: domain.OvernightBacktestPhaseScreen, StartedAt: now, UpdatedAt: now}
 		if err := c.progress.Create(ctx, run); err != nil {
 			return err
@@ -105,6 +117,12 @@ func (c overnightBacktestChunker) RunChunk(ctx context.Context) error {
 	}
 }
 
+func sameEasternDate(a, b time.Time) bool {
+	a = a.In(easternTime)
+	b = b.In(easternTime)
+	return a.Year() == b.Year() && a.YearDay() == b.YearDay()
+}
+
 func (c overnightBacktestChunker) runScreen(ctx context.Context, run *domain.OvernightBacktestRun) error {
 	if c.deps.Universe == nil {
 		run.Status = domain.OvernightBacktestStatusCompleted
@@ -125,8 +143,20 @@ func (c overnightBacktestChunker) runScreen(ctx context.Context, run *domain.Ove
 	for i, t := range watchlist {
 		tickers[i] = t.Ticker
 	}
-	_, _ = c.deps.DataService.DownloadHistoricalOHLCV(ctx, domain.MarketTypeStock, tickers, data.Timeframe1d, time.Now().AddDate(-5, 0, 0), time.Now(), true)
-	screened, err := discovery.Screen(ctx, c.deps.DataService, discovery.ScreenerConfig{Tickers: tickers, MarketType: domain.MarketTypeStock}, c.logger)
+	history, err := c.deps.DataService.DownloadHistoricalOHLCV(ctx, domain.MarketTypeStock, tickers, data.Timeframe1d, time.Now().AddDate(-5, 0, 0), time.Now(), true)
+	if err != nil {
+		return fmt.Errorf("overnight_backtest: refresh screen inputs: %w", err)
+	}
+	refreshedTickers := make([]string, 0, len(tickers))
+	for _, ticker := range tickers {
+		if len(history[ticker]) > 0 {
+			refreshedTickers = append(refreshedTickers, ticker)
+		}
+	}
+	if len(refreshedTickers) == 0 {
+		return fmt.Errorf("overnight_backtest: no refreshed screen inputs")
+	}
+	screened, err := discovery.Screen(ctx, c.deps.DataService, discovery.ScreenerConfig{Tickers: refreshedTickers, MarketType: domain.MarketTypeStock}, c.logger)
 	if err != nil {
 		return err
 	}

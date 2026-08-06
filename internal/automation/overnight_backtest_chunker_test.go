@@ -21,6 +21,7 @@ type fakeOvernightBacktestRunRepo struct {
 	updated                  bool
 	updateSeen               *domain.OvernightBacktestRun
 	failOnCancelledUpdateCtx bool
+	latest                   []domain.OvernightBacktestRun
 }
 
 func (f *fakeOvernightBacktestRunRepo) Create(_ context.Context, run *domain.OvernightBacktestRun) error {
@@ -60,7 +61,7 @@ func (blockingOvernightBacktestLLMProvider) Complete(ctx context.Context, _ llm.
 }
 
 func (f *fakeOvernightBacktestRunRepo) ListLatest(_ context.Context, _ int) ([]domain.OvernightBacktestRun, error) {
-	return nil, nil
+	return append([]domain.OvernightBacktestRun(nil), f.latest...), nil
 }
 
 type fakeOvernightBacktestLLMProvider struct {
@@ -94,8 +95,8 @@ func TestOvernightBacktestChunkerGenerateBudget(t *testing.T) {
 
 func TestOvernightBacktestChunkerGenerateBudgetDefaultsNonPositive(t *testing.T) {
 	c := overnightBacktestChunker{generatePerChunk: 0}
-	if got := c.nextGenerateEnd(0, 5); got != 2 {
-		t.Fatalf("got %d want 2", got)
+	if got := c.nextGenerateEnd(0, 5); got != 3 {
+		t.Fatalf("got %d want 3", got)
 	}
 }
 
@@ -159,6 +160,21 @@ func TestOvernightBacktestChunkerRunChunkCreatesRunWhenActiveMissing(t *testing.
 	}
 	if !repo.created {
 		t.Fatal("expected run creation")
+	}
+}
+
+func TestOvernightBacktestChunkerDoesNotStartSecondCompletedRunSameEasternDay(t *testing.T) {
+	completed := domain.OvernightBacktestRun{
+		ID: uuid.New(), Status: domain.OvernightBacktestStatusCompleted,
+		StartedAt: time.Now().In(easternTime),
+	}
+	repo := &fakeOvernightBacktestRunRepo{getActive: repository.ErrNotFound, latest: []domain.OvernightBacktestRun{completed}}
+	c := overnightBacktestChunker{progress: repo}
+	if err := c.RunChunk(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if repo.created {
+		t.Fatal("started a second run after today's run completed")
 	}
 }
 
