@@ -66,7 +66,6 @@ func (o *JobOrchestrator) currentDataRefresh(ctx context.Context) error {
 	defer func() {
 		o.SetLastSummary("current_data_refresh", summary)
 	}()
-
 	tickers := make([]string, 0, 100)
 	seen := make(map[string]struct{}, 100)
 	addTicker := func(raw string) {
@@ -81,53 +80,61 @@ func (o *JobOrchestrator) currentDataRefresh(ctx context.Context) error {
 		tickers = append(tickers, ticker)
 	}
 
-	if o.deps.PositionRepo != nil {
-		positions, err := listAllOpenPositions(ctx, o.deps.PositionRepo)
-		if err != nil {
-			o.logger.Warn("current_data_refresh: get open positions failed", slog.Any("error", err))
-			summary["errors"]++
-		} else {
-			for _, pos := range positions {
-				marketType := pos.MarketType.Normalize()
-				if marketType != "" && marketType != domain.MarketTypeStock {
-					continue
-				}
-				addTicker(pos.Ticker)
+	var positions []domain.Position
+	var err error
+	if o.deps.PositionRepo == nil {
+		err = fmt.Errorf("position repository unavailable")
+	} else {
+		positions, err = listAllOpenPositions(ctx, o.deps.PositionRepo)
+	}
+	if err != nil {
+		o.logger.Warn("current_data_refresh: get open positions failed", slog.Any("error", err))
+		summary["errors"]++
+	} else {
+		for _, pos := range positions {
+			marketType := pos.MarketType.Normalize()
+			if marketType != "" && marketType != domain.MarketTypeStock {
+				continue
 			}
+			addTicker(pos.Ticker)
 		}
 	}
 
-	if o.deps.StrategyRepo != nil {
-		strategies, err := listAllStrategies(ctx, o.deps.StrategyRepo, repository.StrategyFilter{Status: domain.StrategyStatusActive, MarketType: domain.MarketTypeStock})
-		if err != nil {
-			o.logger.Warn("current_data_refresh: list active strategies failed", slog.Any("error", err))
-			summary["errors"]++
-		} else {
-			for _, strategy := range strategies {
-				addTicker(strategy.Ticker)
-			}
+	var strategies []domain.Strategy
+	if o.deps.StrategyRepo == nil {
+		err = fmt.Errorf("strategy repository unavailable")
+	} else {
+		strategies, err = listAllStrategies(ctx, o.deps.StrategyRepo, repository.StrategyFilter{Status: domain.StrategyStatusActive, MarketType: domain.MarketTypeStock})
+	}
+	if err != nil {
+		o.logger.Warn("current_data_refresh: list active strategies failed", slog.Any("error", err))
+		summary["errors"]++
+	} else {
+		for _, strategy := range strategies {
+			addTicker(strategy.Ticker)
 		}
 	}
 
-	if o.deps.Universe != nil {
-		watchlist, err := o.deps.Universe.GetWatchlist(ctx, 50)
-		if err != nil {
-			o.logger.Warn("current_data_refresh: get watchlist failed", slog.Any("error", err))
-			summary["errors"]++
-		} else {
-			for _, ticker := range watchlist {
-				addTicker(ticker.Ticker)
-			}
+	var watchlist []universe.TrackedTicker
+	if o.deps.Universe == nil {
+		err = fmt.Errorf("universe unavailable")
+	} else {
+		watchlist, err = o.deps.Universe.GetWatchlist(ctx, 50)
+	}
+	if err != nil {
+		o.logger.Warn("current_data_refresh: get watchlist failed", slog.Any("error", err))
+		summary["errors"]++
+	} else {
+		for _, ticker := range watchlist {
+			addTicker(ticker.Ticker)
 		}
 	}
 
 	sort.Strings(tickers)
 	summary["tickers"] = len(tickers)
 	if len(tickers) == 0 {
-		o.logger.Info("current_data_refresh: no tickers to refresh")
-		return nil
+		return fmt.Errorf("current_data_refresh: no tickers available from required inputs (input_errors=%d)", summary["errors"])
 	}
-
 	if o.deps.DataService == nil {
 		return fmt.Errorf("current_data_refresh: data service unavailable for %d tickers", len(tickers))
 	}
@@ -203,16 +210,18 @@ func (o *JobOrchestrator) currentDataRefresh(ctx context.Context) error {
 
 // hotScan scores the top 200 watchlist tickers using locally stored OHLCV data.
 func (o *JobOrchestrator) hotScan(ctx context.Context) error {
-	summary := map[string]int{"watchlist": 0, "scored": 0, "fetch_errors": 0, "insufficient": 0, "stale": 0, "score_errors": 0, "significant_tickers": 0, "trigger_requests": 0}
+	summary := map[string]int{"watchlist": 0, "scored": 0, "fetch_errors": 0, "insufficient": 0, "stale": 0, "score_errors": 0, "significant_tickers": 0, "trigger_requests": 0, "strategy_list_failed": 0}
 	defer func() { o.SetLastSummary("hot_scan", summary) }()
+	if o.deps.Universe == nil || o.deps.DataService == nil {
+		return fmt.Errorf("hot_scan: universe and data service are required")
+	}
 	tickers, err := o.deps.Universe.GetWatchlist(ctx, 200)
 	if err != nil {
 		return fmt.Errorf("hot_scan: get watchlist: %w", err)
 	}
 	summary["watchlist"] = len(tickers)
 	if len(tickers) == 0 {
-		o.logger.Info("hot_scan: watchlist empty, nothing to scan")
-		return nil
+		return fmt.Errorf("hot_scan: watchlist is empty")
 	}
 
 	type mover struct {
@@ -300,6 +309,9 @@ func (o *JobOrchestrator) hotScan(ctx context.Context) error {
 						summary["trigger_requests"]++
 					}
 				}
+			} else {
+				summary["strategy_list_failed"]++
+				o.logger.Warn("hot_scan: failed to list strategies for triggers", slog.Any("error", listErr))
 			}
 		}
 	}
@@ -342,13 +354,15 @@ func canonicalTriggeredStrategies(strategies []domain.Strategy) []domain.Strateg
 func (o *JobOrchestrator) deepScan(ctx context.Context) error {
 	summary := map[string]int{"active_tickers": 0, "scored": 0, "fetch_errors": 0, "insufficient": 0, "stale": 0, "score_errors": 0}
 	defer func() { o.SetLastSummary("deep_scan", summary) }()
+	if o.deps.Universe == nil || o.deps.DataService == nil {
+		return fmt.Errorf("deep_scan: universe and data service are required")
+	}
 	allSymbols, err := o.deps.Universe.GetActiveTickers(ctx, "", 0)
 	if err != nil {
 		return fmt.Errorf("deep_scan: get active tickers: %w", err)
 	}
 	if len(allSymbols) == 0 {
-		o.logger.Info("deep_scan: no active tickers")
-		return nil
+		return fmt.Errorf("deep_scan: active universe is empty")
 	}
 	summary["active_tickers"] = len(allSymbols)
 
@@ -450,12 +464,12 @@ func currentDataRefreshCompletionError(summary map[string]int) error {
 }
 
 func marketScanCompletionError(job string, summary map[string]int) error {
-	incomplete := summary["fetch_errors"] + summary["insufficient"] + summary["stale"] + summary["score_errors"]
+	incomplete := summary["fetch_errors"] + summary["insufficient"] + summary["stale"] + summary["score_errors"] + summary["strategy_list_failed"]
 	if incomplete == 0 {
 		return nil
 	}
-	return fmt.Errorf("%s: incomplete scan: fetch_errors=%d insufficient=%d stale=%d score_errors=%d", job,
-		summary["fetch_errors"], summary["insufficient"], summary["stale"], summary["score_errors"])
+	return fmt.Errorf("%s: incomplete scan: fetch_errors=%d insufficient=%d stale=%d score_errors=%d strategy_list_failed=%d", job,
+		summary["fetch_errors"], summary["insufficient"], summary["stale"], summary["score_errors"], summary["strategy_list_failed"])
 }
 
 func intradayBarFresh(now, latest time.Time) bool {

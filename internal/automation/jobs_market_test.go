@@ -67,9 +67,29 @@ func TestMarketScanCompletionErrorFailsVisibleOnPartialCoverage(t *testing.T) {
 	if err := marketScanCompletionError("deep_scan", map[string]int{}); err != nil {
 		t.Fatalf("marketScanCompletionError(empty) = %v, want nil", err)
 	}
-	err := marketScanCompletionError("deep_scan", map[string]int{"fetch_errors": 1, "insufficient": 2, "stale": 3, "score_errors": 4})
-	if err == nil || !strings.Contains(err.Error(), "fetch_errors=1 insufficient=2 stale=3 score_errors=4") {
+	err := marketScanCompletionError("deep_scan", map[string]int{"fetch_errors": 1, "insufficient": 2, "stale": 3, "score_errors": 4, "strategy_list_failed": 5})
+	if err == nil || !strings.Contains(err.Error(), "fetch_errors=1 insufficient=2 stale=3 score_errors=4 strategy_list_failed=5") {
 		t.Fatalf("marketScanCompletionError(partial) = %v", err)
+	}
+}
+
+func TestMarketJobsFailWhenCoreDependenciesAreMissing(t *testing.T) {
+	t.Parallel()
+
+	orch := NewJobOrchestrator(OrchestratorDeps{})
+	tests := map[string]func(context.Context) error{
+		"current_data_refresh": orch.currentDataRefresh,
+		"hot_scan":             orch.hotScan,
+		"deep_scan":            orch.deepScan,
+	}
+	for name, run := range tests {
+		name, run := name, run
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			if err := run(context.Background()); err == nil {
+				t.Fatalf("%s() error = nil, want missing dependency failure", name)
+			}
+		})
 	}
 }
 
