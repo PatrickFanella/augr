@@ -2,6 +2,7 @@ package automation
 
 import (
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -25,6 +26,23 @@ func TestOvernightScheduleRefreshesHistoryBeforeConsumers(t *testing.T) {
 	neededSlots := 1 + (overnightBacktestWatchlistLimit+overnightBacktestGeneratePerChunk-1)/overnightBacktestGeneratePerChunk + 1
 	if neededSlots > 10 {
 		t.Fatalf("overnight backtest needs %d slots, only 10 are scheduled", neededSlots)
+	}
+}
+
+func TestOvernightCompletionErrorsExposePartialCoverage(t *testing.T) {
+	t.Parallel()
+
+	if err := overnightSweepCompletionError(2); err == nil || !strings.Contains(err.Error(), "2 strategies failed") {
+		t.Fatalf("overnightSweepCompletionError() = %v, want sweep coverage error", err)
+	}
+	if err := overnightGenerateCompletionError(1); err == nil || !strings.Contains(err.Error(), "1 index groups failed") {
+		t.Fatalf("overnightGenerateCompletionError() = %v, want generation coverage error", err)
+	}
+	if err := overnightSweepCompletionError(0); err != nil {
+		t.Fatalf("overnightSweepCompletionError(0) = %v, want nil", err)
+	}
+	if err := overnightGenerateCompletionError(0); err != nil {
+		t.Fatalf("overnightGenerateCompletionError(0) = %v, want nil", err)
 	}
 }
 

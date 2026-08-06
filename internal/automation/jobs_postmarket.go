@@ -147,7 +147,7 @@ func (o *JobOrchestrator) strategyResweep(ctx context.Context) error {
 		// Extract rules_engine config from strategy config JSON.
 		rulesConfig, err := extractRulesConfig(strat.Config)
 		if err != nil {
-			summary["skipped"]++
+			summary["failed"]++
 			o.logger.Warn("strategy_resweep: bad config",
 				slog.String("strategy", strat.Name),
 				slog.Any("error", err),

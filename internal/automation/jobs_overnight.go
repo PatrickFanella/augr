@@ -93,7 +93,7 @@ func (o *JobOrchestrator) overnightSweep(ctx context.Context) error {
 
 		rulesConfig, err := extractRulesConfig(strat.Config)
 		if err != nil {
-			skipped++
+			failed++
 			o.logger.Warn("overnight_sweep: bad config",
 				slog.String("strategy", strat.Name),
 				slog.Any("error", err),
@@ -173,7 +173,14 @@ func (o *JobOrchestrator) overnightSweep(ctx context.Context) error {
 		slog.Int("strategies", total),
 		slog.Int("improved", improved),
 	)
-	return nil
+	return overnightSweepCompletionError(failed)
+}
+
+func overnightSweepCompletionError(failed int) error {
+	if failed <= 0 {
+		return nil
+	}
+	return fmt.Errorf("overnight_sweep: %d strategies failed", failed)
 }
 
 // overnightGenerate uses the LLM to generate new strategy ideas for each
@@ -245,7 +252,14 @@ func (o *JobOrchestrator) overnightGenerate(ctx context.Context) error {
 	}
 
 	o.logger.Info("overnight_generate: completed")
-	return nil
+	return overnightGenerateCompletionError(summary["errors"])
+}
+
+func overnightGenerateCompletionError(errors int) error {
+	if errors <= 0 {
+		return nil
+	}
+	return fmt.Errorf("overnight_generate: %d index groups failed", errors)
 }
 
 // historyRefresh downloads latest OHLCV for all active tickers in
