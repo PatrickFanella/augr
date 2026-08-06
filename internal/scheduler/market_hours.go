@@ -29,6 +29,25 @@ func IsMarketOpen(t time.Time, marketType domain.MarketType) bool {
 	}
 }
 
+// IsRegularMarketOpen reports whether the market's regular trading session is
+// open. Stock automations use this narrower gate because their shared data
+// providers do not supply Alpaca overnight-session bars. Strategy execution
+// continues to use IsMarketOpen so explicitly scheduled Alpaca strategies can
+// trade during the broker's extended session when their own inputs support it.
+func IsRegularMarketOpen(t time.Time, marketType domain.MarketType) bool {
+	switch normalizeMarketType(marketType) {
+	case domain.MarketTypeCrypto, domain.MarketTypePolymarket, domain.MarketTypeKalshi:
+		return true
+	default:
+		et := t.In(newYorkLocation)
+		if !IsNYSETradingDay(et) {
+			return false
+		}
+		minutes := et.Hour()*60 + et.Minute()
+		return minutes >= 9*60+30 && minutes < 16*60
+	}
+}
+
 func normalizeMarketType(marketType domain.MarketType) domain.MarketType {
 	return domain.MarketType(strings.ToLower(strings.TrimSpace(marketType.String())))
 }

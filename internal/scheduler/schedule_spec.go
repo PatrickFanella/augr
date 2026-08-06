@@ -118,7 +118,7 @@ func (s ScheduleSpec) ShouldFire(now time.Time) bool {
 		if isAlwaysOpen {
 			return true
 		}
-		return IsMarketOpen(now, mt)
+		return IsRegularMarketOpen(now, mt)
 
 	case ScheduleTypePreMarket:
 		if isAlwaysOpen {

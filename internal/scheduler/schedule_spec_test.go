@@ -31,6 +31,50 @@ func TestShouldFire(t *testing.T) {
 			want: true,
 		},
 		{
+			name: "market_hours excludes Alpaca overnight session",
+			spec: ScheduleSpec{
+				Type:         ScheduleTypeMarketHours,
+				MarketType:   "stock",
+				SkipWeekends: true,
+				SkipHolidays: true,
+			},
+			now:  time.Date(2024, time.January, 8, 2, 0, 0, 0, et),
+			want: false,
+		},
+		{
+			name: "market_hours excludes premarket",
+			spec: ScheduleSpec{
+				Type:         ScheduleTypeMarketHours,
+				MarketType:   "stock",
+				SkipWeekends: true,
+				SkipHolidays: true,
+			},
+			now:  time.Date(2024, time.January, 8, 9, 29, 0, 0, et),
+			want: false,
+		},
+		{
+			name: "market_hours includes opening bell",
+			spec: ScheduleSpec{
+				Type:         ScheduleTypeMarketHours,
+				MarketType:   "stock",
+				SkipWeekends: true,
+				SkipHolidays: true,
+			},
+			now:  time.Date(2024, time.January, 8, 9, 30, 0, 0, et),
+			want: true,
+		},
+		{
+			name: "market_hours excludes after-hours session",
+			spec: ScheduleSpec{
+				Type:         ScheduleTypeMarketHours,
+				MarketType:   "stock",
+				SkipWeekends: true,
+				SkipHolidays: true,
+			},
+			now:  time.Date(2024, time.January, 8, 16, 0, 0, 0, et),
+			want: false,
+		},
+		{
 			name: "market_hours Saturday",
 			spec: ScheduleSpec{
 				Type:         ScheduleTypeMarketHours,
