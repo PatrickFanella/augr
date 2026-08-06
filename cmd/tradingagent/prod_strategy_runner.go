@@ -314,7 +314,11 @@ func (r *realStrategyRunner) RunStrategy(ctx context.Context, strategy domain.St
 		}
 	}
 
-	if err := r.dispatchNotifications(ctx, strategy, run, state); err != nil {
+	// Notification delivery is an optional side effect and must not monopolize a
+	// scheduler execution slot when a webhook is slow or rate limited.
+	notificationCtx, cancelNotifications := context.WithTimeout(ctx, 30*time.Second)
+	defer cancelNotifications()
+	if err := r.dispatchNotifications(notificationCtx, strategy, run, state); err != nil {
 		r.logger.WarnContext(ctx, "notification dispatch failed (non-fatal)", "error", err, "run_id", run.ID)
 	}
 
