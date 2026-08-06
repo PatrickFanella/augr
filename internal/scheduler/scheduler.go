@@ -336,7 +336,9 @@ func (s *Scheduler) Start() error {
 	if s.tickerDiscovery != nil {
 		spec := s.tickerDiscovery.config.Cron
 		_, err := engine.AddFunc(spec, func() {
-			s.runTickerDiscovery()
+			if runErr := s.runTickerDiscovery(); runErr != nil {
+				s.logger.Error("scheduler: ticker discovery failed", slog.Any("error", runErr))
+			}
 		})
 		if err != nil {
 			s.logger.Error("scheduler: failed to register ticker discovery schedule",
@@ -675,14 +677,17 @@ func (s *Scheduler) runBacktest(config domain.BacktestConfig) {
 // ticker discovery job.
 var discoveryDedupKey = uuid.MustParse("00000000-0000-0000-0000-000000000001")
 
-func (s *Scheduler) runTickerDiscovery() {
+func (s *Scheduler) runTickerDiscovery() error {
 	if s.metrics != nil {
 		s.metrics.RecordSchedulerTick("discovery")
+	}
+	if s.tickerDiscovery == nil {
+		return fmt.Errorf("ticker discovery is not configured")
 	}
 
 	if !s.discoveryDedup.TryAcquire(discoveryDedupKey) {
 		s.logger.Warn("scheduler: skipping ticker discovery; already in flight")
-		return
+		return nil
 	}
 	defer s.discoveryDedup.Release(discoveryDedupKey)
 
@@ -697,21 +702,19 @@ func (s *Scheduler) runTickerDiscovery() {
 	if weekday == time.Monday {
 		count, err := td.universe.RefreshConstituents(ctx)
 		if err != nil {
-			logger.Error("scheduler: ticker discovery refresh failed", slog.Any("error", err))
-		} else {
-			logger.Info("scheduler: refreshed universe constituents", slog.Int("count", count))
+			return fmt.Errorf("ticker discovery: refresh universe: %w", err)
 		}
+		logger.Info("scheduler: refreshed universe constituents", slog.Int("count", count))
 	}
 
 	// Step 2: Run pre-market screen.
 	scored, err := td.universe.RunPreMarketScreen(ctx, td.config.MinADV, td.config.MaxTickers)
 	if err != nil {
-		logger.Error("scheduler: pre-market screen failed", slog.Any("error", err))
-		return
+		return fmt.Errorf("ticker discovery: pre-market screen: %w", err)
 	}
 	if len(scored) == 0 {
 		logger.Info("scheduler: pre-market screen returned no tickers")
-		return
+		return nil
 	}
 
 	// Step 3: Extract top N ticker symbols.
@@ -751,8 +754,10 @@ func (s *Scheduler) runTickerDiscovery() {
 
 	result, err := discovery.RunDiscovery(ctx, cfg, td.discoveryDeps)
 	if err != nil {
-		logger.Error("scheduler: ticker discovery pipeline failed", slog.Any("error", err))
-		return
+		return fmt.Errorf("ticker discovery: pipeline: %w", err)
+	}
+	if err := tickerDiscoveryCompletionError(result); err != nil {
+		return err
 	}
 
 	logger.Info("scheduler: ticker discovery complete",
@@ -760,6 +765,17 @@ func (s *Scheduler) runTickerDiscovery() {
 		slog.Int("deployed", result.Deployed),
 		slog.Duration("duration", result.Duration),
 	)
+	return nil
+}
+
+func tickerDiscoveryCompletionError(result *discovery.DiscoveryResult) error {
+	if result == nil {
+		return fmt.Errorf("ticker discovery: pipeline returned nil result")
+	}
+	if len(result.Errors) > 0 {
+		return fmt.Errorf("ticker discovery: pipeline completed with %d errors", len(result.Errors))
+	}
+	return nil
 }
 
 func (s *Scheduler) clearStateLocked() (cronEngine, context.CancelFunc) {

@@ -17,6 +17,7 @@ import (
 
 	"github.com/PatrickFanella/get-rich-quick/internal/agent"
 	"github.com/PatrickFanella/get-rich-quick/internal/backtest"
+	"github.com/PatrickFanella/get-rich-quick/internal/discovery"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 	"github.com/PatrickFanella/get-rich-quick/internal/risk"
@@ -938,19 +939,35 @@ func TestSchedulerMetrics(t *testing.T) {
 	t.Run("discovery", func(t *testing.T) {
 		metrics := &mockSchedulerMetrics{}
 		s := NewScheduler(&mockStrategyRepo{}, &mockPipeline{}, &mockRiskEngine{}, testLogger(), WithMetrics(metrics))
-		s.tickerDiscovery = &tickerDiscoveryDeps{}
 
-		defer func() {
-			if r := recover(); r == nil {
-				t.Fatal("expected discovery to panic after tick emission")
-			}
-			if got := metrics.snapshot(); len(got) != 1 || got[0] != "discovery" {
-				t.Fatalf("metrics calls = %#v, want [discovery]", got)
-			}
-		}()
-
-		s.runTickerDiscovery()
+		if err := s.runTickerDiscovery(); err == nil {
+			t.Fatal("runTickerDiscovery() error = nil, want unconfigured failure")
+		}
+		if got := metrics.snapshot(); len(got) != 1 || got[0] != "discovery" {
+			t.Fatalf("metrics calls = %#v, want [discovery]", got)
+		}
 	})
+}
+
+func TestTickerDiscoveryCompletionError(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name   string
+		result *discovery.DiscoveryResult
+		want   bool
+	}{
+		{name: "nil", result: nil, want: true},
+		{name: "pipeline errors", result: &discovery.DiscoveryResult{Errors: []string{"generate AAA"}}, want: true},
+		{name: "complete", result: &discovery.DiscoveryResult{}, want: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := tickerDiscoveryCompletionError(tc.result); (got != nil) != tc.want {
+				t.Fatalf("tickerDiscoveryCompletionError() = %v, wantError=%v", got, tc.want)
+			}
+		})
+	}
 }
 
 func TestRunStrategy_PausedIsSkipped(t *testing.T) {
