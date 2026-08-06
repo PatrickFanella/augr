@@ -19,7 +19,7 @@ func TestEasternDayStartUTCUsesTradingDayAcrossUTCMidnight(t *testing.T) {
 func TestPostMarketCompletionErrorsExposePartialCoverage(t *testing.T) {
 	t.Parallel()
 
-	if err := dailyReviewCompletionError(1); err == nil || !strings.Contains(err.Error(), "strategy run queries failed") {
+	if err := dailyReviewCompletionError(map[string]int{"query_errors": 1}); err == nil || !strings.Contains(err.Error(), "query_errors=1") {
 		t.Fatalf("dailyReviewCompletionError() = %v, want query coverage error", err)
 	}
 	if err := strategyResweepCompletionError(2); err == nil || !strings.Contains(err.Error(), "strategies failed") {
@@ -29,8 +29,11 @@ func TestPostMarketCompletionErrorsExposePartialCoverage(t *testing.T) {
 		t.Fatalf("optionsScanCompletionError() = %v, want complete failure counts", err)
 	}
 
-	if err := dailyReviewCompletionError(0); err != nil {
-		t.Fatalf("dailyReviewCompletionError(0) = %v, want nil", err)
+	if err := dailyReviewCompletionError(map[string]int{}); err != nil {
+		t.Fatalf("dailyReviewCompletionError(empty) = %v, want nil", err)
+	}
+	if err := dailyReviewCompletionError(map[string]int{"failed": 2, "completed_without_signal": 1}); err == nil || !strings.Contains(err.Error(), "failed=2") {
+		t.Fatalf("dailyReviewCompletionError(findings) = %v", err)
 	}
 	if err := strategyResweepCompletionError(0); err != nil {
 		t.Fatalf("strategyResweepCompletionError(0) = %v, want nil", err)

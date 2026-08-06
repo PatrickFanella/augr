@@ -34,6 +34,9 @@ var (
 // persists an operationally meaningful status/signal summary.
 func (o *JobOrchestrator) dailyReview(ctx context.Context) error {
 	o.logger.Info("daily_review: starting")
+	if o.deps.StrategyRepo == nil || o.deps.RunRepo == nil {
+		return fmt.Errorf("daily_review: strategy and pipeline run repositories are required")
+	}
 
 	strategies, err := listAllStrategies(ctx, o.deps.StrategyRepo, repository.StrategyFilter{Status: "active"})
 	if err != nil {
@@ -50,10 +53,10 @@ func (o *JobOrchestrator) dailyReview(ctx context.Context) error {
 		}
 
 		stratID := strat.ID
-		runs, err := o.deps.RunRepo.List(ctx, repository.PipelineRunFilter{
+		runs, err := listAllPipelineRuns(ctx, o.deps.RunRepo, repository.PipelineRunFilter{
 			StrategyID:   &stratID,
 			StartedAfter: &today,
-		}, 50, 0)
+		})
 		if err != nil {
 			summary["query_errors"]++
 			o.logger.Warn("daily_review: failed to list runs",
@@ -79,14 +82,37 @@ func (o *JobOrchestrator) dailyReview(ctx context.Context) error {
 	}
 
 	o.logger.Info("daily_review: completed", slog.Any("summary", summary))
-	return dailyReviewCompletionError(summary["query_errors"])
+	return dailyReviewCompletionError(summary)
 }
 
-func dailyReviewCompletionError(queryErrors int) error {
-	if queryErrors <= 0 {
+func dailyReviewCompletionError(summary map[string]int) error {
+	findings := summary["query_errors"] + summary[domain.PipelineStatusFailed.String()] + summary[domain.PipelineStatusRunning.String()] + summary["completed_without_signal"]
+	if findings == 0 {
 		return nil
 	}
-	return fmt.Errorf("daily_review: %d strategy run queries failed", queryErrors)
+	return fmt.Errorf("daily_review: incomplete daily runs: query_errors=%d failed=%d running=%d completed_without_signal=%d",
+		summary["query_errors"], summary[domain.PipelineStatusFailed.String()], summary[domain.PipelineStatusRunning.String()], summary["completed_without_signal"])
+}
+
+func listAllPipelineRuns(ctx context.Context, repo repository.PipelineRunRepository, filter repository.PipelineRunFilter) ([]domain.PipelineRun, error) {
+	count, err := repo.Count(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+	const pageSize = 100
+	runs := make([]domain.PipelineRun, 0, count)
+	for offset := 0; offset < count; {
+		page, err := repo.List(ctx, filter, min(pageSize, count-offset), offset)
+		if err != nil {
+			return nil, err
+		}
+		if len(page) == 0 {
+			break
+		}
+		runs = append(runs, page...)
+		offset += len(page)
+	}
+	return runs, nil
 }
 
 func easternDayStartUTC(now time.Time) time.Time {
