@@ -20,12 +20,14 @@ type stubReportArtifactStore struct {
 	err    error
 }
 
-func (s *stubReportArtifactStore) GetLatest(context.Context, uuid.UUID, string) (*pgrepo.ReportArtifact, error) {
-	return s.latest, s.err
-}
-
 func (s *stubReportArtifactStore) List(context.Context, pgrepo.ReportArtifactFilter, int, int) ([]pgrepo.ReportArtifact, error) {
-	return nil, nil
+	if s.err != nil {
+		return nil, s.err
+	}
+	if s.latest == nil {
+		return nil, nil
+	}
+	return []pgrepo.ReportArtifact{*s.latest}, nil
 }
 
 type stubReportMetrics struct {
@@ -141,5 +143,36 @@ func TestHandleGetLatestReport_RecordsStalenessMetricWithResponseValue(t *testin
 	}
 	if metricsSink.seconds != resp.StaleSeconds {
 		t.Fatalf("metrics stale seconds = %f, want response stale_seconds %f", metricsSink.seconds, resp.StaleSeconds)
+	}
+}
+
+func TestHandleGetLatestReportReturnsCurrentPendingArtifact(t *testing.T) {
+	t.Parallel()
+
+	created := time.Now().Add(-2 * time.Minute)
+	deps := testDeps()
+	deps.ReportArtifacts = &stubReportArtifactStore{
+		latest: &pgrepo.ReportArtifact{
+			ID:         uuid.New(),
+			StrategyID: stratA.ID,
+			ReportType: "paper_validation",
+			TimeBucket: time.Now().Truncate(24 * time.Hour),
+			Status:     "pending",
+			ReportJSON: json.RawMessage(`{"state":"pending","reason":"no_backtest_runs"}`),
+			CreatedAt:  created,
+		},
+	}
+	srv := newTestServerWithDeps(t, deps)
+
+	rr := doRequest(t, srv, http.MethodGet, "/api/v1/strategies/"+stratA.ID.String()+"/reports/latest", nil)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+	}
+	resp := decodeJSON[reportLatestResponse](t, rr)
+	if resp.Status != "pending" || resp.CompletedAt != nil {
+		t.Fatalf("latest report = %+v, want current pending artifact", resp.ReportArtifact)
+	}
+	if resp.StaleSeconds < 119 || resp.StaleSeconds > 121 {
+		t.Fatalf("stale_seconds = %f, want pending artifact age near 120", resp.StaleSeconds)
 	}
 }

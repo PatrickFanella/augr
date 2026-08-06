@@ -6,8 +6,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/google/uuid"
-
 	pgrepo "github.com/PatrickFanella/get-rich-quick/internal/repository/postgres"
 )
 
@@ -18,7 +16,6 @@ type ReportMetrics interface {
 
 // ReportArtifactStore captures report artifact reads used by report handlers.
 type ReportArtifactStore interface {
-	GetLatest(ctx context.Context, strategyID uuid.UUID, reportType string) (*pgrepo.ReportArtifact, error)
 	List(ctx context.Context, filter pgrepo.ReportArtifactFilter, limit, offset int) ([]pgrepo.ReportArtifact, error)
 }
 
@@ -29,8 +26,9 @@ type reportLatestResponse struct {
 	StaleSeconds float64 `json:"stale_seconds"`
 }
 
-// handleGetLatestReport returns the most recently completed report artifact
-// for a given strategy.
+// handleGetLatestReport returns the newest report artifact for a given
+// strategy, including pending/error states that supersede an older completed
+// decision.
 //
 //	GET /api/v1/strategies/{id}/reports/latest
 func (s *Server) handleGetLatestReport(w http.ResponseWriter, r *http.Request) {
@@ -49,20 +47,25 @@ func (s *Server) handleGetLatestReport(w http.ResponseWriter, r *http.Request) {
 		reportType = "paper_validation"
 	}
 
-	artifact, err := s.reportArtifacts.GetLatest(r.Context(), id, reportType)
+	artifacts, err := s.reportArtifacts.List(r.Context(), pgrepo.ReportArtifactFilter{
+		StrategyID: &id,
+		ReportType: reportType,
+	}, 1, 0)
 	if err != nil {
-		if isNotFound(err) {
-			respondError(w, http.StatusNotFound, "no completed report found", ErrCodeNotFound)
-			return
-		}
 		respondError(w, http.StatusInternalServerError, "failed to get latest report", ErrCodeInternal)
 		return
 	}
-
-	stale := 0.0
-	if artifact.CompletedAt != nil {
-		stale = math.Max(0, math.Round(time.Since(*artifact.CompletedAt).Seconds()))
+	if len(artifacts) == 0 {
+		respondError(w, http.StatusNotFound, "no report found", ErrCodeNotFound)
+		return
 	}
+	artifact := &artifacts[0]
+
+	ageReference := artifact.CreatedAt
+	if artifact.CompletedAt != nil {
+		ageReference = *artifact.CompletedAt
+	}
+	stale := math.Max(0, math.Round(time.Since(ageReference).Seconds()))
 
 	if s.reportMetrics != nil {
 		s.reportMetrics.ObserveReportStaleness(id.String(), stale)
