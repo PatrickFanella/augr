@@ -2,6 +2,7 @@ package papervalidation
 
 import (
 	"encoding/json"
+	"math"
 	"testing"
 	"time"
 
@@ -169,6 +170,58 @@ func TestGenerateReportMetricDetails(t *testing.T) {
 			if !m.Passed {
 				t.Error("sharpe_ratio should pass")
 			}
+		}
+	}
+}
+
+func TestGenerateReportSerializesInfiniteProfitFactor(t *testing.T) {
+	t.Parallel()
+
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	report := GenerateReport(
+		backtest.Metrics{SharpeRatio: 1.5, MaxDrawdown: 0.10},
+		backtest.TradeAnalytics{ClosedTrades: 25, WinRate: 0.55, ProfitFactor: math.Inf(1)},
+		DefaultThresholds(),
+		start,
+		start.Add(61*24*time.Hour),
+	)
+
+	if _, err := json.Marshal(report); err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+	for _, metric := range report.Metrics {
+		if metric.Name != "profit_factor" {
+			continue
+		}
+		if metric.NonFinite != "positive_infinity" || metric.Value != math.MaxFloat64 || !metric.Passed {
+			t.Fatalf("profit factor metric = %+v, want serializable positive infinity", metric)
+		}
+		return
+	}
+	t.Fatal("profit_factor metric missing")
+}
+
+func TestGenerateReportFailsNaNMetricClosed(t *testing.T) {
+	t.Parallel()
+
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	report := GenerateReport(
+		backtest.Metrics{SharpeRatio: 1.5, MaxDrawdown: 0.10},
+		backtest.TradeAnalytics{ClosedTrades: 25, WinRate: math.NaN(), ProfitFactor: 2},
+		DefaultThresholds(),
+		start,
+		start.Add(61*24*time.Hour),
+	)
+
+	if report.GoDecision {
+		t.Fatal("NaN input must fail closed")
+	}
+	if _, err := json.Marshal(report); err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+	for _, metric := range report.Metrics {
+		if metric.Name == "win_rate" && (metric.NonFinite != "nan" || metric.Value != 0 || metric.Passed) {
+			t.Fatalf("win rate metric = %+v, want explicit failed NaN", metric)
 		}
 	}
 }

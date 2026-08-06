@@ -313,7 +313,7 @@ func TestGenerateOneReport_PersistsErrorArtifactWhenBacktestConfigMissing(t *tes
 	)
 	worker.now = func() time.Time { return fixedNow }
 
-	err := worker.generateOneReport(context.Background(), strategyID, "paper", fixedNow.Truncate(24*time.Hour), fixedNow)
+	_, err := worker.generateOneReport(context.Background(), strategyID, "paper", fixedNow.Truncate(24*time.Hour), fixedNow)
 	if err == nil {
 		t.Fatal("expected error when no backtest configs exist")
 	}
@@ -326,6 +326,77 @@ func TestGenerateOneReport_PersistsErrorArtifactWhenBacktestConfigMissing(t *tes
 	}
 	if !strings.Contains(artifact.ErrorMessage, "no backtest configs") {
 		t.Fatalf("error message = %q, want backtest config failure", artifact.ErrorMessage)
+	}
+}
+
+func TestGenerateOneReportPersistsPendingArtifactWithoutBacktestRun(t *testing.T) {
+	t.Parallel()
+
+	strategyID := uuid.New()
+	configID := uuid.New()
+	fixedNow := time.Date(2026, 6, 11, 15, 4, 5, 0, time.UTC)
+	reportRepo := &stubReportArtifactRepo{}
+	worker := newTestReportWorker(t,
+		[]domain.Strategy{{ID: strategyID, Name: "paper", Status: domain.StrategyStatusActive, IsPaper: true, CreatedAt: fixedNow.Add(-70 * 24 * time.Hour)}},
+		map[uuid.UUID][]domain.BacktestConfig{strategyID: {{ID: configID, StrategyID: strategyID}}},
+		map[uuid.UUID][]domain.BacktestRun{configID: nil},
+		reportRepo,
+		&captureReportMetrics{},
+	)
+	worker.now = func() time.Time { return fixedNow }
+
+	outcome, err := worker.generateOneReport(context.Background(), strategyID, "paper", fixedNow.Truncate(24*time.Hour), fixedNow)
+	if err != nil {
+		t.Fatalf("generateOneReport() error = %v", err)
+	}
+	if outcome != reportGenerationPending {
+		t.Fatalf("outcome = %v, want pending", outcome)
+	}
+	if got := len(reportRepo.artifacts); got != 1 {
+		t.Fatalf("artifacts persisted = %d, want 1", got)
+	}
+	artifact := reportRepo.artifacts[0]
+	if artifact.Status != "pending" {
+		t.Fatalf("artifact status = %q, want pending", artifact.Status)
+	}
+	if artifact.CompletedAt != nil {
+		t.Fatal("pending artifact must not set completed_at")
+	}
+	var payload map[string]string
+	if err := json.Unmarshal(artifact.ReportJSON, &payload); err != nil {
+		t.Fatalf("unmarshal pending report: %v", err)
+	}
+	if payload["state"] != "pending" || payload["reason"] != "no_backtest_runs" {
+		t.Fatalf("pending payload = %v", payload)
+	}
+}
+
+func TestRunPaperValidationReportCountsPendingSeparately(t *testing.T) {
+	t.Parallel()
+
+	strategyID := uuid.New()
+	configID := uuid.New()
+	fixedNow := time.Date(2026, 6, 11, 15, 4, 5, 0, time.UTC)
+	reportRepo := &stubReportArtifactRepo{}
+	metrics := &captureReportMetrics{}
+	worker := newTestReportWorker(t,
+		[]domain.Strategy{{ID: strategyID, Name: "paper", Status: domain.StrategyStatusActive, IsPaper: true}},
+		map[uuid.UUID][]domain.BacktestConfig{strategyID: {{ID: configID, StrategyID: strategyID}}},
+		map[uuid.UUID][]domain.BacktestRun{configID: nil},
+		reportRepo,
+		metrics,
+	)
+	worker.now = func() time.Time { return fixedNow }
+
+	if err := worker.RunPaperValidationReport(context.Background()); err != nil {
+		t.Fatalf("RunPaperValidationReport() error = %v", err)
+	}
+	got := worker.LastSummary()
+	if got["pending"] != 1 || got["succeeded"] != 0 || got["failed"] != 0 {
+		t.Fatalf("summary = %v, want one pending", got)
+	}
+	if len(metrics.successes) != 0 || len(metrics.errors) != 0 {
+		t.Fatalf("metrics successes=%v errors=%v, pending must not be classified as terminal success/error", metrics.successes, metrics.errors)
 	}
 }
 
@@ -344,7 +415,7 @@ func TestGenerateOneReportRejectsMalformedTradeLog(t *testing.T) {
 		&captureReportMetrics{},
 	)
 
-	err := worker.generateOneReport(context.Background(), strategyID, "paper", fixedNow.Truncate(24*time.Hour), fixedNow)
+	_, err := worker.generateOneReport(context.Background(), strategyID, "paper", fixedNow.Truncate(24*time.Hour), fixedNow)
 	if err == nil || !strings.Contains(err.Error(), "unmarshal trade log") {
 		t.Fatalf("generateOneReport() error = %v, want malformed trade log", err)
 	}
@@ -367,7 +438,7 @@ func TestGenerateOneReportSurfacesErrorArtifactPersistenceFailure(t *testing.T) 
 		&captureReportMetrics{},
 	)
 
-	err := worker.generateOneReport(context.Background(), strategyID, "paper", fixedNow.Truncate(24*time.Hour), fixedNow)
+	_, err := worker.generateOneReport(context.Background(), strategyID, "paper", fixedNow.Truncate(24*time.Hour), fixedNow)
 	if err == nil || !strings.Contains(err.Error(), "no backtest configs") || !strings.Contains(err.Error(), "persist error artifact") {
 		t.Fatalf("generateOneReport() error = %v, want generation and artifact persistence failures", err)
 	}

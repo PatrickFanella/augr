@@ -1,6 +1,7 @@
 package papervalidation
 
 import (
+	"math"
 	"time"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/backtest"
@@ -37,6 +38,10 @@ type MetricResult struct {
 	Value     float64 `json:"value"`
 	Threshold float64 `json:"threshold"`
 	Passed    bool    `json:"passed"`
+	// NonFinite preserves the source meaning when Value must use a finite JSON
+	// sentinel. NaN always fails closed; positive/negative infinity retain the
+	// comparison result while serializing as +/-MaxFloat64.
+	NonFinite string `json:"non_finite,omitempty"`
 }
 
 // ValidationResult is the outcome of evaluating paper trading performance
@@ -70,36 +75,11 @@ func Validate(metrics backtest.Metrics, analytics backtest.TradeAnalytics, thres
 	}
 
 	results := []MetricResult{
-		{
-			Name:      "sharpe_ratio",
-			Value:     metrics.SharpeRatio,
-			Threshold: thresholds.MinSharpeRatio,
-			Passed:    metrics.SharpeRatio > thresholds.MinSharpeRatio,
-		},
-		{
-			Name:      "max_drawdown",
-			Value:     metrics.MaxDrawdown,
-			Threshold: thresholds.MaxDrawdown,
-			Passed:    metrics.MaxDrawdown < thresholds.MaxDrawdown,
-		},
-		{
-			Name:      "win_rate",
-			Value:     analytics.WinRate,
-			Threshold: thresholds.MinWinRate,
-			Passed:    analytics.WinRate > thresholds.MinWinRate,
-		},
-		{
-			Name:      "profit_factor",
-			Value:     analytics.ProfitFactor,
-			Threshold: thresholds.MinProfitFactor,
-			Passed:    analytics.ProfitFactor > thresholds.MinProfitFactor,
-		},
-		{
-			Name:      "round_trip_trades",
-			Value:     float64(analytics.ClosedTrades),
-			Threshold: float64(thresholds.MinRoundTripTrades),
-			Passed:    analytics.ClosedTrades >= thresholds.MinRoundTripTrades,
-		},
+		newMetricResult("sharpe_ratio", metrics.SharpeRatio, thresholds.MinSharpeRatio, metrics.SharpeRatio > thresholds.MinSharpeRatio),
+		newMetricResult("max_drawdown", metrics.MaxDrawdown, thresholds.MaxDrawdown, metrics.MaxDrawdown < thresholds.MaxDrawdown),
+		newMetricResult("win_rate", analytics.WinRate, thresholds.MinWinRate, analytics.WinRate > thresholds.MinWinRate),
+		newMetricResult("profit_factor", analytics.ProfitFactor, thresholds.MinProfitFactor, analytics.ProfitFactor > thresholds.MinProfitFactor),
+		newMetricResult("round_trip_trades", float64(analytics.ClosedTrades), float64(thresholds.MinRoundTripTrades), analytics.ClosedTrades >= thresholds.MinRoundTripTrades),
 	}
 
 	allPassed := true
@@ -120,4 +100,21 @@ func Validate(metrics backtest.Metrics, analytics backtest.TradeAnalytics, thres
 		ElapsedDays:  elapsed,
 		DaysRequired: thresholds.MinCalendarDays,
 	}
+}
+
+func newMetricResult(name string, value, threshold float64, passed bool) MetricResult {
+	result := MetricResult{Name: name, Value: value, Threshold: threshold, Passed: passed}
+	switch {
+	case math.IsNaN(value):
+		result.Value = 0
+		result.Passed = false
+		result.NonFinite = "nan"
+	case math.IsInf(value, 1):
+		result.Value = math.MaxFloat64
+		result.NonFinite = "positive_infinity"
+	case math.IsInf(value, -1):
+		result.Value = -math.MaxFloat64
+		result.NonFinite = "negative_infinity"
+	}
+	return result
 }
