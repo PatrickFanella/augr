@@ -393,3 +393,5 @@ Kalshi discovery automation run `484a138a-e429-4a25-bfed-9327136afee1` began at 
 All classifications and earlier conclusions are reopened. Findings will be added only from qualifying runs above. No synchronization or deployment is authorized until every required predeployment window and remediation rerun is complete.
 
 Intermediate code verification after commits through `22cb1c0`: `go test -count=1 ./...` completed successfully across every Go package. Focused vet and race checks also passed for the changed signal, discovery, automation, scheduler, API, and runtime paths. This is not the final release gate and does not count as execution evidence; the full Go/static/frontend/compose/Prometheus/migration/schema/diff/secrets gate will run only after all predeployment windows and fixes are complete.
+
+Additional intermediate verification after `725d63a`: frontend ESLint passed, all 162 Vitest tests in 10 files passed, the TypeScript/Vite production build completed, and focused automation/scheduler race tests plus vet passed. These checks are code verification only; they neither replace fresh automation execution nor the final clean-tree release gate.
