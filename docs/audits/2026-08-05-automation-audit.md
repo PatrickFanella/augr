@@ -195,7 +195,18 @@ Exactly one deployment was performed at 2026-08-05 17:23 CDT. It force-recreated
 - `current_data_refresh` completed twice with 134/134 stock tickers updated in 14 batches and zero errors. `social_scan` completed twice. New logs contained no prediction-market identifiers in either stock path.
 - Post-deploy ARE pipeline `1503b5f0-...` completed in 411.7s with correct Luna/Sol routing, nonzero deep latency, exact market context in all risk prompts, and a canonical HOLD. It created no order or trade.
 - Before and after canaries: 26 orders, 10 open positions, 36 trades, 141 trade decisions, and zero decisions with a live order. Post-deployment additions were zero orders, zero trades, and zero live decisions.
-- Final automation health is `healthy=true`, 27 total, zero failing, two degraded. The degraded jobs are the now-honest paper-report configuration failure and the earlier external `universe_refresh` failure. New-container logs contain zero panic/fatal/schema-mismatch signals and zero potential credential leaks. OpenCode remains tool-free with global and agent-level `permission.*=deny`.
+- At the close of the initial validation, automation health was `healthy=true`, 27 total, zero failing, and two degraded. The degraded jobs were the now-honest paper-report configuration failure and the earlier external `universe_refresh` failure. New-container logs contained zero panic/fatal/schema-mismatch signals and zero potential credential leaks. OpenCode remained tool-free with global and agent-level `permission.*=deny`.
+
+### Extended post-deployment watch
+
+The release remained under observation through 2026-08-05 21:36 CDT. This longer window produced additional evidence without another deployment:
+
+- The health endpoint continued to report application, PostgreSQL, and Redis `ok`; the app and OpenCode containers remained healthy, and the web container remained running on the audited immutable images.
+- `current_data_refresh` reported an explicit partial failure at 21:15 CDT (`105/145` updated, four failed batches), then recovered automatically at 21:30 CDT with `145/145` updated across 15 batches and zero errors. The new honest-outcome behavior is therefore working; the incident is classified as a transient provider failure rather than a silent success.
+- `filing_monitor` failed at 19:00 CDT after Finnhub returned HTTP 429. Its persisted summary recorded 105 available stock tickers, 15 checked, zero filings, and `rate_limited=1`. Rotation and honest failure reporting worked as intended. The job is temporarily **degraded but usable / externally blocked by provider quota**; retrying more aggressively would worsen the rate limit, so the normal four-hour schedule is retained.
+- Kalshi settlement advanced from stable previews to the independently gated paper-settlement path. Repeated runs fetched five demo markets, found zero resolved markets or decisions to settle, and wrote no orders, positions, trades, or settlement decisions. This is a safe, idempotent empty-state outcome.
+- The allocator evaluated one new Kalshi paper opportunity in shadow mode and rejected it with no order because its score, edge, and liquidity were all below configured minimums. The source evidence showed confidence `0.88`, edge `0.01`, liquidity `$0`, and a `$0.002` entry price; the rejection was rational and fail-closed.
+- Cumulative post-deployment mutations remained zero orders, zero trades, zero live decisions, and zero allocator-created orders. Safety configuration remained `ENABLE_LIVE_TRADING=false`, Alpaca/Binance paper mode enabled, and Polymarket automation disabled.
 
 Previous images recorded for rollback: app `augr-app:0f7fdf3a0801`; web `augr-web:review-735b344bf7ab`. Rollback requires recreating only app/web with those two explicit immutable tags; database rollback is not required. Rollback was not triggered because every release and post-deploy safety gate passed.
 
