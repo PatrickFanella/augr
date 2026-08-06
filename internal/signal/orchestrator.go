@@ -9,7 +9,7 @@ import (
 type OrchestratorConfig struct {
 	EventStoreSize int // number of events to retain in memory (default 200)
 
-	// LLM evaluator (optional; nil = urgency-3 fallback for all events).
+	// LLM evaluator (optional; nil = urgency-1 fail-closed fallback for all events).
 	LLMEvaluator *Evaluator
 
 	// Signal sources to fan-in. If empty, default RSS + Reddit sources are used.
