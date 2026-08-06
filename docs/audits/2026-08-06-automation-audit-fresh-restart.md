@@ -60,8 +60,8 @@ Eastern Time schedules are shown because the production automation orchestrator 
 | `overnight_backtest` | enabled | every 30 minutes 01:00–05:59 Tue–Sat, unchanged | after fresh history and sweep | pending |
 | `overnight_generate` | enabled | deployed 03:00 Tue–Sat; local pending 06:00 | after sweep and completion of the backtest window | pending |
 | `options_discovery` | enabled | deployed 03:30 Tue–Sat; local pending 06:30 | after overnight generation | qualifying defect run; postdeployment proof pending |
-| `universe_refresh` | enabled | Sunday 12:00 | Polygon reference source | pending valid weekly window |
-| `strategy_tournament` | enabled | Sunday 14:00 | read-only in-memory backtests and ranking recommendations across active OHLCV-capable strategies; the implementation does not prune or disable strategies | pending valid weekly window |
+| `universe_refresh` | enabled | Sunday 12:00 | Polygon reference source | historical run assessed; rerun required at the valid weekly window because the latest run failed |
+| `strategy_tournament` | enabled | Sunday 14:00 | read-only in-memory backtests and ranking recommendations across active OHLCV-capable strategies; the implementation does not prune or disable strategies | historical run assessed; rerun required at the valid weekly window because its inputs/results are not auditable |
 | `kalshi_discovery` | enabled | :15 hourly | Kalshi calendar/provider; paper-only deployment | 5+ qualifying defect runs; fixes require postdeploy proof |
 | `kalshi_settlement` | enabled | every 5 minutes | prediction settlement gate; paper-only | 5+ qualifying dry-run samples; postdeploy proof pending |
 | `portfolio_allocator` | enabled | :15/:45, after-hours type | shadow allocator | qualifying predeploy defect run; postdeployment proof pending |
@@ -88,6 +88,24 @@ The after-hours observer was armed before the 20:15 UTC allocator boundary and c
 The separately armed 21:00 UTC paper-validation observer captured 141 eligible stock strategies, the unchanged image/live-off baseline, the entire 1.116-second worker run, all 141 same-day artifacts, and the financial post-state. The worker failed closed at the wrapper level with 38 errors, but 103 no-run strategies were falsely published as completed `NO-GO`; exact findings and remediation are below.
 
 The overnight observer follows the currently deployed 04:00/02:00/03:00/03:30 ET history/sweep/generate/options timings. Commit `c4bc1e8` changes the single-deploy graph to history at 00:00, sweep at 00:30, unchanged backtest chunks from 01:00–05:59, generation at 06:00, and options discovery at 06:30 ET. Those postdeploy timings require a separate observer; evidence from the deployed order cannot validate the pending order.
+
+### 24-hour scheduler-liveness checkpoint
+
+At 23:05 UTC on August 6, production remained healthy on the unchanged predeploy image with live trading off. Exact database inspection found zero running `automation_job_runs` and zero running `pipeline_runs`. Since the 06:38:54 UTC restart boundary, 32 strategy pipelines had completed and five had failed; none remained incomplete. Routine five-, fifteen-, thirty-, and sixty-minute jobs continued to start and reach terminal rows through the checkpoint. The most recent long `kalshi_discovery` run started at 22:15 UTC and completed at 22:53:19 after 2,299.697 seconds, confirming that its roughly 38-minute runtime is slow but not stuck.
+
+One `overnight_backtest_runs` checkpoint, `196f0c65-4b61-42aa-b247-c2368122635e`, remained `running` in `generate` at candidate index 14. It started at 05:30 UTC before the restart boundary and had not updated since 09:30 UTC, so it is explicitly excluded from fresh evidence. The next real 05:00 UTC tick is prospectively observed to verify deployed stale-checkpoint cleanup, and a separate observer begins before 05:30 UTC to capture the first wholly post-boundary checkpoint. This is the only incomplete durable worker state found at the checkpoint; it does not support a scheduler-wide hang.
+
+The 21:00 UTC `paper_validation_report` did execute and terminate rather than hang: it processed all 163 active strategies, skipped 22 non-stock strategies, persisted artifacts for all 141 eligible stock strategies, and returned an error because 37 lacked backtest configurations and one non-finite metric could not serialize. Its pending-state and serialization defects are documented below and fixed locally in `9064bfd`; the run remains predeploy defect evidence.
+
+Immediately before the after-hours review window, the authoritative August 6 Eastern trading-day baseline contained 41 pipeline runs across 41 strategies: 36 completed, five failed, and zero running. No pipeline existed in the August 7 UTC day. The 00:30 UTC `daily_review` observer will compare its deployed result with that baseline; a zero-run summary would demonstrate the known UTC-day-boundary defect rather than a lack of trading-day activity.
+
+### Historical weekly-run assessment — non-counting
+
+At the user's request, the latest durable weekly rows were inspected only to decide whether waiting for another Sunday was necessary. They remain historical and do not enter the fresh-run ledger.
+
+The latest `universe_refresh`, run `22e7e216-1d58-46dd-a60f-27c390c6ff0c` on August 2 at 16:00 UTC, terminated `error` after 8.021 seconds because Polygon hostname resolution failed. Its prior run, `dc6995a1-64dd-497d-b971-ded9083a00a1`, completed on July 26. Therefore there is no successful August 2 constituent refresh to reuse, and the universe refresh **must be rerun** at the next valid Sunday window.
+
+The latest `strategy_tournament`, run `335949b0-e214-4885-9c45-6ee3f7a7da95` on August 2 from 18:00:00 through 18:59:31 UTC, persisted `ok` but a NULL result. There is no tournament/ranking table, the retained job row contains no scanned/ranked/failure counts, and the relevant container logs are no longer available. It also ran after the failed same-day universe refresh. Source reconstruction proves that this deployed implementation could accept cache-only histories and did not reject a stale latest daily bar; local commit `0a78740` added those checks only after the historical run and remains undeployed. The active strategy state subsequently changed, including three paper strategies paused on August 6. The historical row proves wrapper termination only, not current provider contact, input freshness, complete coverage, rankings, or downstream recommendations. The tournament therefore **must be rerun** at the next valid Sunday window as well.
 
 ## Qualifying fresh-run ledger
 
