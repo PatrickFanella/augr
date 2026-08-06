@@ -226,6 +226,18 @@ func TestParseInvalidJSON(t *testing.T) {
 	}
 }
 
+func TestParseRejectsUnknownSchemaFields(t *testing.T) {
+	t.Parallel()
+
+	_, err := Parse[testPayload](`{"name":"alpha","value":42,"execute":true}`, nil)
+	if err == nil {
+		t.Fatal("Parse() error = nil, want unknown-field schema failure")
+	}
+	if got := err.Error(); !strings.Contains(got, `unknown field "execute"`) {
+		t.Fatalf("error = %q, want unknown execute field", got)
+	}
+}
+
 func TestParseValidationFailure(t *testing.T) {
 	input := `{"name":"","value":0}`
 	validator := func(p *testPayload) error {

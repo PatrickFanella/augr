@@ -140,7 +140,9 @@ func Parse[T any](content string, validate func(*T) error) (*T, error) {
 	}
 
 	var result T
-	if err := json.Unmarshal([]byte(cleaned), &result); err != nil {
+	decoder := json.NewDecoder(strings.NewReader(cleaned))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&result); err != nil {
 		return nil, fmt.Errorf("failed to parse JSON: %w", err)
 	}
 
