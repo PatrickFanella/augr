@@ -790,6 +790,10 @@ func (s *stubDecisionRepo) CountByRun(_ context.Context, _ uuid.UUID, _ reposito
 type stubPipelineRunRepo struct {
 	run          *domain.PipelineRun
 	err          error
+	createErr    error
+	updateErr    error
+	created      *domain.PipelineRun
+	updates      []repository.PipelineRunStatusUpdate
 	getByID      bool
 	getCalled    bool
 	listCalled   bool
@@ -797,7 +801,14 @@ type stubPipelineRunRepo struct {
 	updateCalled bool
 }
 
-func (r *stubPipelineRunRepo) Create(context.Context, *domain.PipelineRun) error { return nil }
+func (r *stubPipelineRunRepo) Create(_ context.Context, run *domain.PipelineRun) error {
+	if r.createErr != nil {
+		return r.createErr
+	}
+	copyRun := *run
+	r.created = &copyRun
+	return nil
+}
 
 func (r *stubPipelineRunRepo) GetByID(context.Context, uuid.UUID) (*domain.PipelineRun, error) {
 	r.getByID = true
@@ -827,9 +838,10 @@ func (r *stubPipelineRunRepo) CountByStatus(context.Context, repository.Pipeline
 	return map[domain.PipelineStatus]int{}, nil
 }
 
-func (r *stubPipelineRunRepo) UpdateStatus(context.Context, uuid.UUID, time.Time, repository.PipelineRunStatusUpdate) error {
+func (r *stubPipelineRunRepo) UpdateStatus(_ context.Context, _ uuid.UUID, _ time.Time, update repository.PipelineRunStatusUpdate) error {
 	r.updateCalled = true
-	return nil
+	r.updates = append(r.updates, update)
+	return r.updateErr
 }
 
 var _ repository.PipelineRunRepository = (*stubPipelineRunRepo)(nil)

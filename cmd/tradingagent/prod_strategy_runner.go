@@ -49,6 +49,7 @@ const (
 	requiredNewsMaxAge     = 36 * time.Hour
 	requiredNewsMinDirect  = 3
 	localPaperBuyingPower  = 100_000.0
+	nativeTerminalTimeout  = 5 * time.Second
 )
 
 var defaultAnalysisRoles = []agent.AgentRole{
@@ -640,20 +641,11 @@ func (r *realStrategyRunner) runPolymarketNative(ctx context.Context, strategy d
 	}
 
 	completeRun := func(status domain.PipelineStatus, signal domain.PipelineSignal, errMsg string) error {
-		completedAt := time.Now().UTC()
-		run.Status = status
-		run.Signal = signal
-		run.CompletedAt = &completedAt
-		run.ErrorMessage = errMsg
-		if r.runRepo == nil {
-			return nil
-		}
-		update := repository.PipelineRunStatusUpdate{Status: status, Signal: &signal, CompletedAt: &completedAt, ErrorMessage: errMsg}
-		return r.runRepo.UpdateStatus(ctx, run.ID, run.TradeDate, update)
+		return r.completeNativeRun(ctx, "polymarket", &run, status, signal, errMsg)
 	}
 	failRun := func(err error) (*api.StrategyRunResult, error) {
 		if updateErr := completeRun(domain.PipelineStatusFailed, domain.PipelineSignalHold, err.Error()); updateErr != nil {
-			r.logger.WarnContext(ctx, "polymarket native: failed to update failed run", "error", updateErr, "run_id", run.ID)
+			err = errors.Join(err, updateErr)
 		}
 		return nil, err
 	}
@@ -759,20 +751,11 @@ func (r *realStrategyRunner) runKalshiNative(ctx context.Context, strategy domai
 	}
 
 	completeRun := func(status domain.PipelineStatus, signal domain.PipelineSignal, errMsg string) error {
-		completedAt := time.Now().UTC()
-		run.Status = status
-		run.Signal = signal
-		run.CompletedAt = &completedAt
-		run.ErrorMessage = errMsg
-		if r.runRepo == nil {
-			return nil
-		}
-		update := repository.PipelineRunStatusUpdate{Status: status, Signal: &signal, CompletedAt: &completedAt, ErrorMessage: errMsg}
-		return r.runRepo.UpdateStatus(ctx, run.ID, run.TradeDate, update)
+		return r.completeNativeRun(ctx, "kalshi", &run, status, signal, errMsg)
 	}
 	failRun := func(err error) (*api.StrategyRunResult, error) {
 		if updateErr := completeRun(domain.PipelineStatusFailed, domain.PipelineSignalHold, err.Error()); updateErr != nil {
-			r.logger.WarnContext(ctx, "kalshi native: failed to update failed run", "error", updateErr, "run_id", run.ID)
+			err = errors.Join(err, updateErr)
 		}
 		return nil, err
 	}
@@ -865,6 +848,107 @@ func (r *realStrategyRunner) runKalshiNative(ctx context.Context, strategy domai
 	}
 
 	return &api.StrategyRunResult{Run: run, Signal: signal, Orders: orders, Positions: positions}, nil
+}
+
+func (r *realStrategyRunner) completeNativeRun(
+	ctx context.Context,
+	source string,
+	run *domain.PipelineRun,
+	status domain.PipelineStatus,
+	signal domain.PipelineSignal,
+	errMsg string,
+) error {
+	if run == nil {
+		return fmt.Errorf("%s native: pipeline run is required", source)
+	}
+	if r.runRepo == nil {
+		return fmt.Errorf("%s native: pipeline run repository is required", source)
+	}
+
+	completedAt := time.Now().UTC()
+	run.Status = status
+	run.Signal = signal
+	run.CompletedAt = &completedAt
+	run.ErrorMessage = errMsg
+	update := repository.PipelineRunStatusUpdate{
+		Status: status, Signal: &signal, CompletedAt: &completedAt, ErrorMessage: errMsg,
+	}
+	persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), nativeTerminalTimeout)
+	err := r.runRepo.UpdateStatus(persistCtx, run.ID, run.TradeDate, update)
+	cancel()
+	if err != nil {
+		return fmt.Errorf("%s native: persist terminal run status: %w", source, err)
+	}
+
+	eventErr := r.persistNativeTerminalEvent(ctx, source, run, status, signal)
+	if eventErr == nil {
+		return nil
+	}
+	if status != domain.PipelineStatusCompleted {
+		return eventErr
+	}
+
+	// A completed row without its terminal audit event is not auditable. Mark
+	// it failed before returning so downstream execution cannot treat it as a
+	// successful native pipeline.
+	fallbackErr := fmt.Errorf("%s native: terminal audit event persistence failed", source)
+	fallbackSignal := domain.PipelineSignalHold
+	run.Status = domain.PipelineStatusFailed
+	run.Signal = fallbackSignal
+	run.ErrorMessage = fallbackErr.Error()
+	fallback := repository.PipelineRunStatusUpdate{
+		Status: domain.PipelineStatusFailed, Signal: &fallbackSignal, CompletedAt: &completedAt, ErrorMessage: fallbackErr.Error(),
+	}
+	fallbackCtx, fallbackCancel := context.WithTimeout(context.WithoutCancel(ctx), nativeTerminalTimeout)
+	updateErr := r.runRepo.UpdateStatus(fallbackCtx, run.ID, run.TradeDate, fallback)
+	fallbackCancel()
+	if updateErr != nil {
+		return errors.Join(eventErr, fmt.Errorf("%s native: persist terminal-event failure status: %w", source, updateErr))
+	}
+	return eventErr
+}
+
+func (r *realStrategyRunner) persistNativeTerminalEvent(
+	ctx context.Context,
+	source string,
+	run *domain.PipelineRun,
+	status domain.PipelineStatus,
+	signal domain.PipelineSignal,
+) error {
+	if r.eventRepo == nil {
+		return fmt.Errorf("%s native: agent event repository is required", source)
+	}
+	eventKind := agent.AgentEventKindPipelineFailed.String()
+	title := "Pipeline failed"
+	tags := []string{"pipeline", "failed", "native", source}
+	if status == domain.PipelineStatusCompleted {
+		eventKind = agent.AgentEventKindPipelineCompleted.String()
+		title = "Pipeline completed"
+		tags = []string{"pipeline", "completed", "native", source}
+	}
+	metadata, err := json.Marshal(map[string]string{
+		"execution_path": source + "_native",
+		"signal":         string(signal),
+		"status":         string(status),
+	})
+	if err != nil {
+		return fmt.Errorf("%s native: marshal terminal event: %w", source, err)
+	}
+	event := &domain.AgentEvent{
+		PipelineRunID: &run.ID,
+		StrategyID:    &run.StrategyID,
+		EventKind:     eventKind,
+		Title:         title,
+		Summary:       "Native deterministic pipeline reached a terminal state.",
+		Tags:          tags,
+		Metadata:      metadata,
+	}
+	persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), nativeTerminalTimeout)
+	defer cancel()
+	if err := r.eventRepo.Create(persistCtx, event); err != nil {
+		return fmt.Errorf("%s native: persist terminal event: %w", source, err)
+	}
+	return nil
 }
 
 func predictionNativeEvidence(provider string, snapshot, decision any) json.RawMessage {

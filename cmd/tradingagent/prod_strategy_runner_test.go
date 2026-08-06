@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"reflect"
@@ -304,22 +305,74 @@ func TestRunStrategy_KalshiSafeHoldPath(t *testing.T) {
 		IsPaper:    true,
 		Config:     mustKalshiConfig(t, map[string]any{"template": "microstructure", "direction": "NO", "confidence": 0.72, "entry_price_max": 0.60}),
 	}
-	runner := &realStrategyRunner{kalshiMarketData: staticKalshiMarketData{snapshot: kalshiexecution.Snapshot{
-		Ticker:     "KXTEST-YESNO",
-		Title:      "Will test happen?",
-		Status:     "active",
-		BestBidYes: 0.45,
-		BestAskYes: 0.47,
-		Volume:     1500,
-		CloseTime:  time.Now().UTC().Add(24 * time.Hour),
-		FetchedAt:  time.Now().UTC(),
-	}}}
+	runner := &realStrategyRunner{
+		runRepo:   &stubPipelineRunRepo{},
+		eventRepo: &recordingStrategyPreparationEventRepo{},
+		kalshiMarketData: staticKalshiMarketData{snapshot: kalshiexecution.Snapshot{
+			Ticker:     "KXTEST-YESNO",
+			Title:      "Will test happen?",
+			Status:     "active",
+			BestBidYes: 0.45,
+			BestAskYes: 0.47,
+			Volume:     1500,
+			CloseTime:  time.Now().UTC().Add(24 * time.Hour),
+			FetchedAt:  time.Now().UTC(),
+		}},
+	}
 	result, err := runner.RunStrategy(context.Background(), strategy)
 	if err != nil {
 		t.Fatalf("RunStrategy() error = %v", err)
 	}
 	if result == nil || result.Signal != domain.PipelineSignalHold {
 		t.Fatalf("RunStrategy() result = %+v, want hold", result)
+	}
+}
+
+func TestCompleteNativeRunPersistsTerminalEvent(t *testing.T) {
+	t.Parallel()
+
+	runRepo := &stubPipelineRunRepo{}
+	eventRepo := &recordingStrategyPreparationEventRepo{}
+	runner := &realStrategyRunner{runRepo: runRepo, eventRepo: eventRepo}
+	run := domain.PipelineRun{ID: uuid.New(), StrategyID: uuid.New(), TradeDate: time.Now().UTC()}
+
+	if err := runner.completeNativeRun(context.Background(), "kalshi", &run, domain.PipelineStatusFailed, domain.PipelineSignalHold, "secret provider detail"); err != nil {
+		t.Fatalf("completeNativeRun() error = %v", err)
+	}
+	if len(runRepo.updates) != 1 || runRepo.updates[0].Status != domain.PipelineStatusFailed {
+		t.Fatalf("run updates = %+v, want one failed update", runRepo.updates)
+	}
+	if len(eventRepo.events) != 1 || eventRepo.events[0].EventKind != agent.AgentEventKindPipelineFailed.String() {
+		t.Fatalf("terminal events = %+v, want one pipeline_failed", eventRepo.events)
+	}
+	encoded, err := json.Marshal(eventRepo.events[0])
+	if err != nil {
+		t.Fatalf("marshal terminal event: %v", err)
+	}
+	if strings.Contains(string(encoded), "secret provider detail") {
+		t.Fatalf("terminal event leaked raw run error: %s", encoded)
+	}
+}
+
+func TestCompleteNativeRunEventFailureReclassifiesCompletion(t *testing.T) {
+	t.Parallel()
+
+	runRepo := &stubPipelineRunRepo{}
+	runner := &realStrategyRunner{
+		runRepo:   runRepo,
+		eventRepo: &recordingStrategyPreparationEventRepo{err: errors.New("event store unavailable")},
+	}
+	run := domain.PipelineRun{ID: uuid.New(), StrategyID: uuid.New(), TradeDate: time.Now().UTC()}
+
+	err := runner.completeNativeRun(context.Background(), "kalshi", &run, domain.PipelineStatusCompleted, domain.PipelineSignalHold, "")
+	if err == nil || !strings.Contains(err.Error(), "persist terminal event") {
+		t.Fatalf("completeNativeRun() error = %v, want event persistence failure", err)
+	}
+	if len(runRepo.updates) != 2 || runRepo.updates[0].Status != domain.PipelineStatusCompleted || runRepo.updates[1].Status != domain.PipelineStatusFailed {
+		t.Fatalf("run updates = %+v, want completed then failed fallback", runRepo.updates)
+	}
+	if run.Status != domain.PipelineStatusFailed {
+		t.Fatalf("run status = %q, want failed", run.Status)
 	}
 }
 
