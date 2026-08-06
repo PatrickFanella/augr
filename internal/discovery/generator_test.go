@@ -73,6 +73,23 @@ func TestGenerateStrategy_RecoversJSONObjectAfterReasoningProse(t *testing.T) {
 	}
 }
 
+func TestGenerateStrategyRejectsCachedResponse(t *testing.T) {
+	t.Parallel()
+
+	underlying := &stubCompletionProvider{responses: []*llm.CompletionResponse{{Content: validStrategyJSON}}}
+	cached := llm.NewCachedProvider(underlying, llm.NewMemoryResponseCache())
+	candidate := ScreenResult{Ticker: "CACHE"}
+	if _, err := GenerateStrategy(context.Background(), GeneratorConfig{Provider: cached}, candidate, nil); err != nil {
+		t.Fatalf("first GenerateStrategy() error = %v", err)
+	}
+	if _, err := GenerateStrategy(context.Background(), GeneratorConfig{Provider: cached}, candidate, nil); err == nil || !strings.Contains(err.Error(), "cached model response rejected") {
+		t.Fatalf("cached GenerateStrategy() error = %v", err)
+	}
+	if underlying.calls != 1 {
+		t.Fatalf("underlying provider calls = %d, want 1", underlying.calls)
+	}
+}
+
 func TestGenerateStrategy_ReturnsErrorAfterRepeatedEmptyResponses(t *testing.T) {
 	t.Parallel()
 

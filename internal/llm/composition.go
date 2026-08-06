@@ -260,7 +260,7 @@ func (c Composer) chainOptions(cfg config.LLMConfig, appMetrics any, logger *slo
 }
 
 func runtimeCacheEnabled() bool {
-	return !strings.EqualFold(strings.TrimSpace(os.Getenv("LLM_CACHE_ENABLED")), "false")
+	return strings.EqualFold(strings.TrimSpace(os.Getenv("LLM_CACHE_ENABLED")), "true")
 }
 
 type retryMetricsRecorder interface {

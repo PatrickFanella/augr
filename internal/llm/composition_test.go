@@ -218,6 +218,7 @@ func TestComposerWrapProviderChain_FallbackAndCacheToggle(t *testing.T) {
 		}{
 			{name: "enabled", cacheEnv: "true", wantCalls: 1},
 			{name: "disabled", cacheEnv: "false", wantCalls: 2},
+			{name: "empty defaults disabled", cacheEnv: "", wantCalls: 2},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				var calls atomic.Int32

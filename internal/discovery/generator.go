@@ -114,7 +114,8 @@ func GenerateStrategy(ctx context.Context, cfg GeneratorConfig, candidate Screen
 
 	var lastErr error
 	for attempt := 0; attempt <= maxRetries; attempt++ {
-		resp, err := cfg.Provider.Complete(ctx, llm.CompletionRequest{
+		cacheStats := llm.NewCacheStatsCollector()
+		resp, err := cfg.Provider.Complete(llm.WithCacheStatsCollector(ctx, cacheStats), llm.CompletionRequest{
 			Model:          cfg.Model,
 			Messages:       messages,
 			ResponseFormat: &llm.ResponseFormat{Type: llm.ResponseFormatJSONObject},
@@ -123,6 +124,11 @@ func GenerateStrategy(ctx context.Context, cfg GeneratorConfig, candidate Screen
 			recordGeneratorOutcome(cfg.Metrics, "stock", "provider_error")
 			return nil, fmt.Errorf("discovery/generator: LLM call failed: %w", err)
 		}
+		stats := cacheStats.Snapshot()
+		if stats.Hits > 0 {
+			recordGeneratorOutcome(cfg.Metrics, "stock", "cache_rejected")
+			return nil, fmt.Errorf("discovery/generator: cached model response rejected")
+		}
 
 		responseHash := fmt.Sprintf("%x", sha256.Sum256([]byte(resp.Content)))
 		logger.Debug("discovery/generator: LLM response received",
@@ -130,6 +136,8 @@ func GenerateStrategy(ctx context.Context, cfg GeneratorConfig, candidate Screen
 			slog.Int("attempt", attempt+1),
 			slog.Int("content_bytes", len(resp.Content)),
 			slog.String("content_sha256", responseHash),
+			slog.Int("cache_hits", stats.Hits),
+			slog.Int("cache_misses", stats.Misses),
 		)
 
 		var jsonObject string
