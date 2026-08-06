@@ -2,6 +2,7 @@ package automation
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -56,5 +57,17 @@ func TestCanonicalTriggeredStrategiesDeduplicatesSchedulerKeys(t *testing.T) {
 	}
 	if got[0].ID != low {
 		t.Fatalf("duplicate canonical ID = %s, want deterministic lowest %s", got[0].ID, low)
+	}
+}
+
+func TestDeepScanCompletionErrorFailsVisibleOnScoreWriteErrors(t *testing.T) {
+	t.Parallel()
+
+	if err := deepScanCompletionError(0); err != nil {
+		t.Fatalf("deepScanCompletionError(0) = %v, want nil", err)
+	}
+	err := deepScanCompletionError(2)
+	if err == nil || !strings.Contains(err.Error(), "2 universe score updates failed") {
+		t.Fatalf("deepScanCompletionError(2) = %v", err)
 	}
 }

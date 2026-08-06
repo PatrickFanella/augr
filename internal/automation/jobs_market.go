@@ -395,7 +395,14 @@ func (o *JobOrchestrator) deepScan(ctx context.Context) error {
 		)
 	}
 
-	return nil
+	return deepScanCompletionError(summary["score_errors"])
+}
+
+func deepScanCompletionError(scoreErrors int) error {
+	if scoreErrors <= 0 {
+		return nil
+	}
+	return fmt.Errorf("deep_scan: %d universe score updates failed", scoreErrors)
 }
 
 // scoreFromSnapshot computes a watch score combining momentum, volume surge,
