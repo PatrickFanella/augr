@@ -75,8 +75,20 @@ func TestTickerDiscoveryRegistersInAutomationLedger(t *testing.T) {
 	if job == nil {
 		t.Fatal("ticker_discovery job not registered")
 	}
-	if job.Schedule.Cron != "30 10 * * 1-5" || job.Schedule.Type != "market_hours" {
+	if job.Schedule.Cron != "CRON_TZ=UTC 30 10 * * 1-5" || job.Schedule.Type != "pre_market" {
 		t.Fatalf("ticker_discovery schedule = %+v", job.Schedule)
+	}
+}
+
+func TestTickerDiscoveryPreservesExplicitCronTimezone(t *testing.T) {
+	t.Parallel()
+
+	orch := NewJobOrchestrator(OrchestratorDeps{TickerDiscovery: TickerDiscoveryJobConfig{
+		Enabled: true, Cron: "CRON_TZ=America/Chicago 30 5 * * 1-5",
+	}})
+	orch.registerTickerDiscoveryJob()
+	if got := orch.jobs["ticker_discovery"].Schedule.Cron; got != "CRON_TZ=America/Chicago 30 5 * * 1-5" {
+		t.Fatalf("ticker_discovery cron = %q, want explicit timezone unchanged", got)
 	}
 }
 

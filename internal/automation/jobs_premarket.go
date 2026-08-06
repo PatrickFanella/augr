@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -54,8 +55,15 @@ func (o *JobOrchestrator) registerTickerDiscoveryJob() {
 	if cron == "" {
 		cron = "30 10 * * 1-5"
 	}
+	// The legacy scheduler interpreted this configuration in the UTC container
+	// location. Preserve that contract explicitly when moving the job into the
+	// Eastern-time automation orchestrator so the premarket screen does not
+	// silently shift four or five hours later.
+	if !strings.HasPrefix(cron, "CRON_TZ=") && !strings.HasPrefix(cron, "TZ=") {
+		cron = "CRON_TZ=UTC " + cron
+	}
 	o.Register("ticker_discovery", "Screen the full universe and run stock strategy discovery", scheduler.ScheduleSpec{
-		Type:         scheduler.ScheduleTypeMarketHours,
+		Type:         scheduler.ScheduleTypePreMarket,
 		Cron:         cron,
 		SkipWeekends: true,
 		SkipHolidays: true,
