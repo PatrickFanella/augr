@@ -268,6 +268,33 @@ func TestJobOrchestratorRunJobAllowsRerunInsideConfiguredSession(t *testing.T) {
 	}
 }
 
+func TestJobOrchestratorRunJobRejectsOverlapSynchronously(t *testing.T) {
+	t.Parallel()
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	orch := NewJobOrchestrator(OrchestratorDeps{})
+	orch.Register("job", "blocking job", schedulerSpecEveryMinute(), func(context.Context) error {
+		close(started)
+		<-release
+		return nil
+	})
+
+	if err := orch.RunJob(context.Background(), "job"); err != nil {
+		t.Fatalf("first RunJob() error = %v", err)
+	}
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("first run did not start")
+	}
+	if err := orch.RunJob(context.Background(), "job"); err == nil || !strings.Contains(err.Error(), "already running") {
+		t.Fatalf("second RunJob() error = %v, want synchronous overlap rejection", err)
+	}
+	close(release)
+	waitForJobRuns(t, orch, "job", 1)
+}
+
 func TestJobOrchestratorRunDirectEnforcesTimeout(t *testing.T) {
 	orch := NewJobOrchestrator(OrchestratorDeps{JobTimeout: 10 * time.Millisecond})
 	orch.Register("job", "test", schedulerSpecEveryMinute(), func(ctx context.Context) error {

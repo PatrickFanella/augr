@@ -410,29 +410,40 @@ func (o *JobOrchestrator) RunJob(ctx context.Context, name string) error {
 	if !schedule.ShouldFire(now) {
 		return fmt.Errorf("automation: job %q is outside configured session (%s)", name, schedule.Describe())
 	}
+	startedAt := time.Now()
+	if err := claimManualJob(job, startedAt); err != nil {
+		return err
+	}
 	o.logger.Info("automation: manual trigger", slog.String("job", name))
-	go o.runDirect(job)
+	go o.runClaimedDirect(job, startedAt)
 	return nil
 }
 
 // runDirect runs a job immediately without checking ShouldFire (for manual triggers).
 func (o *JobOrchestrator) runDirect(job *RegisteredJob) {
-	job.mu.Lock()
-	if !job.Enabled {
-		job.mu.Unlock()
-		o.logger.Info("automation: skipping disabled manual run", slog.String("job", job.Name))
+	startedAt := time.Now()
+	if err := claimManualJob(job, startedAt); err != nil {
+		o.logger.Info("automation: manual run not admitted", slog.String("job", job.Name), slog.Any("error", err))
 		return
+	}
+	o.runClaimedDirect(job, startedAt)
+}
+
+func claimManualJob(job *RegisteredJob, startedAt time.Time) error {
+	job.mu.Lock()
+	defer job.mu.Unlock()
+	if !job.Enabled {
+		return fmt.Errorf("automation: job %q is disabled", job.Name)
 	}
 	if job.Running {
-		job.mu.Unlock()
-		o.logger.Warn("automation: skipping overlapping run", slog.String("job", job.Name))
-		return
+		return fmt.Errorf("automation: job %q is already running", job.Name)
 	}
-	startedAt := time.Now()
 	job.Running = true
 	job.StartedAt = &startedAt
-	job.mu.Unlock()
+	return nil
+}
 
+func (o *JobOrchestrator) runClaimedDirect(job *RegisteredJob, startedAt time.Time) {
 	// Require every dependency to have completed successfully in today's
 	// Eastern automation cycle, not merely to be idle at this instant.
 	if dep, reason := o.dependencyBlocker(job, startedAt); dep != "" {
