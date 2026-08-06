@@ -37,7 +37,7 @@ func (o *JobOrchestrator) registerNewsJobs() {
 
 // newsScan fetches RSS feeds, runs LLM triage, and persists tagged articles.
 func (o *JobOrchestrator) newsScan(ctx context.Context) error {
-	summary := map[string]int{"feeds_attempted": 0, "feeds_succeeded": 0, "feed_errors": 0, "fetched": 0, "saved": 0, "save_errors": 0, "triage_requested": 0, "classified": 0, "triage_missing": 0, "triage_write_errors": 0}
+	summary := map[string]int{"feeds_attempted": 0, "feeds_succeeded": 0, "feed_errors": 0, "items_rejected": 0, "fetched": 0, "saved": 0, "save_errors": 0, "triage_requested": 0, "classified": 0, "triage_missing": 0, "triage_write_errors": 0}
 	defer func() { o.SetLastSummary("news_scan", summary) }()
 	if o.deps.NewsFeedRepo == nil {
 		o.logger.Info("news_scan: skipped — news feed repo not configured")
@@ -54,6 +54,7 @@ func (o *JobOrchestrator) newsScan(ctx context.Context) error {
 	summary["feeds_attempted"] = fetch.FeedsAttempted
 	summary["feeds_succeeded"] = fetch.FeedsSucceeded
 	summary["feed_errors"] = fetch.FeedsFailed
+	summary["items_rejected"] = fetch.ItemsRejected
 	summary["fetched"] = len(articles)
 	if len(articles) == 0 {
 		o.logger.Info("news_scan: no new articles")

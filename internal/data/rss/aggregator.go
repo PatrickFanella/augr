@@ -45,6 +45,7 @@ type FetchResult struct {
 	FeedsAttempted int
 	FeedsSucceeded int
 	FeedsFailed    int
+	ItemsRejected  int
 }
 
 // Aggregator fetches and deduplicates articles from multiple RSS feeds.
@@ -117,7 +118,12 @@ func (a *Aggregator) FetchWithStats(ctx context.Context) FetchResult {
 
 	var newArticles []Article
 	now := time.Now()
+	rejected := 0
 	for _, art := range articles {
+		if !currentRSSArticle(art.PublishedAt, now) {
+			rejected++
+			continue
+		}
 		key := art.GUID
 		if key == "" {
 			key = art.Link
@@ -142,7 +148,15 @@ func (a *Aggregator) FetchWithStats(ctx context.Context) FetchResult {
 		FeedsAttempted: len(a.feeds),
 		FeedsSucceeded: succeeded,
 		FeedsFailed:    failed,
+		ItemsRejected:  rejected,
 	}
+}
+
+func currentRSSArticle(publishedAt, now time.Time) bool {
+	if publishedAt.IsZero() {
+		return false
+	}
+	return !publishedAt.Before(now.Add(-24*time.Hour)) && !publishedAt.After(now.Add(15*time.Minute))
 }
 
 func (a *Aggregator) fetchFeed(ctx context.Context, feed Feed) ([]Article, error) {
@@ -201,10 +215,6 @@ func parseRSS(source string, data []byte) ([]Article, error) {
 		if pubDate.IsZero() {
 			pubDate, _ = time.Parse(time.RFC1123Z, strings.TrimSpace(item.PubDate))
 		}
-		if pubDate.IsZero() {
-			pubDate = time.Now()
-		}
-
 		articles = append(articles, Article{
 			GUID:        strings.TrimSpace(item.GUID),
 			Source:      source,
