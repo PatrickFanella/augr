@@ -313,7 +313,7 @@ func (s *Scheduler) Start() error {
 // subject to the same concurrency semaphore and dedup guards as cron-triggered
 // runs. Execution is asynchronous; this method returns immediately.
 func (s *Scheduler) TriggerStrategy(strategy domain.Strategy) {
-	go s.runStrategy(strategy)
+	go s.runTriggeredStrategy(strategy)
 }
 
 // Stop gracefully stops the cron engine and waits for running jobs to finish.
@@ -394,6 +394,18 @@ func (s *Scheduler) loadScheduledBacktests(ctx context.Context) ([]domain.Backte
 }
 
 func (s *Scheduler) runStrategy(strategy domain.Strategy) {
+	s.runStrategyWithAdmission(strategy, true)
+}
+
+// runTriggeredStrategy admits event-driven work only when execution capacity is
+// available immediately. Unlike a cron tick, a market-data signal loses its
+// meaning when it waits behind unrelated pipelines and must not become a stale
+// deferred queue.
+func (s *Scheduler) runTriggeredStrategy(strategy domain.Strategy) {
+	s.runStrategyWithAdmission(strategy, false)
+}
+
+func (s *Scheduler) runStrategyWithAdmission(strategy domain.Strategy, waitForCapacity bool) {
 	if s.metrics != nil {
 		s.metrics.RecordSchedulerTick("strategy")
 	}
@@ -415,15 +427,28 @@ func (s *Scheduler) runStrategy(strategy domain.Strategy) {
 	if runCtx == nil {
 		runCtx = context.Background()
 	}
-	select {
-	case s.strategySem <- struct{}{}:
-		defer func() { <-s.strategySem }()
-	case <-runCtx.Done():
-		s.logger.Info("scheduler: cancelled strategy while waiting for capacity",
-			slog.String("strategy_id", strategy.ID.String()),
-			slog.String("ticker", strategy.Ticker),
-		)
-		return
+	if waitForCapacity {
+		select {
+		case s.strategySem <- struct{}{}:
+			defer func() { <-s.strategySem }()
+		case <-runCtx.Done():
+			s.logger.Info("scheduler: cancelled strategy while waiting for capacity",
+				slog.String("strategy_id", strategy.ID.String()),
+				slog.String("ticker", strategy.Ticker),
+			)
+			return
+		}
+	} else {
+		select {
+		case s.strategySem <- struct{}{}:
+			defer func() { <-s.strategySem }()
+		default:
+			s.logger.Info("scheduler: dropping triggered strategy because capacity is full",
+				slog.String("strategy_id", strategy.ID.String()),
+				slog.String("ticker", strategy.Ticker),
+			)
+			return
+		}
 	}
 
 	// Re-read strategy to get latest status and skip_next_run.

@@ -1250,6 +1250,37 @@ func TestRunStrategy_DeduplicatesBeforeWaitingForCapacity(t *testing.T) {
 	<-s.strategySem
 }
 
+func TestTriggeredStrategyDoesNotQueueBehindCapacity(t *testing.T) {
+	t.Parallel()
+
+	strategy := domain.Strategy{ID: uuid.New(), Ticker: "AAPL", MarketType: domain.MarketTypeStock, Status: domain.StrategyStatusActive}
+	pipeline := &mockPipeline{}
+	s := NewScheduler(&mockStrategyRepo{strategies: []domain.Strategy{strategy}}, pipeline, &mockRiskEngine{}, testLogger())
+	s.ctx = context.Background()
+	s.strategySem <- struct{}{}
+	s.strategySem <- struct{}{}
+
+	done := make(chan struct{})
+	go func() {
+		s.runTriggeredStrategy(strategy)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("triggered strategy queued behind full capacity")
+	}
+	if got := pipeline.callCount(); got != 0 {
+		t.Fatalf("pipeline calls = %d, want 0 when triggered capacity is full", got)
+	}
+	if got := s.InFlightCount(); got != 0 {
+		t.Fatalf("in-flight count = %d, want 0 after dropped trigger", got)
+	}
+
+	<-s.strategySem
+	<-s.strategySem
+}
+
 func TestRunStrategy_CancelsWhileWaitingForCapacity(t *testing.T) {
 	t.Parallel()
 
