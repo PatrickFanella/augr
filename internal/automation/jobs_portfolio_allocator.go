@@ -9,7 +9,6 @@ import (
 
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/portfolio"
-	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 	"github.com/PatrickFanella/get-rich-quick/internal/scheduler"
 	"github.com/google/uuid"
 )
@@ -88,6 +87,7 @@ func (o *JobOrchestrator) runPortfolioAllocator(ctx context.Context) error {
 		"executed":            countDecisionActions(result.Decisions, domain.AllocationDecisionActionExecuted),
 		"execution_rejected":  countDecisionActions(result.Decisions, domain.AllocationDecisionActionExecutionRejected),
 		"persisted_decisions": len(result.Decisions),
+		"warnings":            len(warnings),
 	}
 	o.SetLastSummary("portfolio_allocator", summary)
 
@@ -213,7 +213,7 @@ func (o *JobOrchestrator) buildPortfolioAllocatorState(ctx context.Context) (por
 
 	positions := make([]domain.Position, 0)
 	if o.deps.PositionRepo != nil {
-		items, err := o.deps.PositionRepo.GetOpen(ctx, repository.PositionFilter{}, 100, 0)
+		items, err := listAllOpenPositions(ctx, o.deps.PositionRepo)
 		if err != nil {
 			return state, warnings, fmt.Errorf("portfolio_allocator: load open positions: %w", err)
 		}
