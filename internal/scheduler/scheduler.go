@@ -449,12 +449,8 @@ func (s *Scheduler) runStrategy(strategy domain.Strategy) {
 		s.metrics.RecordSchedulerTick("strategy")
 	}
 
-	// Concurrency gate: limit how many strategies run in parallel to avoid
-	// overwhelming the LLM backend (Ollama is single-threaded by default).
-	s.strategySem <- struct{}{}
-	defer func() { <-s.strategySem }()
-
-	// Dedup: skip if this strategy is already running.
+	// Dedup before waiting for capacity so repeated signals cannot accumulate
+	// blocked goroutines and later replay duplicate runs serially.
 	if !s.dedup.TryAcquire(strategy.ID) {
 		s.logger.Warn("scheduler: skipping strategy; already in flight",
 			slog.String("strategy_id", strategy.ID.String()),
@@ -463,6 +459,23 @@ func (s *Scheduler) runStrategy(strategy domain.Strategy) {
 		return
 	}
 	defer s.dedup.Release(strategy.ID)
+
+	// Concurrency gate: limit how many strategies run in parallel to avoid
+	// overwhelming the LLM backend (Ollama is single-threaded by default).
+	runCtx := s.ctx
+	if runCtx == nil {
+		runCtx = context.Background()
+	}
+	select {
+	case s.strategySem <- struct{}{}:
+		defer func() { <-s.strategySem }()
+	case <-runCtx.Done():
+		s.logger.Info("scheduler: cancelled strategy while waiting for capacity",
+			slog.String("strategy_id", strategy.ID.String()),
+			slog.String("ticker", strategy.Ticker),
+		)
+		return
+	}
 
 	// Re-read strategy to get latest status and skip_next_run.
 	fetchCtx, fetchCancel := context.WithTimeout(s.ctx, 5*time.Second)

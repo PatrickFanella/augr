@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -1235,6 +1236,71 @@ func TestRunStrategy_SkipNextRunResetsAndSkips(t *testing.T) {
 	if repo.updateCalls[0].ID != strategyID {
 		t.Fatalf("update call strategy ID = %s, want %s", repo.updateCalls[0].ID, strategyID)
 	}
+}
+
+func TestRunStrategy_DeduplicatesBeforeWaitingForCapacity(t *testing.T) {
+	t.Parallel()
+
+	strategy := domain.Strategy{ID: uuid.New(), Ticker: "AAPL", MarketType: domain.MarketTypeStock, Status: domain.StrategyStatusActive}
+	s := NewScheduler(&mockStrategyRepo{strategies: []domain.Strategy{strategy}}, &mockPipeline{}, &mockRiskEngine{}, testLogger())
+	s.ctx = context.Background()
+	s.strategySem <- struct{}{}
+	s.strategySem <- struct{}{}
+	if !s.dedup.TryAcquire(strategy.ID) {
+		t.Fatal("failed to seed in-flight strategy")
+	}
+
+	done := make(chan struct{})
+	go func() {
+		s.runStrategy(strategy)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("duplicate strategy blocked behind capacity instead of being rejected")
+	}
+
+	s.dedup.Release(strategy.ID)
+	<-s.strategySem
+	<-s.strategySem
+}
+
+func TestRunStrategy_CancelsWhileWaitingForCapacity(t *testing.T) {
+	t.Parallel()
+
+	strategy := domain.Strategy{ID: uuid.New(), Ticker: "AAPL", MarketType: domain.MarketTypeStock, Status: domain.StrategyStatusActive}
+	s := NewScheduler(&mockStrategyRepo{strategies: []domain.Strategy{strategy}}, &mockPipeline{}, &mockRiskEngine{}, testLogger())
+	ctx, cancel := context.WithCancel(context.Background())
+	s.ctx = ctx
+	s.strategySem <- struct{}{}
+	s.strategySem <- struct{}{}
+
+	done := make(chan struct{})
+	go func() {
+		s.runStrategy(strategy)
+		close(done)
+	}()
+	deadline := time.After(time.Second)
+	for s.InFlightCount() != 1 {
+		select {
+		case <-deadline:
+			t.Fatal("strategy did not enter in-flight queue")
+		default:
+			runtime.Gosched()
+		}
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("queued strategy did not cancel")
+	}
+	if got := s.InFlightCount(); got != 0 {
+		t.Fatalf("in-flight count = %d, want 0 after cancellation", got)
+	}
+	<-s.strategySem
+	<-s.strategySem
 }
 
 func TestWithJobTimeoutOption(t *testing.T) {
