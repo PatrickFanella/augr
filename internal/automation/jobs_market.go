@@ -26,13 +26,13 @@ var (
 	}
 	hotScanSpec = scheduler.ScheduleSpec{
 		Type:         scheduler.ScheduleTypeMarketHours,
-		Cron:         "*/15 * * * 1-5",
+		Cron:         "5-59/15 * * * 1-5", // five minutes after current_data_refresh
 		SkipWeekends: true,
 		SkipHolidays: true,
 	}
 	deepScanSpec = scheduler.ScheduleSpec{
 		Type:         scheduler.ScheduleTypeMarketHours,
-		Cron:         "0 * * * 1-5",
+		Cron:         "10 * * * 1-5", // after the :05 hot scan
 		SkipWeekends: true,
 		SkipHolidays: true,
 	}
@@ -47,10 +47,13 @@ func (o *JobOrchestrator) registerMarketJobs() {
 // currentDataRefresh refreshes recent intraday OHLCV for the most relevant stock tickers.
 func (o *JobOrchestrator) currentDataRefresh(ctx context.Context) error {
 	summary := map[string]int{
-		"tickers": 0,
-		"batches": 0,
-		"updated": 0,
-		"errors":  0,
+		"tickers":       0,
+		"batches":       0,
+		"updated":       0,
+		"empty":         0,
+		"daily_updated": 0,
+		"daily_empty":   0,
+		"errors":        0,
 	}
 	defer func() {
 		o.SetLastSummary("current_data_refresh", summary)
@@ -123,7 +126,8 @@ func (o *JobOrchestrator) currentDataRefresh(ctx context.Context) error {
 
 	const batchSize = 10
 	now := time.Now().UTC()
-	from := now.Add(-48 * time.Hour)
+	intradayFrom := now.Add(-48 * time.Hour)
+	dailyFrom := now.AddDate(0, 0, -10)
 	for start := 0; start < len(tickers); start += batchSize {
 		end := start + batchSize
 		if end > len(tickers) {
@@ -132,16 +136,28 @@ func (o *JobOrchestrator) currentDataRefresh(ctx context.Context) error {
 		batch := tickers[start:end]
 		summary["batches"]++
 
-		if _, err := o.deps.DataService.DownloadHistoricalOHLCV(ctx, domain.MarketTypeStock, batch, data.Timeframe5m, from, now, false); err != nil {
-			o.logger.Warn("current_data_refresh: batch refresh failed",
-				slog.Int("batch", summary["batches"]),
-				slog.Int("tickers", len(batch)),
-				slog.Any("error", err),
-			)
-			summary["errors"]++
-		} else {
-			summary["updated"] += len(batch)
+		refresh := func(timeframe data.Timeframe, from time.Time, updatedKey, emptyKey string) {
+			barsByTicker, err := o.deps.DataService.DownloadHistoricalOHLCV(ctx, domain.MarketTypeStock, batch, timeframe, from, now, false)
+			if err != nil {
+				o.logger.Warn("current_data_refresh: batch refresh failed",
+					slog.Int("batch", summary["batches"]),
+					slog.Int("tickers", len(batch)),
+					slog.String("timeframe", timeframe.String()),
+					slog.Any("error", err),
+				)
+				summary["errors"]++
+				return
+			}
+			for _, ticker := range batch {
+				if len(barsByTicker[ticker]) == 0 {
+					summary[emptyKey]++
+					continue
+				}
+				summary[updatedKey]++
+			}
 		}
+		refresh(data.Timeframe5m, intradayFrom, "updated", "empty")
+		refresh(data.Timeframe1d, dailyFrom, "daily_updated", "daily_empty")
 
 		if end < len(tickers) {
 			time.Sleep(150 * time.Millisecond)
@@ -152,6 +168,9 @@ func (o *JobOrchestrator) currentDataRefresh(ctx context.Context) error {
 		slog.Int("tickers", summary["tickers"]),
 		slog.Int("batches", summary["batches"]),
 		slog.Int("updated", summary["updated"]),
+		slog.Int("empty", summary["empty"]),
+		slog.Int("daily_updated", summary["daily_updated"]),
+		slog.Int("daily_empty", summary["daily_empty"]),
 		slog.Int("errors", summary["errors"]),
 	)
 	if summary["errors"] > 0 {
@@ -162,10 +181,13 @@ func (o *JobOrchestrator) currentDataRefresh(ctx context.Context) error {
 
 // hotScan scores the top 200 watchlist tickers using locally stored OHLCV data.
 func (o *JobOrchestrator) hotScan(ctx context.Context) error {
+	summary := map[string]int{"watchlist": 0, "scored": 0, "score_errors": 0, "significant_tickers": 0, "strategies_triggered": 0}
+	defer func() { o.SetLastSummary("hot_scan", summary) }()
 	tickers, err := o.deps.Universe.GetWatchlist(ctx, 200)
 	if err != nil {
 		return fmt.Errorf("hot_scan: get watchlist: %w", err)
 	}
+	summary["watchlist"] = len(tickers)
 	if len(tickers) == 0 {
 		o.logger.Info("hot_scan: watchlist empty, nothing to scan")
 		return nil
@@ -195,10 +217,13 @@ func (o *JobOrchestrator) hotScan(ctx context.Context) error {
 
 		score := scoreFromSnapshot(changePct, lastBar.Volume, prevBar.Volume, lastBar.Close) * universe.IndexBoost(t.Ticker)
 		if err := o.deps.Universe.UpdateScore(ctx, t.Ticker, score); err != nil {
+			summary["score_errors"]++
 			o.logger.Warn("hot_scan: update score failed",
 				slog.String("ticker", t.Ticker),
 				slog.Any("error", err),
 			)
+		} else {
+			summary["scored"]++
 		}
 		topMovers = append(topMovers, mover{ticker: t.Ticker, changePct: changePct})
 	}
@@ -228,6 +253,7 @@ func (o *JobOrchestrator) hotScan(ctx context.Context) error {
 			}
 		}
 		if len(significantTickers) > 0 {
+			summary["significant_tickers"] = len(significantTickers)
 			strategies, listErr := listAllStrategies(ctx, o.deps.StrategyRepo, repository.StrategyFilter{
 				Status: domain.StrategyStatusActive,
 			})
@@ -240,6 +266,7 @@ func (o *JobOrchestrator) hotScan(ctx context.Context) error {
 							slog.Float64("change_pct", changePct),
 						)
 						o.deps.StrategyTrigger.TriggerStrategy(s)
+						summary["strategies_triggered"]++
 					}
 				}
 			}
@@ -282,6 +309,8 @@ func canonicalTriggeredStrategies(strategies []domain.Strategy) []domain.Strateg
 // deepScan scores the universe using locally stored OHLCV data (from history_refresh)
 // instead of the Polygon snapshot API, which requires a paid plan.
 func (o *JobOrchestrator) deepScan(ctx context.Context) error {
+	summary := map[string]int{"active_tickers": 0, "scored": 0, "score_errors": 0}
+	defer func() { o.SetLastSummary("deep_scan", summary) }()
 	allSymbols, err := o.deps.Universe.GetActiveTickers(ctx, "", 0)
 	if err != nil {
 		return fmt.Errorf("deep_scan: get active tickers: %w", err)
@@ -290,6 +319,7 @@ func (o *JobOrchestrator) deepScan(ctx context.Context) error {
 		o.logger.Info("deep_scan: no active tickers")
 		return nil
 	}
+	summary["active_tickers"] = len(allSymbols)
 
 	var totalScored int
 	var scoreSum float64
@@ -319,10 +349,13 @@ func (o *JobOrchestrator) deepScan(ctx context.Context) error {
 
 		score := scoreFromSnapshot(changePct, lastBar.Volume, prevBar.Volume, lastBar.Close) * universe.IndexBoost(ticker)
 		if err := o.deps.Universe.UpdateScore(ctx, ticker, score); err != nil {
+			summary["score_errors"]++
 			o.logger.Warn("deep_scan: update score failed",
 				slog.String("ticker", ticker),
 				slog.Any("error", err),
 			)
+		} else {
+			summary["scored"]++
 		}
 		totalScored++
 		scoreSum += score

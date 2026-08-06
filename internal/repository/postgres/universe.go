@@ -137,7 +137,9 @@ func (r *UniverseRepo) Watchlist(ctx context.Context, topN int) ([]universe.Trac
 // UpdateScore updates the watch_score for a single ticker.
 func (r *UniverseRepo) UpdateScore(ctx context.Context, ticker string, score float64) error {
 	tag, err := r.pool.Exec(ctx,
-		`UPDATE universe_tickers SET watch_score = $1, updated_at = NOW() WHERE ticker = $2`,
+		`UPDATE universe_tickers
+		 SET watch_score = $1, last_scanned = NOW(), updated_at = NOW()
+		 WHERE ticker = $2`,
 		score, ticker,
 	)
 	if err != nil {

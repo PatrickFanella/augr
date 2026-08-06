@@ -27,6 +27,20 @@ func TestCurrentDataRefreshSkipsPredictionMarketPositions(t *testing.T) {
 	}
 }
 
+func TestMarketJobCadenceRunsDependenciesBeforeConsumers(t *testing.T) {
+	t.Parallel()
+
+	if currentDataRefreshSpec.Cron != "*/15 * * * 1-5" {
+		t.Fatalf("current refresh cron = %q", currentDataRefreshSpec.Cron)
+	}
+	if hotScanSpec.Cron != "5-59/15 * * * 1-5" {
+		t.Fatalf("hot scan cron = %q, want five-minute dependency offset", hotScanSpec.Cron)
+	}
+	if deepScanSpec.Cron != "10 * * * 1-5" {
+		t.Fatalf("deep scan cron = %q, want post-hot-scan offset", deepScanSpec.Cron)
+	}
+}
+
 func TestCanonicalTriggeredStrategiesDeduplicatesSchedulerKeys(t *testing.T) {
 	low := uuid.MustParse("00000000-0000-0000-0000-000000000001")
 	high := uuid.MustParse("00000000-0000-0000-0000-000000000002")
