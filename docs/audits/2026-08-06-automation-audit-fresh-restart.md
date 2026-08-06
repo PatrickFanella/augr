@@ -61,7 +61,7 @@ Eastern Time schedules are shown because the production automation orchestrator 
 | `overnight_generate` | enabled | deployed 03:00 Tue–Sat; local pending 06:00 | after sweep and completion of the backtest window | pending |
 | `options_discovery` | enabled | deployed 03:30 Tue–Sat; local pending 06:30 | after overnight generation | qualifying defect run; postdeployment proof pending |
 | `universe_refresh` | enabled | Sunday 12:00 | Polygon reference source | pending valid weekly window |
-| `strategy_tournament` | enabled | Sunday 14:00 | all active strategies; potentially mutating | pending valid weekly window |
+| `strategy_tournament` | enabled | Sunday 14:00 | read-only in-memory backtests and ranking recommendations across active OHLCV-capable strategies; the implementation does not prune or disable strategies | pending valid weekly window |
 | `kalshi_discovery` | enabled | :15 hourly | Kalshi calendar/provider; paper-only deployment | 5+ qualifying defect runs; fixes require postdeploy proof |
 | `kalshi_settlement` | enabled | every 5 minutes | prediction settlement gate; paper-only | 5+ qualifying dry-run samples; postdeploy proof pending |
 | `portfolio_allocator` | enabled | :15/:45, after-hours type | shadow allocator | qualifying predeploy defect run; postdeployment proof pending |
