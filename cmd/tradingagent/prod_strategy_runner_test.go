@@ -305,9 +305,11 @@ func TestRunStrategy_KalshiSafeHoldPath(t *testing.T) {
 		IsPaper:    true,
 		Config:     mustKalshiConfig(t, map[string]any{"template": "microstructure", "direction": "NO", "confidence": 0.72, "entry_price_max": 0.60}),
 	}
+	snapshotRepo := &recordingNativeSnapshotRepo{}
 	runner := &realStrategyRunner{
-		runRepo:   &stubPipelineRunRepo{},
-		eventRepo: &recordingStrategyPreparationEventRepo{},
+		runRepo:      &stubPipelineRunRepo{},
+		eventRepo:    &recordingStrategyPreparationEventRepo{},
+		snapshotRepo: snapshotRepo,
 		kalshiMarketData: staticKalshiMarketData{snapshot: kalshiexecution.Snapshot{
 			Ticker:     "KXTEST-YESNO",
 			Title:      "Will test happen?",
@@ -325,6 +327,9 @@ func TestRunStrategy_KalshiSafeHoldPath(t *testing.T) {
 	}
 	if result == nil || result.Signal != domain.PipelineSignalHold {
 		t.Fatalf("RunStrategy() result = %+v, want hold", result)
+	}
+	if len(snapshotRepo.snapshots) != 1 || snapshotRepo.snapshots[0].DataType != "kalshi_native_snapshot" {
+		t.Fatalf("snapshots = %+v, want one kalshi_native_snapshot", snapshotRepo.snapshots)
 	}
 }
 
@@ -466,6 +471,23 @@ type staticKalshiMarketData struct{ snapshot kalshiexecution.Snapshot }
 
 func (s staticKalshiMarketData) LoadSnapshot(context.Context, string) (kalshiexecution.Snapshot, error) {
 	return s.snapshot, nil
+}
+
+type recordingNativeSnapshotRepo struct {
+	snapshots []domain.PipelineRunSnapshot
+	err       error
+}
+
+func (r *recordingNativeSnapshotRepo) Create(_ context.Context, snapshot *domain.PipelineRunSnapshot) error {
+	if r.err != nil {
+		return r.err
+	}
+	r.snapshots = append(r.snapshots, *snapshot)
+	return nil
+}
+
+func (r *recordingNativeSnapshotRepo) GetByRun(context.Context, uuid.UUID) ([]domain.PipelineRunSnapshot, error) {
+	return append([]domain.PipelineRunSnapshot(nil), r.snapshots...), nil
 }
 
 type fakeKalshiMarketData struct{ label string }

@@ -782,6 +782,9 @@ func (r *realStrategyRunner) runKalshiNative(ctx context.Context, strategy domai
 	if err != nil {
 		return failRun(fmt.Errorf("kalshi native: fetch snapshot for %s: %w", strategy.Ticker, err))
 	}
+	if err := r.persistKalshiNativeSnapshot(ctx, run.ID, snapshot); err != nil {
+		return failRun(err)
+	}
 
 	var openPositions []domain.Position
 	if r.cfg.Brokers.Kalshi.AutoExitsEnabled && r.positionRepo != nil {
@@ -1001,13 +1004,34 @@ func predictionNativeFeatures(decision any) json.RawMessage {
 
 func (r *realStrategyRunner) persistPolymarketNativeSnapshot(ctx context.Context, runID uuid.UUID, snapshot polymarketexecution.Snapshot) error {
 	if r.snapshotRepo == nil {
-		return nil
+		return errors.New("polymarket native: snapshot repository is required")
 	}
 	payload, err := json.Marshal(snapshot)
 	if err != nil {
 		return fmt.Errorf("polymarket native: marshal snapshot: %w", err)
 	}
-	return r.snapshotRepo.Create(ctx, &domain.PipelineRunSnapshot{ID: uuid.New(), PipelineRunID: runID, DataType: "polymarket_native_snapshot", Payload: payload, CreatedAt: time.Now().UTC()})
+	persistCtx, cancel := context.WithTimeout(ctx, nativeTerminalTimeout)
+	defer cancel()
+	if err := r.snapshotRepo.Create(persistCtx, &domain.PipelineRunSnapshot{ID: uuid.New(), PipelineRunID: runID, DataType: "polymarket_native_snapshot", Payload: payload, CreatedAt: time.Now().UTC()}); err != nil {
+		return fmt.Errorf("polymarket native: persist snapshot: %w", err)
+	}
+	return nil
+}
+
+func (r *realStrategyRunner) persistKalshiNativeSnapshot(ctx context.Context, runID uuid.UUID, snapshot kalshiexecution.Snapshot) error {
+	if r.snapshotRepo == nil {
+		return errors.New("kalshi native: snapshot repository is required")
+	}
+	payload, err := json.Marshal(snapshot)
+	if err != nil {
+		return fmt.Errorf("kalshi native: marshal snapshot: %w", err)
+	}
+	persistCtx, cancel := context.WithTimeout(ctx, nativeTerminalTimeout)
+	defer cancel()
+	if err := r.snapshotRepo.Create(persistCtx, &domain.PipelineRunSnapshot{ID: uuid.New(), PipelineRunID: runID, DataType: "kalshi_native_snapshot", Payload: payload, CreatedAt: time.Now().UTC()}); err != nil {
+		return fmt.Errorf("kalshi native: persist snapshot: %w", err)
+	}
+	return nil
 }
 
 func (r *realStrategyRunner) checkPolymarketNativePreconditions(snapshot polymarketexecution.Snapshot, decision polymarketexecution.NativeDecision, plannedNotional float64) error {
