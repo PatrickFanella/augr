@@ -1,6 +1,7 @@
 package automation
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -12,6 +13,30 @@ func TestEasternDayStartUTCUsesTradingDayAcrossUTCMidnight(t *testing.T) {
 	want := time.Date(2026, time.August, 5, 4, 0, 0, 0, time.UTC)
 	if !got.Equal(want) {
 		t.Fatalf("easternDayStartUTC() = %s, want %s", got, want)
+	}
+}
+
+func TestPostMarketCompletionErrorsExposePartialCoverage(t *testing.T) {
+	t.Parallel()
+
+	if err := dailyReviewCompletionError(1); err == nil || !strings.Contains(err.Error(), "strategy run queries failed") {
+		t.Fatalf("dailyReviewCompletionError() = %v, want query coverage error", err)
+	}
+	if err := strategyResweepCompletionError(2); err == nil || !strings.Contains(err.Error(), "strategies failed") {
+		t.Fatalf("strategyResweepCompletionError() = %v, want sweep coverage error", err)
+	}
+	if err := optionsScanCompletionError(1, 2, 3); err == nil || !strings.Contains(err.Error(), "price_fetch_failed=1 chain_fetch_failed=2 persist_failed=3") {
+		t.Fatalf("optionsScanCompletionError() = %v, want complete failure counts", err)
+	}
+
+	if err := dailyReviewCompletionError(0); err != nil {
+		t.Fatalf("dailyReviewCompletionError(0) = %v, want nil", err)
+	}
+	if err := strategyResweepCompletionError(0); err != nil {
+		t.Fatalf("strategyResweepCompletionError(0) = %v, want nil", err)
+	}
+	if err := optionsScanCompletionError(0, 0, 0); err != nil {
+		t.Fatalf("optionsScanCompletionError(0, 0, 0) = %v, want nil", err)
 	}
 }
 
