@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/agent/rules"
@@ -16,7 +17,10 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 	pgrepo "github.com/PatrickFanella/get-rich-quick/internal/repository/postgres"
 	"github.com/PatrickFanella/get-rich-quick/internal/scheduler"
+	"github.com/PatrickFanella/get-rich-quick/internal/universe"
 )
+
+const optionsScanWatchlistLimit = 100
 
 func (o *JobOrchestrator) registerPostMarketJobs() {
 	o.Register("daily_review", "Review daily pipeline completion and decision quality", dailyReviewSpec, o.dailyReview)
@@ -303,11 +307,12 @@ func (o *JobOrchestrator) optionsScan(ctx context.Context) error {
 		return fmt.Errorf("options_scan: data service not configured")
 	}
 
-	// Fetch all active tickers and filter for optionable ones (price > $5).
-	allTickers, err := o.deps.Universe.GetActiveTickers(ctx, "", 0)
+	// Fetch the bounded top watchlist and filter for optionable names (price > $5).
+	watchlist, err := o.deps.Universe.GetWatchlist(ctx, optionsScanWatchlistLimit)
 	if err != nil {
-		return fmt.Errorf("options_scan: get tickers: %w", err)
+		return fmt.Errorf("options_scan: get watchlist: %w", err)
 	}
+	allTickers := optionsScanTickers(watchlist)
 	summary["universe"] = len(allTickers)
 
 	type optionable struct {
@@ -442,6 +447,26 @@ func optionsScanCompletionError(summary map[string]int) error {
 	}
 	return fmt.Errorf("options_scan: incomplete run: price_fetch_failed=%d price_empty=%d price_stale=%d chain_fetch_failed=%d persist_failed=%d no_usable_chains=%d",
 		summary["price_fetch_failed"], summary["price_empty"], summary["price_stale"], summary["fetch_failed"], summary["persist_failed"], noUsableChains)
+}
+
+func optionsScanTickers(watchlist []universe.TrackedTicker) []string {
+	tickers := make([]string, 0, min(len(watchlist), optionsScanWatchlistLimit))
+	seen := make(map[string]struct{}, min(len(watchlist), optionsScanWatchlistLimit))
+	for _, tracked := range watchlist {
+		ticker := strings.ToUpper(strings.TrimSpace(tracked.Ticker))
+		if ticker == "" {
+			continue
+		}
+		if _, exists := seen[ticker]; exists {
+			continue
+		}
+		seen[ticker] = struct{}{}
+		tickers = append(tickers, ticker)
+		if len(tickers) == optionsScanWatchlistLimit {
+			break
+		}
+	}
+	return tickers
 }
 
 type chainAnalysis struct {

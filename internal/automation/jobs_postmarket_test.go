@@ -1,11 +1,13 @@
 package automation
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
+	"github.com/PatrickFanella/get-rich-quick/internal/universe"
 )
 
 func TestEasternDayStartUTCUsesTradingDayAcrossUTCMidnight(t *testing.T) {
@@ -43,6 +45,23 @@ func TestPostMarketCompletionErrorsExposePartialCoverage(t *testing.T) {
 	}
 	if err := optionsScanCompletionError(map[string]int{"optionable": 10, "chain_insufficient": 10}); err == nil || !strings.Contains(err.Error(), "no_usable_chains=1") {
 		t.Fatalf("optionsScanCompletionError(no chains) = %v", err)
+	}
+}
+
+func TestOptionsScanTickersNormalizesDeduplicatesAndCapsWatchlist(t *testing.T) {
+	t.Parallel()
+
+	watchlist := []universe.TrackedTicker{{Ticker: " aapl "}, {Ticker: "AAPL"}, {Ticker: ""}}
+	for i := 0; i < optionsScanWatchlistLimit+5; i++ {
+		watchlist = append(watchlist, universe.TrackedTicker{Ticker: fmt.Sprintf("t%03d", i)})
+	}
+
+	got := optionsScanTickers(watchlist)
+	if len(got) != optionsScanWatchlistLimit {
+		t.Fatalf("ticker count = %d, want %d", len(got), optionsScanWatchlistLimit)
+	}
+	if got[0] != "AAPL" || got[1] != "T000" || got[len(got)-1] != "T098" {
+		t.Fatalf("normalized capped tickers = %#v", got)
 	}
 }
 
