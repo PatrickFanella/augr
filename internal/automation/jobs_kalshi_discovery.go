@@ -24,7 +24,7 @@ func (o *JobOrchestrator) registerKalshiDiscoveryJob() {
 }
 
 func (o *JobOrchestrator) kalshiDiscovery(ctx context.Context) error {
-	summary := map[string]int{"fetched": 0, "screened": 0, "proposed": 0, "skipped": 0, "deployed": 0, "errors": 0, "dry_run": 0}
+	summary := map[string]int{"fetched": 0, "screened": 0, "proposed": 0, "skipped": 0, "deployed": 0, "created": 0, "reused": 0, "errors": 0, "dry_run": 0}
 	defer func() { o.SetLastSummary("kalshi_discovery", summary) }()
 	if o.deps.KalshiCatalog == nil {
 		return fmt.Errorf("kalshi_discovery: catalog client not configured")
@@ -62,6 +62,20 @@ func (o *JobOrchestrator) kalshiDiscovery(ctx context.Context) error {
 		summary["proposed"] = res.Proposed
 		summary["skipped"] = res.Skipped
 		summary["deployed"] = len(res.Deployed)
+		for _, deployed := range res.Deployed {
+			if deployed.Reused {
+				summary["reused"]++
+			} else {
+				summary["created"]++
+			}
+			o.logger.Info("kalshi_discovery: strategy selected",
+				slog.String("strategy_id", deployed.StrategyID.String()),
+				slog.String("ticker", deployed.Ticker),
+				slog.String("direction", deployed.Direction),
+				slog.Float64("conviction", deployed.Conviction),
+				slog.Bool("reused", deployed.Reused),
+			)
+		}
 		summary["errors"] = len(res.Errors)
 		if res.DryRun {
 			summary["dry_run"] = 1
@@ -72,6 +86,8 @@ func (o *JobOrchestrator) kalshiDiscovery(ctx context.Context) error {
 			slog.Int("proposed", res.Proposed),
 			slog.Int("skipped", res.Skipped),
 			slog.Int("deployed", len(res.Deployed)),
+			slog.Int("created", summary["created"]),
+			slog.Int("reused", summary["reused"]),
 			slog.Bool("dry_run", res.DryRun),
 		)
 	}
