@@ -21,6 +21,7 @@ import (
 	kalshiexecution "github.com/PatrickFanella/get-rich-quick/internal/execution/kalshi"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution/paper"
 	polymarketexecution "github.com/PatrickFanella/get-rich-quick/internal/execution/polymarket"
+	"github.com/PatrickFanella/get-rich-quick/internal/portfolio"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 )
 
@@ -346,6 +347,7 @@ func TestRunStrategy_KalshiSafeHoldPath(t *testing.T) {
 
 type recordingOpportunityRepo struct {
 	queued []domain.Opportunity
+	err    error
 }
 
 func (r *recordingOpportunityRepo) Create(_ context.Context, opportunity *domain.Opportunity) error {
@@ -354,6 +356,9 @@ func (r *recordingOpportunityRepo) Create(_ context.Context, opportunity *domain
 }
 
 func (r *recordingOpportunityRepo) UpsertQueuedByDedupeKey(_ context.Context, opportunity *domain.Opportunity) error {
+	if r.err != nil {
+		return r.err
+	}
 	r.queued = append(r.queued, *opportunity)
 	return nil
 }
@@ -392,17 +397,42 @@ func TestRecordPortfolioOpportunityRequiresCompletedSourceRun(t *testing.T) {
 	plan := execution.TradingPlan{EntryPrice: 100, PositionSize: 2, RiskReward: 3, Confidence: 0.8}
 
 	failed := &domain.PipelineRun{ID: uuid.New(), Status: domain.PipelineStatusFailed, Signal: domain.PipelineSignalHold}
-	runner.recordPortfolioOpportunity(context.Background(), strategy, failed, finalSignal, plan)
+	if err := runner.recordPortfolioOpportunity(context.Background(), strategy, failed, finalSignal, plan); err == nil {
+		t.Fatal("failed source run was not rejected")
+	}
 	mismatched := &domain.PipelineRun{ID: uuid.New(), Status: domain.PipelineStatusCompleted, Signal: domain.PipelineSignalSell}
-	runner.recordPortfolioOpportunity(context.Background(), strategy, mismatched, finalSignal, plan)
+	if err := runner.recordPortfolioOpportunity(context.Background(), strategy, mismatched, finalSignal, plan); err == nil {
+		t.Fatal("signal-mismatched source run was not rejected")
+	}
 	if len(repo.queued) != 0 {
 		t.Fatalf("queued opportunities = %#v, want none from failed or mismatched runs", repo.queued)
 	}
 
 	completed := &domain.PipelineRun{ID: uuid.New(), Status: domain.PipelineStatusCompleted, Signal: domain.PipelineSignalBuy}
-	runner.recordPortfolioOpportunity(context.Background(), strategy, completed, finalSignal, plan)
+	if err := runner.recordPortfolioOpportunity(context.Background(), strategy, completed, finalSignal, plan); err != nil {
+		t.Fatalf("recordPortfolioOpportunity() error = %v", err)
+	}
 	if len(repo.queued) != 1 || repo.queued[0].PipelineRunID == nil || *repo.queued[0].PipelineRunID != completed.ID {
 		t.Fatalf("queued opportunities = %#v, want one linked to completed run %s", repo.queued, completed.ID)
+	}
+}
+
+func TestRecordPortfolioOpportunitySurfacesRequiredPersistenceLoss(t *testing.T) {
+	t.Parallel()
+
+	strategy := domain.Strategy{ID: uuid.New(), Ticker: "SAFE", MarketType: domain.MarketTypeStock, Status: domain.StrategyStatusActive, IsPaper: true}
+	run := &domain.PipelineRun{ID: uuid.New(), Status: domain.PipelineStatusCompleted, Signal: domain.PipelineSignalBuy}
+	signal := execution.FinalSignal{Signal: domain.PipelineSignalBuy, Confidence: 0.8}
+	plan := execution.TradingPlan{EntryPrice: 100, PositionSize: 2, RiskReward: 3, Confidence: 0.8}
+
+	runner := &realStrategyRunner{portfolioAllocatorMode: portfolio.AllocatorModePaper}
+	if err := runner.recordPortfolioOpportunity(context.Background(), strategy, run, signal, plan); err == nil || !strings.Contains(err.Error(), "requires opportunity repository") {
+		t.Fatalf("missing repository error = %v", err)
+	}
+
+	runner.opportunityRepo = &recordingOpportunityRepo{err: errors.New("store unavailable")}
+	if err := runner.recordPortfolioOpportunity(context.Background(), strategy, run, signal, plan); err == nil || !strings.Contains(err.Error(), "portfolio opportunity: persist") {
+		t.Fatalf("persistence error = %v", err)
 	}
 }
 
