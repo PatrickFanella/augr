@@ -1,9 +1,11 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"sort"
 	"strings"
 	"sync"
@@ -568,14 +570,20 @@ func TestRunnerRun_ContextCancellation(t *testing.T) {
 func TestRunnerRun_PanicInPhaseMarksRunFailed(t *testing.T) {
 	t.Parallel()
 
+	const sensitivePanic = "provider-secret-value"
 	def := defaultRunnerDefinition()
 	def.Trader = stubTradeAgent{name: "trader", role: AgentRoleTrader, fn: func(context.Context, TradingInput) (TradingOutput, error) {
-		panic("boom panic")
+		panic(sensitivePanic)
 	}}
 
 	persister := newRunnerSpyPersister()
 	events := make(chan PipelineEvent, 64)
-	runner := NewRunner(def, Dependencies{Persister: persister, Events: events})
+	var logs bytes.Buffer
+	runner := NewRunner(def, Dependencies{
+		Persister: persister,
+		Events:    events,
+		Logger:    slog.New(slog.NewTextHandler(&logs, nil)),
+	})
 
 	prepared, err := runner.Prepare(strategyWithDebateRounds(t, "TEST", 1), GlobalSettings{})
 	if err != nil {
@@ -589,6 +597,9 @@ func TestRunnerRun_PanicInPhaseMarksRunFailed(t *testing.T) {
 	if !strings.Contains(runErr.Error(), "panic recovered") {
 		t.Fatalf("Run() error = %q, want panic recovered substring", runErr.Error())
 	}
+	if strings.Contains(runErr.Error(), sensitivePanic) {
+		t.Fatalf("Run() error leaked panic value: %q", runErr.Error())
+	}
 	if result == nil {
 		t.Fatal("Run() result = nil, want failed result")
 	}
@@ -598,12 +609,21 @@ func TestRunnerRun_PanicInPhaseMarksRunFailed(t *testing.T) {
 	if !strings.Contains(result.Run.ErrorMessage, "panic recovered") {
 		t.Fatalf("run error_message = %q, want panic recovered substring", result.Run.ErrorMessage)
 	}
+	if strings.Contains(result.Run.ErrorMessage, sensitivePanic) {
+		t.Fatalf("run error_message leaked panic value: %q", result.Run.ErrorMessage)
+	}
+	if strings.Contains(logs.String(), sensitivePanic) {
+		t.Fatalf("runner logs leaked panic value: %q", logs.String())
+	}
 
 	close(events)
 	pipelineErrors := 0
 	for event := range events {
 		if event.Type == PipelineError {
 			pipelineErrors++
+			if strings.Contains(event.Error, sensitivePanic) {
+				t.Fatalf("pipeline event leaked panic value: %q", event.Error)
+			}
 		}
 	}
 	if pipelineErrors == 0 {

@@ -253,9 +253,10 @@ func (r *Runner) Run(ctx context.Context, prepared PreparedRun) (result *RunResu
 			return
 		}
 
-		panicErr := fmt.Errorf("agent/runner: panic recovered: %v", recovered)
+		panicType := fmt.Sprintf("%T", recovered)
+		panicErr := fmt.Errorf("agent/runner: panic recovered (%s)", panicType)
 		r.logger.Error("agent/runner: recovered panic",
-			slog.Any("panic", recovered),
+			slog.String("panic_type", panicType),
 			slog.String("stack", string(debug.Stack())),
 		)
 
