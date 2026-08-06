@@ -233,6 +233,21 @@ func (o *JobOrchestrator) jobContext() (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), timeout)
 }
 
+// invokeAutomationJob contains a job-local panic so one defective automation
+// cannot terminate the scheduler process. Panic values may contain provider or
+// model data, so only their type is returned to the durable failure path.
+func invokeAutomationJob(ctx context.Context, fn func(context.Context) error) (err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = fmt.Errorf("automation: job panicked (%T)", recovered)
+		}
+	}()
+	if fn == nil {
+		return fmt.Errorf("automation: job function is nil")
+	}
+	return fn(ctx)
+}
+
 // WithJobMetrics attaches a metrics sink to the orchestrator.
 // Call before Start(). Safe to call with nil (disables metrics).
 func (o *JobOrchestrator) WithJobMetrics(m AutomationJobMetrics) {
@@ -424,7 +439,7 @@ func (o *JobOrchestrator) runDirect(job *RegisteredJob) {
 	start := time.Now()
 	ctx, cancel := o.jobContext()
 	defer cancel()
-	err := job.Fn(ctx)
+	err := invokeAutomationJob(ctx, job.Fn)
 	elapsed := time.Since(start)
 
 	job.mu.Lock()
@@ -548,7 +563,7 @@ func (o *JobOrchestrator) wrapAndRun(job *RegisteredJob) {
 
 	ctx, cancel := o.jobContext()
 	defer cancel()
-	err := job.Fn(ctx)
+	err := invokeAutomationJob(ctx, job.Fn)
 
 	elapsed := time.Since(start)
 

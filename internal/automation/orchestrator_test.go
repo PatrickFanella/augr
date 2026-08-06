@@ -71,6 +71,54 @@ func TestJobOrchestratorRunJob_TracksFailureFieldsAndReset(t *testing.T) {
 	}
 }
 
+func TestJobOrchestrator_ContainsJobPanicsAsFailures(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name string
+		run  func(*JobOrchestrator, *RegisteredJob)
+	}{
+		{
+			name: "manual",
+			run: func(orch *JobOrchestrator, job *RegisteredJob) {
+				orch.runDirect(job)
+			},
+		},
+		{
+			name: "scheduled",
+			run: func(orch *JobOrchestrator, job *RegisteredJob) {
+				orch.wrapAndRun(job)
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			orch := NewJobOrchestrator(OrchestratorDeps{})
+			orch.Register("job", "panicking job", schedulerSpecEveryMinute(), func(context.Context) error {
+				panic("credential-shaped panic value must not be logged")
+			})
+
+			tc.run(orch, orch.jobs["job"])
+
+			status := singleJobStatus(t, orch, "job")
+			if status.Running {
+				t.Fatal("Running = true after panic")
+			}
+			if status.RunCount != 1 || status.ErrorCount != 1 || status.ConsecutiveFailures != 1 {
+				t.Fatalf("failure counters = runs:%d errors:%d consecutive:%d, want 1/1/1",
+					status.RunCount, status.ErrorCount, status.ConsecutiveFailures)
+			}
+			if !strings.Contains(status.LastError, "job panicked (string)") {
+				t.Fatalf("LastError = %q, want redacted panic type", status.LastError)
+			}
+			if strings.Contains(status.LastError, "credential-shaped") {
+				t.Fatalf("LastError leaked panic value: %q", status.LastError)
+			}
+		})
+	}
+}
+
 func TestJobOrchestratorStatus_IncludesStuckForWhenRunning(t *testing.T) {
 	t.Parallel()
 
