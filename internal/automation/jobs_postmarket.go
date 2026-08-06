@@ -142,7 +142,7 @@ func summarizePipelineRuns(runs []domain.PipelineRun) map[string]int {
 // variant scores significantly better.
 func (o *JobOrchestrator) strategyResweep(ctx context.Context) error {
 	o.logger.Info("strategy_resweep: starting")
-	summary := map[string]int{"strategies": 0, "eligible": 0, "swept": 0, "improved": 0, "skipped": 0, "failed": 0}
+	summary := map[string]int{"strategies": 0, "eligible": 0, "swept": 0, "improved": 0, "skipped": 0, "failed": 0, "insufficient": 0, "stale": 0, "empty_results": 0}
 	defer func() { o.SetLastSummary("strategy_resweep", summary) }()
 
 	strategies, err := listAllStrategies(ctx, o.deps.StrategyRepo, repository.StrategyFilter{Status: "active"})
@@ -199,10 +199,20 @@ func (o *JobOrchestrator) strategyResweep(ctx context.Context) error {
 
 		bars := barsMap[strat.Ticker]
 		if len(bars) < 50 {
-			summary["skipped"]++
+			summary["failed"]++
+			summary["insufficient"]++
 			o.logger.Warn("strategy_resweep: insufficient bars",
 				slog.String("ticker", strat.Ticker),
 				slog.Int("bars", len(bars)),
+			)
+			continue
+		}
+		if !dailyBarFresh(now, bars[len(bars)-1].Timestamp) {
+			summary["failed"]++
+			summary["stale"]++
+			o.logger.Warn("strategy_resweep: stale latest bar",
+				slog.String("ticker", strat.Ticker),
+				slog.Time("latest", bars[len(bars)-1].Timestamp),
 			)
 			continue
 		}
@@ -228,7 +238,8 @@ func (o *JobOrchestrator) strategyResweep(ctx context.Context) error {
 		}
 
 		if len(results) == 0 {
-			summary["skipped"]++
+			summary["failed"]++
+			summary["empty_results"]++
 			continue
 		}
 		summary["swept"]++
@@ -278,17 +289,18 @@ func strategyResweepCompletionError(failed int) error {
 // setups with elevated IV, unusual volume, or favourable put/call skew.
 func (o *JobOrchestrator) optionsScan(ctx context.Context) error {
 	o.logger.Info("options_scan: starting")
-	summary := map[string]int{"universe": 0, "optionable": 0, "price_fetch_failed": 0, "price_empty": 0, "chains": 0, "setups": 0, "fetch_failed": 0, "persist_failed": 0}
+	summary := map[string]int{"universe": 0, "optionable": 0, "price_fetch_failed": 0, "price_empty": 0, "price_stale": 0, "chains": 0, "chain_insufficient": 0, "setups": 0, "fetch_failed": 0, "persist_failed": 0}
 	defer func() { o.SetLastSummary("options_scan", summary) }()
 
 	if o.deps.OptionsProvider == nil {
-		o.logger.Info("options_scan: skipped — options data provider not configured")
-		return nil
+		return fmt.Errorf("options_scan: options data provider not configured")
 	}
 
 	if o.deps.Universe == nil {
-		o.logger.Info("options_scan: skipped — Universe not configured")
-		return nil
+		return fmt.Errorf("options_scan: universe not configured")
+	}
+	if o.deps.DataService == nil {
+		return fmt.Errorf("options_scan: data service not configured")
 	}
 
 	// Fetch all active tickers and filter for optionable ones (price > $5).
@@ -305,7 +317,8 @@ func (o *JobOrchestrator) optionsScan(ctx context.Context) error {
 	var candidates []optionable
 	for _, ticker := range allTickers {
 		if o.deps.DataService != nil {
-			bars, err := o.deps.DataService.GetOHLCV(ctx, domain.MarketTypeStock, ticker, data.Timeframe1d, time.Now().AddDate(0, 0, -5), time.Now())
+			priceNow := time.Now()
+			bars, err := o.deps.DataService.GetOHLCV(ctx, domain.MarketTypeStock, ticker, data.Timeframe1d, priceNow.AddDate(0, 0, -5), priceNow)
 			if err != nil {
 				summary["price_fetch_failed"]++
 				o.logger.Warn("options_scan: price lookup failed", slog.String("ticker", ticker), slog.Any("error", err))
@@ -313,6 +326,10 @@ func (o *JobOrchestrator) optionsScan(ctx context.Context) error {
 			}
 			if len(bars) == 0 {
 				summary["price_empty"]++
+				continue
+			}
+			if !dailyBarFresh(priceNow, bars[len(bars)-1].Timestamp) {
+				summary["price_stale"]++
 				continue
 			}
 			closePrice := bars[len(bars)-1].Close
@@ -351,6 +368,7 @@ func (o *JobOrchestrator) optionsScan(ctx context.Context) error {
 			continue
 		}
 		if len(chain) < 10 { // need at least 10 contracts for a meaningful chain
+			summary["chain_insufficient"]++
 			continue
 		}
 		summary["chains"]++
@@ -400,6 +418,9 @@ func (o *JobOrchestrator) optionsScan(ctx context.Context) error {
 				summary["persist_failed"]++
 				o.logger.Warn("options_scan: persist IV history failed", slog.String("ticker", candidate.ticker), slog.Any("error", err))
 			}
+		} else {
+			summary["persist_failed"]++
+			o.logger.Warn("options_scan: setup persistence unavailable", slog.String("ticker", candidate.ticker))
 		}
 	}
 
@@ -407,14 +428,20 @@ func (o *JobOrchestrator) optionsScan(ctx context.Context) error {
 		slog.Int("tickers_scanned", len(candidates)),
 		slog.Int("setups_found", hits),
 	)
-	return optionsScanCompletionError(summary["price_fetch_failed"], summary["fetch_failed"], summary["persist_failed"])
+	return optionsScanCompletionError(summary)
 }
 
-func optionsScanCompletionError(priceFetchFailed, chainFetchFailed, persistFailed int) error {
-	if priceFetchFailed <= 0 && chainFetchFailed <= 0 && persistFailed <= 0 {
+func optionsScanCompletionError(summary map[string]int) error {
+	noUsableChains := 0
+	if summary["optionable"] > 0 && summary["chains"] == 0 {
+		noUsableChains = 1
+	}
+	errors := summary["price_fetch_failed"] + summary["price_empty"] + summary["price_stale"] + summary["fetch_failed"] + summary["persist_failed"] + noUsableChains
+	if errors == 0 {
 		return nil
 	}
-	return fmt.Errorf("options_scan: incomplete run: price_fetch_failed=%d chain_fetch_failed=%d persist_failed=%d", priceFetchFailed, chainFetchFailed, persistFailed)
+	return fmt.Errorf("options_scan: incomplete run: price_fetch_failed=%d price_empty=%d price_stale=%d chain_fetch_failed=%d persist_failed=%d no_usable_chains=%d",
+		summary["price_fetch_failed"], summary["price_empty"], summary["price_stale"], summary["fetch_failed"], summary["persist_failed"], noUsableChains)
 }
 
 type chainAnalysis struct {

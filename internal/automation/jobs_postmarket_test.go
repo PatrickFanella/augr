@@ -25,7 +25,7 @@ func TestPostMarketCompletionErrorsExposePartialCoverage(t *testing.T) {
 	if err := strategyResweepCompletionError(2); err == nil || !strings.Contains(err.Error(), "strategies failed") {
 		t.Fatalf("strategyResweepCompletionError() = %v, want sweep coverage error", err)
 	}
-	if err := optionsScanCompletionError(1, 2, 3); err == nil || !strings.Contains(err.Error(), "price_fetch_failed=1 chain_fetch_failed=2 persist_failed=3") {
+	if err := optionsScanCompletionError(map[string]int{"price_fetch_failed": 1, "fetch_failed": 2, "persist_failed": 3}); err == nil || !strings.Contains(err.Error(), "price_fetch_failed=1") || !strings.Contains(err.Error(), "chain_fetch_failed=2") || !strings.Contains(err.Error(), "persist_failed=3") {
 		t.Fatalf("optionsScanCompletionError() = %v, want complete failure counts", err)
 	}
 
@@ -38,8 +38,11 @@ func TestPostMarketCompletionErrorsExposePartialCoverage(t *testing.T) {
 	if err := strategyResweepCompletionError(0); err != nil {
 		t.Fatalf("strategyResweepCompletionError(0) = %v, want nil", err)
 	}
-	if err := optionsScanCompletionError(0, 0, 0); err != nil {
-		t.Fatalf("optionsScanCompletionError(0, 0, 0) = %v, want nil", err)
+	if err := optionsScanCompletionError(map[string]int{}); err != nil {
+		t.Fatalf("optionsScanCompletionError(empty) = %v, want nil", err)
+	}
+	if err := optionsScanCompletionError(map[string]int{"optionable": 10, "chain_insufficient": 10}); err == nil || !strings.Contains(err.Error(), "no_usable_chains=1") {
+		t.Fatalf("optionsScanCompletionError(no chains) = %v", err)
 	}
 }
 
