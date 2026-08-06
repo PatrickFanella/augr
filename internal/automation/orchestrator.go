@@ -99,6 +99,7 @@ type OrchestratorDeps struct {
 	}
 	PortfolioAllocatorMode    portfolio.AllocatorMode
 	PortfolioPaperProcessor   portfolio.PaperOrderProcessor
+	PortfolioAccountBalance   PortfolioAccountBalanceSource
 	KalshiWatchedRepo         repository.KalshiWatchedMarketsRepository
 	KalshiMarketSnapshotsRepo repository.KalshiMarketSnapshotsRepository
 	KalshiDiscoveryRuns       repository.KalshiDiscoveryRunRepository // optional; nil = skip progress recording

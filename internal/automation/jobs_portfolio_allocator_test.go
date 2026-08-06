@@ -3,6 +3,7 @@ package automation
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"strings"
@@ -16,6 +17,19 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/portfolio"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 )
+
+type portfolioAllocatorBalanceStub struct {
+	balance execution.Balance
+	err     error
+}
+
+func (s portfolioAllocatorBalanceStub) GetAccountBalance(context.Context) (execution.Balance, error) {
+	return s.balance, s.err
+}
+
+func paperAllocatorStateDeps() (repository.PositionRepository, PortfolioAccountBalanceSource) {
+	return newRecordingPositionRepo(), portfolioAllocatorBalanceStub{balance: execution.Balance{Currency: "USD", Cash: 100000, BuyingPower: 100000, Equity: 100000}}
+}
 
 type portfolioAllocatorOpportunityRepo struct {
 	items             []domain.Opportunity
@@ -406,12 +420,15 @@ func TestPortfolioAllocatorJobPaperModeExecutesPaperIntent(t *testing.T) {
 		IsPaper:    true,
 	}}
 	processor := &portfolioPaperProcessorStub{}
+	positionRepo, accountBalance := paperAllocatorStateDeps()
 	orch := NewJobOrchestrator(OrchestratorDeps{
 		OpportunityRepo:         opportunityRepo,
 		AllocationDecisionRepo:  decisionRepo,
 		StrategyRepo:            strategyRepo,
 		PortfolioAllocatorMode:  portfolio.AllocatorModePaper,
 		PortfolioPaperProcessor: processor,
+		PositionRepo:            positionRepo,
+		PortfolioAccountBalance: accountBalance,
 	})
 	orch.registerPortfolioAllocatorJobs()
 	job := orch.jobs["portfolio_allocator"]
@@ -482,10 +499,13 @@ func TestPortfolioAllocatorJobPaperModeRejectsWithoutStrategyRepo(t *testing.T) 
 		DedupeKey:         "msft-paper-1",
 	}}}
 	decisionRepo := &portfolioAllocatorDecisionRepo{}
+	positionRepo, accountBalance := paperAllocatorStateDeps()
 	orch := NewJobOrchestrator(OrchestratorDeps{
-		OpportunityRepo:        opportunityRepo,
-		AllocationDecisionRepo: decisionRepo,
-		PortfolioAllocatorMode: portfolio.AllocatorModePaper,
+		OpportunityRepo:         opportunityRepo,
+		AllocationDecisionRepo:  decisionRepo,
+		PortfolioAllocatorMode:  portfolio.AllocatorModePaper,
+		PositionRepo:            positionRepo,
+		PortfolioAccountBalance: accountBalance,
 	})
 	orch.registerPortfolioAllocatorJobs()
 	job := orch.jobs["portfolio_allocator"]
@@ -515,7 +535,8 @@ func TestPortfolioAllocatorJobPaperModeStopsWhenPreclaimFails(t *testing.T) {
 	decisionRepo := &portfolioAllocatorDecisionRepo{}
 	strategyRepo := &portfolioAllocatorStrategyRepo{strategy: &domain.Strategy{ID: opportunityRepo.items[0].StrategyID, Name: "paper-aapl", Ticker: "AAPL", MarketType: domain.MarketTypeStock, Status: domain.StrategyStatusActive, IsPaper: true}}
 	processor := &portfolioPaperProcessorStub{}
-	orch := NewJobOrchestrator(OrchestratorDeps{OpportunityRepo: opportunityRepo, AllocationDecisionRepo: decisionRepo, StrategyRepo: strategyRepo, PortfolioAllocatorMode: portfolio.AllocatorModePaper, PortfolioPaperProcessor: processor})
+	positionRepo, accountBalance := paperAllocatorStateDeps()
+	orch := NewJobOrchestrator(OrchestratorDeps{OpportunityRepo: opportunityRepo, AllocationDecisionRepo: decisionRepo, StrategyRepo: strategyRepo, PortfolioAllocatorMode: portfolio.AllocatorModePaper, PortfolioPaperProcessor: processor, PositionRepo: positionRepo, PortfolioAccountBalance: accountBalance})
 	orch.registerPortfolioAllocatorJobs()
 	err := orch.jobs["portfolio_allocator"].Fn(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "preclaim opportunity selected") {
@@ -526,5 +547,46 @@ func TestPortfolioAllocatorJobPaperModeStopsWhenPreclaimFails(t *testing.T) {
 	}
 	if len(decisionRepo.created) != 0 {
 		t.Fatalf("expected no persisted decision, got %+v", decisionRepo.created)
+	}
+}
+
+func TestPortfolioAllocatorPaperModeRequiresCompleteFinancialState(t *testing.T) {
+	t.Parallel()
+
+	base := OrchestratorDeps{
+		OpportunityRepo:        &portfolioAllocatorOpportunityRepo{},
+		AllocationDecisionRepo: &portfolioAllocatorDecisionRepo{},
+		PortfolioAllocatorMode: portfolio.AllocatorModePaper,
+	}
+	tests := map[string]OrchestratorDeps{
+		"missing positions": base,
+		"missing balance": func() OrchestratorDeps {
+			deps := base
+			deps.PositionRepo = newRecordingPositionRepo()
+			return deps
+		}(),
+		"balance error": func() OrchestratorDeps {
+			deps := base
+			deps.PositionRepo = newRecordingPositionRepo()
+			deps.PortfolioAccountBalance = portfolioAllocatorBalanceStub{err: errors.New("balance unavailable")}
+			return deps
+		}(),
+		"invalid balance": func() OrchestratorDeps {
+			deps := base
+			deps.PositionRepo = newRecordingPositionRepo()
+			deps.PortfolioAccountBalance = portfolioAllocatorBalanceStub{balance: execution.Balance{Equity: 0, BuyingPower: 100}}
+			return deps
+		}(),
+	}
+	for name, deps := range tests {
+		name, deps := name, deps
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			orch := NewJobOrchestrator(deps)
+			orch.registerPortfolioAllocatorJobs()
+			if err := orch.jobs["portfolio_allocator"].Fn(context.Background()); err == nil {
+				t.Fatalf("paper allocator error = nil, want fail-closed financial state error")
+			}
+		})
 	}
 }

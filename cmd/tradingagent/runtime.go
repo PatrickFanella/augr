@@ -719,6 +719,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 					AllocationDecisionRepo:      allocationDecisionRepo,
 					PortfolioAllocatorMode:      portfolioAllocatorMode,
 					PortfolioPaperProcessor:     portfolioPaperProcessor,
+					PortfolioAccountBalance:     strategyRunner.localPaperBroker,
 					JobRunRepo:                  jobRunRepo,
 					OptionsScanRepo:             optionsScanRepo,
 					NewsFeedRepo:                newsFeedRepo,

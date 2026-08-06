@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
+	"github.com/PatrickFanella/get-rich-quick/internal/execution"
 	"github.com/PatrickFanella/get-rich-quick/internal/portfolio"
 	"github.com/PatrickFanella/get-rich-quick/internal/scheduler"
 	"github.com/google/uuid"
@@ -18,6 +19,12 @@ var portfolioAllocatorSpec = scheduler.ScheduleSpec{
 	Cron:         "15,45 * * * *",
 	SkipWeekends: true,
 	SkipHolidays: true,
+}
+
+// PortfolioAccountBalanceSource supplies the restored paper account state used
+// to size paper allocator decisions.
+type PortfolioAccountBalanceSource interface {
+	GetAccountBalance(context.Context) (execution.Balance, error)
 }
 
 func (o *JobOrchestrator) registerPortfolioAllocatorJobs() {
@@ -44,7 +51,7 @@ func (o *JobOrchestrator) runPortfolioAllocator(ctx context.Context) error {
 		return fmt.Errorf("portfolio_allocator: snapshot opportunities: %w", err)
 	}
 
-	state, warnings, err := o.buildPortfolioAllocatorState(ctx)
+	state, warnings, err := o.buildPortfolioAllocatorState(ctx, mode)
 	if err != nil {
 		return err
 	}
@@ -204,7 +211,7 @@ func paperAllocatorRejected(decision domain.AllocationDecision, reason string) d
 	return decision
 }
 
-func (o *JobOrchestrator) buildPortfolioAllocatorState(ctx context.Context) (portfolio.PortfolioState, []string, error) {
+func (o *JobOrchestrator) buildPortfolioAllocatorState(ctx context.Context, mode portfolio.AllocatorMode) (portfolio.PortfolioState, []string, error) {
 	state := portfolio.PortfolioState{
 		MarketExposure: map[domain.MarketType]float64{},
 		OpenTickers:    map[string]bool{},
@@ -218,6 +225,8 @@ func (o *JobOrchestrator) buildPortfolioAllocatorState(ctx context.Context) (por
 			return state, warnings, fmt.Errorf("portfolio_allocator: load open positions: %w", err)
 		}
 		positions = items
+	} else if mode == portfolio.AllocatorModePaper {
+		return state, warnings, fmt.Errorf("portfolio_allocator: paper mode requires position repository")
 	} else {
 		warnings = append(warnings, "positions_unavailable")
 	}
@@ -234,9 +243,24 @@ func (o *JobOrchestrator) buildPortfolioAllocatorState(ctx context.Context) (por
 		}
 	}
 
-	state.Equity = 100000
-	state.BuyingPower = maxFloat(100000-grossExposure, 0)
-	warnings = append(warnings, "paper_account_balance_fallback")
+	if mode == portfolio.AllocatorModePaper {
+		if o.deps.PortfolioAccountBalance == nil {
+			return state, warnings, fmt.Errorf("portfolio_allocator: paper mode requires account balance source")
+		}
+		balance, err := o.deps.PortfolioAccountBalance.GetAccountBalance(ctx)
+		if err != nil {
+			return state, warnings, fmt.Errorf("portfolio_allocator: load paper account balance: %w", err)
+		}
+		if balance.Equity <= 0 || balance.BuyingPower < 0 {
+			return state, warnings, fmt.Errorf("portfolio_allocator: invalid paper account balance: equity=%g buying_power=%g", balance.Equity, balance.BuyingPower)
+		}
+		state.Equity = balance.Equity
+		state.BuyingPower = balance.BuyingPower
+	} else {
+		state.Equity = 100000
+		state.BuyingPower = maxFloat(100000-grossExposure, 0)
+		warnings = append(warnings, "paper_account_balance_fallback")
+	}
 	state.GrossExposure = grossExposure
 	return state, warnings, nil
 }
