@@ -17,10 +17,16 @@ import (
 )
 
 const (
-	productionBaseURL = "https://api.tradier.com"
-	sandboxBaseURL    = "https://sandbox.tradier.com"
-	defaultTimeout    = 30 * time.Second
+	productionBaseURL             = "https://api.tradier.com"
+	sandboxBaseURL                = "https://sandbox.tradier.com"
+	defaultTimeout                = 30 * time.Second
+	productionMarketDataPerMinute = 120
+	sandboxMarketDataPerMinute    = 60
 )
+
+type requestLimiter interface {
+	Wait(context.Context) error
+}
 
 // OptionsProvider retrieves options chain data from Tradier.
 // Provides full Greeks, IV, bid/ask, volume, OI from ORATS data.
@@ -29,6 +35,9 @@ type OptionsProvider struct {
 	token   string
 	client  *http.Client
 	logger  *slog.Logger
+	limiter requestLimiter
+
+	rateLimitPerMinute int
 }
 
 var _ data.OptionsDataProvider = (*OptionsProvider)(nil)
@@ -40,14 +49,18 @@ func NewOptionsProvider(token string, sandbox bool, logger *slog.Logger) *Option
 		logger = slog.Default()
 	}
 	base := productionBaseURL
+	rateLimit := productionMarketDataPerMinute
 	if sandbox {
 		base = sandboxBaseURL
+		rateLimit = sandboxMarketDataPerMinute
 	}
 	return &OptionsProvider{
-		baseURL: base,
-		token:   strings.TrimSpace(token),
-		client:  &http.Client{Timeout: defaultTimeout},
-		logger:  logger,
+		baseURL:            base,
+		token:              strings.TrimSpace(token),
+		client:             &http.Client{Timeout: defaultTimeout},
+		logger:             logger,
+		limiter:            data.NewRateLimiter(rateLimit, time.Minute),
+		rateLimitPerMinute: rateLimit,
 	}
 }
 
@@ -160,6 +173,12 @@ func (p *OptionsProvider) nearestExpiry(ctx context.Context, underlying string) 
 
 // get performs an authenticated GET request.
 func (p *OptionsProvider) get(ctx context.Context, path string, params url.Values) ([]byte, error) {
+	if p.limiter != nil {
+		if err := p.limiter.Wait(ctx); err != nil {
+			return nil, fmt.Errorf("tradier/options: wait for market-data quota: %w", err)
+		}
+	}
+
 	reqURL := p.baseURL + path + "?" + params.Encode()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {

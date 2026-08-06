@@ -14,6 +14,16 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 )
 
+type stubRequestLimiter struct {
+	calls int
+	err   error
+}
+
+func (s *stubRequestLimiter) Wait(context.Context) error {
+	s.calls++
+	return s.err
+}
+
 func TestOptionsProviderMapsAndFiltersChain(t *testing.T) {
 	t.Parallel()
 
@@ -53,6 +63,44 @@ func TestOptionsProviderRejectsMissingTokenAndUnsupportedHistory(t *testing.T) {
 	}
 	if _, err := provider.GetOptionsOHLCV(context.Background(), "contract", data.Timeframe1d, time.Time{}, time.Time{}); !errors.Is(err, data.ErrNotImplemented) {
 		t.Fatalf("GetOptionsOHLCV() error = %v, want ErrNotImplemented", err)
+	}
+}
+
+func TestOptionsProviderUsesEnvironmentMarketDataQuota(t *testing.T) {
+	t.Parallel()
+
+	if got := NewOptionsProvider("token", true, nil).rateLimitPerMinute; got != sandboxMarketDataPerMinute {
+		t.Fatalf("sandbox rate limit = %d, want %d", got, sandboxMarketDataPerMinute)
+	}
+	if got := NewOptionsProvider("token", false, nil).rateLimitPerMinute; got != productionMarketDataPerMinute {
+		t.Fatalf("production rate limit = %d, want %d", got, productionMarketDataPerMinute)
+	}
+}
+
+func TestOptionsProviderWaitsForQuotaBeforeRequest(t *testing.T) {
+	t.Parallel()
+
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		_, _ = w.Write([]byte(`{"options":null}`))
+	}))
+	defer server.Close()
+
+	limiter := &stubRequestLimiter{err: context.Canceled}
+	provider := NewOptionsProvider("token", true, nil)
+	provider.baseURL = server.URL
+	provider.limiter = limiter
+
+	_, err := provider.GetOptionsChain(context.Background(), "AAPL", time.Now(), "")
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("GetOptionsChain() error = %v, want context.Canceled", err)
+	}
+	if limiter.calls != 1 {
+		t.Fatalf("limiter calls = %d, want 1", limiter.calls)
+	}
+	if requests != 0 {
+		t.Fatalf("HTTP requests = %d, want 0", requests)
 	}
 }
 
