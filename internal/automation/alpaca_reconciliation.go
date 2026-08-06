@@ -248,7 +248,9 @@ func (r *AlpacaReconciler) Reconcile(ctx context.Context) (AlpacaReconcileSummar
 		return AlpacaReconcileSummary{}, fmt.Errorf("alpaca_reconcile: load strategy index: %w", err)
 	}
 
-	existingOrders, err := r.orderRepo.List(ctx, repository.OrderFilter{Broker: "alpaca"}, 1000, 0)
+	existingOrders, err := listAllReconciliationPages(ctx, func(limit, offset int) ([]domain.Order, error) {
+		return r.orderRepo.List(ctx, repository.OrderFilter{Broker: "alpaca"}, limit, offset)
+	})
 	if err != nil {
 		return AlpacaReconcileSummary{}, fmt.Errorf("alpaca_reconcile: list local orders: %w", err)
 	}
@@ -262,7 +264,9 @@ func (r *AlpacaReconciler) Reconcile(ctx context.Context) (AlpacaReconcileSummar
 		orderByExternalID[order.ExternalID] = &cloned
 	}
 
-	existingPositions, err := r.positionRepo.ListOpenAlpacaOwned(ctx, 1000, 0)
+	existingPositions, err := listAllReconciliationPages(ctx, func(limit, offset int) ([]domain.Position, error) {
+		return r.positionRepo.ListOpenAlpacaOwned(ctx, limit, offset)
+	})
 	if err != nil {
 		return AlpacaReconcileSummary{}, fmt.Errorf("alpaca_reconcile: list local positions: %w", err)
 	}
@@ -276,7 +280,9 @@ func (r *AlpacaReconciler) Reconcile(ctx context.Context) (AlpacaReconcileSummar
 		positionByTicker[position.Ticker] = &cloned
 	}
 
-	existingTrades, err := r.tradeRepo.List(ctx, repository.TradeFilter{}, 5000, 0)
+	existingTrades, err := listAllReconciliationPages(ctx, func(limit, offset int) ([]domain.Trade, error) {
+		return r.tradeRepo.List(ctx, repository.TradeFilter{}, limit, offset)
+	})
 	if err != nil {
 		return AlpacaReconcileSummary{}, fmt.Errorf("alpaca_reconcile: list local trades: %w", err)
 	}
@@ -445,15 +451,21 @@ func (r *AlpacaReconciler) Verify(ctx context.Context) (AlpacaVerificationReport
 		return AlpacaVerificationReport{}, fmt.Errorf("alpaca_reconcile: fetch fills: %w", err)
 	}
 
-	localOrders, err := r.orderRepo.List(ctx, repository.OrderFilter{Broker: "alpaca"}, 1000, 0)
+	localOrders, err := listAllReconciliationPages(ctx, func(limit, offset int) ([]domain.Order, error) {
+		return r.orderRepo.List(ctx, repository.OrderFilter{Broker: "alpaca"}, limit, offset)
+	})
 	if err != nil {
 		return AlpacaVerificationReport{}, fmt.Errorf("alpaca_reconcile: list local orders: %w", err)
 	}
-	localPositions, err := r.positionRepo.ListOpenAlpacaOwned(ctx, 1000, 0)
+	localPositions, err := listAllReconciliationPages(ctx, func(limit, offset int) ([]domain.Position, error) {
+		return r.positionRepo.ListOpenAlpacaOwned(ctx, limit, offset)
+	})
 	if err != nil {
 		return AlpacaVerificationReport{}, fmt.Errorf("alpaca_reconcile: list local positions: %w", err)
 	}
-	localTrades, err := r.tradeRepo.List(ctx, repository.TradeFilter{}, 5000, 0)
+	localTrades, err := listAllReconciliationPages(ctx, func(limit, offset int) ([]domain.Trade, error) {
+		return r.tradeRepo.List(ctx, repository.TradeFilter{}, limit, offset)
+	})
 	if err != nil {
 		return AlpacaVerificationReport{}, fmt.Errorf("alpaca_reconcile: list local trades: %w", err)
 	}
@@ -562,7 +574,9 @@ func (r *AlpacaReconciler) loadStrategyIndex(ctx context.Context) (map[string]*u
 	if r.strategyRepo == nil {
 		return map[string]*uuid.UUID{}, nil
 	}
-	strategies, err := r.strategyRepo.List(ctx, repository.StrategyFilter{Status: domain.StrategyStatusActive}, 1000, 0)
+	strategies, err := listAllReconciliationPages(ctx, func(limit, offset int) ([]domain.Strategy, error) {
+		return r.strategyRepo.List(ctx, repository.StrategyFilter{Status: domain.StrategyStatusActive}, limit, offset)
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -572,6 +586,26 @@ func (r *AlpacaReconciler) loadStrategyIndex(ctx context.Context) (map[string]*u
 		result[strategy.Ticker] = &id
 	}
 	return result, nil
+}
+
+const reconciliationPageSize = 500
+
+func listAllReconciliationPages[T any](ctx context.Context, fetch func(limit, offset int) ([]T, error)) ([]T, error) {
+	var all []T
+	for offset := 0; ; {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		page, err := fetch(reconciliationPageSize, offset)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, page...)
+		if len(page) < reconciliationPageSize {
+			return all, nil
+		}
+		offset += len(page)
+	}
 }
 
 func snapshotToOrder(snapshot BrokerOrderSnapshot, strategyID *uuid.UUID) *domain.Order {

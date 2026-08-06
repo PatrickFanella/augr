@@ -95,13 +95,45 @@ func (r *recordingStrategyRepo) Get(context.Context, uuid.UUID) (*domain.Strateg
 	return nil, repository.ErrNotFound
 }
 
-func (r *recordingStrategyRepo) List(context.Context, repository.StrategyFilter, int, int) ([]domain.Strategy, error) {
+func (r *recordingStrategyRepo) List(_ context.Context, _ repository.StrategyFilter, limit, offset int) ([]domain.Strategy, error) {
 	if r.err != nil {
 		return nil, r.err
 	}
-	out := make([]domain.Strategy, len(r.list))
-	copy(out, r.list)
+	if offset >= len(r.list) {
+		return nil, nil
+	}
+	end := min(offset+limit, len(r.list))
+	out := make([]domain.Strategy, end-offset)
+	copy(out, r.list[offset:end])
 	return out, nil
+}
+
+func TestListAllReconciliationPagesReadsPastLegacyCaps(t *testing.T) {
+	t.Parallel()
+
+	const total = 1203
+	values := make([]int, total)
+	for i := range values {
+		values[i] = i
+	}
+	var calls int
+	got, err := listAllReconciliationPages(context.Background(), func(limit, offset int) ([]int, error) {
+		calls++
+		if offset >= len(values) {
+			return nil, nil
+		}
+		end := min(offset+limit, len(values))
+		return values[offset:end], nil
+	})
+	if err != nil {
+		t.Fatalf("listAllReconciliationPages() error = %v", err)
+	}
+	if len(got) != total || got[total-1] != total-1 {
+		t.Fatalf("listAllReconciliationPages() returned %d values, last=%d", len(got), got[len(got)-1])
+	}
+	if calls != 3 {
+		t.Fatalf("fetch calls = %d, want 3", calls)
+	}
 }
 
 func (r *recordingStrategyRepo) Count(context.Context, repository.StrategyFilter) (int, error) {
