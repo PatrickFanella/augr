@@ -127,6 +127,17 @@ func TestJobOrchestratorRunJob_AutoDisablesAfterThreshold(t *testing.T) {
 	}
 }
 
+func TestAutoDisableThresholdSurvivesHydration(t *testing.T) {
+	t.Parallel()
+
+	if shouldDisableAfterHydration(autoDisableThreshold - 1) {
+		t.Fatal("below-threshold failure count should remain enabled")
+	}
+	if !shouldDisableAfterHydration(autoDisableThreshold) {
+		t.Fatal("threshold failure count should hydrate disabled")
+	}
+}
+
 func TestJobOrchestratorRunJob_RejectsDisabledJob(t *testing.T) {
 	t.Parallel()
 

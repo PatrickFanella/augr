@@ -769,10 +769,17 @@ func (o *JobOrchestrator) hydrateFromDB() {
 		job.RunCount = s.RunCount
 		job.ErrorCount = s.ErrorCount
 		job.ConsecutiveFailures = s.ConsecutiveFailures
+		if shouldDisableAfterHydration(s.ConsecutiveFailures) {
+			job.Enabled = false
+		}
 		job.mu.Unlock()
 	}
 
 	o.logger.Info("automation: hydrated job stats from DB", slog.Int("jobs", len(summaries)))
+}
+
+func shouldDisableAfterHydration(consecutiveFailures int) bool {
+	return consecutiveFailures >= autoDisableThreshold
 }
 
 func cloneSummary(summary map[string]int) map[string]int {
