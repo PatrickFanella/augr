@@ -51,6 +51,14 @@ func TestProductionBuildVerificationScriptContainsExpectedSteps(t *testing.T) {
 		`"token_type": "access"`,
 		`Authorization: Bearer ${AUTH_TOKEN}`,
 		`/api/v1/strategies`,
+		`Verifying custom-format database backup and restore`,
+		`--format=custom`,
+		`--no-owner >"$BACKUP_FILE"`,
+		`createdb -U "$POSTGRES_USER" "$RESTORE_DB"`,
+		`pg_restore`,
+		`--exit-on-error`,
+		`restored backup schema mismatch`,
+		`dropdb -U "$POSTGRES_USER" "$RESTORE_DB"`,
 		`compose stop app`,
 		`SELECT count(*) FROM automation_job_controls`,
 		`SELECT count(*) FROM trades WHERE exit_reason IS NOT NULL`,
@@ -85,15 +93,16 @@ func TestProductionBuildVerificationScriptContainsExpectedSteps(t *testing.T) {
 	migrationsIdx := strings.Index(script, `-path=/migrations`)
 	schemaAssertIdx := strings.Index(script, `SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1`)
 	appStartIdx := strings.Index(script, `compose up -d app`)
+	backupIdx := strings.Index(script, `Verifying custom-format database backup and restore`)
 	rollbackGuardIdx := strings.Index(script, `NEW_STRUCTURE_WRITES=`)
 	downIdx := strings.Index(script, `down "$ROLLBACK_STEPS"`)
 	reapplyIdx := strings.Index(script, `REAPPLIED_SCHEMA_VERSION=`)
 	healthWaitIdx := strings.LastIndex(script, "\nwait_for_app_health\n")
-	if dependenciesIdx == -1 || migrationsIdx == -1 || schemaAssertIdx == -1 || appStartIdx == -1 || rollbackGuardIdx == -1 || downIdx == -1 || reapplyIdx == -1 || healthWaitIdx == -1 {
+	if dependenciesIdx == -1 || migrationsIdx == -1 || schemaAssertIdx == -1 || appStartIdx == -1 || backupIdx == -1 || rollbackGuardIdx == -1 || downIdx == -1 || reapplyIdx == -1 || healthWaitIdx == -1 {
 		t.Fatal("verify-prod-build.sh missing ordering anchors")
 	}
-	if dependenciesIdx >= migrationsIdx || migrationsIdx >= schemaAssertIdx || schemaAssertIdx >= appStartIdx || appStartIdx >= rollbackGuardIdx || rollbackGuardIdx >= downIdx || downIdx >= reapplyIdx || reapplyIdx >= healthWaitIdx {
-		t.Fatalf("verify-prod-build.sh expected dependencies -> migrations -> schema -> app -> rollback guard -> down -> reapply -> health ordering, got %d %d %d %d %d %d %d %d", dependenciesIdx, migrationsIdx, schemaAssertIdx, appStartIdx, rollbackGuardIdx, downIdx, reapplyIdx, healthWaitIdx)
+	if dependenciesIdx >= migrationsIdx || migrationsIdx >= schemaAssertIdx || schemaAssertIdx >= appStartIdx || appStartIdx >= backupIdx || backupIdx >= rollbackGuardIdx || rollbackGuardIdx >= downIdx || downIdx >= reapplyIdx || reapplyIdx >= healthWaitIdx {
+		t.Fatalf("verify-prod-build.sh expected dependencies -> migrations -> schema -> app -> backup -> rollback guard -> down -> reapply -> health ordering, got %d %d %d %d %d %d %d %d %d", dependenciesIdx, migrationsIdx, schemaAssertIdx, appStartIdx, backupIdx, rollbackGuardIdx, downIdx, reapplyIdx, healthWaitIdx)
 	}
 }
 
