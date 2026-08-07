@@ -18,6 +18,25 @@ Run the automated gate from the repository root:
 ./scripts/release-gate.sh
 ```
 
+## Commit identity and synchronization order
+
+The gate is valid only for the exact commit it prints. Reconcile upstream
+before running it:
+
+1. fetch the configured remote and inspect divergence without rewriting or
+   discarding local work;
+2. reconcile any upstream commits and commit the result;
+3. confirm the intended release tree is clean, then run the complete gate;
+4. push the exact verified commit without force and confirm the remote ref
+   resolves to the same object ID; and
+5. build and deploy immutable images from that same object ID.
+
+The release gate records `HEAD` before verification, rechecks the clean tree
+after all gate commands, and fails if `HEAD` changed. Any edit, conflict
+resolution, merge, rebase, amend, or generated tracked change after a passing
+gate invalidates the result; rerun the complete gate on the new candidate.
+Pushing an unchanged verified commit does not invalidate it.
+
 ## Compromised-secret gate
 
 The automated gate cannot prove that an externally managed credential was

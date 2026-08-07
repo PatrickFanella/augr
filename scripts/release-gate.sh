@@ -5,7 +5,9 @@ repo_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$repo_dir"
 
 promtool_image="${PROMTOOL_IMAGE:-prom/prometheus@sha256:339ce86a59413be18d0e445472891d022725b4803fab609069110205e79fb2f1}"
+candidate_commit=$(git rev-parse HEAD)
 
+echo "Starting paper release gate for commit $candidate_commit."
 ./scripts/verify-release-tree.sh
 go test -count=1 ./...
 go vet ./...
@@ -22,4 +24,11 @@ docker run --rm --entrypoint promtool \
   "$promtool_image" check rules /etc/prometheus/alerts.yml
 ./scripts/verify-secret-history.sh
 
-echo "Paper release gate passed. Complete the deployment soak before setting RELEASE_DRILLS_VERIFIED=true."
+./scripts/verify-release-tree.sh
+verified_commit=$(git rev-parse HEAD)
+if ! [ "$verified_commit" = "$candidate_commit" ]; then
+    echo "release candidate changed during gate: expected $candidate_commit, found $verified_commit" >&2
+    exit 1
+fi
+
+echo "Paper release gate passed for commit $verified_commit. Complete the deployment soak before setting RELEASE_DRILLS_VERIFIED=true."

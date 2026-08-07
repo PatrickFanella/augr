@@ -114,6 +114,7 @@ func TestReleaseGateIncludesProductionVerificationAndPinnedPromtool(t *testing.T
 
 	script := string(contents)
 	for _, want := range []string{
+		`candidate_commit=$(git rev-parse HEAD)`,
 		`./scripts/verify-release-tree.sh`,
 		`go test -count=1 ./...`,
 		`go vet ./...`,
@@ -127,6 +128,8 @@ func TestReleaseGateIncludesProductionVerificationAndPinnedPromtool(t *testing.T
 		`prom/prometheus@sha256:`,
 		`"$promtool_image" check rules`,
 		`./scripts/verify-secret-history.sh`,
+		`[ "$verified_commit" = "$candidate_commit" ]`,
+		`Paper release gate passed for commit $verified_commit`,
 	} {
 		if !strings.Contains(script, want) {
 			t.Fatalf("release-gate.sh missing required content %q", want)
@@ -134,6 +137,17 @@ func TestReleaseGateIncludesProductionVerificationAndPinnedPromtool(t *testing.T
 	}
 	if strings.Contains(script, `prom/prometheus:v3.3.0`) {
 		t.Fatal("release-gate.sh uses a mutable Prometheus tag")
+	}
+
+	candidateIdx := strings.Index(script, `candidate_commit=$(git rev-parse HEAD)`)
+	firstTreeIdx := strings.Index(script, `./scripts/verify-release-tree.sh`)
+	goTestIdx := strings.Index(script, `go test -count=1 ./...`)
+	secretIdx := strings.Index(script, `./scripts/verify-secret-history.sh`)
+	lastTreeIdx := strings.LastIndex(script, `./scripts/verify-release-tree.sh`)
+	verifiedIdx := strings.Index(script, `verified_commit=$(git rev-parse HEAD)`)
+	identityIdx := strings.Index(script, `[ "$verified_commit" = "$candidate_commit" ]`)
+	if candidateIdx >= firstTreeIdx || firstTreeIdx >= goTestIdx || goTestIdx >= secretIdx || secretIdx >= lastTreeIdx || lastTreeIdx >= verifiedIdx || verifiedIdx >= identityIdx {
+		t.Fatalf("release-gate.sh expected candidate -> initial tree -> tests -> secrets -> final tree -> verified commit -> identity ordering, got %d %d %d %d %d %d %d", candidateIdx, firstTreeIdx, goTestIdx, secretIdx, lastTreeIdx, verifiedIdx, identityIdx)
 	}
 }
 
