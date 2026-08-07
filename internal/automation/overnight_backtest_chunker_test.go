@@ -3,6 +3,7 @@ package automation
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -140,12 +141,52 @@ func TestOvernightBacktestChunkerRejectsUnwrappedGeneratedConfig(t *testing.T) {
 }
 
 func TestValidateOvernightScreenResultsRejectsEmptySuccess(t *testing.T) {
-	if err := validateOvernightScreenResults(nil); err == nil || !strings.Contains(err.Error(), "no candidates") {
+	now := time.Date(2026, time.August, 7, 1, 30, 0, 0, easternTime)
+	fresh := time.Date(2026, time.August, 6, 9, 30, 0, 0, easternTime)
+	valid := validOvernightScreenResult("AAPL", fresh)
+	if err := validateOvernightScreenResults(nil, []string{"AAPL"}, now); err == nil || !strings.Contains(err.Error(), "no candidates") {
 		t.Fatalf("error = %v, want no candidates", err)
 	}
-	if err := validateOvernightScreenResults([]discovery.ScreenResult{{Ticker: "AAPL"}}); err != nil {
-		t.Fatalf("non-empty screen error = %v", err)
+	if err := validateOvernightScreenResults([]discovery.ScreenResult{valid}, []string{"AAPL"}, now); err != nil {
+		t.Fatalf("valid screen error = %v", err)
 	}
+
+	for _, tc := range []struct {
+		name   string
+		mutate func(*discovery.ScreenResult)
+		want   string
+	}{
+		{name: "insufficient bars", mutate: func(r *discovery.ScreenResult) { r.Bars = r.Bars[:10] }, want: "insufficient bars"},
+		{name: "stale bars", mutate: func(r *discovery.ScreenResult) {
+			staleLatest := fresh.AddDate(0, 0, -1)
+			for i := range r.Bars {
+				r.Bars[i].Timestamp = staleLatest.AddDate(0, 0, i-len(r.Bars)+1)
+			}
+		}, want: "stale latest bar"},
+		{name: "incomplete indicators", mutate: func(r *discovery.ScreenResult) { r.Indicators = r.Indicators[:2] }, want: "insufficient indicators"},
+		{name: "unexpected ticker", mutate: func(r *discovery.ScreenResult) { r.Ticker = "MSFT" }, want: "unexpected ticker"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			candidate := validOvernightScreenResult("AAPL", fresh)
+			tc.mutate(&candidate)
+			err := validateOvernightScreenResults([]discovery.ScreenResult{candidate}, []string{"AAPL"}, now)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func validOvernightScreenResult(ticker string, latest time.Time) discovery.ScreenResult {
+	bars := make([]domain.OHLCV, 50)
+	for i := range bars {
+		bars[i] = domain.OHLCV{Timestamp: latest.AddDate(0, 0, i-len(bars)+1), Open: 10, High: 12, Low: 9, Close: 11, Volume: 1_000_000}
+	}
+	indicators := make([]domain.Indicator, 20)
+	for i := range indicators {
+		indicators[i] = domain.Indicator{Name: fmt.Sprintf("indicator_%d", i), Value: float64(i + 1), Timestamp: latest}
+	}
+	return discovery.ScreenResult{Ticker: ticker, Bars: bars, Indicators: indicators, Close: 11, ADV: 1_000_000, ATR: 1}
 }
 
 func TestOvernightBacktestChunkerRunChunkCreatesFailedRunWithoutUniverse(t *testing.T) {

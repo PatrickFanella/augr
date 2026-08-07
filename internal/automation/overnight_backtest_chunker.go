@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -164,7 +166,7 @@ func (c overnightBacktestChunker) runScreen(ctx context.Context, run *domain.Ove
 	if err != nil {
 		return c.failRun(run, fmt.Errorf("overnight_backtest: screen: %w", err))
 	}
-	if err := validateOvernightScreenResults(screened); err != nil {
+	if err := validateOvernightScreenResults(screened, refreshedTickers, now); err != nil {
 		return c.failRun(run, err)
 	}
 	run.Candidates = discovery.CheckpointCandidatesFromScreenResults(screened)
@@ -175,11 +177,59 @@ func (c overnightBacktestChunker) runScreen(ctx context.Context, run *domain.Ove
 	return c.updateProgress(run)
 }
 
-func validateOvernightScreenResults(screened []discovery.ScreenResult) error {
+func validateOvernightScreenResults(screened []discovery.ScreenResult, requested []string, now time.Time) error {
 	if len(screened) == 0 {
 		return fmt.Errorf("overnight_backtest: screen returned no candidates")
 	}
+	requestedSet := make(map[string]struct{}, len(requested))
+	for _, ticker := range requested {
+		requestedSet[strings.ToUpper(strings.TrimSpace(ticker))] = struct{}{}
+	}
+	seen := make(map[string]struct{}, len(screened))
+	for _, candidate := range screened {
+		ticker := strings.ToUpper(strings.TrimSpace(candidate.Ticker))
+		if ticker == "" {
+			return fmt.Errorf("overnight_backtest: screen candidate missing ticker")
+		}
+		if _, ok := requestedSet[ticker]; !ok {
+			return fmt.Errorf("overnight_backtest: screen returned unexpected ticker %s", ticker)
+		}
+		if _, duplicate := seen[ticker]; duplicate {
+			return fmt.Errorf("overnight_backtest: screen returned duplicate ticker %s", ticker)
+		}
+		seen[ticker] = struct{}{}
+		if len(candidate.Bars) < 50 {
+			return fmt.Errorf("overnight_backtest: screen candidate %s has insufficient bars: %d", ticker, len(candidate.Bars))
+		}
+		for i := 1; i < len(candidate.Bars); i++ {
+			if !candidate.Bars[i].Timestamp.After(candidate.Bars[i-1].Timestamp) {
+				return fmt.Errorf("overnight_backtest: screen candidate %s bars are not strictly ordered at index %d", ticker, i)
+			}
+		}
+		latest := candidate.Bars[len(candidate.Bars)-1]
+		if !dailyBarFresh(now, latest.Timestamp) {
+			return fmt.Errorf("overnight_backtest: screen candidate %s has stale latest bar %s", ticker, latest.Timestamp.UTC().Format(time.RFC3339))
+		}
+		if !finitePositive(candidate.Close) || !finitePositive(candidate.ADV) || !finitePositive(candidate.ATR) {
+			return fmt.Errorf("overnight_backtest: screen candidate %s has invalid close/ADV/ATR", ticker)
+		}
+		if candidate.Close != latest.Close {
+			return fmt.Errorf("overnight_backtest: screen candidate %s close does not match latest bar", ticker)
+		}
+		if len(candidate.Indicators) < 20 {
+			return fmt.Errorf("overnight_backtest: screen candidate %s has insufficient indicators: %d", ticker, len(candidate.Indicators))
+		}
+		for _, indicator := range candidate.Indicators {
+			if strings.TrimSpace(indicator.Name) == "" || math.IsNaN(indicator.Value) || math.IsInf(indicator.Value, 0) || !sameMarketDate(indicator.Timestamp.In(easternTime), latest.Timestamp.In(easternTime)) {
+				return fmt.Errorf("overnight_backtest: screen candidate %s has invalid or stale indicator %q", ticker, indicator.Name)
+			}
+		}
+	}
 	return nil
+}
+
+func finitePositive(value float64) bool {
+	return value > 0 && !math.IsNaN(value) && !math.IsInf(value, 0)
 }
 
 func (c overnightBacktestChunker) runGenerateChunk(ctx context.Context, run *domain.OvernightBacktestRun) error {
