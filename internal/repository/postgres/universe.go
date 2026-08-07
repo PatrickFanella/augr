@@ -237,14 +237,21 @@ func buildUniverseListQuery(filter universe.ListFilter, limit, offset int) (stri
 		conditions = append(conditions, fmt.Sprintf("(ticker ILIKE %s OR name ILIKE %s)", nextArg(pattern), nextArg(pattern)))
 	}
 
-	base := `SELECT ticker, name, exchange, index_group, watch_score, last_scanned, active, created_at, updated_at
-		 FROM universe_tickers`
+	base := `SELECT normalized_ticker, name, exchange, index_group, watch_score, last_scanned, active, created_at, updated_at
+		 FROM (
+			 SELECT DISTINCT ON (upper(trim(ticker)))
+				upper(trim(ticker)) AS normalized_ticker,
+				name, exchange, index_group, watch_score, last_scanned, active, created_at, updated_at
+			 FROM universe_tickers`
 
 	if len(conditions) > 0 {
 		base += " WHERE " + strings.Join(conditions, " AND ")
 	}
 
-	base += " ORDER BY watch_score DESC"
+	base += ` ORDER BY upper(trim(ticker)), watch_score DESC,
+				(ticker = upper(trim(ticker))) DESC, updated_at DESC NULLS LAST, created_at DESC
+		 ) normalized
+		 ORDER BY watch_score DESC, normalized_ticker`
 	if limit <= 0 {
 		limit = 10000 // no limit requested — use a large default
 	}
