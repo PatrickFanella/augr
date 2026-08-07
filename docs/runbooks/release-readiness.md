@@ -18,6 +18,28 @@ Run the automated gate from the repository root:
 ./scripts/release-gate.sh
 ```
 
+## Compromised-secret gate
+
+The automated gate cannot prove that an externally managed credential was
+revoked. If a credential, token, passphrase, or private key was exposed in
+application logs, audit output, CI output, or another retained channel, the
+release is blocked until its owner:
+
+1. revokes or rotates the exposed value at the provider;
+2. updates the production secret source without printing the replacement;
+3. records owner confirmation in the release evidence; and
+4. identifies a bounded postdeployment canary that proves errors are redacted
+   without copying, hashing, or otherwise retaining the credential in the
+   evidence artifact.
+
+A redaction code change prevents another disclosure but does not remediate the
+already exposed value. Passing tests, `RELEASE_DRILLS_VERIFIED=true`, a process
+restart, or an unavailable retained log window cannot substitute for rotation
+confirmation. Optional integrations with unmet credentials or entitlements may
+remain unavailable only when they are explicitly reported as blocked and stay
+disabled or fail closed; do not enable them merely to make release readiness
+appear green.
+
 For a timestamped operational snapshot around a paper-market boundary, run:
 
 ```sh
