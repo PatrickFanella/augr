@@ -211,7 +211,7 @@ func (o *JobOrchestrator) overnightGenerate(ctx context.Context) error {
 	}
 
 	indexGroups := overnightIndexGroups
-	summary := map[string]int{"groups": len(indexGroups), "groups_attempted": 0, "candidates": 0, "deployed": 0, "pipeline_errors": 0, "errors": 0}
+	summary := map[string]int{"groups": len(indexGroups), "groups_attempted": 0, "candidates": 0, "proposed": 0, "created": 0, "reused": 0, "deployed": 0, "pipeline_errors": 0, "errors": 0}
 	defer func() { o.SetLastSummary("overnight_generate", summary) }()
 
 	deps := discovery.DiscoveryDeps{
@@ -273,8 +273,11 @@ func (o *JobOrchestrator) overnightGenerate(ctx context.Context) error {
 
 		summary["candidates"] += result.Candidates
 		summary["deployed"] += result.Deployed
-		o.logger.Info(fmt.Sprintf("overnight_generate: %s — %d candidates, %d deployed",
-			indexGroup, result.Candidates, result.Deployed),
+		summary["proposed"] += result.Proposed
+		summary["created"] += result.Created
+		summary["reused"] += result.Reused
+		o.logger.Info(fmt.Sprintf("overnight_generate: %s — %d candidates, %d proposed, %d created, %d reused",
+			indexGroup, result.Candidates, result.Proposed, result.Created, result.Reused),
 		)
 	}
 
@@ -441,6 +444,8 @@ func historyRefreshCompletionError(summary map[string]int) error {
 // optionsDiscovery runs the full options strategy discovery pipeline.
 func (o *JobOrchestrator) optionsDiscovery(ctx context.Context) error {
 	o.logger.Info("options_discovery: starting")
+	summary := map[string]int{"candidates": 0, "scored": 0, "generated": 0, "swept": 0, "validated": 0, "deployed": 0, "proposed": 0, "created": 0, "reused": 0, "errors": 0, "winners": 0}
+	defer func() { o.SetLastSummary("options_discovery", summary) }()
 
 	if o.deps.OptionsProvider == nil {
 		return fmt.Errorf("options_discovery: options provider not configured")
@@ -461,8 +466,7 @@ func (o *JobOrchestrator) optionsDiscovery(ctx context.Context) error {
 		return fmt.Errorf("options_discovery: get watchlist: %w", err)
 	}
 	if len(watchlist) == 0 {
-		o.logger.Info("options_discovery: no tradeable watchlist tickers, skipping")
-		return nil
+		return fmt.Errorf("options_discovery: no tradeable watchlist tickers")
 	}
 	tickers := make([]string, len(watchlist))
 	for i, t := range watchlist {
@@ -491,16 +495,17 @@ func (o *JobOrchestrator) optionsDiscovery(ctx context.Context) error {
 		return fmt.Errorf("options_discovery: %w", err)
 	}
 
-	o.SetLastSummary("options_discovery", map[string]int{
-		"candidates": result.Candidates,
-		"scored":     result.Scored,
-		"generated":  result.Generated,
-		"swept":      result.Swept,
-		"validated":  result.Validated,
-		"deployed":   result.Deployed,
-		"errors":     len(result.Errors),
-		"winners":    len(result.Winners),
-	})
+	summary["candidates"] = result.Candidates
+	summary["scored"] = result.Scored
+	summary["generated"] = result.Generated
+	summary["swept"] = result.Swept
+	summary["validated"] = result.Validated
+	summary["deployed"] = result.Deployed
+	summary["proposed"] = result.Proposed
+	summary["created"] = result.Created
+	summary["reused"] = result.Reused
+	summary["errors"] = len(result.Errors)
+	summary["winners"] = len(result.Winners)
 
 	o.logger.Info("options_discovery: complete",
 		slog.Int("candidates", result.Candidates),
@@ -509,12 +514,15 @@ func (o *JobOrchestrator) optionsDiscovery(ctx context.Context) error {
 		slog.Int("swept", result.Swept),
 		slog.Int("validated", result.Validated),
 		slog.Int("deployed", result.Deployed),
+		slog.Int("proposed", result.Proposed),
+		slog.Int("created", result.Created),
+		slog.Int("reused", result.Reused),
 		slog.Int("errors", len(result.Errors)),
 		slog.Duration("duration", result.Duration),
 	)
 
 	for _, w := range result.Winners {
-		o.logger.Info("options_discovery: winner deployed",
+		o.logger.Info("options_discovery: winner selected",
 			slog.String("id", w.StrategyID.String()),
 			slog.String("ticker", w.Ticker),
 			slog.String("type", string(w.Config.StrategyType)),

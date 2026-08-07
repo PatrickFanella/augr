@@ -71,7 +71,7 @@ func (o *JobOrchestrator) registerTickerDiscoveryJob() {
 }
 
 func (o *JobOrchestrator) tickerDiscovery(ctx context.Context) error {
-	summary := map[string]int{"universe_refreshed": 0, "scored": 0, "candidates": 0, "generated": 0, "swept": 0, "validated": 0, "deployed": 0, "errors": 0}
+	summary := map[string]int{"universe_refreshed": 0, "scored": 0, "candidates": 0, "generated": 0, "swept": 0, "validated": 0, "proposed": 0, "created": 0, "reused": 0, "deployed": 0, "errors": 0}
 	defer func() { o.SetLastSummary("ticker_discovery", summary) }()
 	if o.deps.Universe == nil || o.deps.DataService == nil || o.deps.LLMProvider == nil || o.deps.StrategyRepo == nil || o.deps.DiscoveryRunRepo == nil {
 		return fmt.Errorf("ticker_discovery: universe, data, LLM, strategy, and discovery run dependencies are required")
@@ -129,6 +129,9 @@ func (o *JobOrchestrator) tickerDiscovery(ctx context.Context) error {
 	summary["swept"] = result.Swept
 	summary["validated"] = result.Validated
 	summary["deployed"] = result.Deployed
+	summary["proposed"] = result.Proposed
+	summary["created"] = result.Created
+	summary["reused"] = result.Reused
 	summary["errors"] = len(result.Errors)
 	if len(result.Errors) > 0 {
 		return fmt.Errorf("ticker_discovery: pipeline completed with %d errors", len(result.Errors))
@@ -275,6 +278,8 @@ func (o *JobOrchestrator) gapScanner(ctx context.Context) error {
 
 // discoveryRun runs the full strategy discovery pipeline on top watchlist tickers.
 func (o *JobOrchestrator) discoveryRun(ctx context.Context) error {
+	summary := map[string]int{"candidates": 0, "generated": 0, "swept": 0, "validated": 0, "deployed": 0, "proposed": 0, "created": 0, "reused": 0, "errors": 0, "winners": 0}
+	defer func() { o.SetLastSummary("discovery_run", summary) }()
 	if o.deps.DiscoveryRunRepo == nil {
 		return fmt.Errorf("discovery_run: discovery run repository is required")
 	}
@@ -283,8 +288,7 @@ func (o *JobOrchestrator) discoveryRun(ctx context.Context) error {
 		return fmt.Errorf("discovery_run: get watchlist: %w", err)
 	}
 	if len(tickers) == 0 {
-		o.logger.Info("discovery_run: no tradeable watchlist tickers, skipping")
-		return nil
+		return fmt.Errorf("discovery_run: no tradeable watchlist tickers")
 	}
 
 	symbols := make([]string, len(tickers))
@@ -322,15 +326,16 @@ func (o *JobOrchestrator) discoveryRun(ctx context.Context) error {
 		return fmt.Errorf("discovery_run: %w", err)
 	}
 
-	o.SetLastSummary("discovery_run", map[string]int{
-		"candidates": result.Candidates,
-		"generated":  result.Generated,
-		"swept":      result.Swept,
-		"validated":  result.Validated,
-		"deployed":   result.Deployed,
-		"errors":     len(result.Errors),
-		"winners":    len(result.Winners),
-	})
+	summary["candidates"] = result.Candidates
+	summary["generated"] = result.Generated
+	summary["swept"] = result.Swept
+	summary["validated"] = result.Validated
+	summary["deployed"] = result.Deployed
+	summary["proposed"] = result.Proposed
+	summary["created"] = result.Created
+	summary["reused"] = result.Reused
+	summary["errors"] = len(result.Errors)
+	summary["winners"] = len(result.Winners)
 
 	o.logger.Info("discovery_run: complete",
 		slog.Int("candidates", result.Candidates),
@@ -338,12 +343,15 @@ func (o *JobOrchestrator) discoveryRun(ctx context.Context) error {
 		slog.Int("swept", result.Swept),
 		slog.Int("validated", result.Validated),
 		slog.Int("deployed", result.Deployed),
+		slog.Int("proposed", result.Proposed),
+		slog.Int("created", result.Created),
+		slog.Int("reused", result.Reused),
 		slog.Int("errors", len(result.Errors)),
 		slog.Duration("duration", result.Duration),
 	)
 
 	for _, w := range result.Winners {
-		o.logger.Info("discovery_run: winner deployed",
+		o.logger.Info("discovery_run: winner selected",
 			slog.String("strategy_id", w.StrategyID.String()),
 			slog.String("ticker", w.Ticker),
 			slog.Float64("score", w.Score),

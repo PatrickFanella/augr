@@ -59,6 +59,9 @@ type OptionsDiscoveryResult struct {
 	Swept      int
 	Validated  int
 	Deployed   int
+	Proposed   int
+	Created    int
+	Reused     int
 	Winners    []OptionsDeployedStrategy
 	Duration   time.Duration
 	Errors     []string
@@ -208,9 +211,9 @@ func RunOptionsDiscovery(ctx context.Context, cfg OptionsDiscoveryConfig, deps O
 	}
 
 	// Stage 6: Deploy top winners.
-	deployed := 0
+	selected := 0
 	for _, w := range winners {
-		if deployed >= cfg.MaxWinners {
+		if selected >= cfg.MaxWinners {
 			break
 		}
 
@@ -238,6 +241,7 @@ func RunOptionsDiscovery(ctx context.Context, cfg OptionsDiscoveryConfig, deps O
 			Config:       json.RawMessage(configJSON),
 		}
 
+		wasCreated := false
 		if !cfg.DryRun {
 			createdStrategy, created, createErr := discovery.CreateOrReusePaperStrategy(ctx, deps.Strategies, strategy)
 			if createErr != nil {
@@ -251,6 +255,8 @@ func RunOptionsDiscovery(ctx context.Context, cfg OptionsDiscoveryConfig, deps O
 					slog.String("ticker", strategy.Ticker),
 					slog.String("name", strategy.Name),
 				)
+			} else {
+				wasCreated = true
 			}
 		}
 
@@ -262,17 +268,16 @@ func RunOptionsDiscovery(ctx context.Context, cfg OptionsDiscoveryConfig, deps O
 			OutOfSample: w.oosSample,
 			Score:       w.score,
 		})
-		deployed++
+		selected++
+		recordOptionsDeploymentOutcome(result, cfg.DryRun, wasCreated)
 
-		logger.Info("options/discovery: strategy deployed",
+		logger.Info("options/discovery: winner selected",
 			slog.String("id", strategy.ID.String()),
 			slog.String("ticker", w.ticker),
 			slog.String("type", string(w.config.StrategyType)),
 			slog.Float64("score", w.score),
 		)
 	}
-	result.Deployed = deployed
-
 	result.Duration = time.Since(start)
 	logger.Info("options/discovery: complete",
 		slog.Int("candidates", result.Candidates),
@@ -281,8 +286,27 @@ func RunOptionsDiscovery(ctx context.Context, cfg OptionsDiscoveryConfig, deps O
 		slog.Int("swept", result.Swept),
 		slog.Int("validated", result.Validated),
 		slog.Int("deployed", result.Deployed),
+		slog.Int("proposed", result.Proposed),
+		slog.Int("created", result.Created),
+		slog.Int("reused", result.Reused),
 		slog.Duration("duration", result.Duration),
 	)
 
 	return result, nil
+}
+
+func recordOptionsDeploymentOutcome(result *OptionsDiscoveryResult, dryRun, created bool) {
+	if result == nil {
+		return
+	}
+	result.Proposed++
+	if dryRun {
+		return
+	}
+	if created {
+		result.Created++
+		result.Deployed++
+		return
+	}
+	result.Reused++
 }

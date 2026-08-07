@@ -87,6 +87,9 @@ type DiscoveryResult struct {
 	Swept              int                  `json:"swept"`
 	Validated          int                  `json:"validated"`
 	Deployed           int                  `json:"deployed"`
+	Proposed           int                  `json:"proposed"`
+	Created            int                  `json:"created"`
+	Reused             int                  `json:"reused"`
 	CandidateEvidence  []CandidateEvidence  `json:"candidate_evidence,omitempty"`
 	GenerationEvidence []GenerationEvidence `json:"generation_evidence,omitempty"`
 	SweepEvidence      []SweepEvidence      `json:"sweep_evidence,omitempty"`
@@ -348,6 +351,7 @@ func RunDiscovery(ctx context.Context, cfg DiscoveryConfig, deps DiscoveryDeps) 
 			Config:       json.RawMessage(configJSON),
 		}
 
+		wasCreated := false
 		if !cfg.DryRun {
 			createdStrategy, created, createErr := CreateOrReusePaperStrategy(ctx, deps.Strategies, strategy)
 			if createErr != nil {
@@ -361,7 +365,10 @@ func RunDiscovery(ctx context.Context, cfg DiscoveryConfig, deps DiscoveryDeps) 
 					slog.String("ticker", strategy.Ticker),
 					slog.String("name", strategy.Name),
 				)
-			} else if deps.BacktestConfigs != nil && len(v.bars) >= 2 {
+			} else {
+				wasCreated = true
+			}
+			if created && deps.BacktestConfigs != nil && len(v.bars) >= 2 {
 				initialCash := cfg.Sweep.InitialCash
 				if initialCash == 0 {
 					initialCash = 100_000
@@ -394,8 +401,9 @@ func RunDiscovery(ctx context.Context, cfg DiscoveryConfig, deps DiscoveryDeps) 
 			Score:       v.sweep.Score,
 		}
 		result.Winners = append(result.Winners, deployed)
+		recordDiscoveryDeploymentOutcome(result, cfg.DryRun, wasCreated)
 
-		logger.Info("discovery: deployed strategy",
+		logger.Info("discovery: winner selected",
 			slog.String("id", strategy.ID.String()),
 			slog.String("ticker", strategy.Ticker),
 			slog.String("name", strategy.Name),
@@ -403,7 +411,6 @@ func RunDiscovery(ctx context.Context, cfg DiscoveryConfig, deps DiscoveryDeps) 
 			slog.Bool("dry_run", cfg.DryRun),
 		)
 	}
-	result.Deployed = len(result.Winners)
 	result.Duration = time.Since(start)
 
 	logger.Info("discovery: pipeline complete",
@@ -412,10 +419,29 @@ func RunDiscovery(ctx context.Context, cfg DiscoveryConfig, deps DiscoveryDeps) 
 		slog.Int("swept", result.Swept),
 		slog.Int("validated", result.Validated),
 		slog.Int("deployed", result.Deployed),
+		slog.Int("proposed", result.Proposed),
+		slog.Int("created", result.Created),
+		slog.Int("reused", result.Reused),
 		slog.Duration("duration", result.Duration),
 	)
 
 	return result, nil
+}
+
+func recordDiscoveryDeploymentOutcome(result *DiscoveryResult, dryRun, created bool) {
+	if result == nil {
+		return
+	}
+	result.Proposed++
+	if dryRun {
+		return
+	}
+	if created {
+		result.Created++
+		result.Deployed++
+		return
+	}
+	result.Reused++
 }
 
 func discoveryCanDeploy(result *DiscoveryResult) bool {

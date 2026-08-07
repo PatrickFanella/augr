@@ -43,3 +43,13 @@ func TestDiscoveryCanDeployOnlyCompleteResults(t *testing.T) {
 		t.Fatal("discoveryCanDeploy(complete result) = false")
 	}
 }
+
+func TestRecordDiscoveryDeploymentOutcomeSeparatesCreateReuseAndDryRun(t *testing.T) {
+	result := &DiscoveryResult{}
+	recordDiscoveryDeploymentOutcome(result, false, true)
+	recordDiscoveryDeploymentOutcome(result, false, false)
+	recordDiscoveryDeploymentOutcome(result, true, false)
+	if result.Proposed != 3 || result.Created != 1 || result.Reused != 1 || result.Deployed != 1 {
+		t.Fatalf("deployment outcome = %+v", result)
+	}
+}
