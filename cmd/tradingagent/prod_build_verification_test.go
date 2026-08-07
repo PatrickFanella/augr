@@ -114,6 +114,7 @@ func TestReleaseGateIncludesProductionVerificationAndPinnedPromtool(t *testing.T
 
 	script := string(contents)
 	for _, want := range []string{
+		`./scripts/verify-release-tree.sh`,
 		`docker compose -f docker-compose.nuc.yml config --quiet`,
 		`docker compose -f docker-compose.nuc.yml -f deploy/docker-compose.nuc.rollback.yml config --quiet`,
 		`./scripts/verify-prod-build.sh`,
@@ -127,6 +128,29 @@ func TestReleaseGateIncludesProductionVerificationAndPinnedPromtool(t *testing.T
 	}
 	if strings.Contains(script, `prom/prometheus:v3.3.0`) {
 		t.Fatal("release-gate.sh uses a mutable Prometheus tag")
+	}
+}
+
+func TestReleaseTreeVerifierRequiresExactCleanInput(t *testing.T) {
+	repoRoot := filepath.Join(filepath.Dir(productionBuildVerificationScriptPath(t)), "..")
+	contents, err := os.ReadFile(filepath.Join(repoRoot, "scripts", "verify-release-tree.sh"))
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+
+	script := string(contents)
+	for _, want := range []string{
+		`git diff --quiet --ignore-submodules`,
+		`git diff --cached --quiet --ignore-submodules`,
+		`RELEASE_ALLOWED_UNTRACKED`,
+		`git ls-files --others --exclude-standard`,
+		`[ "$path" = "$allowed_path" ]`,
+		`release tree has unexpected untracked files`,
+		`git rev-parse HEAD`,
+	} {
+		if !strings.Contains(script, want) {
+			t.Fatalf("verify-release-tree.sh missing required content %q", want)
+		}
 	}
 }
 

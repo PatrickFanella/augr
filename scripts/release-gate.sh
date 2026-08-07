@@ -6,6 +6,7 @@ cd "$repo_dir"
 
 promtool_image="${PROMTOOL_IMAGE:-prom/prometheus@sha256:339ce86a59413be18d0e445472891d022725b4803fab609069110205e79fb2f1}"
 
+./scripts/verify-release-tree.sh
 go test ./...
 go vet ./...
 npm --prefix web test -- --run --pool=threads --maxWorkers=1
