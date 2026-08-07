@@ -13,8 +13,6 @@ FROM golang:${GO_VERSION}-alpine AS builder
 ARG TARGETOS=linux
 ARG TARGETARCH=amd64
 ARG BUILD_VERSION=development
-ARG BUILD_COMMIT=unknown
-ARG BUILD_TIME=unknown
 WORKDIR /src
 
 RUN apk add --no-cache ca-certificates

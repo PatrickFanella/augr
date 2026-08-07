@@ -3,78 +3,192 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 COMPOSE_FILE="${ROOT_DIR}/docker-compose.prod.yml"
-PROJECT_NAME="${PROJECT_NAME:-augr-prod}"
-AUTH_TOKEN="${AUTH_TOKEN:?AUTH_TOKEN must be set}"
+PROJECT_NAME="${VERIFY_PROJECT_NAME:-augr-prod-verify-$$}"
+MIGRATE_IMAGE="${MIGRATE_IMAGE:-migrate/migrate:v4.18.3}"
+
+case "$PROJECT_NAME" in
+    augr-prod-verify-*) ;;
+    *)
+        echo "VERIFY_PROJECT_NAME must start with augr-prod-verify-" >&2
+        exit 1
+        ;;
+esac
+
+if [ -n "$(docker ps -aq --filter "label=com.docker.compose.project=${PROJECT_NAME}")" ]; then
+    echo "refusing to reuse existing Compose project ${PROJECT_NAME}" >&2
+    exit 1
+fi
+
+VERIFY_DIR="$(mktemp -d /tmp/augr-prod-verify.XXXXXX)"
+APP_ENV_FILE="${VERIFY_DIR}/app.env"
+NETWORK_OVERRIDE_FILE="${VERIFY_DIR}/network-override.yml"
+
+# Docker's automatic bridge address pools can be exhausted on shared hosts even
+# when these short-lived networks are cleaned up correctly. Use small, explicit,
+# caller-overridable subnets so the smoke stack does not depend on that allocator.
+VERIFY_PUBLIC_SUBNET="${VERIFY_PUBLIC_SUBNET:-10.252.0.0/28}"
+VERIFY_BACKEND_SUBNET="${VERIFY_BACKEND_SUBNET:-10.252.0.16/28}"
+export VERIFY_BACKEND_SUBNET VERIFY_PUBLIC_SUBNET
+
+cat >"$NETWORK_OVERRIDE_FILE" <<'EOF'
+networks:
+  public:
+    ipam:
+      config:
+        - subnet: ${VERIFY_PUBLIC_SUBNET}
+  backend:
+    ipam:
+      config:
+        - subnet: ${VERIFY_BACKEND_SUBNET}
+EOF
+
+VERIFY_APP_PORT="${VERIFY_APP_PORT:-$(python3 - <<'PY'
+import socket
+with socket.socket() as sock:
+    sock.bind(("127.0.0.1", 0))
+    print(sock.getsockname()[1])
+PY
+)}"
+
+POSTGRES_USER="augr_verify"
+POSTGRES_DB="augr_verify"
+POSTGRES_PASSWORD="$(python3 -c 'import secrets; print(secrets.token_hex(24))')"
+SMOKE_JWT_SECRET="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
+APP_BIND="127.0.0.1"
+APP_PORT="$VERIFY_APP_PORT"
+APP_ENV="smoke"
+
+export APP_BIND APP_ENV APP_ENV_FILE APP_PORT POSTGRES_DB POSTGRES_PASSWORD POSTGRES_USER
 
 compose() {
-    docker compose --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" "$@"
+    docker compose --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" -f "$NETWORK_OVERRIDE_FILE" "$@"
 }
 
+cleanup() {
+    compose down --volumes --remove-orphans >/dev/null 2>&1 || true
+    rm -rf "$VERIFY_DIR"
+}
+trap cleanup EXIT HUP INT TERM
+
+cat >"$APP_ENV_FILE" <<EOF
+APP_ENV=smoke
+APP_HOST=0.0.0.0
+APP_PORT=8080
+JWT_SECRET=${SMOKE_JWT_SECRET}
+DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
+DATABASE_POOL_SIZE=10
+DATABASE_SSL_MODE=disable
+REDIS_URL=redis://redis:6379/0
+LLM_DEFAULT_PROVIDER=ollama
+LLM_DEEP_THINK_MODEL=smoke-deep
+LLM_QUICK_THINK_MODEL=smoke-quick
+LLM_TIMEOUT=30s
+OLLAMA_BASE_URL=http://ollama.invalid/v1
+OLLAMA_API_KEY=smoke-key
+OLLAMA_MODEL=smoke-model
+ALPHA_VANTAGE_API_KEY=smoke-key
+ALPHA_VANTAGE_RATE_LIMIT_PER_MINUTE=5
+FINNHUB_RATE_LIMIT_PER_MINUTE=60
+RISK_MAX_POSITION_SIZE_PCT=0.10
+RISK_MAX_DAILY_LOSS_PCT=0.02
+RISK_MAX_DRAWDOWN_PCT=0.10
+RISK_MAX_OPEN_POSITIONS=10
+RISK_CIRCUIT_BREAKER_THRESHOLD=0.05
+RISK_CIRCUIT_BREAKER_COOLDOWN=15m
+ENABLE_SCHEDULER=false
+ENABLE_REDIS_CACHE=false
+ENABLE_AGENT_MEMORY=false
+ENABLE_LIVE_TRADING=false
+POLYMARKET_AUTOMATION_ENABLED=false
+EOF
+
 wait_for_postgres() {
-    echo "Waiting for postgres..."
-    for i in $(seq 1 30); do
-        if compose exec -T postgres pg_isready -U augr >/dev/null 2>&1; then
+    echo "Waiting for isolated PostgreSQL..."
+    for _ in $(seq 1 30); do
+        if compose exec -T postgres pg_isready -h postgres -U "$POSTGRES_USER" -d "$POSTGRES_DB" >/dev/null 2>&1; then
             return 0
         fi
         sleep 1
     done
-    echo "Postgres did not become ready" >&2
+    echo "PostgreSQL did not become ready" >&2
     exit 1
 }
 
 wait_for_app_health() {
-    echo "Waiting for app health..."
-    for i in $(seq 1 60); do
-        response=$(wget -qO- http://127.0.0.1:8080/healthz 2>/dev/null || true)
-        if python3 -c "
+    echo "Waiting for isolated app health..."
+    for _ in $(seq 1 60); do
+        response=$(curl -fsS "http://127.0.0.1:${VERIFY_APP_PORT}/healthz" 2>/dev/null || true)
+        if python3 -c '
 import json, sys
 body = json.loads(sys.argv[1])
-sys.exit(0 if body.get(\"status\") == \"ok\" and body.get(\"db\") == \"ok\" and body.get(\"redis\") == \"ok\" else 1)
-" "$response" 2>/dev/null; then
+sys.exit(0 if body.get("status") == "ok" and body.get("db") == "ok" and body.get("redis") == "ok" else 1)
+' "$response" 2>/dev/null; then
             return 0
         fi
         sleep 1
     done
     echo "App did not become healthy" >&2
+    compose logs --no-color app >&2 || true
     exit 1
 }
 
-echo "=== Building production images ==="
-compose build
+echo "=== Building production image for ${PROJECT_NAME} ==="
+BUILD_VERSION="$(git -C "$ROOT_DIR" describe --tags --always --dirty)" \
+BUILD_COMMIT="$(git -C "$ROOT_DIR" rev-parse HEAD)" \
+BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+compose build app
 
-echo "=== Starting services ==="
-compose up -d
-
-echo "=== Waiting for Postgres ==="
+echo "=== Starting isolated dependencies ==="
+compose up -d postgres redis
 wait_for_postgres
 
-echo "=== Running migrations ==="
-migration_files=()
-while IFS= read -r f; do
-    migration_files+=("$f")
-done < <(find "${ROOT_DIR}/migrations" -maxdepth 1 -type f -name '*.up.sql' -printf '%f\n' | sort)
+backend_network=$(docker network ls \
+    --filter "label=com.docker.compose.project=${PROJECT_NAME}" \
+    --filter "label=com.docker.compose.network=backend" \
+    --format '{{.Name}}')
+if [ -z "$backend_network" ] || [ "$(printf '%s\n' "$backend_network" | wc -l)" -ne 1 ]; then
+    echo "could not resolve the isolated backend network" >&2
+    exit 1
+fi
 
-for migration in "${migration_files[@]}"; do
-    echo "Applying migration: ${migration}"
-    compose exec -T postgres psql -U augr -d augr -f "/migrations/${migration}"
-done
+echo "=== Applying migrations through golang-migrate ==="
+docker run --rm \
+    --network "$backend_network" \
+    -v "${ROOT_DIR}/migrations:/migrations:ro" \
+    "$MIGRATE_IMAGE" \
+    -path=/migrations \
+    -database "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable" \
+    up
 
 echo "=== Verifying schema version ==="
-SCHEMA_VERSION=$(compose exec -T postgres psql -U augr -d augr -t -c "SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1" | tr -d '[:space:]')
-EXPECTED_VERSION="${migration_files[-1]%%%%_*}"
+SCHEMA_VERSION=$(compose exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc \
+    "SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1" | tr -d '[:space:]')
+EXPECTED_VERSION=$(find "${ROOT_DIR}/migrations" -maxdepth 1 -type f -name '*.up.sql' -printf '%f\n' | sort -V | tail -1 | cut -d_ -f1 | sed 's/^0*//')
 if [ "$SCHEMA_VERSION" != "$EXPECTED_VERSION" ]; then
     echo "schema version mismatch after migrations: got ${SCHEMA_VERSION}, expected ${EXPECTED_VERSION}" >&2
     exit 1
 fi
 
-echo "=== Waiting for app health ==="
+echo "=== Starting isolated production app ==="
+compose up -d app
 wait_for_app_health
 
-echo "=== Smoke-testing API ==="
-curl -sf -H "Authorization: Bearer ${AUTH_TOKEN}" http://127.0.0.1:8080/api/v1/strategies | python3 -c "
-import json, sys
-data = json.load(sys.stdin)
-print(f'Strategies: {len(data)}')
-"
+AUTH_TOKEN=$(JWT_SECRET="$SMOKE_JWT_SECRET" python3 - <<'PY'
+import base64, hashlib, hmac, json, os, time
+encode = lambda value: base64.urlsafe_b64encode(value).rstrip(b"=")
+now = int(time.time())
+header = encode(json.dumps({"alg": "HS256", "typ": "JWT"}, separators=(",", ":")).encode())
+payload = encode(json.dumps({"sub": "production-smoke", "iat": now, "exp": now + 300, "token_type": "access"}, separators=(",", ":")).encode())
+unsigned = header + b"." + payload
+signature = encode(hmac.new(os.environ["JWT_SECRET"].encode(), unsigned, hashlib.sha256).digest())
+print((unsigned + b"." + signature).decode())
+PY
+)
 
-echo "=== Production build verification passed ==="
+echo "=== Smoke-testing authenticated read-only API ==="
+curl -fsS \
+    -H "Authorization: Bearer ${AUTH_TOKEN}" \
+    "http://127.0.0.1:${VERIFY_APP_PORT}/api/v1/strategies" | \
+    python3 -c 'import json, sys; json.load(sys.stdin)'
+
+echo "=== Production build verification passed; isolated stack will be removed ==="

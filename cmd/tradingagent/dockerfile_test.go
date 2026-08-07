@@ -34,6 +34,18 @@ func TestProductionDockerfileContainsRequiredStages(t *testing.T) {
 			t.Fatalf("Dockerfile missing required content %q", want)
 		}
 	}
+
+	builderStart := strings.Index(dockerfile, "FROM golang:${GO_VERSION}-alpine AS builder")
+	productionStart := strings.Index(dockerfile, "FROM alpine:${ALPINE_VERSION} AS production")
+	if builderStart == -1 || productionStart == -1 || builderStart >= productionStart {
+		t.Fatal("Dockerfile builder and production stages are not ordered")
+	}
+	builderStage := dockerfile[builderStart:productionStart]
+	for _, metadataArg := range []string{"ARG BUILD_COMMIT", "ARG BUILD_TIME"} {
+		if strings.Contains(builderStage, metadataArg) {
+			t.Fatalf("builder stage unexpectedly contains cache-busting metadata %q", metadataArg)
+		}
+	}
 }
 
 func productionDockerfilePath(t *testing.T) string {
