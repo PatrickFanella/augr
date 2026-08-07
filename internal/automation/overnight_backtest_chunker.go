@@ -97,14 +97,7 @@ func (c overnightBacktestChunker) RunChunk(ctx context.Context) error {
 		}
 	}
 	if time.Since(run.StartedAt) > overnightBacktestMaxRunAge {
-		run.Status = domain.OvernightBacktestStatusFailed
-		now := time.Now()
-		run.CompletedAt = &now
-		run.UpdatedAt = now
-		if err := c.updateProgress(run); err != nil {
-			return err
-		}
-		return fmt.Errorf("overnight_backtest: stale run %s exceeded %s and was marked failed", run.ID, overnightBacktestMaxRunAge)
+		return c.failRun(run, fmt.Errorf("overnight_backtest: stale run %s exceeded %s and was marked failed", run.ID, overnightBacktestMaxRunAge))
 	}
 	chunkCtx, cancel := context.WithTimeout(ctx, overnightBacktestChunkTimeout)
 	defer cancel()

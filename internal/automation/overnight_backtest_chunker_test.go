@@ -306,7 +306,10 @@ func TestOvernightBacktestChunkerMaxAgeMarksFailedCompletedAt(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "stale run") {
 		t.Fatalf("error = %v, want stale run failure", err)
 	}
-	if repo.run.Status != domain.OvernightBacktestStatusFailed || repo.run.CompletedAt == nil {
+	if repo.run.Status != domain.OvernightBacktestStatusFailed || repo.run.Phase != domain.OvernightBacktestPhaseDone || repo.run.CompletedAt == nil {
 		t.Fatalf("unexpected run state: %+v", repo.run)
+	}
+	if len(repo.run.Errors) != 1 || !strings.Contains(repo.run.Errors[0], "stale run") || !strings.Contains(repo.run.Errors[0], "18h") {
+		t.Fatalf("errors = %#v, want durable stale-run cause", repo.run.Errors)
 	}
 }
