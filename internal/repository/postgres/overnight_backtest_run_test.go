@@ -71,6 +71,7 @@ func TestOvernightBacktestRunRepoIntegration_CRUD(t *testing.T) {
 	}
 	run.Phase = domain.OvernightBacktestPhaseGenerate
 	run.CandidateIndex = 1
+	run.Summary = domain.OvernightBacktestSummary{Candidates: 2, Generated: 2, Swept: 2, Validated: 2, Deployed: 1, Created: 1, Reused: 1}
 	if err := repo.Update(ctx, &run); err != nil {
 		t.Fatalf("Update() error = %v", err)
 	}
@@ -80,6 +81,9 @@ func TestOvernightBacktestRunRepoIntegration_CRUD(t *testing.T) {
 	}
 	if updated.Phase != domain.OvernightBacktestPhaseGenerate || updated.CandidateIndex != 1 {
 		t.Fatalf("updated phase/index = %s/%d", updated.Phase, updated.CandidateIndex)
+	}
+	if updated.Summary.Created != 1 || updated.Summary.Reused != 1 || updated.Summary.Deployed != 1 {
+		t.Fatalf("updated deployment summary = %+v", updated.Summary)
 	}
 	now := time.Now().UTC()
 	run.Status = domain.OvernightBacktestStatusCompleted

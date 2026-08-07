@@ -171,12 +171,22 @@ func (c overnightBacktestChunker) runScreen(ctx context.Context, run *domain.Ove
 	if err != nil {
 		return c.failRun(run, fmt.Errorf("overnight_backtest: screen: %w", err))
 	}
+	if err := validateOvernightScreenResults(screened); err != nil {
+		return c.failRun(run, err)
+	}
 	run.Candidates = discovery.CheckpointCandidatesFromScreenResults(screened)
 	run.Summary.Candidates = len(run.Candidates)
 	run.CandidateIndex = 0
 	run.Phase = domain.OvernightBacktestPhaseGenerate
 	run.UpdatedAt = time.Now()
 	return c.updateProgress(run)
+}
+
+func validateOvernightScreenResults(screened []discovery.ScreenResult) error {
+	if len(screened) == 0 {
+		return fmt.Errorf("overnight_backtest: screen returned no candidates")
+	}
+	return nil
 }
 
 func (c overnightBacktestChunker) runGenerateChunk(ctx context.Context, run *domain.OvernightBacktestRun) error {
@@ -285,7 +295,8 @@ func (c overnightBacktestChunker) runSweepValidateDeploy(ctx context.Context, ru
 	maxWinners := 3
 	topScorers := discovery.FilterAndRank(allBests, discovery.DefaultScoringConfig(), maxWinners*2)
 	validated := 0
-	deployed := 0
+	created := 0
+	reused := 0
 	passed := make([]discovery.SweepResult, 0, len(topScorers))
 	for _, scorer := range topScorers {
 		if err := ctx.Err(); err != nil {
@@ -321,14 +332,21 @@ func (c overnightBacktestChunker) runSweepValidateDeploy(ctx context.Context, ru
 			continue
 		}
 		strategy := domain.Strategy{ID: uuid.New(), Name: fmt.Sprintf("discovery: %s %s", ticker, scorer.Config.Name), Ticker: ticker, MarketType: domain.MarketTypeStock, IsPaper: true, Status: "active", ScheduleCron: "0 */2 * * *", Config: json.RawMessage(configJSON)}
-		if _, _, err := discovery.CreateOrReusePaperStrategy(ctx, c.deps.StrategyRepo, strategy); err != nil {
+		_, wasCreated, err := discovery.CreateOrReusePaperStrategy(ctx, c.deps.StrategyRepo, strategy)
+		if err != nil {
 			run.Errors = append(run.Errors, fmt.Sprintf("deploy %s: %v", ticker, err))
 			continue
 		}
-		deployed++
+		if wasCreated {
+			created++
+		} else {
+			reused++
+		}
 	}
 	run.Summary.Validated = validated
-	run.Summary.Deployed = deployed
+	run.Summary.Deployed = created
+	run.Summary.Created = created
+	run.Summary.Reused = reused
 	if failures := len(run.Errors) - initialErrors; failures > 0 {
 		return c.failRun(run, fmt.Errorf("overnight_backtest: %d deployment steps failed", failures))
 	}

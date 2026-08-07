@@ -54,6 +54,8 @@ func (o *JobOrchestrator) overnightBacktest(ctx context.Context) error {
 				"swept":           run.Summary.Swept,
 				"validated":       run.Summary.Validated,
 				"deployed":        run.Summary.Deployed,
+				"created":         run.Summary.Created,
+				"reused":          run.Summary.Reused,
 				"errors":          len(run.Errors),
 				"candidate_index": run.CandidateIndex,
 			})

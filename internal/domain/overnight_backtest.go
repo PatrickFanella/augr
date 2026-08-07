@@ -38,6 +38,8 @@ type OvernightBacktestSummary struct {
 	Swept      int `json:"swept,omitempty"`
 	Validated  int `json:"validated,omitempty"`
 	Deployed   int `json:"deployed,omitempty"`
+	Created    int `json:"created,omitempty"`
+	Reused     int `json:"reused,omitempty"`
 }
 
 type OvernightBacktestRun struct {

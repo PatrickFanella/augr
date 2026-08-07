@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/agent/rules"
+	"github.com/PatrickFanella/get-rich-quick/internal/discovery"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/llm"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
@@ -135,6 +136,15 @@ func TestOvernightBacktestChunkerRejectsUnwrappedGeneratedConfig(t *testing.T) {
 	_, err := decodeOvernightGeneratedConfig(json.RawMessage(`{"name":"x"}`))
 	if err == nil || !strings.Contains(err.Error(), "missing rules_engine") {
 		t.Fatalf("decode error = %v, want missing rules_engine", err)
+	}
+}
+
+func TestValidateOvernightScreenResultsRejectsEmptySuccess(t *testing.T) {
+	if err := validateOvernightScreenResults(nil); err == nil || !strings.Contains(err.Error(), "no candidates") {
+		t.Fatalf("error = %v, want no candidates", err)
+	}
+	if err := validateOvernightScreenResults([]discovery.ScreenResult{{Ticker: "AAPL"}}); err != nil {
+		t.Fatalf("non-empty screen error = %v", err)
 	}
 }
 
