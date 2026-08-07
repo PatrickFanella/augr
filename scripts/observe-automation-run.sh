@@ -28,6 +28,11 @@ case "$timeout_seconds" in
   ""|*[!0-9]*) echo "invalid observation timeout: $timeout_seconds" >&2; exit 2 ;;
 esac
 test "$timeout_seconds" -gt 0 || { echo "observation timeout must be positive" >&2; exit 2; }
+lead_seconds="${OBSERVATION_LEAD_SECONDS:-10}"
+case "$lead_seconds" in
+  ""|*[!0-9]*) echo "invalid observation lead: $lead_seconds" >&2; exit 2 ;;
+esac
+test "$lead_seconds" -gt 0 || { echo "observation lead must be positive" >&2; exit 2; }
 
 repo=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 compose_file="${AUGR_COMPOSE_FILE:-$repo/docker-compose.nuc.yml}"
@@ -67,10 +72,19 @@ snapshot() {
   echo "Augr prospective automation observation: $label"
   echo "job=$job"
   echo "not_before=$(date -u -d "@$target_epoch" '+%Y-%m-%dT%H:%M:%SZ')"
+  echo "armed_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
   echo "raw errors, result values, message text, query strings, and provider bodies omitted"
 
-  while [ "$(date -u +%s)" -lt "$target_epoch" ]; do
-    sleep 30
+  precheck_epoch=$((target_epoch - lead_seconds))
+  while :; do
+    current_epoch=$(date -u +%s)
+    [ "$current_epoch" -ge "$precheck_epoch" ] && break
+    remaining=$((precheck_epoch - current_epoch))
+    if [ "$remaining" -gt 30 ]; then
+      sleep 30
+    else
+      sleep "$remaining"
+    fi
   done
 
   echo "precheck=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
@@ -109,7 +123,7 @@ snapshot() {
       echo "timed out waiting for terminal run" >&2
       exit 1
     fi
-    sleep 5
+    sleep 1
   done
 
   echo "postcheck=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
