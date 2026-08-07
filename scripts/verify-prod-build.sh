@@ -79,7 +79,7 @@ compose() {
 }
 
 cleanup() {
-    compose down --volumes --remove-orphans >/dev/null 2>&1 || true
+    compose down --volumes --remove-orphans --rmi local >/dev/null 2>&1 || true
     rm -rf "$VERIFY_DIR"
 }
 trap cleanup EXIT HUP INT TERM
@@ -150,10 +150,34 @@ sys.exit(0 if body.get("status") == "ok" and body.get("db") == "ok" and body.get
 }
 
 echo "=== Building production image for ${PROJECT_NAME} ==="
-BUILD_VERSION="$(git -C "$ROOT_DIR" describe --tags --always --dirty)" \
-BUILD_COMMIT="$(git -C "$ROOT_DIR" rev-parse HEAD)" \
-BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+VERIFY_BUILD_VERSION="$(git -C "$ROOT_DIR" describe --tags --always --dirty)"
+VERIFY_BUILD_COMMIT="$(git -C "$ROOT_DIR" rev-parse HEAD)"
+VERIFY_BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+BUILD_VERSION="$VERIFY_BUILD_VERSION" \
+BUILD_COMMIT="$VERIFY_BUILD_COMMIT" \
+BUILD_TIME="$VERIFY_BUILD_TIME" \
 compose build app
+
+BUILT_APP_IMAGE_ID=$(docker image inspect --format '{{.Id}}' "${PROJECT_NAME}-app:latest" 2>/dev/null || true)
+if [ -z "$BUILT_APP_IMAGE_ID" ]; then
+    echo "could not resolve built app image" >&2
+    exit 1
+fi
+BUILT_APP_REVISION=$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$BUILT_APP_IMAGE_ID")
+BUILT_APP_VERSION=$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.version" }}' "$BUILT_APP_IMAGE_ID")
+BUILT_APP_CREATED=$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.created" }}' "$BUILT_APP_IMAGE_ID")
+if [ "$BUILT_APP_REVISION" != "$VERIFY_BUILD_COMMIT" ]; then
+    echo "built app revision label mismatch: got ${BUILT_APP_REVISION}, expected ${VERIFY_BUILD_COMMIT}" >&2
+    exit 1
+fi
+if [ "$BUILT_APP_VERSION" != "$VERIFY_BUILD_VERSION" ]; then
+    echo "built app version label mismatch: got ${BUILT_APP_VERSION}, expected ${VERIFY_BUILD_VERSION}" >&2
+    exit 1
+fi
+if [ "$BUILT_APP_CREATED" != "$VERIFY_BUILD_TIME" ]; then
+    echo "built app creation label mismatch: got ${BUILT_APP_CREATED}, expected ${VERIFY_BUILD_TIME}" >&2
+    exit 1
+fi
 
 echo "=== Starting isolated dependencies ==="
 compose up -d postgres redis

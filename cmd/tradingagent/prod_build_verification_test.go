@@ -33,6 +33,11 @@ func TestProductionBuildVerificationScriptContainsExpectedSteps(t *testing.T) {
 		`ENABLE_POLYMARKET_AUTOMATION=false`,
 		`OLLAMA_API_KEY=smoke-key`,
 		`compose build app`,
+		`BUILT_APP_IMAGE_ID=$(docker image inspect --format '{{.Id}}' "${PROJECT_NAME}-app:latest"`,
+		`org.opencontainers.image.revision`,
+		`org.opencontainers.image.version`,
+		`org.opencontainers.image.created`,
+		`built app revision label mismatch`,
 		`compose up -d postgres redis`,
 		`wait_for_postgres`,
 		`pg_isready -h postgres`,
@@ -69,7 +74,7 @@ func TestProductionBuildVerificationScriptContainsExpectedSteps(t *testing.T) {
 		`rollback image mismatch`,
 		`rollback scheduler check returned HTTP`,
 		`schema reapply mismatch`,
-		`compose down --volumes --remove-orphans`,
+		`compose down --volumes --remove-orphans --rmi local`,
 		`trap cleanup EXIT HUP INT TERM`,
 	} {
 		if !strings.Contains(script, want) {
