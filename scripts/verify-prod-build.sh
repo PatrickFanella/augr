@@ -219,32 +219,6 @@ curl -fsS \
     "http://127.0.0.1:${VERIFY_APP_PORT}/api/v1/strategies" | \
     python3 -c 'import json, sys; json.load(sys.stdin)'
 
-echo "=== Verifying custom-format database backup and restore ==="
-BACKUP_FILE="${VERIFY_DIR}/predeploy.dump"
-RESTORE_DB="${POSTGRES_DB}_restore"
-compose exec -T postgres pg_dump \
-    -U "$POSTGRES_USER" \
-    -d "$POSTGRES_DB" \
-    --format=custom \
-    --no-owner >"$BACKUP_FILE"
-if [ ! -s "$BACKUP_FILE" ]; then
-    echo "isolated predeployment backup is empty" >&2
-    exit 1
-fi
-compose exec -T postgres createdb -U "$POSTGRES_USER" "$RESTORE_DB"
-compose exec -T postgres pg_restore \
-    -U "$POSTGRES_USER" \
-    -d "$RESTORE_DB" \
-    --exit-on-error \
-    --no-owner <"$BACKUP_FILE"
-RESTORED_SCHEMA_VERSION=$(compose exec -T postgres psql -U "$POSTGRES_USER" -d "$RESTORE_DB" -tAc \
-    "SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1" | tr -d '[:space:]')
-if [ "$RESTORED_SCHEMA_VERSION" != "$EXPECTED_VERSION" ]; then
-    echo "restored backup schema mismatch: got ${RESTORED_SCHEMA_VERSION}, expected ${EXPECTED_VERSION}" >&2
-    exit 1
-fi
-compose exec -T postgres dropdb -U "$POSTGRES_USER" "$RESTORE_DB"
-
 echo "=== Rehearsing lossless schema rollback ==="
 compose stop app >/dev/null
 NEW_STRUCTURE_WRITES=$(compose exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc \
@@ -268,6 +242,32 @@ if [ "$ROLLBACK_SCHEMA_VERSION" != "$VERIFY_ROLLBACK_SCHEMA_VERSION" ]; then
     echo "schema rollback mismatch: got ${ROLLBACK_SCHEMA_VERSION}, expected ${VERIFY_ROLLBACK_SCHEMA_VERSION}" >&2
     exit 1
 fi
+
+echo "=== Verifying schema-${VERIFY_ROLLBACK_SCHEMA_VERSION} predeployment backup and restore ==="
+BACKUP_FILE="${VERIFY_DIR}/predeploy-schema-${VERIFY_ROLLBACK_SCHEMA_VERSION}.dump"
+RESTORE_DB="${POSTGRES_DB}_restore"
+compose exec -T postgres pg_dump \
+    -U "$POSTGRES_USER" \
+    -d "$POSTGRES_DB" \
+    --format=custom \
+    --no-owner >"$BACKUP_FILE"
+if [ ! -s "$BACKUP_FILE" ]; then
+    echo "isolated predeployment backup is empty" >&2
+    exit 1
+fi
+compose exec -T postgres createdb -U "$POSTGRES_USER" "$RESTORE_DB"
+compose exec -T postgres pg_restore \
+    -U "$POSTGRES_USER" \
+    -d "$RESTORE_DB" \
+    --exit-on-error \
+    --no-owner <"$BACKUP_FILE"
+RESTORED_SCHEMA_VERSION=$(compose exec -T postgres psql -U "$POSTGRES_USER" -d "$RESTORE_DB" -tAc \
+    "SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1" | tr -d '[:space:]')
+if [ "$RESTORED_SCHEMA_VERSION" != "$VERIFY_ROLLBACK_SCHEMA_VERSION" ]; then
+    echo "restored backup schema mismatch: got ${RESTORED_SCHEMA_VERSION}, expected ${VERIFY_ROLLBACK_SCHEMA_VERSION}" >&2
+    exit 1
+fi
+compose exec -T postgres dropdb -U "$POSTGRES_USER" "$RESTORE_DB"
 
 if [ -n "$VERIFY_ROLLBACK_IMAGE" ]; then
     echo "=== Verifying exact rollback image with scheduler disabled ==="
