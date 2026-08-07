@@ -1,6 +1,9 @@
 package postgres
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestCanonicalUniverseTicker(t *testing.T) {
 	t.Parallel()
@@ -26,5 +29,19 @@ func TestCanonicalUniverseTicker(t *testing.T) {
 				t.Fatalf("canonicalUniverseTicker(%q) = %q, want %q", input, got, want)
 			}
 		})
+	}
+}
+
+func TestUniverseWatchlistQueryCanonicalizesAndDeduplicates(t *testing.T) {
+	t.Parallel()
+
+	for _, want := range []string{
+		"DISTINCT ON (upper(trim(ticker)))",
+		"upper(trim(ticker)) AS normalized_ticker",
+		"(ticker = upper(trim(ticker))) DESC",
+	} {
+		if !strings.Contains(universeWatchlistQuery, want) {
+			t.Fatalf("universeWatchlistQuery missing %q", want)
+		}
 	}
 }

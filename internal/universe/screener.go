@@ -234,10 +234,26 @@ func listAllActiveUniverseTickers(ctx context.Context, repo UniverseRepository) 
 		}
 		tickers = append(tickers, page...)
 		if len(page) < pageSize {
-			return tickers, nil
+			break
 		}
 		offset += len(page)
 	}
+
+	unique := make([]TrackedTicker, 0, len(tickers))
+	seen := make(map[string]struct{}, len(tickers))
+	for _, ticker := range tickers {
+		symbol := strings.ToUpper(strings.TrimSpace(ticker.Ticker))
+		if symbol == "" {
+			continue
+		}
+		if _, exists := seen[symbol]; exists {
+			continue
+		}
+		seen[symbol] = struct{}{}
+		ticker.Ticker = symbol
+		unique = append(unique, ticker)
+	}
+	return unique, nil
 }
 
 func currentEasternSnapshot(now, updated time.Time) bool {

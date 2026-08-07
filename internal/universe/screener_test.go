@@ -235,6 +235,34 @@ func TestListAllActiveUniverseTickersPaginatesCompleteUniverse(t *testing.T) {
 	}
 }
 
+func TestListAllActiveUniverseTickersCanonicalizesDuplicatesAcrossPages(t *testing.T) {
+	t.Parallel()
+
+	tickers := make([]TrackedTicker, 1002)
+	for i := range tickers {
+		tickers[i] = TrackedTicker{Ticker: fmt.Sprintf("T%04d", i), Active: true}
+	}
+	tickers[999].Ticker = " FDXw "
+	tickers[1000].Ticker = "FDXW"
+
+	got, err := listAllActiveUniverseTickers(context.Background(), newMockRepo(tickers))
+	if err != nil {
+		t.Fatalf("listAllActiveUniverseTickers() error = %v", err)
+	}
+	if len(got) != 1001 {
+		t.Fatalf("ticker count = %d, want 1001", len(got))
+	}
+	count := 0
+	for _, ticker := range got {
+		if ticker.Ticker == "FDXW" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("canonical FDXW count = %d, want 1", count)
+	}
+}
+
 func TestCurrentEasternSnapshotRejectsStaleAndFutureData(t *testing.T) {
 	t.Parallel()
 

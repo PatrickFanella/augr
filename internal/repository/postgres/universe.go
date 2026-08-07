@@ -113,11 +113,7 @@ func (r *UniverseRepo) List(ctx context.Context, filter universe.ListFilter, lim
 // Watchlist returns the top N active tickers ordered by watch_score descending.
 func (r *UniverseRepo) Watchlist(ctx context.Context, topN int) ([]universe.TrackedTicker, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT ticker, name, exchange, index_group, watch_score, last_scanned, active, created_at, updated_at
-		 FROM universe_tickers
-		 WHERE active = true
-		 ORDER BY watch_score DESC
-		 LIMIT $1`,
+		universeWatchlistQuery,
 		topN,
 	)
 	if err != nil {
@@ -140,6 +136,19 @@ func (r *UniverseRepo) Watchlist(ctx context.Context, topN int) ([]universe.Trac
 
 	return tickers, nil
 }
+
+const universeWatchlistQuery = `SELECT normalized_ticker, name, exchange, index_group, watch_score, last_scanned, active, created_at, updated_at
+	 FROM (
+		 SELECT DISTINCT ON (upper(trim(ticker)))
+			upper(trim(ticker)) AS normalized_ticker,
+			name, exchange, index_group, watch_score, last_scanned, active, created_at, updated_at
+		 FROM universe_tickers
+		 WHERE active = true
+		 ORDER BY upper(trim(ticker)), watch_score DESC,
+			(ticker = upper(trim(ticker))) DESC, updated_at DESC NULLS LAST, created_at DESC
+	 ) normalized
+	 ORDER BY watch_score DESC, normalized_ticker
+	 LIMIT $1`
 
 // UpdateScore updates the watch_score for a single ticker.
 func (r *UniverseRepo) UpdateScore(ctx context.Context, ticker string, score float64) error {
