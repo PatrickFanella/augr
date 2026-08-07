@@ -27,6 +27,13 @@ func NewUniverseRepo(pool *pgxpool.Pool) *UniverseRepo {
 
 // Upsert inserts or updates a single tracked ticker.
 func (r *UniverseRepo) Upsert(ctx context.Context, ticker *universe.TrackedTicker) error {
+	if ticker == nil {
+		return errors.New("postgres: upsert universe ticker: ticker is nil")
+	}
+	normalizedTicker := canonicalUniverseTicker(ticker.Ticker)
+	if normalizedTicker == "" {
+		return errors.New("postgres: upsert universe ticker: ticker is empty")
+	}
 	_, err := r.pool.Exec(ctx,
 		`INSERT INTO universe_tickers (ticker, name, exchange, index_group, watch_score, last_scanned, active)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -38,7 +45,7 @@ func (r *UniverseRepo) Upsert(ctx context.Context, ticker *universe.TrackedTicke
 		     last_scanned = EXCLUDED.last_scanned,
 		     active       = EXCLUDED.active,
 		     updated_at   = NOW()`,
-		ticker.Ticker,
+		normalizedTicker,
 		ticker.Name,
 		ticker.Exchange,
 		ticker.IndexGroup,
@@ -62,7 +69,7 @@ func (r *UniverseRepo) UpsertBatch(ctx context.Context, tickers []universe.Track
 	seen := make(map[string]struct{}, len(tickers))
 	for i := range tickers {
 		t := tickers[i]
-		t.Ticker = strings.ToUpper(strings.TrimSpace(t.Ticker))
+		t.Ticker = canonicalUniverseTicker(t.Ticker)
 		if t.Ticker == "" {
 			continue
 		}
@@ -136,6 +143,10 @@ func (r *UniverseRepo) Watchlist(ctx context.Context, topN int) ([]universe.Trac
 
 // UpdateScore updates the watch_score for a single ticker.
 func (r *UniverseRepo) UpdateScore(ctx context.Context, ticker string, score float64) error {
+	ticker = canonicalUniverseTicker(ticker)
+	if ticker == "" {
+		return errors.New("postgres: update universe score: ticker is empty")
+	}
 	tag, err := r.pool.Exec(ctx,
 		`UPDATE universe_tickers
 		 SET watch_score = $1, last_scanned = NOW(), updated_at = NOW()
@@ -149,6 +160,10 @@ func (r *UniverseRepo) UpdateScore(ctx context.Context, ticker string, score flo
 		return fmt.Errorf("postgres: update universe score %s: %w", ticker, ErrNotFound)
 	}
 	return nil
+}
+
+func canonicalUniverseTicker(ticker string) string {
+	return strings.ToUpper(strings.TrimSpace(ticker))
 }
 
 // Count returns the total number of tickers in the universe.
