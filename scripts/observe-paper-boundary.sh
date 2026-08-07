@@ -3,13 +3,18 @@ set -eu
 
 label="${1:-paper-boundary}"
 case "$label" in
-  kalshi-boundary|alpaca-sunday-open) ;;
-  *) echo "unsupported observation label: $label" >&2; exit 2 ;;
+  ""|*[!A-Za-z0-9._-]*) echo "invalid observation label: $label" >&2; exit 2 ;;
 esac
 
-repo="/home/onnwee/Projects/patrickfanella/augr"
-report="$repo/docs/reports/2026-07-26-${label}-observation.txt"
-tmp="${report}.tmp"
+repo=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+compose_file="${AUGR_COMPOSE_FILE:-$repo/docker-compose.nuc.yml}"
+base_url="${AUGR_BASE_URL:-http://10.0.0.56:3030}"
+observed_stamp=$(date -u '+%Y%m%dT%H%M%SZ')
+report="${OBSERVATION_REPORT:-$repo/docs/reports/${observed_stamp}-${label}-observation.txt}"
+report_dir=$(dirname -- "$report")
+mkdir -p "$report_dir"
+tmp=$(mktemp "${report}.tmp.XXXXXX")
+trap 'rm -f "$tmp"' EXIT HUP INT TERM
 
 cd "$repo"
 {
@@ -18,12 +23,12 @@ cd "$repo"
   TZ=America/New_York date '+Observed at: %Y-%m-%d %H:%M:%S %Z'
   echo
   echo "Service health"
-  curl -fsS http://10.0.0.56:3030/health
+  curl -fsS "$base_url/health"
   echo
-  docker compose -f docker-compose.nuc.yml ps
+  docker compose -f "$compose_file" ps
   echo
   echo "Operational database state"
-  docker compose -f docker-compose.nuc.yml exec -T postgres sh -lc \
+  docker compose -f "$compose_file" exec -T postgres sh -lc \
     'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -P pager=off -c "
       SELECT s.market_type::text, r.status, count(*)
       FROM pipeline_runs r
@@ -44,9 +49,24 @@ cd "$repo"
       WHERE started_at > NOW() - INTERVAL '"'"'30 minutes'"'"'
       ORDER BY started_at DESC;"'
   echo
-  echo "Recent warnings and errors"
-  docker compose -f docker-compose.nuc.yml logs --since=30m app 2>&1 |
-    grep -E '"level":"(WARN|ERROR)"|strategy execution failed|pipeline execution failed|job failed' || true
+  echo "Recent warning/error metadata (raw errors and provider bodies omitted)"
+  docker compose -f "$compose_file" logs --no-log-prefix --since=30m app 2>&1 |
+    jq -Rrc '
+      fromjson?
+      | select(. != null)
+      | select(((.level // "") | ascii_upcase) == "WARN" or ((.level // "") | ascii_upcase) == "ERROR")
+      | {
+          time: (.time // .timestamp // null),
+          level: (.level // null),
+          component: (.component // null),
+          job: (.job_name // .job // null),
+          status: (.status // null),
+          ticker: (.ticker // null),
+          run_id: (.run_id // null),
+          strategy_id: (.strategy_id // null)
+        }' || true
 } >"$tmp" 2>&1
 
 mv "$tmp" "$report"
+trap - EXIT HUP INT TERM
+printf '%s\n' "$report"

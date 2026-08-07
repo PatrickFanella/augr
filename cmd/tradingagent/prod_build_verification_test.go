@@ -160,6 +160,39 @@ func TestReleaseTreeVerifierRequiresExactCleanInput(t *testing.T) {
 	}
 }
 
+func TestPaperBoundaryObserverOmitsRawErrorsAndUsesPortableOutputs(t *testing.T) {
+	repoRoot := filepath.Join(filepath.Dir(productionBuildVerificationScriptPath(t)), "..")
+	contents, err := os.ReadFile(filepath.Join(repoRoot, "scripts", "observe-paper-boundary.sh"))
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+
+	script := string(contents)
+	for _, want := range []string{
+		`repo=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)`,
+		`OBSERVATION_REPORT`,
+		`mktemp`,
+		`--no-log-prefix`,
+		`fromjson?`,
+		`raw errors and provider bodies omitted`,
+	} {
+		if !strings.Contains(script, want) {
+			t.Fatalf("observe-paper-boundary.sh missing required content %q", want)
+		}
+	}
+	for _, forbidden := range []string{
+		`repo="/home/`,
+		`grep -E '"level":"(WARN|ERROR)"`,
+		`error: (.error`,
+		`msg: (.msg`,
+		`.message`,
+	} {
+		if strings.Contains(script, forbidden) {
+			t.Fatalf("observe-paper-boundary.sh contains unsafe content %q", forbidden)
+		}
+	}
+}
+
 func TestNUCRollbackOverrideDisablesExecution(t *testing.T) {
 	repoRoot := filepath.Join(filepath.Dir(productionBuildVerificationScriptPath(t)), "..")
 	contents, err := os.ReadFile(filepath.Join(repoRoot, "deploy", "docker-compose.nuc.rollback.yml"))
