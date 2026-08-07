@@ -125,6 +125,37 @@ func TestCreateOrReuseDiscoveryStrategyRepairsReusedActiveStrategyFailClosed(t *
 	}
 }
 
+func TestCreateOrReuseDiscoveryStrategyLeavesLegacyStrategyPausedWhenRepairFails(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	strategies := newInMemoryStrategyRepo()
+	existing := discoveryTestStrategy()
+	if err := strategies.Create(ctx, &existing); err != nil {
+		t.Fatal(err)
+	}
+	strategies.createStatuses = nil
+	configs := newDiscoveryBacktestConfigRepo()
+	configs.createErr = errors.New("config write failed")
+
+	reused, wasCreated, err := createOrReuseDiscoveryStrategy(ctx, discoveryTestStrategy(), discoveryTestBars(), 100_000, strategies, configs)
+	if err == nil || wasCreated {
+		t.Fatalf("error = %v, wasCreated = %v", err, wasCreated)
+	}
+	if reused.ID != existing.ID || reused.Status != domain.StrategyStatusPaused {
+		t.Fatalf("reused = %+v", reused)
+	}
+	persisted, getErr := strategies.Get(ctx, existing.ID)
+	if getErr != nil {
+		t.Fatal(getErr)
+	}
+	if persisted.Status != domain.StrategyStatusPaused {
+		t.Fatalf("persisted status = %q, want paused", persisted.Status)
+	}
+	if len(strategies.updateStatuses) != 1 || strategies.updateStatuses[0] != domain.StrategyStatusPaused {
+		t.Fatalf("update statuses = %v, want [paused]", strategies.updateStatuses)
+	}
+}
+
 func discoveryTestStrategy() domain.Strategy {
 	return domain.Strategy{
 		ID:           uuid.New(),
