@@ -75,6 +75,28 @@ func TestProductionBuildVerificationScriptContainsExpectedSteps(t *testing.T) {
 	}
 }
 
+func TestReleaseGateIncludesProductionVerificationAndPinnedPromtool(t *testing.T) {
+	contents, err := os.ReadFile(filepath.Join(filepath.Dir(productionBuildVerificationScriptPath(t)), "release-gate.sh"))
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+
+	script := string(contents)
+	for _, want := range []string{
+		`./scripts/verify-prod-build.sh`,
+		`prom/prometheus@sha256:`,
+		`"$promtool_image" check rules`,
+		`./scripts/verify-secret-history.sh`,
+	} {
+		if !strings.Contains(script, want) {
+			t.Fatalf("release-gate.sh missing required content %q", want)
+		}
+	}
+	if strings.Contains(script, `prom/prometheus:v3.3.0`) {
+		t.Fatal("release-gate.sh uses a mutable Prometheus tag")
+	}
+}
+
 func productionBuildVerificationScriptPath(t *testing.T) string {
 	t.Helper()
 

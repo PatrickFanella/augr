@@ -163,7 +163,7 @@ To verify the production image and `docker-compose.prod.yml` end-to-end, run:
 ./scripts/verify-prod-build.sh
 ```
 
-The script builds the production image, starts `docker-compose.prod.yml`, waits for PostgreSQL, applies migrations, asserts the expected schema version, verifies `GET /healthz` returns `{"status":"all-ok"}`, and checks an authenticated `GET /api/v1/strategies` request against the running stack.
+The script builds the production image, starts an isolated `docker-compose.prod.yml` stack on loopback-only dynamic ports and explicit short-lived subnets, applies every migration, asserts the expected schema version, verifies `GET /healthz` reports healthy database and Redis dependencies, checks an authenticated read-only `GET /api/v1/strategies`, and removes all temporary containers, networks, and volumes. The canonical `scripts/release-gate.sh` invokes this verifier automatically.
 
 ### Build, Test & Lint
 
