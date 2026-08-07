@@ -85,8 +85,26 @@ Position sizing: use "max_risk" with max_risk_usd between 500-2000 for paper tra
 
 Respond with ONLY the JSON object, no markdown fences.`
 
+// OptionsGenerationEvidence is compact, non-content provenance for one
+// options strategy generation. Prompts and responses are represented only by
+// hashes; the parsed configuration is safe to persist with the run result.
+type OptionsGenerationEvidence struct {
+	Ticker             string                                `json:"ticker"`
+	SystemPromptSHA256 string                                `json:"system_prompt_sha256"`
+	UserPromptSHA256   string                                `json:"user_prompt_sha256"`
+	Attempts           []discovery.GenerationAttemptEvidence `json:"attempts"`
+	Config             *rules.OptionsRulesConfig             `json:"config,omitempty"`
+}
+
 // GenerateOptionsStrategy asks the LLM to create an OptionsRulesConfig for a scored candidate.
 func GenerateOptionsStrategy(ctx context.Context, cfg discovery.GeneratorConfig, candidate OptionsScoredCandidate, logger *slog.Logger) (*rules.OptionsRulesConfig, error) {
+	generated, _, err := GenerateOptionsStrategyWithEvidence(ctx, cfg, candidate, logger)
+	return generated, err
+}
+
+// GenerateOptionsStrategyWithEvidence generates an options strategy and
+// returns durable model/cache/attempt provenance without raw model content.
+func GenerateOptionsStrategyWithEvidence(ctx context.Context, cfg discovery.GeneratorConfig, candidate OptionsScoredCandidate, logger *slog.Logger) (*rules.OptionsRulesConfig, *OptionsGenerationEvidence, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -96,6 +114,11 @@ func GenerateOptionsStrategy(ctx context.Context, cfg discovery.GeneratorConfig,
 	}
 
 	userPrompt := buildOptionsUserPrompt(candidate)
+	evidence := &OptionsGenerationEvidence{
+		Ticker:             candidate.Ticker,
+		SystemPromptSHA256: fmt.Sprintf("%x", sha256.Sum256([]byte(optionsGeneratorSystemPrompt))),
+		UserPromptSHA256:   fmt.Sprintf("%x", sha256.Sum256([]byte(userPrompt))),
+	}
 
 	messages := []llm.Message{
 		{Role: "system", Content: optionsGeneratorSystemPrompt},
@@ -104,19 +127,38 @@ func GenerateOptionsStrategy(ctx context.Context, cfg discovery.GeneratorConfig,
 
 	var lastErr error
 	for attempt := 0; attempt <= maxRetries; attempt++ {
-		resp, err := cfg.Provider.Complete(ctx, llm.CompletionRequest{
+		cacheStats := llm.NewCacheStatsCollector()
+		resp, err := cfg.Provider.Complete(llm.WithCacheStatsCollector(ctx, cacheStats), llm.CompletionRequest{
 			Model:          cfg.Model,
 			Messages:       messages,
 			ResponseFormat: &llm.ResponseFormat{Type: llm.ResponseFormatJSONObject},
 		})
 		if err != nil {
+			evidence.Attempts = append(evidence.Attempts, discovery.GenerationAttemptEvidence{
+				Attempt: attempt + 1, RequestedModel: cfg.Model, Outcome: "provider_error",
+			})
 			if cfg.Metrics != nil {
 				cfg.Metrics.RecordGeneratorOutcome("options", "provider_error")
 			}
-			return nil, fmt.Errorf("options/generator: LLM call failed: %w", err)
+			return nil, evidence, fmt.Errorf("options/generator: LLM call failed: %w", err)
 		}
 
+		stats := cacheStats.Snapshot()
 		responseHash := fmt.Sprintf("%x", sha256.Sum256([]byte(resp.Content)))
+		attemptEvidence := discovery.GenerationAttemptEvidence{
+			Attempt: attempt + 1, RequestedModel: cfg.Model, ResponseModel: resp.Model,
+			ContentSHA256: responseHash, CacheHits: stats.Hits, CacheMisses: stats.Misses,
+			PromptTokens: resp.Usage.PromptTokens, CompletionTokens: resp.Usage.CompletionTokens,
+			LatencyMS: resp.LatencyMS, CostUSD: resp.CostUSD, UsedFallback: resp.UsedFallback, TimedOut: resp.TimedOut,
+		}
+		if stats.Hits > 0 {
+			attemptEvidence.Outcome = "cache_rejected"
+			evidence.Attempts = append(evidence.Attempts, attemptEvidence)
+			if cfg.Metrics != nil {
+				cfg.Metrics.RecordGeneratorOutcome("options", "cache_rejected")
+			}
+			return nil, evidence, fmt.Errorf("options/generator: cached model response rejected")
+		}
 		logger.Debug("options/generator: LLM response received",
 			slog.String("ticker", candidate.Ticker),
 			slog.Int("attempt", attempt+1),
@@ -147,16 +189,21 @@ func GenerateOptionsStrategy(ctx context.Context, cfg discovery.GeneratorConfig,
 			if cfg.Metrics != nil {
 				cfg.Metrics.RecordGeneratorOutcome("options", outcome)
 			}
+			attemptEvidence.Outcome = outcome
+			evidence.Attempts = append(evidence.Attempts, attemptEvidence)
+			evidence.Config = parsed
 			logger.Info("options/generator: strategy generated",
 				slog.String("ticker", candidate.Ticker),
 				slog.String("type", string(parsed.StrategyType)),
 				slog.Int("attempt", attempt+1),
 			)
-			return parsed, nil
+			return parsed, evidence, nil
 		}
 
 		lastErr = parseErr
+		attemptEvidence.Outcome = "validation_exhausted"
 		if attempt < maxRetries {
+			attemptEvidence.Outcome = "validation_retry"
 			logger.Warn("options/generator: parse/validation failed, retrying",
 				slog.String("ticker", candidate.Ticker),
 				slog.Int("attempt", attempt+1),
@@ -167,12 +214,13 @@ func GenerateOptionsStrategy(ctx context.Context, cfg discovery.GeneratorConfig,
 				parseErr.Error(),
 			)})
 		}
+		evidence.Attempts = append(evidence.Attempts, attemptEvidence)
 	}
 
 	if cfg.Metrics != nil {
 		cfg.Metrics.RecordGeneratorOutcome("options", "validation_exhausted")
 	}
-	return nil, fmt.Errorf("options/generator: failed after %d retries: %w", maxRetries+1, lastErr)
+	return nil, evidence, fmt.Errorf("options/generator: failed after %d retries: %w", maxRetries+1, lastErr)
 }
 
 func buildOptionsUserPrompt(c OptionsScoredCandidate) string {

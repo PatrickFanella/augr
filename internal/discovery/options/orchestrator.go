@@ -43,28 +43,29 @@ type OptionsDiscoveryDeps struct {
 
 // OptionsDeployedStrategy is a winner that was deployed.
 type OptionsDeployedStrategy struct {
-	StrategyID  uuid.UUID
-	Ticker      string
-	Config      rules.OptionsRulesConfig
-	InSample    backtest.Metrics
-	OutOfSample backtest.Metrics
-	Score       float64
+	StrategyID  uuid.UUID                `json:"strategy_id"`
+	Ticker      string                   `json:"ticker"`
+	Config      rules.OptionsRulesConfig `json:"config"`
+	InSample    backtest.Metrics         `json:"in_sample"`
+	OutOfSample backtest.Metrics         `json:"out_of_sample"`
+	Score       float64                  `json:"score"`
 }
 
 // OptionsDiscoveryResult summarises the pipeline run.
 type OptionsDiscoveryResult struct {
-	Candidates int
-	Scored     int
-	Generated  int
-	Swept      int
-	Validated  int
-	Deployed   int
-	Proposed   int
-	Created    int
-	Reused     int
-	Winners    []OptionsDeployedStrategy
-	Duration   time.Duration
-	Errors     []string
+	Candidates         int                         `json:"candidates"`
+	Scored             int                         `json:"scored"`
+	Generated          int                         `json:"generated"`
+	Swept              int                         `json:"swept"`
+	Validated          int                         `json:"validated"`
+	Deployed           int                         `json:"deployed"`
+	Proposed           int                         `json:"proposed"`
+	Created            int                         `json:"created"`
+	Reused             int                         `json:"reused"`
+	Winners            []OptionsDeployedStrategy   `json:"winners"`
+	GenerationEvidence []OptionsGenerationEvidence `json:"generation_evidence"`
+	Duration           time.Duration               `json:"duration_ns"`
+	Errors             []string                    `json:"errors"`
 }
 
 // RunOptionsDiscovery executes the full options discovery pipeline:
@@ -132,7 +133,10 @@ func RunOptionsDiscovery(ctx context.Context, cfg OptionsDiscoveryConfig, deps O
 		}
 
 		// Generate.
-		optConfig, genErr := GenerateOptionsStrategy(ctx, cfg.Generator, candidate, logger)
+		optConfig, generationEvidence, genErr := GenerateOptionsStrategyWithEvidence(ctx, cfg.Generator, candidate, logger)
+		if generationEvidence != nil {
+			result.GenerationEvidence = append(result.GenerationEvidence, *generationEvidence)
+		}
 		if genErr != nil {
 			result.Errors = append(result.Errors, fmt.Sprintf("generate %s: %v", candidate.Ticker, genErr))
 			continue

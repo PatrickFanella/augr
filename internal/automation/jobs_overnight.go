@@ -461,6 +461,9 @@ func (o *JobOrchestrator) optionsDiscovery(ctx context.Context) error {
 	if o.deps.DataService == nil || o.deps.StrategyRepo == nil {
 		return fmt.Errorf("options_discovery: data service and strategy repository are required")
 	}
+	if o.deps.DiscoveryRunRepo == nil {
+		return fmt.Errorf("options_discovery: discovery run repository is required")
+	}
 
 	// Get tradeable watchlist candidates.
 	watchlist, err := tradeableWatchlistTickers(ctx, o.logger, o.deps.Universe, o.deps.DataService, 500, 100)
@@ -492,8 +495,12 @@ func (o *JobOrchestrator) optionsDiscovery(ctx context.Context) error {
 		Logger:          o.logger,
 	}
 
+	startedAt := time.Now().UTC()
 	result, err := optdiscovery.RunOptionsDiscovery(ctx, cfg, deps)
 	if err != nil {
+		return fmt.Errorf("options_discovery: %w", err)
+	}
+	if err := optdiscovery.PersistRun(ctx, o.deps.DiscoveryRunRepo, cfg, result, startedAt); err != nil {
 		return fmt.Errorf("options_discovery: %w", err)
 	}
 

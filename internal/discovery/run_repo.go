@@ -41,6 +41,7 @@ func PersistRun(ctx context.Context, repo RunRepository, cfg DiscoveryConfig, re
 	}
 	configJSON, err := json.Marshal(struct {
 		Version   int            `json:"version"`
+		Kind      string         `json:"kind"`
 		Screener  ScreenerConfig `json:"screener"`
 		Generator struct {
 			Model      string `json:"model,omitempty"`
@@ -57,6 +58,7 @@ func PersistRun(ctx context.Context, repo RunRepository, cfg DiscoveryConfig, re
 		ScheduleCron string           `json:"schedule_cron"`
 	}{
 		Version:  1,
+		Kind:     "stock",
 		Screener: cfg.Screener,
 		Generator: struct {
 			Model      string `json:"model,omitempty"`

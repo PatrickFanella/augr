@@ -2,12 +2,67 @@ package options
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/discovery"
 	"github.com/PatrickFanella/get-rich-quick/internal/llm"
 )
+
+func TestGenerateOptionsStrategyWithEvidenceRecordsHashesAndAttemptsWithoutContent(t *testing.T) {
+	t.Parallel()
+
+	provider := &stubOptionsCompletionProvider{responses: []*llm.CompletionResponse{{
+		Content:      "SECRET_REASONING\n" + validOptionsStrategyJSON,
+		Model:        "openai/luna-returned",
+		Usage:        llm.CompletionUsage{PromptTokens: 17, CompletionTokens: 29},
+		LatencyMS:    412,
+		CostUSD:      0.02,
+		UsedFallback: true,
+	}}}
+	generated, evidence, err := GenerateOptionsStrategyWithEvidence(context.Background(), discovery.GeneratorConfig{
+		Provider: provider, Model: "openai/luna-requested",
+	}, OptionsScoredCandidate{OptionsScreenResult: OptionsScreenResult{Ticker: "NVDA"}}, nil)
+	if err != nil || generated == nil {
+		t.Fatalf("GenerateOptionsStrategyWithEvidence() = (%#v, %v), want success", generated, err)
+	}
+	if evidence == nil || evidence.Ticker != "NVDA" || evidence.SystemPromptSHA256 == "" || evidence.UserPromptSHA256 == "" || len(evidence.Attempts) != 1 || evidence.Config == nil {
+		t.Fatalf("generation evidence = %#v", evidence)
+	}
+	attempt := evidence.Attempts[0]
+	if attempt.Outcome != "success_first_attempt" || attempt.RequestedModel != "openai/luna-requested" || attempt.ResponseModel != "openai/luna-returned" || attempt.PromptTokens != 17 || attempt.CompletionTokens != 29 || attempt.LatencyMS != 412 || !attempt.UsedFallback || attempt.ContentSHA256 == "" {
+		t.Fatalf("attempt evidence = %#v", attempt)
+	}
+	encoded, marshalErr := json.Marshal(evidence)
+	if marshalErr != nil {
+		t.Fatal(marshalErr)
+	}
+	if strings.Contains(string(encoded), "SECRET_REASONING") {
+		t.Fatalf("raw model content leaked into evidence: %s", encoded)
+	}
+}
+
+func TestGenerateOptionsStrategyRejectsCachedResponse(t *testing.T) {
+	t.Parallel()
+
+	underlying := &stubOptionsCompletionProvider{responses: []*llm.CompletionResponse{{Content: validOptionsStrategyJSON}}}
+	cached := llm.NewCachedProvider(underlying, llm.NewMemoryResponseCache())
+	candidate := OptionsScoredCandidate{OptionsScreenResult: OptionsScreenResult{Ticker: "CACHE"}}
+	if _, _, err := GenerateOptionsStrategyWithEvidence(context.Background(), discovery.GeneratorConfig{Provider: cached}, candidate, nil); err != nil {
+		t.Fatalf("first GenerateOptionsStrategyWithEvidence() error = %v", err)
+	}
+	generated, evidence, err := GenerateOptionsStrategyWithEvidence(context.Background(), discovery.GeneratorConfig{Provider: cached}, candidate, nil)
+	if err == nil || !strings.Contains(err.Error(), "cached model response rejected") {
+		t.Fatalf("cached GenerateOptionsStrategyWithEvidence() error = %v", err)
+	}
+	if generated != nil || evidence == nil || len(evidence.Attempts) != 1 || evidence.Attempts[0].Outcome != "cache_rejected" || evidence.Attempts[0].CacheHits != 1 {
+		t.Fatalf("cached result/evidence = (%#v, %#v)", generated, evidence)
+	}
+	if underlying.calls != 1 {
+		t.Fatalf("underlying provider calls = %d, want 1", underlying.calls)
+	}
+}
 
 func TestGenerateOptionsStrategy_RetriesAfterEmptyResponse(t *testing.T) {
 	t.Parallel()
