@@ -395,6 +395,7 @@ func TestAutomationRunObserverIsProspectiveBoundedAndSanitized(t *testing.T) {
 		`raw errors, result values, message text, query strings, and provider bodies omitted`,
 		`--no-log-prefix`,
 		`fromjson?`,
+		`{name: .Name, service: .Service, image: .Image, state: .State, health: .Health, status: .Status}`,
 	} {
 		if !strings.Contains(script, want) {
 			t.Fatalf("observe-automation-run.sh missing required content %q", want)
@@ -407,6 +408,8 @@ func TestAutomationRunObserverIsProspectiveBoundedAndSanitized(t *testing.T) {
 		`error: (.error`,
 		`msg: (.msg`,
 		`.message`,
+		`docker compose -f "$compose_file" ps --format json
+  snapshot before`,
 	} {
 		if strings.Contains(script, forbidden) {
 			t.Fatalf("observe-automation-run.sh contains unsafe content %q", forbidden)

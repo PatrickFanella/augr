@@ -90,7 +90,8 @@ snapshot() {
   echo "precheck=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
   curl -fsS "$base_url/healthz"
   echo
-  docker compose -f "$compose_file" ps --format json
+  docker compose -f "$compose_file" ps --format json |
+    jq -c '{name: .Name, service: .Service, image: .Image, state: .State, health: .Health, status: .Status}'
   snapshot before
 
   deadline=$((target_epoch + timeout_seconds))
