@@ -75,6 +75,25 @@ that a scheduled automation was prospectively observed through its inputs,
 execution, persistence, and downstream effects. Do not copy unsanitized
 production logs into a tracked evidence file.
 
+For a bounded prospective observation that starts before a known job boundary,
+run:
+
+```sh
+OBSERVATION_REPORT=/absolute/path/to/evidence.txt \
+  ./scripts/observe-automation-run.sh <job-name> <not-before-ISO-8601> <safe-label>
+```
+
+The prospective observer waits in 30-second increments, captures health and
+database state before the boundary, pins the first admitted durable run ID,
+follows that same row to terminal state, and records post-state plus only
+allowlisted warning/error metadata. It defaults to a two-hour terminal timeout;
+set `OBSERVATION_TIMEOUT_SECONDS` explicitly for a known longer job. It refuses
+a not-before timestamp that is not still in the future, preventing a
+retrospective snapshot from being mislabeled prospective. Raw error text and
+result values are never retained. This generic evidence still does not prove
+job-specific provider contact, prompt/model routing, or domain writes; pair it
+with narrowly scoped, sanitized job-specific inspection.
+
 Validate Prometheus rules with `promtool check rules
 monitoring/prometheus/alerts.yml` (or the matching Prometheus container image).
 Do not set `RELEASE_DRILLS_VERIFIED=true` until the evidence table below is

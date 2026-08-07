@@ -373,6 +373,45 @@ func TestPaperBoundaryObserverOmitsRawErrorsAndUsesPortableOutputs(t *testing.T)
 	}
 }
 
+func TestAutomationRunObserverIsProspectiveBoundedAndSanitized(t *testing.T) {
+	repoRoot := filepath.Join(filepath.Dir(productionBuildVerificationScriptPath(t)), "..")
+	contents, err := os.ReadFile(filepath.Join(repoRoot, "scripts", "observe-automation-run.sh"))
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+
+	script := string(contents)
+	for _, want := range []string{
+		`not_before="${2:-}"`,
+		`not-before timestamp must be in the future`,
+		`OBSERVATION_TIMEOUT_SECONDS`,
+		`while [ "$(date -u +%s)" -lt "$target_epoch" ]`,
+		`started_at >= TIMESTAMPTZ '$since_sql'`,
+		`run identity changed`,
+		`(error IS NOT NULL)::text`,
+		`jsonb_typeof(result)`,
+		`raw errors, result values, message text, query strings, and provider bodies omitted`,
+		`--no-log-prefix`,
+		`fromjson?`,
+	} {
+		if !strings.Contains(script, want) {
+			t.Fatalf("observe-automation-run.sh missing required content %q", want)
+		}
+	}
+	for _, forbidden := range []string{
+		`repo="/home/`,
+		`result::text`,
+		`coalesce(error`,
+		`error: (.error`,
+		`msg: (.msg`,
+		`.message`,
+	} {
+		if strings.Contains(script, forbidden) {
+			t.Fatalf("observe-automation-run.sh contains unsafe content %q", forbidden)
+		}
+	}
+}
+
 func TestNUCRollbackOverrideDisablesExecution(t *testing.T) {
 	repoRoot := filepath.Join(filepath.Dir(productionBuildVerificationScriptPath(t)), "..")
 	contents, err := os.ReadFile(filepath.Join(repoRoot, "deploy", "docker-compose.nuc.rollback.yml"))
