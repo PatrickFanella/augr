@@ -97,6 +97,7 @@ func TestReleaseGateIncludesProductionVerificationAndPinnedPromtool(t *testing.T
 	script := string(contents)
 	for _, want := range []string{
 		`docker compose -f docker-compose.nuc.yml config --quiet`,
+		`docker compose -f docker-compose.nuc.yml -f deploy/docker-compose.nuc.rollback.yml config --quiet`,
 		`./scripts/verify-prod-build.sh`,
 		`prom/prometheus@sha256:`,
 		`"$promtool_image" check rules`,
@@ -108,6 +109,28 @@ func TestReleaseGateIncludesProductionVerificationAndPinnedPromtool(t *testing.T
 	}
 	if strings.Contains(script, `prom/prometheus:v3.3.0`) {
 		t.Fatal("release-gate.sh uses a mutable Prometheus tag")
+	}
+}
+
+func TestNUCRollbackOverrideDisablesExecution(t *testing.T) {
+	repoRoot := filepath.Join(filepath.Dir(productionBuildVerificationScriptPath(t)), "..")
+	contents, err := os.ReadFile(filepath.Join(repoRoot, "deploy", "docker-compose.nuc.rollback.yml"))
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+
+	override := string(contents)
+	for _, want := range []string{
+		`ENABLE_SCHEDULER: "false"`,
+		`ENABLE_LIVE_TRADING: "false"`,
+		`ALPACA_PAPER_MODE: "true"`,
+		`BINANCE_PAPER_MODE: "true"`,
+		`KALSHI_DRY_RUN: "true"`,
+		`ENABLE_POLYMARKET_AUTOMATION: "false"`,
+	} {
+		if !strings.Contains(override, want) {
+			t.Fatalf("rollback override missing fail-closed setting %q", want)
+		}
 	}
 }
 

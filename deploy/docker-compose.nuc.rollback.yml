@@ -1,0 +1,12 @@
+services:
+  app:
+    # The pre-release binary does not restore auto-disabled jobs after a
+    # process restart. A rollback must therefore come up fail closed and stay
+    # out of automation service until an operator resolves the release issue.
+    environment:
+      ENABLE_SCHEDULER: "false"
+      ENABLE_LIVE_TRADING: "false"
+      ALPACA_PAPER_MODE: "true"
+      BINANCE_PAPER_MODE: "true"
+      KALSHI_DRY_RUN: "true"
+      ENABLE_POLYMARKET_AUTOMATION: "false"

@@ -60,6 +60,13 @@ Use this runbook for config changes, routine deploys, or process-level recovery 
 1. Keep the instance out of rotation and stop application writes. If the restart introduced trading risk, leave the kill switch active.
 2. Compare the previous image's required schema version with the live database. Do not start an older image against a newer schema: this runtime rejects that state even when the migrations are additive.
 3. Before running down migrations, prove that reverting them is lossless. Check every table, column, or other structure introduced by the release for post-migration writes. If any new structure contains data, stop; use the verified predeployment backup and the database recovery procedure instead of silently dropping it.
-4. When the lossless check passes, run the exact required down migrations, verify a clean schema at the previous image's required version, and only then restore the exact previous image.
+4. When the lossless check passes, run the exact required down migrations and verify a clean schema at the previous image's required version. For the NUC stack, restore the exact previous images with `deploy/docker-compose.nuc.rollback.yml` layered after the primary manifest. The override deliberately keeps the old scheduler and every live-market mode off because an older binary may not restore newer durable job controls or auto-disable behavior.
+
+   ```bash
+   docker compose \
+     -f docker-compose.nuc.yml \
+     -f deploy/docker-compose.nuc.rollback.yml \
+     up -d --no-build --no-deps app web
+   ```
 5. If backup restoration is required, follow [Database backup and restore](database-backup-restore.md) with writes halted and explicit operator control.
-6. Verify application health, authenticated read-only access, schema compatibility, risk controls, and financial invariants before clearing the kill switch or returning traffic.
+6. Verify application health, authenticated read-only access, schema compatibility, risk controls, and financial invariants. Keep the rollback scheduler disabled; do not clear the kill switch or return automation traffic until the release fault has been resolved and a separately approved recovery deployment passes its own gate.
