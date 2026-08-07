@@ -108,7 +108,8 @@ func (w *ReportWorker) RunPaperValidationReport(ctx context.Context) error {
 		}
 
 		outcome, err := w.generateOneReport(ctx, ps.ID, ps.Name, timeBucket, now)
-		if err != nil {
+		switch {
+		case err != nil:
 			failed++
 			if w.metrics != nil {
 				w.metrics.RecordReportWorkerError(ps.ID.String())
@@ -117,9 +118,9 @@ func (w *ReportWorker) RunPaperValidationReport(ctx context.Context) error {
 				slog.String("strategy", ps.Name),
 				slog.Any("error", err),
 			)
-		} else if outcome == reportGenerationPending {
+		case outcome == reportGenerationPending:
 			pending++
-		} else {
+		default:
 			succeeded++
 			if w.metrics != nil {
 				w.metrics.RecordReportWorkerSuccess(ps.ID.String())
