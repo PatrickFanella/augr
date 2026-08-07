@@ -1,0 +1,9 @@
+services:
+  migrate:
+    command:
+      - -path
+      - /migrations
+      - -database
+      - postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@augr-postgres:5432/${POSTGRES_DB:-tradingagent}?sslmode=disable
+      - down
+      - ${MIGRATION_DOWN_STEPS:?MIGRATION_DOWN_STEPS is required}

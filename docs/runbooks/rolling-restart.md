@@ -140,8 +140,56 @@ reconciliation runbooks.
 
 1. Keep the instance out of rotation and stop application writes. If the restart introduced trading risk, leave the kill switch active.
 2. Compare the previous image's required schema version with the live database. Do not start an older image against a newer schema: this runtime rejects that state even when the migrations are additive.
-3. Before running down migrations, prove that reverting them is lossless. Check every table, column, or other structure introduced by the release for post-migration writes. If any new structure contains data, stop; use the verified predeployment backup and the database recovery procedure instead of silently dropping it.
-4. When the lossless check passes, run the exact required down migrations and verify a clean schema at the previous image's required version. For the NUC stack, restore the exact recorded previous images with `deploy/docker-compose.nuc.rollback.yml` layered after the primary manifest. The override deliberately keeps the old scheduler and every live-market mode off because an older binary may not restore newer durable job controls or auto-disable behavior. It does not select image names: supply both recorded references explicitly and never accept Compose's default/local tags.
+3. Before running down migrations, prove that reverting them is lossless. For
+   this schema-62 release, stop app first, require exact clean schema 62, and
+   require both structures removed by migrations 62/61 to contain zero writes:
+
+   ```bash
+   test -z "$(docker compose -f docker-compose.nuc.yml ps --status running -q app)" || {
+     echo "refusing schema rollback while app is running" >&2; exit 1;
+   }
+   current_schema=$(docker compose -f docker-compose.nuc.yml exec -T postgres \
+     sh -ec 'psql -X -qAt -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+       -c "SELECT concat_ws(chr(124), version::text, dirty::text) FROM schema_migrations"' \
+     | tr -d '[:space:]')
+   test "$current_schema" = "62|f" || {
+     echo "refusing rollback from unexpected schema $current_schema" >&2; exit 1;
+   }
+   new_structure_writes=$(docker compose -f docker-compose.nuc.yml exec -T postgres \
+     sh -ec 'psql -X -qAt -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+       -c "SELECT concat_ws(chr(124), (SELECT count(*) FROM automation_job_controls)::text, (SELECT count(*) FROM trades WHERE exit_reason IS NOT NULL)::text)"' \
+     | tr -d '[:space:]')
+   test "$new_structure_writes" = "0|0" || {
+     echo "new schema structures contain writes; restore the verified backup instead of running down migrations" >&2; exit 1;
+   }
+   ```
+
+   If either count is nonzero, stop and use the verified predeployment backup;
+   never drop the table/column or its data merely to make rollback start.
+4. Only after that guard passes, run exactly two down migrations through the
+   tracked override and require clean schema 60:
+
+   ```bash
+   MIGRATION_DOWN_STEPS=2 \
+     docker compose \
+       -f docker-compose.nuc.yml \
+       -f deploy/docker-compose.nuc.migrate-down.yml \
+       --profile tools run --rm migrate
+   rollback_schema=$(docker compose -f docker-compose.nuc.yml exec -T postgres \
+     sh -ec 'psql -X -qAt -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+       -c "SELECT concat_ws(chr(124), version::text, dirty::text) FROM schema_migrations"' \
+     | tr -d '[:space:]')
+   test "$rollback_schema" = "60|f" || {
+     echo "schema rollback mismatch: $rollback_schema" >&2; exit 1;
+   }
+   ```
+
+5. Restore the exact recorded previous images with
+   `deploy/docker-compose.nuc.rollback.yml` layered after the primary manifest.
+   The override deliberately keeps the old scheduler and every live-market mode
+   off because an older binary may not restore newer durable job controls or
+   auto-disable behavior. It does not select image names: supply both recorded
+   references explicitly and never accept Compose's default/local tags.
 
    ```bash
    AUGR_APP_IMAGE="$previous_app_image" \
@@ -151,8 +199,8 @@ reconciliation runbooks.
        -f deploy/docker-compose.nuc.rollback.yml \
        up -d --no-build --no-deps app web
    ```
-5. Inspect both running containers and require their image references to equal
+6. Inspect both running containers and require their image references to equal
    `previous_app_image` and `previous_web_image`; a merely healthy container on
    a different tag is not a successful rollback.
-6. If backup restoration is required, follow [Database backup and restore](database-backup-restore.md) with writes halted and explicit operator control.
-7. Verify application health, authenticated read-only access, schema compatibility, risk controls, and financial invariants. Keep the rollback scheduler disabled; do not clear the kill switch or return automation traffic until the release fault has been resolved and a separately approved recovery deployment passes its own gate.
+7. If backup restoration is required, follow [Database backup and restore](database-backup-restore.md) with writes halted and explicit operator control.
+8. Verify application health, authenticated read-only access, schema compatibility, risk controls, and financial invariants. Keep the rollback scheduler disabled; do not clear the kill switch or return automation traffic until the release fault has been resolved and a separately approved recovery deployment passes its own gate.

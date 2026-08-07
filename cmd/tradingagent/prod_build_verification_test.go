@@ -136,6 +136,7 @@ func TestReleaseGateIncludesProductionVerificationAndPinnedPromtool(t *testing.T
 		`npm --prefix web run build`,
 		`docker compose -f docker-compose.nuc.yml config --quiet`,
 		`docker compose -f docker-compose.nuc.yml -f deploy/docker-compose.nuc.rollback.yml config --quiet`,
+		`MIGRATION_DOWN_STEPS=2 docker compose -f docker-compose.nuc.yml -f deploy/docker-compose.nuc.migrate-down.yml config --quiet`,
 		`docker buildx build --check -f Dockerfile .`,
 		`docker buildx build --check -f Dockerfile.web .`,
 		`./scripts/verify-prod-build.sh`,
@@ -286,6 +287,50 @@ func TestNUCDeploymentRunbooksRequireImmutableSingleReplacementAndRestoreProof(t
 	dropIdx := strings.Index(backup, `sh -ec 'dropdb -U "$POSTGRES_USER" "$RESTORE_DB"'`)
 	if dumpIdx >= createIdx || createIdx >= restoreIdx || restoreIdx >= validateIdx || validateIdx >= dropIdx {
 		t.Fatalf("database backup runbook expected dump -> create -> restore -> validate -> drop ordering, got %d %d %d %d %d", dumpIdx, createIdx, restoreIdx, validateIdx, dropIdx)
+	}
+}
+
+func TestNUCSchemaRollbackRequiresZeroWritesAndExactDownOverride(t *testing.T) {
+	repoRoot := filepath.Join(filepath.Dir(productionBuildVerificationScriptPath(t)), "..")
+	overrideContents, err := os.ReadFile(filepath.Join(repoRoot, "deploy", "docker-compose.nuc.migrate-down.yml"))
+	if err != nil {
+		t.Fatalf("ReadFile(docker-compose.nuc.migrate-down.yml) error = %v", err)
+	}
+	override := string(overrideContents)
+	for _, want := range []string{
+		`-path`,
+		`/migrations`,
+		`-database`,
+		`down`,
+		`${MIGRATION_DOWN_STEPS:?MIGRATION_DOWN_STEPS is required}`,
+	} {
+		if !strings.Contains(override, want) {
+			t.Fatalf("NUC migrate-down override missing required content %q", want)
+		}
+	}
+
+	runbookContents, err := os.ReadFile(filepath.Join(repoRoot, "docs", "runbooks", "rolling-restart.md"))
+	if err != nil {
+		t.Fatalf("ReadFile(rolling-restart.md) error = %v", err)
+	}
+	runbook := string(runbookContents)
+	for _, want := range []string{
+		`SELECT count(*) FROM automation_job_controls`,
+		`SELECT count(*) FROM trades WHERE exit_reason IS NOT NULL`,
+		`test "$new_structure_writes" = "0|0"`,
+		`MIGRATION_DOWN_STEPS=2`,
+		`deploy/docker-compose.nuc.migrate-down.yml`,
+		`test "$rollback_schema" = "60|f"`,
+	} {
+		if !strings.Contains(runbook, want) {
+			t.Fatalf("rolling restart rollback missing required content %q", want)
+		}
+	}
+	guardIdx := strings.Index(runbook, `test "$new_structure_writes" = "0|0"`)
+	downIdx := strings.Index(runbook, `MIGRATION_DOWN_STEPS=2`)
+	schemaIdx := strings.Index(runbook, `test "$rollback_schema" = "60|f"`)
+	if guardIdx >= downIdx || downIdx >= schemaIdx {
+		t.Fatalf("rolling restart rollback expected zero-write guard -> down migration -> schema check ordering, got %d %d %d", guardIdx, downIdx, schemaIdx)
 	}
 }
 
