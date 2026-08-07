@@ -75,6 +75,50 @@ Eastern Time schedules are shown because the production automation orchestrator 
 | `polymarket_strategy_discovery` | configured off | omitted from runtime | production Polymarket automation disable flag | not runnable; must remain off |
 | `kalshi_reconcile` | unavailable | omitted from runtime | Kalshi reconciler credentials/dependency absent | external configuration blocker; must remain unavailable |
 
+### Current per-automation classifications
+
+These are predeployment classifications from the qualifying fresh evidence above. “Fixed locally” never means execution-proven: every affected path still requires the listed postdeployment run. The two Sunday rows remain pending market-window classifications rather than conclusions derived from their non-counting historical rows.
+
+| Automation | Current classification | Basis / next proof |
+|---|---|---|
+| `alpaca_reconcile` | Buggy predeploy; fixed locally | Repeated fresh reconciliation exposed precision churn; corrected idempotency needs postdeploy repetition |
+| `current_data_refresh` | Buggy predeploy; fixed locally | Fresh runs reported false completion with missing/stale symbols |
+| `hot_scan` | Buggy predeploy; fixed locally | Fresh runs raced refresh and triggered from invalid prior-day inputs |
+| `deep_scan` | Buggy predeploy; fixed locally | Fresh run accepted incomplete/stale input and hid `BF.B` persistence failures |
+| `gap_scanner` | Buggy predeploy; fixed locally | Every fresh provider batch failed while the wrapper persisted `ok` |
+| `discovery_run` | Buggy predeploy; fixed locally | Fresh run admitted failed upstream coverage and reused excluded cached model output |
+| `ticker_discovery` | Buggy predeploy; successful coverage externally blocked | Fresh callback converted Polygon entitlement HTTP 403 to empty success; entitlement owner action plus postdeploy proof required |
+| `position_review` | Buggy predeploy; fixed locally | Fresh run applied equity controls to event contracts and persisted false success |
+| `earnings_scanner` | Healthy | Fresh run reconciled 1,500 current provider events and seven exact matches |
+| `filing_monitor` | Outright failure predeploy; fail-closed disable healthy | Three fresh quota failures reached the durable threshold; two later boundaries proved suppression |
+| `news_scan` | Buggy predeploy; fixed locally | Fresh run had incomplete classification accounting and ungrounded ticker attribution |
+| `social_scan` | Degraded but usable predeploy; fixed locally | Five fresh samples completed, but persisted field semantics mixed counts and ratios |
+| `daily_review` | Buggy predeploy; fixed locally | Fresh run used the wrong UTC-day population and incomplete pagination/accounting |
+| `strategy_resweep` | Buggy predeploy; fixed locally | Fresh run admitted stale histories and ambiguous score/error sentinels |
+| `options_scan` | Buggy predeploy; fixed locally | Fresh run queried 5,410 names, used a non-listed expiry, found zero chains, and persisted `ok` |
+| `paper_validation_report` | Buggy predeploy; fixed locally | Fresh run published 103 no-run artifacts as completed `NO-GO` while the wrapper failed |
+| `options_expiry_settlement` | Healthy with recommendations | Fresh empty-input run was idempotent; genuine expiry mutation and atomic reason proof remain |
+| `options_lifecycle_reconcile` | Healthy with recommendations | Fresh empty-graph run was idempotent; classified-row/mismatch proof remains |
+| `history_refresh` | Buggy predeploy; fixed locally | Fresh runs capped the universe, reused old cache, and overstated provider coverage |
+| `overnight_sweep` | Buggy predeploy; fixed locally | Fresh run truncated strategies, mixed markets, admitted stale history, and persisted false `ok` |
+| `overnight_backtest` | Buggy predeploy; fixed locally | Fresh checkpoint has invalid screen inputs and cannot fit terminal completion in its deployed slots |
+| `overnight_generate` | Buggy predeploy; fixed locally | Fresh run admitted the invalid checkpoint and omitted durable model/domain provenance |
+| `options_discovery` | Buggy predeploy; fixed locally | Fresh run accepted empty provider-chain results and lacked required durable evidence |
+| `universe_refresh` | Blocked by current market window | No qualifying fresh Sunday run yet; August 9 16:00 UTC observer is armed |
+| `strategy_tournament` | Blocked by current market window | No qualifying fresh Sunday run yet; August 9 18:00 UTC state/log/data observers are armed |
+| `kalshi_discovery` | Buggy predeploy; fixed locally | Five fresh runs ignored the fetch limit and mislabeled reused strategies as deployments |
+| `kalshi_settlement` | Healthy with recommendations | Five fresh paper/dry-run samples completed; postdeploy persistence/idempotency proof remains |
+| `portfolio_allocator` | Buggy predeploy; fixed locally | Fresh shadow run admitted failed/HOLD sources without source-integrity rejection |
+| continuous RSS evaluator/trigger | Buggy predeploy; fixed locally | Fresh Luna evaluations and requests lacked durable admission/outcome lineage |
+| continuous Reddit evaluator/trigger | Degraded but usable predeploy; fixed locally | Fresh Luna evaluations completed, but repeated 429 cooldowns degraded source coverage and lineage was absent |
+| continuous Polymarket/whale sources | Not runnable — configured off | Global Polymarket safety flag remains off; do not enable for audit evidence |
+| continuous Polygon mempool source | Blocked by external dependency | Required RPC and WebSocket endpoints are unset |
+| `polymarket_profiles` | Not runnable — configured off | Global Polymarket safety flag remains off |
+| `polymarket_reconcile` | Not runnable — configured off | Global Polymarket safety flag remains off |
+| `polymarket_resolutions` | Not runnable — configured off | Global Polymarket safety flag remains off |
+| `polymarket_strategy_discovery` | Not runnable — configured off | Global Polymarket safety flag remains off |
+| `kalshi_reconcile` | Blocked by external dependency | Required reconciler credential/dependency is absent |
+
 ### Registry, persistence, API, and dependency reconciliation
 
 At 10:55 UTC on August 7, an authenticated read-only request to the deployed `/api/v1/automation/status` returned exactly 27 orchestrated jobs, matching the 27 distinct `automation_job_runs.job_name` values in PostgreSQL with no missing or extra name. `filing_monitor` was the only disabled job and no job was running. The separate deployed `ticker_discovery` scheduler callback plus the continuous RSS/Reddit source loops are intentionally outside both 27-job sets and are inventoried separately above; the local pending orchestrator migration makes ticker discovery job 28 after deployment. `/api/v1/automation/health` returned `healthy=false`, one failing job and two degraded jobs, consistent with the already-reconciled filing-monitor five-failure disable, paper-validation two-failure state, and failed August 2 universe refresh—not a scheduler-wide hang. The authenticated run-list endpoint returned the expected paginated `{data,limit,offset,total}` contract and reported 5,908 durable rows at that instant.
