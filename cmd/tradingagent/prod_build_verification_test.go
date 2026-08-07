@@ -174,6 +174,44 @@ func TestReleaseTreeVerifierRequiresExactCleanInput(t *testing.T) {
 	}
 }
 
+func TestGitReconciliationRunbookPreservesAndPublishesVerifiedCommit(t *testing.T) {
+	repoRoot := filepath.Join(filepath.Dir(productionBuildVerificationScriptPath(t)), "..")
+	contents, err := os.ReadFile(filepath.Join(repoRoot, "docs", "runbooks", "2026-07-20-git-reconcile-and-push.md"))
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+
+	runbook := string(contents)
+	for _, want := range []string{
+		`git fetch --prune "$remote_name"`,
+		`git merge --ff-only "$upstream_ref"`,
+		`git merge --no-ff --no-commit "$upstream_ref"`,
+		`git commit --no-edit`,
+		`./scripts/release-gate.sh`,
+		`git push "$remote_name" "HEAD:$remote_branch"`,
+		`git ls-remote --heads`,
+		`test "$remote_commit" = "$candidate_commit"`,
+	} {
+		if !strings.Contains(runbook, want) {
+			t.Fatalf("git reconciliation runbook missing required content %q", want)
+		}
+	}
+	for _, forbidden := range []string{`git reset`, `git rebase`, `git push --force`, `git push -f`, `git checkout --`} {
+		if strings.Contains(runbook, forbidden) {
+			t.Fatalf("git reconciliation runbook contains destructive command %q", forbidden)
+		}
+	}
+
+	fetchIdx := strings.Index(runbook, `git fetch --prune "$remote_name"`)
+	gateIdx := strings.Index(runbook, `./scripts/release-gate.sh`)
+	pushIdx := strings.Index(runbook, `git push "$remote_name" "HEAD:$remote_branch"`)
+	remoteIdx := strings.Index(runbook, `git ls-remote --heads`)
+	identityIdx := strings.Index(runbook, `test "$remote_commit" = "$candidate_commit"`)
+	if fetchIdx >= gateIdx || gateIdx >= pushIdx || pushIdx >= remoteIdx || remoteIdx >= identityIdx {
+		t.Fatalf("git reconciliation runbook expected fetch -> gate -> push -> remote lookup -> identity ordering, got %d %d %d %d %d", fetchIdx, gateIdx, pushIdx, remoteIdx, identityIdx)
+	}
+}
+
 func TestPaperBoundaryObserverOmitsRawErrorsAndUsesPortableOutputs(t *testing.T) {
 	repoRoot := filepath.Join(filepath.Dir(productionBuildVerificationScriptPath(t)), "..")
 	contents, err := os.ReadFile(filepath.Join(repoRoot, "scripts", "observe-paper-boundary.sh"))
