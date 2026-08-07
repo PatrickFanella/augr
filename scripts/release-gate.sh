@@ -18,6 +18,8 @@ npm --prefix web run build
 docker compose config --quiet
 docker compose -f docker-compose.nuc.yml config --quiet
 docker compose -f docker-compose.nuc.yml -f deploy/docker-compose.nuc.rollback.yml config --quiet
+docker buildx build --check -f Dockerfile .
+docker buildx build --check -f Dockerfile.web .
 ./scripts/verify-prod-build.sh
 docker run --rm --entrypoint promtool \
   -v "$repo_dir/monitoring/prometheus:/etc/prometheus:ro" \

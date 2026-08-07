@@ -121,8 +121,10 @@ reconciliation runbooks.
 
    Do not issue a second `up`, rebuild, or opportunistic restart to compensate
    for a failed candidate. Use the rollback procedure instead.
-7. Prove the running app/web image names and app build commit match
-   `release_commit`; confirm schema 62, API/database/Redis/web/OpenCode health,
+7. Prove the running app/web image names and both
+   `org.opencontainers.image.revision` labels match `release_commit`; also
+   require the app's runtime build commit to match. Confirm schema 62,
+   API/database/Redis/web/OpenCode health,
    scheduler readiness, zero orphan nonterminal rows, live trading off,
    Alpaca/Binance paper modes on, Kalshi dry-run on, Polymarket off, and exact
    pre/post financial invariants before beginning postdeployment canaries.

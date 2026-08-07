@@ -148,6 +148,10 @@ services:
       context: .
       dockerfile: Dockerfile.web
       target: production
+      args:
+        BUILD_VERSION: ${BUILD_VERSION:-development}
+        BUILD_COMMIT: ${BUILD_COMMIT:-unknown}
+        BUILD_TIME: ${BUILD_TIME:-unknown}
     ports:
       - '10.0.0.56:${AUGR_WEB_PORT:-3029}:80'
     depends_on:

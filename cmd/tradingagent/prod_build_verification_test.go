@@ -124,6 +124,8 @@ func TestReleaseGateIncludesProductionVerificationAndPinnedPromtool(t *testing.T
 		`npm --prefix web run build`,
 		`docker compose -f docker-compose.nuc.yml config --quiet`,
 		`docker compose -f docker-compose.nuc.yml -f deploy/docker-compose.nuc.rollback.yml config --quiet`,
+		`docker buildx build --check -f Dockerfile .`,
+		`docker buildx build --check -f Dockerfile.web .`,
 		`./scripts/verify-prod-build.sh`,
 		`prom/prometheus@sha256:`,
 		`"$promtool_image" check rules`,
@@ -237,6 +239,7 @@ func TestNUCDeploymentRunbooksRequireImmutableSingleReplacementAndRestoreProof(t
 		`AUGR_APP_IMAGE="$previous_app_image"`,
 		`AUGR_WEB_IMAGE="$previous_web_image"`,
 		`It does not select image names`,
+		`org.opencontainers.image.revision`,
 	} {
 		if !strings.Contains(rolling, want) {
 			t.Fatalf("rolling restart runbook missing required content %q", want)

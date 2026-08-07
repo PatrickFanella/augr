@@ -5,5 +5,9 @@
 .env.*
 bin
 coverage
+backups
+docs
+*.dump
+**/*.dump
 web/node_modules
 web/dist

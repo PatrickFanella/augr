@@ -8,6 +8,12 @@ COPY web ./
 RUN npm run build
 
 FROM nginx:1.29-alpine AS production
+ARG BUILD_VERSION=development
+ARG BUILD_COMMIT=unknown
+ARG BUILD_TIME=unknown
+LABEL org.opencontainers.image.version="${BUILD_VERSION}" \
+      org.opencontainers.image.revision="${BUILD_COMMIT}" \
+      org.opencontainers.image.created="${BUILD_TIME}"
 COPY deploy/nginx.augr.conf /etc/nginx/conf.d/default.conf
 COPY --from=builder /src/web/dist /usr/share/nginx/html
 
