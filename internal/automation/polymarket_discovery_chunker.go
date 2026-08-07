@@ -278,7 +278,7 @@ func (c polymarketDiscoveryChunker) deployAcceptedProposal(ctx context.Context, 
 }
 
 func (c polymarketDiscoveryChunker) discoveryConfig() polymarketdiscovery.Config {
-	return polymarketdiscovery.Config{Screener: polymarketdiscovery.DefaultScreenerConfig(), Generator: polymarketdiscovery.GeneratorConfig{Provider: c.deps.LLMProvider}, MaxDeployments: 3, MinConviction: 0.45, ScheduleCron: "0 * * * *", AutoWatchSlug: true}
+	return polymarketdiscovery.Config{Screener: polymarketdiscovery.DefaultScreenerConfig(), Generator: polymarketdiscovery.GeneratorConfig{Provider: c.deps.LLMProvider, Model: c.deps.LLMQuickModel}, MaxDeployments: 3, MinConviction: 0.45, ScheduleCron: "0 * * * *", AutoWatchSlug: true}
 }
 
 func (c polymarketDiscoveryChunker) discoveryDeps() polymarketdiscovery.Deps {

@@ -28,8 +28,9 @@ type OvernightBacktestCandidate struct {
 }
 
 type OvernightBacktestGenerated struct {
-	Ticker string          `json:"ticker"`
-	Config json.RawMessage `json:"config"`
+	Ticker   string          `json:"ticker"`
+	Config   json.RawMessage `json:"config"`
+	Evidence json.RawMessage `json:"evidence,omitempty"`
 }
 
 type OvernightBacktestSummary struct {

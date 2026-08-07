@@ -704,6 +704,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 					AlpacaReconciler: alpacaReconciler,
 					OptionsProvider:  deps.OptionsProvider,
 					LLMProvider:      deps.LLMProvider,
+					LLMQuickModel:    cfg.LLM.QuickThinkModel,
 					GeneratorMetrics: appMetrics,
 					TickerDiscovery: automation.TickerDiscoveryJobConfig{
 						Enabled:    cfg.Features.EnableTickerDiscovery,

@@ -262,16 +262,24 @@ func (c overnightBacktestChunker) runGenerateChunk(ctx context.Context, run *dom
 		candidate := run.Candidates[i]
 		screen := discovery.ScreenResultsFromCheckpointCandidates([]domain.OvernightBacktestCandidate{candidate})[0]
 		generateCtx, cancel := c.generationContext(ctx)
-		generated, err := discovery.GenerateStrategy(generateCtx, discovery.GeneratorConfig{Provider: c.deps.LLMProvider, MaxRetries: overnightBacktestGenerationMaxRetries, Metrics: c.deps.GeneratorMetrics}, screen, c.logger)
+		generated, evidence, err := discovery.GenerateStrategyWithEvidence(generateCtx, discovery.GeneratorConfig{Provider: c.deps.LLMProvider, Model: c.deps.LLMQuickModel, MaxRetries: overnightBacktestGenerationMaxRetries, Metrics: c.deps.GeneratorMetrics}, screen, c.logger)
 		cancel()
-		if err != nil {
+		switch {
+		case err != nil:
 			run.Errors = append(run.Errors, err.Error())
-		} else {
+		case evidence == nil:
+			run.Errors = append(run.Errors, fmt.Sprintf("generation %s: model evidence missing", candidate.Ticker))
+		default:
+			evidence.Config = nil
+			evidenceJSON, evidenceErr := json.Marshal(evidence)
 			cfgJSON, err := encodeOvernightGeneratedConfig(*generated)
-			if err != nil {
+			switch {
+			case evidenceErr != nil:
+				run.Errors = append(run.Errors, fmt.Sprintf("generation %s: encode model evidence: %v", candidate.Ticker, evidenceErr))
+			case err != nil:
 				run.Errors = append(run.Errors, err.Error())
-			} else {
-				run.Generated = append(run.Generated, domain.OvernightBacktestGenerated{Ticker: candidate.Ticker, Config: json.RawMessage(cfgJSON)})
+			default:
+				run.Generated = append(run.Generated, domain.OvernightBacktestGenerated{Ticker: candidate.Ticker, Config: json.RawMessage(cfgJSON), Evidence: json.RawMessage(evidenceJSON)})
 				run.Summary.Generated++
 			}
 		}

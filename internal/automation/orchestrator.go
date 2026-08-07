@@ -84,6 +84,7 @@ type OrchestratorDeps struct {
 	AlpacaReconciler       *AlpacaReconciler
 	OptionsProvider        data.OptionsDataProvider
 	LLMProvider            llm.Provider
+	LLMQuickModel          string
 	GeneratorMetrics       discovery.GeneratorMetrics
 	TickerDiscovery        TickerDiscoveryJobConfig
 	EmbeddingProvider      embedding.Provider // optional; nil = skip embedding during triage

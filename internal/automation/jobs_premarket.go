@@ -107,7 +107,7 @@ func (o *JobOrchestrator) tickerDiscovery(ctx context.Context) error {
 	discoveryStartedAt := time.Now().UTC()
 	discoveryCfg := discovery.DiscoveryConfig{
 		Screener:  discovery.ScreenerConfig{Tickers: symbols, MinADV: cfg.MinADV, MinATR: 0.5, MarketType: domain.MarketTypeStock},
-		Generator: discovery.GeneratorConfig{Provider: o.deps.LLMProvider, MaxRetries: 3, Metrics: o.deps.GeneratorMetrics},
+		Generator: discovery.GeneratorConfig{Provider: o.deps.LLMProvider, Model: o.deps.LLMQuickModel, MaxRetries: 3, Metrics: o.deps.GeneratorMetrics},
 		Sweep:     discovery.SweepConfig{InitialCash: 100000, Variations: 20},
 		Scoring:   discovery.DefaultScoringConfig(), Validation: discovery.ValidationConfig{}, MaxWinners: 3,
 	}
@@ -303,6 +303,7 @@ func (o *JobOrchestrator) discoveryRun(ctx context.Context) error {
 		},
 		Generator: discovery.GeneratorConfig{
 			Provider: o.deps.LLMProvider,
+			Model:    o.deps.LLMQuickModel,
 			Metrics:  o.deps.GeneratorMetrics,
 		},
 		Scoring:    discovery.DefaultScoringConfig(),

@@ -19,7 +19,7 @@ import (
 func TestMarshalOvernightBacktestJSONSlices(t *testing.T) {
 	run := domain.NewOvernightBacktestRun()
 	run.Candidates = []domain.OvernightBacktestCandidate{{Ticker: "AAPL", Close: 200}}
-	run.Generated = []domain.OvernightBacktestGenerated{{Ticker: "AAPL", Config: json.RawMessage(`{}`)}}
+	run.Generated = []domain.OvernightBacktestGenerated{{Ticker: "AAPL", Config: json.RawMessage(`{}`), Evidence: json.RawMessage(`{"attempts":[]}`)}}
 	run.Errors = []string{"sample error"}
 	run.Summary = domain.OvernightBacktestSummary{Candidates: 1, Generated: 1}
 	_, _, _, _, err := marshalOvernightBacktestRunJSON(run)
@@ -45,7 +45,7 @@ func TestOvernightBacktestRunRepoIntegration_CRUD(t *testing.T) {
 	repo := NewOvernightBacktestRunRepo(pool)
 	run := domain.NewOvernightBacktestRun()
 	run.Candidates = []domain.OvernightBacktestCandidate{{Ticker: "MSFT", Close: 300}}
-	run.Generated = []domain.OvernightBacktestGenerated{{Ticker: "MSFT", Config: json.RawMessage(`{}`)}}
+	run.Generated = []domain.OvernightBacktestGenerated{{Ticker: "MSFT", Config: json.RawMessage(`{}`), Evidence: json.RawMessage(`{"attempts":[]}`)}}
 	if err := repo.Create(ctx, &run); err != nil {
 		t.Fatalf("Create() error = %v", err)
 	}
@@ -61,6 +61,9 @@ func TestOvernightBacktestRunRepoIntegration_CRUD(t *testing.T) {
 	}
 	if got.Candidates[0].Ticker != "MSFT" {
 		t.Fatalf("candidate ticker = %q, want MSFT", got.Candidates[0].Ticker)
+	}
+	if string(got.Generated[0].Evidence) != `{"attempts":[]}` {
+		t.Fatalf("generated evidence = %s", got.Generated[0].Evidence)
 	}
 	active, err := repo.GetActive(ctx)
 	if err != nil {

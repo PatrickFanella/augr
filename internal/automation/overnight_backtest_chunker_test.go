@@ -250,14 +250,14 @@ const validStrategyJSON = `{"version":1,"name":"retry-safe","description":"minim
 func TestOvernightBacktestChunkerRunGenerateChunkProcessesChunkAndPersists(t *testing.T) {
 	repo := &fakeOvernightBacktestRunRepo{run: &domain.OvernightBacktestRun{ID: uuid.New()}}
 	provider := &fakeOvernightBacktestLLMProvider{responses: []*llm.CompletionResponse{
-		{Content: validStrategyJSON},
-		{Content: validStrategyJSON},
+		{Content: validStrategyJSON, Model: "openai/luna", Usage: llm.CompletionUsage{PromptTokens: 10, CompletionTokens: 20}, LatencyMS: 30},
+		{Content: validStrategyJSON, Model: "openai/luna", Usage: llm.CompletionUsage{PromptTokens: 11, CompletionTokens: 21}, LatencyMS: 31},
 	}}
 	run := &domain.OvernightBacktestRun{
 		Candidates: []domain.OvernightBacktestCandidate{{Ticker: "AAA"}, {Ticker: "BBB"}, {Ticker: "CCC"}},
 		Phase:      domain.OvernightBacktestPhaseGenerate,
 	}
-	c := overnightBacktestChunker{progress: repo, deps: OrchestratorDeps{LLMProvider: provider}, generatePerChunk: 2}
+	c := overnightBacktestChunker{progress: repo, deps: OrchestratorDeps{LLMProvider: provider, LLMQuickModel: "openai/luna"}, generatePerChunk: 2}
 	if err := c.runGenerateChunk(context.Background(), run); err != nil {
 		t.Fatal(err)
 	}
@@ -293,6 +293,20 @@ func TestOvernightBacktestChunkerRunGenerateChunkProcessesChunkAndPersists(t *te
 		}
 		if decoded.Name == "" {
 			t.Fatalf("generated[%d] decoded name empty", i)
+		}
+		var evidence discovery.GenerationEvidence
+		if err := json.Unmarshal(gen.Evidence, &evidence); err != nil {
+			t.Fatalf("generated[%d] evidence: %v", i, err)
+		}
+		if evidence.Config != nil || len(evidence.Attempts) != 1 {
+			t.Fatalf("generated[%d] evidence = %#v", i, evidence)
+		}
+		attempt := evidence.Attempts[0]
+		if attempt.RequestedModel != "openai/luna" || attempt.ResponseModel != "openai/luna" || attempt.ContentSHA256 == "" || attempt.CacheHits != 0 || attempt.Outcome != "success_first_attempt" {
+			t.Fatalf("generated[%d] attempt = %#v", i, attempt)
+		}
+		if provider.requests[i].Model != "openai/luna" {
+			t.Fatalf("request[%d] model = %q", i, provider.requests[i].Model)
 		}
 	}
 }
