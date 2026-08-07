@@ -29,6 +29,11 @@ const (
 	overnightBacktestGenerationMaxRetries = 1
 )
 
+var requiredOvernightIndicators = [...]string{
+	"sma_20", "sma_50", "ema_12", "rsi_14", "mfi_14", "williams_r_14", "cci_20", "roc_12", "atr_14", "vwma_20",
+	"obv", "adl", "macd_line", "macd_signal", "macd_histogram", "stochastic_k", "stochastic_d", "bollinger_upper", "bollinger_middle", "bollinger_lower",
+}
+
 type overnightBacktestChunker struct {
 	deps             OrchestratorDeps
 	progress         repository.OvernightBacktestRunRepository
@@ -219,9 +224,20 @@ func validateOvernightScreenResults(screened []discovery.ScreenResult, requested
 		if len(candidate.Indicators) < 20 {
 			return fmt.Errorf("overnight_backtest: screen candidate %s has insufficient indicators: %d", ticker, len(candidate.Indicators))
 		}
+		indicatorNames := make(map[string]struct{}, len(candidate.Indicators))
 		for _, indicator := range candidate.Indicators {
-			if strings.TrimSpace(indicator.Name) == "" || math.IsNaN(indicator.Value) || math.IsInf(indicator.Value, 0) || !sameMarketDate(indicator.Timestamp.In(easternTime), latest.Timestamp.In(easternTime)) {
+			name := strings.ToLower(strings.TrimSpace(indicator.Name))
+			if name == "" || math.IsNaN(indicator.Value) || math.IsInf(indicator.Value, 0) || !sameMarketDate(indicator.Timestamp.In(easternTime), latest.Timestamp.In(easternTime)) {
 				return fmt.Errorf("overnight_backtest: screen candidate %s has invalid or stale indicator %q", ticker, indicator.Name)
+			}
+			if _, duplicate := indicatorNames[name]; duplicate {
+				return fmt.Errorf("overnight_backtest: screen candidate %s has duplicate indicator %q", ticker, indicator.Name)
+			}
+			indicatorNames[name] = struct{}{}
+		}
+		for _, required := range requiredOvernightIndicators {
+			if _, ok := indicatorNames[required]; !ok {
+				return fmt.Errorf("overnight_backtest: screen candidate %s is missing required indicator %q", ticker, required)
 			}
 		}
 	}

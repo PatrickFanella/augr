@@ -3,7 +3,6 @@ package automation
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -164,6 +163,7 @@ func TestValidateOvernightScreenResultsRejectsEmptySuccess(t *testing.T) {
 			}
 		}, want: "stale latest bar"},
 		{name: "incomplete indicators", mutate: func(r *discovery.ScreenResult) { r.Indicators = r.Indicators[:2] }, want: "insufficient indicators"},
+		{name: "duplicate indicators", mutate: func(r *discovery.ScreenResult) { r.Indicators[1].Name = r.Indicators[0].Name }, want: "duplicate indicator"},
 		{name: "unexpected ticker", mutate: func(r *discovery.ScreenResult) { r.Ticker = "MSFT" }, want: "unexpected ticker"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -182,9 +182,9 @@ func validOvernightScreenResult(ticker string, latest time.Time) discovery.Scree
 	for i := range bars {
 		bars[i] = domain.OHLCV{Timestamp: latest.AddDate(0, 0, i-len(bars)+1), Open: 10, High: 12, Low: 9, Close: 11, Volume: 1_000_000}
 	}
-	indicators := make([]domain.Indicator, 20)
-	for i := range indicators {
-		indicators[i] = domain.Indicator{Name: fmt.Sprintf("indicator_%d", i), Value: float64(i + 1), Timestamp: latest}
+	indicators := make([]domain.Indicator, len(requiredOvernightIndicators))
+	for i, name := range requiredOvernightIndicators {
+		indicators[i] = domain.Indicator{Name: name, Value: float64(i + 1), Timestamp: latest}
 	}
 	return discovery.ScreenResult{Ticker: ticker, Bars: bars, Indicators: indicators, Close: 11, ADV: 1_000_000, ATR: 1}
 }
