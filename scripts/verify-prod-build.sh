@@ -6,6 +6,14 @@ COMPOSE_FILE="${ROOT_DIR}/docker-compose.prod.yml"
 PROJECT_NAME="${VERIFY_PROJECT_NAME:-augr-prod-verify-$$}"
 MIGRATE_IMAGE="${MIGRATE_IMAGE:-migrate/migrate:v4.18.3}"
 VERIFY_ROLLBACK_SCHEMA_VERSION="${VERIFY_ROLLBACK_SCHEMA_VERSION:-60}"
+VERIFY_ROLLBACK_IMAGE="${VERIFY_ROLLBACK_IMAGE:-}"
+
+case "$VERIFY_ROLLBACK_IMAGE" in
+    *[!A-Za-z0-9._/@:-]*)
+        echo "VERIFY_ROLLBACK_IMAGE contains unsupported characters" >&2
+        exit 1
+        ;;
+esac
 
 case "$PROJECT_NAME" in
     augr-prod-verify-*) ;;
@@ -23,6 +31,7 @@ fi
 VERIFY_DIR="$(mktemp -d /tmp/augr-prod-verify.XXXXXX)"
 APP_ENV_FILE="${VERIFY_DIR}/app.env"
 NETWORK_OVERRIDE_FILE="${VERIFY_DIR}/network-override.yml"
+ROLLBACK_IMAGE_OVERRIDE_FILE="${VERIFY_DIR}/rollback-image-override.yml"
 
 # Docker's automatic bridge address pools can be exhausted on shared hosts even
 # when these short-lived networks are cleaned up correctly. Use small, explicit,
@@ -62,7 +71,11 @@ APP_ENV="smoke"
 export APP_BIND APP_ENV APP_ENV_FILE APP_PORT POSTGRES_DB POSTGRES_PASSWORD POSTGRES_USER
 
 compose() {
-    docker compose --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" -f "$NETWORK_OVERRIDE_FILE" "$@"
+    compose_files=(-f "$COMPOSE_FILE" -f "$NETWORK_OVERRIDE_FILE")
+    if [ -s "$ROLLBACK_IMAGE_OVERRIDE_FILE" ]; then
+        compose_files+=(-f "$ROLLBACK_IMAGE_OVERRIDE_FILE")
+    fi
+    docker compose --project-name "$PROJECT_NAME" "${compose_files[@]}" "$@"
 }
 
 cleanup() {
@@ -100,7 +113,10 @@ ENABLE_SCHEDULER=false
 ENABLE_REDIS_CACHE=false
 ENABLE_AGENT_MEMORY=false
 ENABLE_LIVE_TRADING=false
-POLYMARKET_AUTOMATION_ENABLED=false
+ALPACA_PAPER_MODE=true
+BINANCE_PAPER_MODE=true
+KALSHI_DRY_RUN=true
+ENABLE_POLYMARKET_AUTOMATION=false
 EOF
 
 wait_for_postgres() {
@@ -225,6 +241,32 @@ ROLLBACK_SCHEMA_VERSION=$(compose exec -T postgres psql -U "$POSTGRES_USER" -d "
 if [ "$ROLLBACK_SCHEMA_VERSION" != "$VERIFY_ROLLBACK_SCHEMA_VERSION" ]; then
     echo "schema rollback mismatch: got ${ROLLBACK_SCHEMA_VERSION}, expected ${VERIFY_ROLLBACK_SCHEMA_VERSION}" >&2
     exit 1
+fi
+
+if [ -n "$VERIFY_ROLLBACK_IMAGE" ]; then
+    echo "=== Verifying exact rollback image with scheduler disabled ==="
+    cat >"$ROLLBACK_IMAGE_OVERRIDE_FILE" <<EOF
+services:
+  app:
+    image: ${VERIFY_ROLLBACK_IMAGE}
+EOF
+    compose up -d --no-build app
+    wait_for_app_health
+    rollback_container=$(compose ps -q app)
+    actual_rollback_image=$(docker inspect -f '{{.Config.Image}}' "$rollback_container")
+    if [ "$actual_rollback_image" != "$VERIFY_ROLLBACK_IMAGE" ]; then
+        echo "rollback image mismatch: got ${actual_rollback_image}, expected ${VERIFY_ROLLBACK_IMAGE}" >&2
+        exit 1
+    fi
+    rollback_automation_code=$(curl -sS -o /dev/null -w '%{http_code}' \
+        -H "Authorization: Bearer ${AUTH_TOKEN}" \
+        "http://127.0.0.1:${VERIFY_APP_PORT}/api/v1/automation/status")
+    if [ "$rollback_automation_code" != "503" ]; then
+        echo "rollback scheduler check returned HTTP ${rollback_automation_code}, expected 503" >&2
+        exit 1
+    fi
+    compose stop app >/dev/null
+    rm -f "$ROLLBACK_IMAGE_OVERRIDE_FILE"
 fi
 
 docker run --rm \

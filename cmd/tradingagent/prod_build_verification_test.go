@@ -16,7 +16,7 @@ func TestProductionBuildVerificationScriptContainsExpectedSteps(t *testing.T) {
 
 	script := string(contents)
 	for _, want := range []string{
-		`docker compose --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" -f "$NETWORK_OVERRIDE_FILE" "$@"`,
+		`docker compose --project-name "$PROJECT_NAME" "${compose_files[@]}" "$@"`,
 		`augr-prod-verify-`,
 		`refusing to reuse existing Compose project`,
 		`VERIFY_PUBLIC_SUBNET`,
@@ -27,7 +27,10 @@ func TestProductionBuildVerificationScriptContainsExpectedSteps(t *testing.T) {
 		`APP_BIND="127.0.0.1"`,
 		`ENABLE_SCHEDULER=false`,
 		`ENABLE_LIVE_TRADING=false`,
-		`POLYMARKET_AUTOMATION_ENABLED=false`,
+		`ALPACA_PAPER_MODE=true`,
+		`BINANCE_PAPER_MODE=true`,
+		`KALSHI_DRY_RUN=true`,
+		`ENABLE_POLYMARKET_AUTOMATION=false`,
 		`OLLAMA_API_KEY=smoke-key`,
 		`compose build app`,
 		`compose up -d postgres redis`,
@@ -35,6 +38,8 @@ func TestProductionBuildVerificationScriptContainsExpectedSteps(t *testing.T) {
 		`pg_isready -h postgres`,
 		`migrate/migrate:v4.18.3`,
 		`VERIFY_ROLLBACK_SCHEMA_VERSION="${VERIFY_ROLLBACK_SCHEMA_VERSION:-60}"`,
+		`VERIFY_ROLLBACK_IMAGE="${VERIFY_ROLLBACK_IMAGE:-}"`,
+		`VERIFY_ROLLBACK_IMAGE contains unsupported characters`,
 		`VERIFY_ROLLBACK_SCHEMA_VERSION must be a non-negative integer`,
 		`ROLLBACK_STEPS=$((EXPECTED_VERSION - VERIFY_ROLLBACK_SCHEMA_VERSION))`,
 		`-path=/migrations`,
@@ -52,6 +57,9 @@ func TestProductionBuildVerificationScriptContainsExpectedSteps(t *testing.T) {
 		`refusing rollback rehearsal with writes in schema 61/62 structures`,
 		`down "$ROLLBACK_STEPS"`,
 		`schema rollback mismatch`,
+		`Verifying exact rollback image with scheduler disabled`,
+		`rollback image mismatch`,
+		`rollback scheduler check returned HTTP`,
 		`schema reapply mismatch`,
 		`compose down --volumes --remove-orphans`,
 		`trap cleanup EXIT HUP INT TERM`,
@@ -66,6 +74,7 @@ func TestProductionBuildVerificationScriptContainsExpectedSteps(t *testing.T) {
 		`compose up -d` + "\n" + `wait_for_postgres`,
 		`http://127.0.0.1:8080`,
 		`psql -U augr -d augr`,
+		`POLYMARKET_AUTOMATION_ENABLED=false`,
 	} {
 		if strings.Contains(script, unwanted) {
 			t.Fatalf("verify-prod-build.sh unexpectedly contains %q", unwanted)
