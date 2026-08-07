@@ -1,7 +1,7 @@
 ---
 title: "Release readiness and recovery drills"
 status: "canonical"
-updated: "2026-07-12"
+updated: "2026-08-07"
 ---
 
 # Release readiness and recovery drills
@@ -17,6 +17,22 @@ Run the automated gate from the repository root:
 ```sh
 ./scripts/release-gate.sh
 ```
+
+For a timestamped operational snapshot around a paper-market boundary, run:
+
+```sh
+OBSERVATION_REPORT=/absolute/path/to/evidence.txt \
+  ./scripts/observe-paper-boundary.sh <safe-label>
+```
+
+The observer records service/database state from the preceding 30 minutes and
+only whitelisted warning/error metadata. It deliberately omits raw error
+fields, message text, query strings, and provider bodies. Set
+`AUGR_COMPOSE_FILE` or `AUGR_BASE_URL` only when observing a different approved
+deployment. A snapshot taken after the fact is operational context, not proof
+that a scheduled automation was prospectively observed through its inputs,
+execution, persistence, and downstream effects. Do not copy unsanitized
+production logs into a tracked evidence file.
 
 Validate Prometheus rules with `promtool check rules
 monitoring/prometheus/alerts.yml` (or the matching Prometheus container image).
