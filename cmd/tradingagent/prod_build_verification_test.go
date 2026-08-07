@@ -115,7 +115,7 @@ func TestReleaseGateIncludesProductionVerificationAndPinnedPromtool(t *testing.T
 	script := string(contents)
 	for _, want := range []string{
 		`./scripts/verify-release-tree.sh`,
-		`go test ./...`,
+		`go test -count=1 ./...`,
 		`go vet ./...`,
 		`golangci-lint run ./...`,
 		`npm --prefix web test`,
