@@ -867,6 +867,8 @@ func (o *JobOrchestrator) hydrateFromDB() {
 	recoveryCancel()
 	if recoveryErr != nil {
 		o.logger.Error("automation: failed to recover incomplete job runs", slog.Any("error", recoveryErr))
+		o.disableAllJobs()
+		return
 	} else if recovered > 0 {
 		o.logger.Warn("automation: recovered incomplete job runs", slog.Int("runs", recovered))
 	}
@@ -884,9 +886,12 @@ func (o *JobOrchestrator) hydrateFromDB() {
 		}
 	}
 
-	summaries, err := o.deps.JobRunRepo.Summaries(context.Background())
+	summaryCtx, summaryCancel := context.WithTimeout(context.Background(), jobRunPersistenceTimeout)
+	summaries, err := o.deps.JobRunRepo.Summaries(summaryCtx)
+	summaryCancel()
 	if err != nil {
 		o.logger.Warn("automation: failed to hydrate job stats from DB", slog.Any("error", err))
+		o.disableAllJobs()
 		return
 	}
 
@@ -920,11 +925,7 @@ func (o *JobOrchestrator) hydrateJobControls() {
 	defer cancel()
 	controls, err := o.deps.JobControlRepo.List(ctx)
 	if err != nil {
-		for _, job := range o.jobs {
-			job.mu.Lock()
-			job.Enabled = false
-			job.mu.Unlock()
-		}
+		o.disableAllJobs()
 		o.logger.Error("automation: failed to hydrate durable job controls; all jobs disabled", slog.Any("error", err))
 		return
 	}
@@ -935,6 +936,14 @@ func (o *JobOrchestrator) hydrateJobControls() {
 		}
 		job.mu.Lock()
 		job.Enabled = control.Enabled
+		job.mu.Unlock()
+	}
+}
+
+func (o *JobOrchestrator) disableAllJobs() {
+	for _, job := range o.jobs {
+		job.mu.Lock()
+		job.Enabled = false
 		job.mu.Unlock()
 	}
 }

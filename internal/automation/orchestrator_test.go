@@ -225,10 +225,37 @@ func TestJobOrchestratorDoesNotExecuteWithoutDurableRunningRow(t *testing.T) {
 	}
 }
 
+func TestJobOrchestratorJobRunHydrationFailuresDisableAll(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		prep func(*recordingAutomationJobRunRepo)
+	}{
+		{name: "orphan recovery", prep: func(r *recordingAutomationJobRunRepo) { r.failIncompleteErr = errors.New("recovery unavailable") }},
+		{name: "summary read", prep: func(r *recordingAutomationJobRunRepo) { r.summariesErr = errors.New("summary unavailable") }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			repo := newRecordingAutomationJobRunRepo()
+			tc.prep(repo)
+			orch := NewJobOrchestrator(OrchestratorDeps{JobRunRepo: repo})
+			orch.Register("first", "job", schedulerSpecEveryMinute(), func(context.Context) error { return nil })
+			orch.Register("second", "job", schedulerSpecEveryMinute(), func(context.Context) error { return nil })
+			orch.hydrateFromDB()
+			for _, status := range orch.Status() {
+				if status.Enabled {
+					t.Fatalf("job %s remained enabled after %s failure", status.Name, tc.name)
+				}
+			}
+		})
+	}
+}
+
 type recordingAutomationJobRunRepo struct {
-	mu        sync.Mutex
-	runs      []pgrepo.JobRun
-	createErr error
+	mu                sync.Mutex
+	runs              []pgrepo.JobRun
+	createErr         error
+	failIncompleteErr error
+	summariesErr      error
 }
 
 func newRecordingAutomationJobRunRepo() *recordingAutomationJobRunRepo {
@@ -261,11 +288,11 @@ func (r *recordingAutomationJobRunRepo) Complete(_ context.Context, run *pgrepo.
 }
 
 func (r *recordingAutomationJobRunRepo) FailIncomplete(_ context.Context, _ time.Time, _ string) (int, error) {
-	return 0, nil
+	return 0, r.failIncompleteErr
 }
 
 func (r *recordingAutomationJobRunRepo) Summaries(context.Context) ([]pgrepo.JobRunSummary, error) {
-	return nil, nil
+	return nil, r.summariesErr
 }
 
 func (r *recordingAutomationJobRunRepo) singleRun(t *testing.T) pgrepo.JobRun {
