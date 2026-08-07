@@ -2,10 +2,12 @@ package automation
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/PatrickFanella/get-rich-quick/internal/discovery"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/universe"
 )
@@ -45,6 +47,64 @@ func TestPostMarketCompletionErrorsExposePartialCoverage(t *testing.T) {
 	}
 	if err := optionsScanCompletionError(map[string]int{"optionable": 10, "chain_insufficient": 10}); err == nil || !strings.Contains(err.Error(), "no_usable_chains=1") {
 		t.Fatalf("optionsScanCompletionError(no chains) = %v", err)
+	}
+}
+
+func TestClassifyResweepScoresSeparatesUnqualifiedSentinelsFromInvalidValues(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		results []discovery.SweepResult
+		state   string
+		wantErr bool
+	}{
+		{
+			name:    "comparable",
+			results: []discovery.SweepResult{{Label: "variant_1", Score: 2}, {Label: "base", Score: 1}},
+			state:   "comparable",
+		},
+		{
+			name:    "base unqualified",
+			results: []discovery.SweepResult{{Label: "variant_1", Score: 2}, {Label: "base", Score: math.Inf(-1)}},
+			state:   "base_unqualified",
+		},
+		{
+			name:    "all unqualified",
+			results: []discovery.SweepResult{{Label: "base", Score: math.Inf(-1)}, {Label: "variant_1", Score: math.Inf(-1)}},
+			state:   "all_unqualified",
+		},
+		{
+			name:    "missing base",
+			results: []discovery.SweepResult{{Label: "variant_1", Score: 2}},
+			state:   "missing_base",
+			wantErr: true,
+		},
+		{
+			name:    "nan base",
+			results: []discovery.SweepResult{{Label: "variant_1", Score: 2}, {Label: "base", Score: math.NaN()}},
+			state:   "invalid_scores",
+			wantErr: true,
+		},
+		{
+			name:    "positive infinite best",
+			results: []discovery.SweepResult{{Label: "variant_1", Score: math.Inf(1)}, {Label: "base", Score: 1}},
+			state:   "invalid_scores",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, _, state, err := classifyResweepScores(tt.results)
+			if state != tt.state {
+				t.Fatalf("state = %q, want %q", state, tt.state)
+			}
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
 	}
 }
 

@@ -146,7 +146,7 @@ func summarizePipelineRuns(runs []domain.PipelineRun) map[string]int {
 // variant scores significantly better.
 func (o *JobOrchestrator) strategyResweep(ctx context.Context) error {
 	o.logger.Info("strategy_resweep: starting")
-	summary := map[string]int{"strategies": 0, "eligible": 0, "swept": 0, "improved": 0, "skipped": 0, "failed": 0, "insufficient": 0, "stale": 0, "empty_results": 0}
+	summary := map[string]int{"strategies": 0, "eligible": 0, "swept": 0, "improved": 0, "skipped": 0, "failed": 0, "insufficient": 0, "stale": 0, "empty_results": 0, "base_unqualified": 0, "all_unqualified": 0, "invalid_scores": 0, "missing_base": 0}
 	defer func() { o.SetLastSummary("strategy_resweep", summary) }()
 
 	strategies, err := listAllStrategies(ctx, o.deps.StrategyRepo, repository.StrategyFilter{Status: "active"})
@@ -248,17 +248,37 @@ func (o *JobOrchestrator) strategyResweep(ctx context.Context) error {
 		}
 		summary["swept"]++
 
-		// Score the current config (the "base" variant is always index 0 in results
-		// but let's find it explicitly).
-		var currentScore float64
-		for _, r := range results {
-			if r.Label == "base" {
-				currentScore = r.Score
-				break
+		currentScore, best, scoreState, err := classifyResweepScores(results)
+		if err != nil {
+			summary["failed"]++
+			if scoreState == "missing_base" {
+				summary["missing_base"]++
+			} else {
+				summary["invalid_scores"]++
 			}
+			o.logger.Warn("strategy_resweep: invalid sweep scores",
+				slog.String("ticker", strat.Ticker),
+				slog.String("reason", scoreState),
+			)
+			continue
+		}
+		switch scoreState {
+		case "all_unqualified":
+			summary["all_unqualified"]++
+			o.logger.Info("strategy_resweep: all variants unqualified",
+				slog.String("ticker", strat.Ticker),
+			)
+			continue
+		case "base_unqualified":
+			summary["base_unqualified"]++
+			o.logger.Info("strategy_resweep: base unqualified",
+				slog.String("ticker", strat.Ticker),
+				slog.String("best_variant", best.Label),
+				slog.Float64("best_score", best.Score),
+			)
+			continue
 		}
 
-		best := results[0]
 		if currentScore > 0 && best.Score > currentScore*1.20 {
 			summary["improved"]++
 			o.logger.Info("strategy_resweep: improvement found",
@@ -280,6 +300,36 @@ func (o *JobOrchestrator) strategyResweep(ctx context.Context) error {
 
 	o.logger.Info("strategy_resweep: completed", slog.Int("strategies", len(strategies)))
 	return strategyResweepCompletionError(summary["failed"])
+}
+
+func classifyResweepScores(results []discovery.SweepResult) (float64, discovery.SweepResult, string, error) {
+	if len(results) == 0 {
+		return 0, discovery.SweepResult{}, "empty_results", fmt.Errorf("empty sweep results")
+	}
+
+	best := results[0]
+	var currentScore float64
+	baseFound := false
+	for _, result := range results {
+		if result.Label == "base" {
+			currentScore = result.Score
+			baseFound = true
+			break
+		}
+	}
+	if !baseFound {
+		return 0, best, "missing_base", fmt.Errorf("base sweep result missing")
+	}
+	if math.IsNaN(currentScore) || math.IsInf(currentScore, 1) || math.IsNaN(best.Score) || math.IsInf(best.Score, 1) {
+		return 0, best, "invalid_scores", fmt.Errorf("non-finite sweep score")
+	}
+	if math.IsInf(best.Score, -1) {
+		return currentScore, best, "all_unqualified", nil
+	}
+	if math.IsInf(currentScore, -1) {
+		return currentScore, best, "base_unqualified", nil
+	}
+	return currentScore, best, "comparable", nil
 }
 
 func strategyResweepCompletionError(failed int) error {
