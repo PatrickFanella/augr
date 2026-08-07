@@ -38,6 +38,11 @@ func TestProductionBuildVerificationScriptContainsExpectedSteps(t *testing.T) {
 		`org.opencontainers.image.version`,
 		`org.opencontainers.image.created`,
 		`built app revision label mismatch`,
+		`VERIFY_WEB_IMAGE="${PROJECT_NAME}-web:latest"`,
+		`docker buildx build --load`,
+		`BUILT_WEB_REVISION=`,
+		`built web revision label mismatch`,
+		`docker image rm "$VERIFY_WEB_IMAGE"`,
 		`compose up -d postgres redis`,
 		`wait_for_postgres`,
 		`pg_isready -h postgres`,
@@ -94,6 +99,8 @@ func TestProductionBuildVerificationScriptContainsExpectedSteps(t *testing.T) {
 		}
 	}
 
+	appBuildIdx := strings.Index(script, `compose build app`)
+	webBuildIdx := strings.Index(script, `docker buildx build --load`)
 	dependenciesIdx := strings.Index(script, `compose up -d postgres redis`)
 	migrationsIdx := strings.Index(script, `-path=/migrations`)
 	schemaAssertIdx := strings.Index(script, `SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1`)
@@ -103,11 +110,11 @@ func TestProductionBuildVerificationScriptContainsExpectedSteps(t *testing.T) {
 	downIdx := strings.Index(script, `down "$ROLLBACK_STEPS"`)
 	reapplyIdx := strings.Index(script, `REAPPLIED_SCHEMA_VERSION=`)
 	healthWaitIdx := strings.LastIndex(script, "\nwait_for_app_health\n")
-	if dependenciesIdx == -1 || migrationsIdx == -1 || schemaAssertIdx == -1 || appStartIdx == -1 || backupIdx == -1 || rollbackGuardIdx == -1 || downIdx == -1 || reapplyIdx == -1 || healthWaitIdx == -1 {
+	if appBuildIdx == -1 || webBuildIdx == -1 || dependenciesIdx == -1 || migrationsIdx == -1 || schemaAssertIdx == -1 || appStartIdx == -1 || backupIdx == -1 || rollbackGuardIdx == -1 || downIdx == -1 || reapplyIdx == -1 || healthWaitIdx == -1 {
 		t.Fatal("verify-prod-build.sh missing ordering anchors")
 	}
-	if dependenciesIdx >= migrationsIdx || migrationsIdx >= schemaAssertIdx || schemaAssertIdx >= appStartIdx || appStartIdx >= rollbackGuardIdx || rollbackGuardIdx >= downIdx || downIdx >= backupIdx || backupIdx >= reapplyIdx || reapplyIdx >= healthWaitIdx {
-		t.Fatalf("verify-prod-build.sh expected dependencies -> migrations -> schema -> app -> rollback guard -> down -> backup -> reapply -> health ordering, got %d %d %d %d %d %d %d %d %d", dependenciesIdx, migrationsIdx, schemaAssertIdx, appStartIdx, rollbackGuardIdx, downIdx, backupIdx, reapplyIdx, healthWaitIdx)
+	if appBuildIdx >= webBuildIdx || webBuildIdx >= dependenciesIdx || dependenciesIdx >= migrationsIdx || migrationsIdx >= schemaAssertIdx || schemaAssertIdx >= appStartIdx || appStartIdx >= rollbackGuardIdx || rollbackGuardIdx >= downIdx || downIdx >= backupIdx || backupIdx >= reapplyIdx || reapplyIdx >= healthWaitIdx {
+		t.Fatalf("verify-prod-build.sh expected app build -> web build -> dependencies -> migrations -> schema -> app -> rollback guard -> down -> backup -> reapply -> health ordering, got %d %d %d %d %d %d %d %d %d %d %d", appBuildIdx, webBuildIdx, dependenciesIdx, migrationsIdx, schemaAssertIdx, appStartIdx, rollbackGuardIdx, downIdx, backupIdx, reapplyIdx, healthWaitIdx)
 	}
 }
 

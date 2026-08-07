@@ -9,5 +9,6 @@ backups
 docs
 *.dump
 **/*.dump
+**/*_test.go
 web/node_modules
 web/dist

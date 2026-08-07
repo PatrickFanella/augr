@@ -22,6 +22,7 @@ case "$PROJECT_NAME" in
         exit 1
         ;;
 esac
+VERIFY_WEB_IMAGE="${PROJECT_NAME}-web:latest"
 
 if [ -n "$(docker ps -aq --filter "label=com.docker.compose.project=${PROJECT_NAME}")" ]; then
     echo "refusing to reuse existing Compose project ${PROJECT_NAME}" >&2
@@ -80,6 +81,7 @@ compose() {
 
 cleanup() {
     compose down --volumes --remove-orphans --rmi local >/dev/null 2>&1 || true
+    docker image rm "$VERIFY_WEB_IMAGE" >/dev/null 2>&1 || true
     rm -rf "$VERIFY_DIR"
 }
 trap cleanup EXIT HUP INT TERM
@@ -176,6 +178,29 @@ if [ "$BUILT_APP_VERSION" != "$VERIFY_BUILD_VERSION" ]; then
 fi
 if [ "$BUILT_APP_CREATED" != "$VERIFY_BUILD_TIME" ]; then
     echo "built app creation label mismatch: got ${BUILT_APP_CREATED}, expected ${VERIFY_BUILD_TIME}" >&2
+    exit 1
+fi
+
+docker buildx build --load \
+    --tag "$VERIFY_WEB_IMAGE" \
+    --build-arg "BUILD_VERSION=$VERIFY_BUILD_VERSION" \
+    --build-arg "BUILD_COMMIT=$VERIFY_BUILD_COMMIT" \
+    --build-arg "BUILD_TIME=$VERIFY_BUILD_TIME" \
+    --file "${ROOT_DIR}/Dockerfile.web" \
+    "$ROOT_DIR"
+BUILT_WEB_REVISION=$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$VERIFY_WEB_IMAGE")
+BUILT_WEB_VERSION=$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.version" }}' "$VERIFY_WEB_IMAGE")
+BUILT_WEB_CREATED=$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.created" }}' "$VERIFY_WEB_IMAGE")
+if [ "$BUILT_WEB_REVISION" != "$VERIFY_BUILD_COMMIT" ]; then
+    echo "built web revision label mismatch: got ${BUILT_WEB_REVISION}, expected ${VERIFY_BUILD_COMMIT}" >&2
+    exit 1
+fi
+if [ "$BUILT_WEB_VERSION" != "$VERIFY_BUILD_VERSION" ]; then
+    echo "built web version label mismatch: got ${BUILT_WEB_VERSION}, expected ${VERIFY_BUILD_VERSION}" >&2
+    exit 1
+fi
+if [ "$BUILT_WEB_CREATED" != "$VERIFY_BUILD_TIME" ]; then
+    echo "built web creation label mismatch: got ${BUILT_WEB_CREATED}, expected ${VERIFY_BUILD_TIME}" >&2
     exit 1
 fi
 

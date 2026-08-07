@@ -99,7 +99,7 @@ func TestDockerContextExcludesDocumentationAndDatabaseDumps(t *testing.T) {
 		t.Fatalf("ReadFile(.dockerignore) error = %v", err)
 	}
 	ignore := string(contents)
-	for _, want := range []string{"docs", "backups", "*.dump", "**/*.dump"} {
+	for _, want := range []string{"docs", "backups", "*.dump", "**/*.dump", "**/*_test.go"} {
 		if !lineExists(ignore, want) {
 			t.Fatalf(".dockerignore missing exact entry %q", want)
 		}
