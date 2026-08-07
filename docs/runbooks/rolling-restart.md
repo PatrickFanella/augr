@@ -21,7 +21,7 @@ Use this runbook for config changes, routine deploys, or process-level recovery 
    tradingagent --api-url "$TRADINGAGENT_API_URL" --api-key "$TRADINGAGENT_API_KEY" risk status
    ```
 
-3. If the deploy includes pending schema changes, apply migrations before restarting app processes. The runtime fails fast on schema mismatch and requires a fresh restart after migrations.
+3. If the deploy includes pending schema changes, record the current schema version and exact app image, take a verified database backup, and read both the up and down migrations before changing anything. The runtime requires an exact schema match, fails fast when the database is either behind or ahead, and requires a fresh restart after migrations.
 
    ```bash
    task migrate:up
@@ -57,6 +57,9 @@ Use this runbook for config changes, routine deploys, or process-level recovery 
 
 ## Rollback
 
-1. If the new process fails health checks, redeploy the previous known-good image or revision.
-2. Keep the instance out of rotation until health checks recover.
-3. If the restart introduced trading risk, leave the kill switch active until the rollback is complete and the restored instance passes verification.
+1. Keep the instance out of rotation and stop application writes. If the restart introduced trading risk, leave the kill switch active.
+2. Compare the previous image's required schema version with the live database. Do not start an older image against a newer schema: this runtime rejects that state even when the migrations are additive.
+3. Before running down migrations, prove that reverting them is lossless. Check every table, column, or other structure introduced by the release for post-migration writes. If any new structure contains data, stop; use the verified predeployment backup and the database recovery procedure instead of silently dropping it.
+4. When the lossless check passes, run the exact required down migrations, verify a clean schema at the previous image's required version, and only then restore the exact previous image.
+5. If backup restoration is required, follow [Database backup and restore](database-backup-restore.md) with writes halted and explicit operator control.
+6. Verify application health, authenticated read-only access, schema compatibility, risk controls, and financial invariants before clearing the kill switch or returning traffic.

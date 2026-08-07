@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 COMPOSE_FILE="${ROOT_DIR}/docker-compose.prod.yml"
 PROJECT_NAME="${VERIFY_PROJECT_NAME:-augr-prod-verify-$$}"
 MIGRATE_IMAGE="${MIGRATE_IMAGE:-migrate/migrate:v4.18.3}"
+VERIFY_ROLLBACK_SCHEMA_VERSION="${VERIFY_ROLLBACK_SCHEMA_VERSION:-60}"
 
 case "$PROJECT_NAME" in
     augr-prod-verify-*) ;;
@@ -168,6 +169,17 @@ if [ "$SCHEMA_VERSION" != "$EXPECTED_VERSION" ]; then
     echo "schema version mismatch after migrations: got ${SCHEMA_VERSION}, expected ${EXPECTED_VERSION}" >&2
     exit 1
 fi
+case "$VERIFY_ROLLBACK_SCHEMA_VERSION" in
+    ''|*[!0-9]*)
+        echo "VERIFY_ROLLBACK_SCHEMA_VERSION must be a non-negative integer" >&2
+        exit 1
+        ;;
+esac
+if [ "$VERIFY_ROLLBACK_SCHEMA_VERSION" -ge "$EXPECTED_VERSION" ]; then
+    echo "VERIFY_ROLLBACK_SCHEMA_VERSION must be lower than ${EXPECTED_VERSION}" >&2
+    exit 1
+fi
+ROLLBACK_STEPS=$((EXPECTED_VERSION - VERIFY_ROLLBACK_SCHEMA_VERSION))
 
 echo "=== Starting isolated production app ==="
 compose up -d app
@@ -190,5 +202,47 @@ curl -fsS \
     -H "Authorization: Bearer ${AUTH_TOKEN}" \
     "http://127.0.0.1:${VERIFY_APP_PORT}/api/v1/strategies" | \
     python3 -c 'import json, sys; json.load(sys.stdin)'
+
+echo "=== Rehearsing lossless schema rollback ==="
+compose stop app >/dev/null
+NEW_STRUCTURE_WRITES=$(compose exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc \
+    "SELECT (SELECT count(*) FROM automation_job_controls)::text || '|' || (SELECT count(*) FROM trades WHERE exit_reason IS NOT NULL)::text" | tr -d '[:space:]')
+if [ "$NEW_STRUCTURE_WRITES" != "0|0" ]; then
+    echo "refusing rollback rehearsal with writes in schema 61/62 structures: ${NEW_STRUCTURE_WRITES}" >&2
+    exit 1
+fi
+
+docker run --rm \
+    --network "$backend_network" \
+    -v "${ROOT_DIR}/migrations:/migrations:ro" \
+    "$MIGRATE_IMAGE" \
+    -path=/migrations \
+    -database "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable" \
+    down "$ROLLBACK_STEPS"
+
+ROLLBACK_SCHEMA_VERSION=$(compose exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc \
+    "SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1" | tr -d '[:space:]')
+if [ "$ROLLBACK_SCHEMA_VERSION" != "$VERIFY_ROLLBACK_SCHEMA_VERSION" ]; then
+    echo "schema rollback mismatch: got ${ROLLBACK_SCHEMA_VERSION}, expected ${VERIFY_ROLLBACK_SCHEMA_VERSION}" >&2
+    exit 1
+fi
+
+docker run --rm \
+    --network "$backend_network" \
+    -v "${ROOT_DIR}/migrations:/migrations:ro" \
+    "$MIGRATE_IMAGE" \
+    -path=/migrations \
+    -database "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable" \
+    up
+
+REAPPLIED_SCHEMA_VERSION=$(compose exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc \
+    "SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1" | tr -d '[:space:]')
+if [ "$REAPPLIED_SCHEMA_VERSION" != "$EXPECTED_VERSION" ]; then
+    echo "schema reapply mismatch: got ${REAPPLIED_SCHEMA_VERSION}, expected ${EXPECTED_VERSION}" >&2
+    exit 1
+fi
+
+compose up -d app
+wait_for_app_health
 
 echo "=== Production build verification passed; isolated stack will be removed ==="
