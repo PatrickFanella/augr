@@ -34,7 +34,7 @@ type DiscoveryDeps struct {
 	DataService      *data.DataService
 	LLMProvider      llm.Provider
 	Strategies       repository.StrategyRepository
-	BacktestConfigs  repository.BacktestConfigRepository // optional; auto-creates BacktestConfig on deploy
+	BacktestConfigs  repository.BacktestConfigRepository
 	GeneratorMetrics GeneratorMetrics
 	Logger           *slog.Logger
 }
@@ -111,6 +111,14 @@ func RunDiscovery(ctx context.Context, cfg DiscoveryConfig, deps DiscoveryDeps) 
 	}
 	if cfg.ScheduleCron == "" {
 		cfg.ScheduleCron = "0 */2 * * *"
+	}
+	if !cfg.DryRun {
+		if deps.Strategies == nil {
+			return nil, fmt.Errorf("discovery: strategy repository is required for deployment")
+		}
+		if deps.BacktestConfigs == nil {
+			return nil, fmt.Errorf("discovery: backtest config repository is required for deployment")
+		}
 	}
 
 	result := &DiscoveryResult{}
@@ -353,7 +361,13 @@ func RunDiscovery(ctx context.Context, cfg DiscoveryConfig, deps DiscoveryDeps) 
 
 		wasCreated := false
 		if !cfg.DryRun {
-			createdStrategy, created, createErr := CreateOrReusePaperStrategy(ctx, deps.Strategies, strategy)
+			initialCash := cfg.Sweep.InitialCash
+			if initialCash == 0 {
+				initialCash = 100_000
+			}
+			createdStrategy, created, createErr := createOrReuseDiscoveryStrategy(
+				ctx, strategy, v.bars, initialCash, deps.Strategies, deps.BacktestConfigs,
+			)
 			if createErr != nil {
 				result.Errors = append(result.Errors, fmt.Sprintf("deploy %s: %v", strategy.Ticker, createErr))
 				continue
@@ -367,28 +381,6 @@ func RunDiscovery(ctx context.Context, cfg DiscoveryConfig, deps DiscoveryDeps) 
 				)
 			} else {
 				wasCreated = true
-			}
-			if created && deps.BacktestConfigs != nil && len(v.bars) >= 2 {
-				initialCash := cfg.Sweep.InitialCash
-				if initialCash == 0 {
-					initialCash = 100_000
-				}
-				btCfg := domain.BacktestConfig{
-					ID:         uuid.New(),
-					StrategyID: strategy.ID,
-					Name:       strategyName + " (discovery)",
-					StartDate:  v.bars[0].Timestamp,
-					EndDate:    v.bars[len(v.bars)-1].Timestamp,
-					Simulation: domain.BacktestSimulationParameters{
-						InitialCapital: initialCash,
-					},
-				}
-				if btErr := deps.BacktestConfigs.Create(ctx, &btCfg); btErr != nil {
-					logger.Warn("discovery: failed to create backtest config",
-						slog.String("strategy_id", strategy.ID.String()),
-						slog.Any("error", btErr),
-					)
-				}
 			}
 		}
 
@@ -426,6 +418,89 @@ func RunDiscovery(ctx context.Context, cfg DiscoveryConfig, deps DiscoveryDeps) 
 	)
 
 	return result, nil
+}
+
+// createOrReuseDiscoveryStrategy makes the backtest definition a deployment
+// precondition. New strategies are inserted paused and become active only after
+// their config is durable. A reused active strategy that predates this invariant
+// is paused while its missing config is repaired, so failure remains fail-closed.
+func createOrReuseDiscoveryStrategy(
+	ctx context.Context,
+	strategy domain.Strategy,
+	bars []domain.OHLCV,
+	initialCash float64,
+	strategies repository.StrategyRepository,
+	configs repository.BacktestConfigRepository,
+) (domain.Strategy, bool, error) {
+	if strategies == nil {
+		return domain.Strategy{}, false, fmt.Errorf("strategy repository is required")
+	}
+	if configs == nil {
+		return domain.Strategy{}, false, fmt.Errorf("backtest config repository is required")
+	}
+	if len(bars) < 2 {
+		return domain.Strategy{}, false, fmt.Errorf("at least two historical bars are required")
+	}
+
+	desiredStatus := strategy.Status
+	strategy.Status = domain.StrategyStatusPaused
+	persisted, created, err := CreateOrReusePaperStrategy(ctx, strategies, strategy)
+	if err != nil {
+		return domain.Strategy{}, false, err
+	}
+	if !created {
+		desiredStatus = persisted.Status
+	}
+
+	existingConfigs, err := configs.List(ctx, repository.BacktestConfigFilter{StrategyID: &persisted.ID}, 1, 0)
+	if err != nil {
+		return persisted, created, fmt.Errorf("list backtest configs: %w", err)
+	}
+	if len(existingConfigs) > 0 {
+		return persisted, created, nil
+	}
+
+	if persisted.Status == domain.StrategyStatusActive {
+		persisted.Status = domain.StrategyStatusPaused
+		if err := strategies.Update(ctx, &persisted); err != nil {
+			return persisted, created, fmt.Errorf("pause strategy before backtest config repair: %w", err)
+		}
+	}
+
+	btCfg := domain.BacktestConfig{
+		ID:         uuid.New(),
+		StrategyID: persisted.ID,
+		Name:       persisted.Name + " (discovery)",
+		StartDate:  bars[0].Timestamp,
+		EndDate:    bars[len(bars)-1].Timestamp,
+		Simulation: domain.BacktestSimulationParameters{InitialCapital: initialCash},
+	}
+	if err := configs.Create(ctx, &btCfg); err != nil {
+		if created {
+			if cleanupErr := strategies.Delete(ctx, persisted.ID); cleanupErr != nil {
+				return persisted, true, fmt.Errorf("create backtest config: %w; remove paused strategy: %v", err, cleanupErr)
+			}
+			return domain.Strategy{}, false, fmt.Errorf("create backtest config: %w", err)
+		}
+		return persisted, false, fmt.Errorf("create backtest config; strategy remains paused: %w", err)
+	}
+
+	if desiredStatus == domain.StrategyStatusActive {
+		persisted.Status = domain.StrategyStatusActive
+		if err := strategies.Update(ctx, &persisted); err != nil {
+			if created {
+				configCleanupErr := configs.Delete(ctx, btCfg.ID)
+				strategyCleanupErr := strategies.Delete(ctx, persisted.ID)
+				if configCleanupErr != nil || strategyCleanupErr != nil {
+					return persisted, true, fmt.Errorf("activate strategy: %w; remove config: %v; remove paused strategy: %v", err, configCleanupErr, strategyCleanupErr)
+				}
+				return domain.Strategy{}, false, fmt.Errorf("activate strategy: %w", err)
+			}
+			return persisted, false, fmt.Errorf("reactivate repaired strategy; strategy remains paused: %w", err)
+		}
+	}
+
+	return persisted, created, nil
 }
 
 func recordDiscoveryDeploymentOutcome(result *DiscoveryResult, dryRun, created bool) {

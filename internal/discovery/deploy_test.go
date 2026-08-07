@@ -169,6 +169,8 @@ type inMemoryStrategyRepo struct {
 	strategies         []domain.Strategy
 	injectConflictOnce bool
 	conflictTriggered  bool
+	createStatuses     []string
+	updateStatuses     []string
 }
 
 func newInMemoryStrategyRepo() *inMemoryStrategyRepo {
@@ -176,6 +178,7 @@ func newInMemoryStrategyRepo() *inMemoryStrategyRepo {
 }
 
 func (r *inMemoryStrategyRepo) Create(_ context.Context, strategy *domain.Strategy) error {
+	r.createStatuses = append(r.createStatuses, strategy.Status)
 	if strategy.ID == uuid.Nil {
 		strategy.ID = uuid.New()
 	}
@@ -252,6 +255,7 @@ func (r *inMemoryStrategyRepo) CountMust(ctx context.Context, filter repository.
 }
 
 func (r *inMemoryStrategyRepo) Update(_ context.Context, strategy *domain.Strategy) error {
+	r.updateStatuses = append(r.updateStatuses, strategy.Status)
 	for i := range r.strategies {
 		if r.strategies[i].ID == strategy.ID {
 			r.strategies[i] = *strategy

@@ -215,10 +215,11 @@ func (o *JobOrchestrator) overnightGenerate(ctx context.Context) error {
 	defer func() { o.SetLastSummary("overnight_generate", summary) }()
 
 	deps := discovery.DiscoveryDeps{
-		DataService: o.deps.DataService,
-		LLMProvider: o.deps.LLMProvider,
-		Strategies:  o.deps.StrategyRepo,
-		Logger:      o.logger,
+		DataService:     o.deps.DataService,
+		LLMProvider:     o.deps.LLMProvider,
+		Strategies:      o.deps.StrategyRepo,
+		BacktestConfigs: o.deps.BacktestConfigRepo,
+		Logger:          o.logger,
 	}
 
 	for _, indexGroup := range indexGroups {

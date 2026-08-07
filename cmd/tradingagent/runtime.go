@@ -570,6 +570,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 			DataService:      dataService,
 			LLMProvider:      deps.LLMProvider,
 			Strategies:       strategyRepo,
+			BacktestConfigs:  backtestConfigRepo,
 			GeneratorMetrics: appMetrics,
 			Logger:           logger,
 		}
