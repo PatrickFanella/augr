@@ -2,6 +2,7 @@ package execution_test
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"math"
 	"testing"
@@ -20,6 +21,28 @@ type mockOptionsBroker struct {
 	submitOptionOrderFn func(ctx context.Context, order *domain.Order) (string, error)
 	submitSpreadOrderFn func(ctx context.Context, spread *domain.OptionSpread, quantity float64) ([]string, error)
 	optionFillReportFn  func(ctx context.Context, order *domain.Order) (execution.OptionFillReport, error)
+}
+
+type recordingOptionFillRepo struct {
+	batches [][]repository.OptionFillInput
+	err     error
+}
+
+func (r *recordingOptionFillRepo) ApplyOptionFills(_ context.Context, inputs []repository.OptionFillInput) ([]repository.OptionFillResult, error) {
+	if r.err != nil {
+		return nil, r.err
+	}
+	batch := append([]repository.OptionFillInput(nil), inputs...)
+	r.batches = append(r.batches, batch)
+	results := make([]repository.OptionFillResult, len(inputs))
+	for index, input := range inputs {
+		positionID := uuid.New()
+		if input.PositionID != nil {
+			positionID = *input.PositionID
+		}
+		results[index] = repository.OptionFillResult{OrderID: input.Order.ID, PositionID: positionID, TradeID: uuid.New()}
+	}
+	return results, nil
 }
 
 func (b *mockOptionsBroker) GetAccountBalance(context.Context) (execution.Balance, error) {
@@ -51,8 +74,18 @@ func (b *mockOptionsBroker) PreflightSpread(context.Context, *domain.OptionSprea
 	return nil
 }
 
+func (b *mockOptionsBroker) RollbackOptionOrder(context.Context, string) error { return nil }
+
+func (b *mockOptionsBroker) RollbackOptionSpread(context.Context, []string) error { return nil }
+
+func (b *mockOptionsBroker) FinalizeOptionSpread([]string) error { return nil }
+
 func newTestOptionsManager(broker *mockOptionsBroker, orderRepo *mockOrderRepo, positionRepo *mockPositionRepo, tradeRepo *mockTradeRepo, riskEng *mockRiskEngine) *execution.OptionsOrderManager {
-	return execution.NewOptionsOrderManager(broker, orderRepo, positionRepo, tradeRepo, riskEng, slog.Default())
+	return newTestOptionsManagerWithFillRepo(broker, orderRepo, positionRepo, tradeRepo, riskEng, &recordingOptionFillRepo{})
+}
+
+func newTestOptionsManagerWithFillRepo(broker execution.OptionsBroker, orderRepo *mockOrderRepo, positionRepo *mockPositionRepo, tradeRepo *mockTradeRepo, riskEng *mockRiskEngine, fillRepo repository.OptionFillRepository) *execution.OptionsOrderManager {
+	return execution.NewOptionsOrderManager(broker, orderRepo, positionRepo, tradeRepo, riskEng, slog.Default()).WithOptionFillRepo(fillRepo)
 }
 
 func TestProcessOptionSignal_PersistsExplicitContractMetadata(t *testing.T) {
@@ -180,6 +213,7 @@ func TestProcessOptionSignal_PreservesImmediatePaperFill(t *testing.T) {
 	orderRepo := &mockOrderRepo{}
 	positionRepo := &mockPositionRepo{}
 	tradeRepo := &mockTradeRepo{}
+	fillRepo := &recordingOptionFillRepo{}
 	broker := &mockOptionsBroker{submitOptionOrderFn: func(_ context.Context, order *domain.Order) (string, error) {
 		price := 2.5
 		filledAt := time.Now().UTC()
@@ -189,20 +223,39 @@ func TestProcessOptionSignal_PreservesImmediatePaperFill(t *testing.T) {
 		order.FilledAt = &filledAt
 		return "paper-option-1", nil
 	}}
-	mgr := newTestOptionsManager(broker, orderRepo, positionRepo, tradeRepo, &mockRiskEngine{})
+	mgr := newTestOptionsManagerWithFillRepo(broker, orderRepo, positionRepo, tradeRepo, &mockRiskEngine{}, fillRepo)
 	greeks := &domain.OptionGreeks{Delta: 0.4, Gamma: 0.02, Theta: -0.1, Vega: 0.2}
 	err := mgr.ProcessOptionSignal(context.Background(), execution.FinalSignal{Signal: domain.PipelineSignalBuy}, execution.TradingPlan{Ticker: "AAPL271217C00150000", EntryPrice: 2.5, PositionSize: 1, OptionGreeks: greeks}, uuid.New(), uuid.New())
 	if err != nil {
 		t.Fatalf("ProcessOptionSignal() error = %v", err)
 	}
-	if got := orderRepo.updates[0].Status; got != domain.OrderStatusFilled {
-		t.Fatalf("paper fill status = %s, want filled", got)
+	if len(orderRepo.updates) != 0 {
+		t.Fatalf("filled order must be committed only by the atomic repository, got %d pre-updates", len(orderRepo.updates))
 	}
-	if len(positionRepo.positions) != 1 || positionRepo.positions[0].UnderlyingTicker != "AAPL" || positionRepo.positions[0].Delta == nil || *positionRepo.positions[0].Delta != 0.4 {
-		t.Fatalf("filled option position not persisted: %+v", positionRepo.positions)
+	if len(fillRepo.batches) != 1 || len(fillRepo.batches[0]) != 1 {
+		t.Fatalf("filled option lifecycle was not one atomic batch: %+v", fillRepo.batches)
 	}
-	if len(tradeRepo.trades) != 1 || tradeRepo.trades[0].Premium != 250 || tradeRepo.trades[0].Fee != 0.65 || tradeRepo.trades[0].OpenClose != "open" {
-		t.Fatalf("filled option trade not persisted: %+v", tradeRepo.trades)
+	input := fillRepo.batches[0][0]
+	if input.PositionID != nil || input.Order.UnderlyingTicker != "AAPL" || input.Order.OptionGreeks == nil || input.Order.OptionGreeks.Delta != 0.4 || input.Premium != 250 || input.Fee != 0.65 {
+		t.Fatalf("filled option accounting not preserved: %+v", input)
+	}
+}
+
+func TestProcessOptionSignal_RollsBackPaperFillWhenAtomicPersistenceFails(t *testing.T) {
+	broker := paper.NewPaperBroker(10000, 0, 0)
+	fillRepo := &recordingOptionFillRepo{err: errors.New("database unavailable")}
+	orderRepo := &mockOrderRepo{}
+	mgr := newTestOptionsManagerWithFillRepo(broker, orderRepo, &mockPositionRepo{}, &mockTradeRepo{}, &mockRiskEngine{}, fillRepo).WithBrokerName("paper")
+	err := mgr.ProcessOptionSignal(context.Background(), execution.FinalSignal{Signal: domain.PipelineSignalBuy}, execution.TradingPlan{Ticker: "AAPL271217C00150000", EntryPrice: 2.5, PositionSize: 1}, uuid.New(), uuid.New())
+	if err == nil {
+		t.Fatal("expected atomic persistence failure")
+	}
+	balance, balanceErr := broker.GetAccountBalance(context.Background())
+	if balanceErr != nil || balance.Cash != 10000 {
+		t.Fatalf("paper fill was not compensated: balance=%+v err=%v", balance, balanceErr)
+	}
+	if len(orderRepo.updates) != 1 || orderRepo.updates[0].Status != domain.OrderStatusRejected || orderRepo.updates[0].FilledQuantity != 0 || orderRepo.updates[0].FilledAt != nil {
+		t.Fatalf("compensated order was not durably rejected: %+v", orderRepo.updates)
 	}
 }
 
@@ -210,6 +263,7 @@ func TestCloseOptionPositionPersistsLifecycle(t *testing.T) {
 	orderRepo := &mockOrderRepo{}
 	positionRepo := &mockPositionRepo{}
 	tradeRepo := &mockTradeRepo{}
+	fillRepo := &recordingOptionFillRepo{}
 	broker := &mockOptionsBroker{submitOptionOrderFn: func(_ context.Context, order *domain.Order) (string, error) {
 		price := *order.LimitPrice
 		filledAt := time.Now().UTC()
@@ -222,18 +276,19 @@ func TestCloseOptionPositionPersistsLifecycle(t *testing.T) {
 	optionType, strike := domain.OptionTypeCall, 150.0
 	expiry := time.Date(2027, 12, 17, 0, 0, 0, 0, time.UTC)
 	position := &domain.Position{ID: uuid.New(), StrategyID: &strategyID, MarketType: domain.MarketTypeOptions, Ticker: "AAPL271217C00150000", Side: domain.PositionSideLong, Quantity: 2, AvgEntry: 2.5, AssetClass: domain.AssetClassOption, UnderlyingTicker: "AAPL", OptionType: &optionType, Strike: &strike, Expiry: &expiry, ContractMultiplier: 100}
-	mgr := newTestOptionsManager(broker, orderRepo, positionRepo, tradeRepo, &mockRiskEngine{})
+	mgr := newTestOptionsManagerWithFillRepo(broker, orderRepo, positionRepo, tradeRepo, &mockRiskEngine{}, fillRepo)
 	if err := mgr.CloseOptionPosition(context.Background(), position, 3.5, runID, "profit target"); err != nil {
 		t.Fatalf("CloseOptionPosition() error = %v", err)
 	}
 	if len(orderRepo.orders) != 1 || orderRepo.orders[0].PositionIntent == nil || *orderRepo.orders[0].PositionIntent != domain.PositionIntentSellToClose {
 		t.Fatalf("close order missing sell-to-close intent: %+v", orderRepo.orders)
 	}
-	if len(positionRepo.updates) != 1 || positionRepo.updates[0].ClosedAt == nil || positionRepo.updates[0].Quantity != 0 || math.Abs(positionRepo.updates[0].RealizedPnL-199.35) > 1e-9 {
-		t.Fatalf("position not closed correctly: %+v", positionRepo.updates)
+	if len(fillRepo.batches) != 1 || len(fillRepo.batches[0]) != 1 {
+		t.Fatalf("close lifecycle was not one atomic batch: %+v", fillRepo.batches)
 	}
-	if len(tradeRepo.trades) != 1 || tradeRepo.trades[0].OpenClose != "close" || tradeRepo.trades[0].ExitReason != "profit target" || tradeRepo.trades[0].Premium != 700 {
-		t.Fatalf("closing trade not persisted: %+v", tradeRepo.trades)
+	input := fillRepo.batches[0][0]
+	if input.PositionID == nil || *input.PositionID != position.ID || input.ExitReason != "profit target" || input.Premium != 700 || input.Fee != 0.65 {
+		t.Fatalf("closing fill not preserved: %+v", input)
 	}
 }
 
@@ -261,7 +316,8 @@ func TestProcessSpreadSignalPreflightPreventsOrphanOrders(t *testing.T) {
 func TestProcessSpreadSignalPersistsAtomicPaperLegs(t *testing.T) {
 	orderRepo, positionRepo, tradeRepo := &mockOrderRepo{}, &mockPositionRepo{}, &mockTradeRepo{}
 	broker := paper.NewPaperBroker(100000, 0, 0)
-	mgr := execution.NewOptionsOrderManager(broker, orderRepo, positionRepo, tradeRepo, &mockRiskEngine{}, slog.Default()).WithBrokerName("paper")
+	fillRepo := &recordingOptionFillRepo{}
+	mgr := newTestOptionsManagerWithFillRepo(broker, orderRepo, positionRepo, tradeRepo, &mockRiskEngine{}, fillRepo).WithBrokerName("paper")
 	expiry := time.Date(2027, 12, 17, 0, 0, 0, 0, time.UTC)
 	spread := &domain.OptionSpread{StrategyType: domain.StrategyBullCallSpread, Underlying: "AAPL", MaxRisk: 150, MaxReward: 350, Legs: []domain.SpreadLeg{
 		{Contract: domain.OptionContract{OCCSymbol: "AAPL271217C00150000", Underlying: "AAPL", OptionType: domain.OptionTypeCall, Strike: 150, Expiry: expiry, Multiplier: 100}, Side: domain.OrderSideBuy, PositionIntent: domain.PositionIntentBuyToOpen, Ratio: 1, ExecutablePrice: 2.5},
@@ -270,11 +326,33 @@ func TestProcessSpreadSignalPersistsAtomicPaperLegs(t *testing.T) {
 	if err := mgr.ProcessSpreadSignal(context.Background(), spread, 1, uuid.New(), uuid.New()); err != nil {
 		t.Fatalf("ProcessSpreadSignal() error = %v", err)
 	}
-	if len(orderRepo.updates) != 2 || len(positionRepo.positions) != 2 || len(tradeRepo.trades) != 2 {
-		t.Fatalf("spread lifecycle counts orders=%d positions=%d trades=%d", len(orderRepo.updates), len(positionRepo.positions), len(tradeRepo.trades))
+	if len(fillRepo.batches) != 1 || len(fillRepo.batches[0]) != 2 {
+		t.Fatalf("spread lifecycle was not one atomic batch: %+v", fillRepo.batches)
 	}
-	if orderRepo.updates[0].LegGroupID == nil || orderRepo.updates[1].LegGroupID == nil || *orderRepo.updates[0].LegGroupID != *orderRepo.updates[1].LegGroupID || orderRepo.updates[0].Status != domain.OrderStatusFilled || orderRepo.updates[1].Status != domain.OrderStatusFilled {
-		t.Fatalf("spread legs not atomically grouped and filled: %+v", orderRepo.updates)
+	if fillRepo.batches[0][0].Order.LegGroupID == nil || fillRepo.batches[0][1].Order.LegGroupID == nil || *fillRepo.batches[0][0].Order.LegGroupID != *fillRepo.batches[0][1].Order.LegGroupID {
+		t.Fatalf("spread legs not atomically grouped: %+v", fillRepo.batches[0])
+	}
+}
+
+func TestProcessSpreadSignalCompensatesPaperDebitWhenAtomicPersistenceFails(t *testing.T) {
+	orderRepo, positionRepo, tradeRepo := &mockOrderRepo{}, &mockPositionRepo{}, &mockTradeRepo{}
+	broker := paper.NewPaperBroker(100000, 0, 0)
+	fillRepo := &recordingOptionFillRepo{err: errors.New("database unavailable")}
+	mgr := newTestOptionsManagerWithFillRepo(broker, orderRepo, positionRepo, tradeRepo, &mockRiskEngine{}, fillRepo).WithBrokerName("paper")
+	expiry := time.Date(2027, 12, 17, 0, 0, 0, 0, time.UTC)
+	spread := &domain.OptionSpread{StrategyType: domain.StrategyBullCallSpread, Underlying: "AAPL", MaxRisk: 150, MaxReward: 350, Legs: []domain.SpreadLeg{
+		{Contract: domain.OptionContract{OCCSymbol: "AAPL271217C00150000", Underlying: "AAPL", OptionType: domain.OptionTypeCall, Strike: 150, Expiry: expiry, Multiplier: 100}, Side: domain.OrderSideBuy, PositionIntent: domain.PositionIntentBuyToOpen, Ratio: 1, ExecutablePrice: 2.5},
+		{Contract: domain.OptionContract{OCCSymbol: "AAPL271217C00155000", Underlying: "AAPL", OptionType: domain.OptionTypeCall, Strike: 155, Expiry: expiry, Multiplier: 100}, Side: domain.OrderSideSell, PositionIntent: domain.PositionIntentSellToOpen, Ratio: 1, ExecutablePrice: 1},
+	}}
+	if err := mgr.ProcessSpreadSignal(context.Background(), spread, 1, uuid.New(), uuid.New()); err == nil {
+		t.Fatal("expected atomic spread persistence failure")
+	}
+	balance, err := broker.GetAccountBalance(context.Background())
+	if err != nil || balance.Cash != 100000 {
+		t.Fatalf("paper spread was not compensated: balance=%+v err=%v", balance, err)
+	}
+	if len(orderRepo.updates) != 2 || orderRepo.updates[0].Status != domain.OrderStatusRejected || orderRepo.updates[1].Status != domain.OrderStatusRejected {
+		t.Fatalf("compensated spread orders were not rejected: %+v", orderRepo.updates)
 	}
 }
 
@@ -294,16 +372,17 @@ func TestProcessSpreadSignalAtomicallyClosesPersistedLegGroup(t *testing.T) {
 		{Contract: domain.OptionContract{OCCSymbol: positions[0].Ticker, Underlying: "AAPL", OptionType: optionType, Strike: longStrike, Expiry: expiry, Multiplier: 100}, Side: domain.OrderSideSell, PositionIntent: domain.PositionIntentSellToClose, Ratio: 1, ExecutablePrice: 3},
 		{Contract: domain.OptionContract{OCCSymbol: positions[1].Ticker, Underlying: "AAPL", OptionType: optionType, Strike: shortStrike, Expiry: expiry, Multiplier: 100}, Side: domain.OrderSideBuy, PositionIntent: domain.PositionIntentBuyToClose, Ratio: 1, ExecutablePrice: 1.2},
 	}}
-	mgr := execution.NewOptionsOrderManager(paper.NewPaperBroker(100000, 0, 0), orderRepo, positionRepo, tradeRepo, &mockRiskEngine{}, slog.Default()).WithBrokerName("paper")
+	fillRepo := &recordingOptionFillRepo{}
+	mgr := newTestOptionsManagerWithFillRepo(paper.NewPaperBroker(100000, 0, 0), orderRepo, positionRepo, tradeRepo, &mockRiskEngine{}, fillRepo).WithBrokerName("paper")
 	if err := mgr.ProcessSpreadSignal(context.Background(), spread, 1, strategyID, uuid.New()); err != nil {
 		t.Fatalf("ProcessSpreadSignal(close) error = %v", err)
 	}
-	if len(positionRepo.updates) != 2 || len(tradeRepo.trades) != 2 {
-		t.Fatalf("close lifecycle updates=%d trades=%d", len(positionRepo.updates), len(tradeRepo.trades))
+	if len(fillRepo.batches) != 1 || len(fillRepo.batches[0]) != 2 {
+		t.Fatalf("spread close lifecycle was not one atomic batch: %+v", fillRepo.batches)
 	}
-	for index := range positionRepo.updates {
-		if positionRepo.updates[index].ClosedAt == nil || tradeRepo.trades[index].OpenClose != "close" {
-			t.Fatalf("spread leg %d not closed: position=%+v trade=%+v", index, positionRepo.updates[index], tradeRepo.trades[index])
+	for index := range fillRepo.batches[0] {
+		if fillRepo.batches[0][index].PositionID == nil || fillRepo.batches[0][index].ExitReason != "strategy spread close" {
+			t.Fatalf("spread close leg %d incomplete: %+v", index, fillRepo.batches[0][index])
 		}
 	}
 }

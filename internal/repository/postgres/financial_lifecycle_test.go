@@ -183,6 +183,148 @@ func TestFinancialLifecycle_OptionSettlementCommitsPositionAndTradeAtomically(t 
 	}
 }
 
+func TestFinancialLifecycle_OptionFillBatchIsAtomicAndReplaySafe(t *testing.T) {
+	ctx := context.Background()
+	pool, cleanup := newFinancialLifecycleIntegrationPool(t, ctx)
+	defer cleanup()
+	repo := &DB{Pool: pool}
+	strategyID := createFinancialLifecycleStrategy(t, ctx, pool)
+	filledAt := time.Date(2027, 6, 1, 15, 0, 0, 0, time.UTC)
+	expiry := time.Date(2027, 12, 17, 0, 0, 0, 0, time.UTC)
+	optionType, longStrike, shortStrike := domain.OptionTypeCall, 150.0, 155.0
+	groupID := uuid.New()
+	buyIntent, sellIntent := domain.PositionIntentBuyToOpen, domain.PositionIntentSellToOpen
+	orders := []*domain.Order{
+		{ID: uuid.New(), StrategyID: &strategyID, Ticker: "AAPL271217C00150000", MarketType: domain.MarketTypeOptions, Side: domain.OrderSideBuy, Status: domain.OrderStatusPending, Quantity: 1, AssetClass: domain.AssetClassOption, UnderlyingTicker: "AAPL", OptionType: &optionType, Strike: &longStrike, Expiry: &expiry, ContractMultiplier: 100, PositionIntent: &buyIntent, LegGroupID: &groupID, Broker: "paper"},
+		{ID: uuid.New(), StrategyID: &strategyID, Ticker: "AAPL271217C00155000", MarketType: domain.MarketTypeOptions, Side: domain.OrderSideSell, Status: domain.OrderStatusPending, Quantity: 1, AssetClass: domain.AssetClassOption, UnderlyingTicker: "AAPL", OptionType: &optionType, Strike: &shortStrike, Expiry: &expiry, ContractMultiplier: 100, PositionIntent: &sellIntent, LegGroupID: &groupID, Broker: "paper"},
+	}
+	for _, order := range orders {
+		createFinancialLifecycleOrder(t, ctx, pool, order)
+		order.Status, order.FilledQuantity, order.FilledAt, order.SubmittedAt = domain.OrderStatusFilled, order.Quantity, &filledAt, &filledAt
+		order.ExternalID = "paper-" + order.ID.String()
+	}
+	orders[0].FilledAvgPrice, orders[1].FilledAvgPrice = floatPtr(2.5), floatPtr(1)
+	inputs := []repository.OptionFillInput{
+		{Order: orders[0], FillPrice: 2.5, FillQuantity: 1, Fee: .65, Premium: 250, FilledAt: filledAt},
+		{Order: orders[1], FillPrice: 1, FillQuantity: 1, Fee: .65, Premium: 100, FilledAt: filledAt},
+	}
+	results, err := repo.ApplyOptionFills(ctx, inputs)
+	if err != nil {
+		t.Fatalf("ApplyOptionFills() error = %v", err)
+	}
+	if len(results) != 2 || results[0].PositionID == uuid.Nil || results[1].PositionID == uuid.Nil || results[0].PositionID == results[1].PositionID {
+		t.Fatalf("unexpected option fill results: %+v", results)
+	}
+	var positions, trades, idempotency, filledOrders int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM positions WHERE leg_group_id=$1 AND asset_class='option'`, groupID).Scan(&positions); err != nil {
+		t.Fatalf("count option positions: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM trades WHERE order_id=ANY($1::uuid[]) AND asset_class='option'`, []uuid.UUID{orders[0].ID, orders[1].ID}).Scan(&trades); err != nil {
+		t.Fatalf("count option trades: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM financial_fill_idempotency WHERE order_id=ANY($1::uuid[])`, []uuid.UUID{orders[0].ID, orders[1].ID}).Scan(&idempotency); err != nil {
+		t.Fatalf("count option idempotency: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM orders WHERE id=ANY($1::uuid[]) AND status='filled'`, []uuid.UUID{orders[0].ID, orders[1].ID}).Scan(&filledOrders); err != nil {
+		t.Fatalf("count filled option orders: %v", err)
+	}
+	if positions != 2 || trades != 2 || idempotency != 2 || filledOrders != 2 {
+		t.Fatalf("incomplete atomic graph positions=%d trades=%d idempotency=%d orders=%d", positions, trades, idempotency, filledOrders)
+	}
+	replay, err := repo.ApplyOptionFills(ctx, inputs)
+	if err != nil || replay[0] != results[0] || replay[1] != results[1] {
+		t.Fatalf("option fill replay mismatch replay=%+v results=%+v err=%v", replay, results, err)
+	}
+	tamperedOrder := &domain.Order{ID: uuid.New(), StrategyID: &strategyID, Ticker: "AAPL271217C00150000", MarketType: domain.MarketTypeOptions, Side: domain.OrderSideBuy, Status: domain.OrderStatusPending, Quantity: 1, AssetClass: domain.AssetClassOption, UnderlyingTicker: "AAPL", OptionType: &optionType, Strike: &longStrike, Expiry: &expiry, ContractMultiplier: 100, PositionIntent: &buyIntent, Broker: "paper"}
+	createFinancialLifecycleOrder(t, ctx, pool, tamperedOrder)
+	tamperedOrder.Status, tamperedOrder.FilledQuantity, tamperedOrder.FilledAt, tamperedOrder.SubmittedAt = domain.OrderStatusFilled, 1, &filledAt, &filledAt
+	tamperedOrder.FilledAvgPrice, tamperedOrder.ExternalID, tamperedOrder.UnderlyingTicker = floatPtr(2.5), "paper-"+tamperedOrder.ID.String(), "MSFT"
+	if _, err := repo.ApplyOptionFills(ctx, []repository.OptionFillInput{{Order: tamperedOrder, FillPrice: 2.5, FillQuantity: 1, Fee: .65, Premium: 250, FilledAt: filledAt}}); err == nil {
+		t.Fatal("expected persisted order metadata mismatch to fail")
+	}
+	var tamperedStatus domain.OrderStatus
+	if err := pool.QueryRow(ctx, `SELECT status FROM orders WHERE id=$1`, tamperedOrder.ID).Scan(&tamperedStatus); err != nil || tamperedStatus != domain.OrderStatusPending {
+		t.Fatalf("tampered option order was not rolled back: status=%s err=%v", tamperedStatus, err)
+	}
+
+	sellClose, buyClose := domain.PositionIntentSellToClose, domain.PositionIntentBuyToClose
+	mismatchedStrike := longStrike + 1
+	mismatchedClose := &domain.Order{ID: uuid.New(), StrategyID: &strategyID, Ticker: orders[0].Ticker, MarketType: domain.MarketTypeOptions, Side: domain.OrderSideSell, Status: domain.OrderStatusPending, Quantity: 1, AssetClass: domain.AssetClassOption, UnderlyingTicker: "AAPL", OptionType: &optionType, Strike: &mismatchedStrike, Expiry: &expiry, ContractMultiplier: 100, PositionIntent: &sellClose, LegGroupID: &groupID, Broker: "paper"}
+	createFinancialLifecycleOrder(t, ctx, pool, mismatchedClose)
+	mismatchedClose.Status, mismatchedClose.FilledQuantity, mismatchedClose.FilledAt, mismatchedClose.SubmittedAt = domain.OrderStatusFilled, mismatchedClose.Quantity, &filledAt, &filledAt
+	mismatchedClose.FilledAvgPrice, mismatchedClose.ExternalID = floatPtr(3), "paper-"+mismatchedClose.ID.String()
+	if _, err := repo.ApplyOptionFills(ctx, []repository.OptionFillInput{{Order: mismatchedClose, PositionID: &results[0].PositionID, FillPrice: 3, FillQuantity: 1, Fee: .65, Premium: 300, FilledAt: filledAt, ExitReason: "spread close"}}); err == nil {
+		t.Fatal("expected mismatched contract close to fail")
+	}
+	var mismatchedStatus domain.OrderStatus
+	if err := pool.QueryRow(ctx, `SELECT status FROM orders WHERE id=$1`, mismatchedClose.ID).Scan(&mismatchedStatus); err != nil || mismatchedStatus != domain.OrderStatusPending {
+		t.Fatalf("mismatched close was not rolled back: status=%s err=%v", mismatchedStatus, err)
+	}
+
+	closeOrders := []*domain.Order{
+		{ID: uuid.New(), StrategyID: &strategyID, Ticker: orders[0].Ticker, MarketType: domain.MarketTypeOptions, Side: domain.OrderSideSell, Status: domain.OrderStatusPending, Quantity: 1, AssetClass: domain.AssetClassOption, UnderlyingTicker: "AAPL", OptionType: &optionType, Strike: &longStrike, Expiry: &expiry, ContractMultiplier: 100, PositionIntent: &sellClose, LegGroupID: &groupID, Broker: "paper"},
+		{ID: uuid.New(), StrategyID: &strategyID, Ticker: orders[1].Ticker, MarketType: domain.MarketTypeOptions, Side: domain.OrderSideBuy, Status: domain.OrderStatusPending, Quantity: 1, AssetClass: domain.AssetClassOption, UnderlyingTicker: "AAPL", OptionType: &optionType, Strike: &shortStrike, Expiry: &expiry, ContractMultiplier: 100, PositionIntent: &buyClose, LegGroupID: &groupID, Broker: "paper"},
+	}
+	for _, order := range closeOrders {
+		createFinancialLifecycleOrder(t, ctx, pool, order)
+		order.Status, order.FilledQuantity, order.FilledAt, order.SubmittedAt = domain.OrderStatusFilled, order.Quantity, &filledAt, &filledAt
+		order.ExternalID = "paper-" + order.ID.String()
+	}
+	closeOrders[0].FilledAvgPrice, closeOrders[1].FilledAvgPrice = floatPtr(3), floatPtr(.5)
+	if _, err := repo.ApplyOptionFills(ctx, []repository.OptionFillInput{
+		{Order: closeOrders[0], PositionID: &results[0].PositionID, FillPrice: 3, FillQuantity: 1, Fee: .65, Premium: 300, FilledAt: filledAt, ExitReason: "spread close"},
+		{Order: closeOrders[1], PositionID: &results[1].PositionID, FillPrice: .5, FillQuantity: 1, Fee: .65, Premium: 50, FilledAt: filledAt, ExitReason: "spread close"},
+	}); err != nil {
+		t.Fatalf("close option batch: %v", err)
+	}
+	var closedPositions, closeTrades, expectedPnL int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM positions WHERE leg_group_id=$1 AND closed_at IS NOT NULL AND quantity=0`, groupID).Scan(&closedPositions); err != nil {
+		t.Fatalf("count closed option positions: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM trades WHERE order_id=ANY($1::uuid[]) AND open_close='close' AND exit_reason='spread close'`, []uuid.UUID{closeOrders[0].ID, closeOrders[1].ID}).Scan(&closeTrades); err != nil {
+		t.Fatalf("count closing option trades: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM positions WHERE leg_group_id=$1 AND realized_pnl=49.35`, groupID).Scan(&expectedPnL); err != nil {
+		t.Fatalf("count option close pnl: %v", err)
+	}
+	if closedPositions != 2 || closeTrades != 2 || expectedPnL != 2 {
+		t.Fatalf("incomplete option close graph positions=%d trades=%d pnl=%d", closedPositions, closeTrades, expectedPnL)
+	}
+
+	failGroupID := uuid.New()
+	failOrders := []*domain.Order{
+		{ID: uuid.New(), StrategyID: &strategyID, Ticker: "MSFT271217C00300000", MarketType: domain.MarketTypeOptions, Side: domain.OrderSideBuy, Status: domain.OrderStatusPending, Quantity: 1, AssetClass: domain.AssetClassOption, UnderlyingTicker: "MSFT", OptionType: &optionType, Strike: &longStrike, Expiry: &expiry, ContractMultiplier: 100, PositionIntent: &buyIntent, LegGroupID: &failGroupID, Broker: "paper"},
+		{ID: uuid.New(), StrategyID: &strategyID, Ticker: "FAIL", MarketType: domain.MarketTypeOptions, Side: domain.OrderSideSell, Status: domain.OrderStatusPending, Quantity: 1, AssetClass: domain.AssetClassOption, UnderlyingTicker: "MSFT", OptionType: &optionType, Strike: &shortStrike, Expiry: &expiry, ContractMultiplier: 100, PositionIntent: &sellIntent, LegGroupID: &failGroupID, Broker: "paper"},
+	}
+	for _, order := range failOrders {
+		createFinancialLifecycleOrder(t, ctx, pool, order)
+		order.Status, order.FilledQuantity, order.FilledAt, order.SubmittedAt = domain.OrderStatusFilled, order.Quantity, &filledAt, &filledAt
+		order.ExternalID = "paper-" + order.ID.String()
+	}
+	failOrders[0].FilledAvgPrice, failOrders[1].FilledAvgPrice = floatPtr(2), floatPtr(1)
+	if _, err := pool.Exec(ctx, `ALTER TABLE trades ADD CONSTRAINT reject_fail_ticker CHECK (ticker <> 'FAIL') NOT VALID`); err != nil {
+		t.Fatalf("install batch failure constraint: %v", err)
+	}
+	if _, err := repo.ApplyOptionFills(ctx, []repository.OptionFillInput{
+		{Order: failOrders[0], FillPrice: 2, FillQuantity: 1, Fee: .65, Premium: 200, FilledAt: filledAt},
+		{Order: failOrders[1], FillPrice: 1, FillQuantity: 1, Fee: .65, Premium: 100, FilledAt: filledAt},
+	}); err == nil {
+		t.Fatal("expected second-leg persistence failure")
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM positions WHERE leg_group_id=$1`, failGroupID).Scan(&positions); err != nil {
+		t.Fatalf("count rolled-back positions: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM financial_fill_idempotency WHERE order_id=ANY($1::uuid[])`, []uuid.UUID{failOrders[0].ID, failOrders[1].ID}).Scan(&idempotency); err != nil {
+		t.Fatalf("count rolled-back idempotency: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM orders WHERE id=ANY($1::uuid[]) AND status='filled'`, []uuid.UUID{failOrders[0].ID, failOrders[1].ID}).Scan(&filledOrders); err != nil {
+		t.Fatalf("count rolled-back orders: %v", err)
+	}
+	if positions != 0 || idempotency != 0 || filledOrders != 0 {
+		t.Fatalf("option batch did not roll back positions=%d idempotency=%d filled_orders=%d", positions, idempotency, filledOrders)
+	}
+}
+
 func TestFinancialLifecycle_SettlePredictionDecisionSingleLotKeepsLinkage(t *testing.T) {
 	ctx := context.Background()
 	pool, cleanup := newFinancialLifecycleSettlementIntegrationPool(t, ctx)
@@ -388,7 +530,7 @@ func newFinancialLifecycleIntegrationPool(t *testing.T, ctx context.Context) (*p
 		`CREATE TYPE trade_side AS ENUM ('buy','sell')`,
 		`CREATE TYPE position_side AS ENUM ('long','short')`,
 		`CREATE TABLE strategies (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), market_type TEXT NOT NULL DEFAULT 'stock')`,
-		`CREATE TABLE orders (id UUID PRIMARY KEY, strategy_id UUID REFERENCES strategies(id), ticker TEXT NOT NULL, market_type TEXT NOT NULL, side trade_side NOT NULL, status TEXT NOT NULL, quantity NUMERIC(20,8) NOT NULL, filled_quantity NUMERIC(20,8) NOT NULL DEFAULT 0, filled_avg_price NUMERIC(20,8), filled_at TIMESTAMPTZ, prediction_side TEXT)`,
+		`CREATE TABLE orders (id UUID PRIMARY KEY, strategy_id UUID REFERENCES strategies(id), external_id TEXT, ticker TEXT NOT NULL, market_type TEXT NOT NULL, side trade_side NOT NULL, status TEXT NOT NULL, quantity NUMERIC(20,8) NOT NULL, filled_quantity NUMERIC(20,8) NOT NULL DEFAULT 0, filled_avg_price NUMERIC(20,8), submitted_at TIMESTAMPTZ, filled_at TIMESTAMPTZ, broker TEXT, prediction_side TEXT, asset_class TEXT NOT NULL DEFAULT 'stock', underlying_ticker TEXT, option_type TEXT, strike NUMERIC(20,8), expiry TIMESTAMPTZ, contract_multiplier NUMERIC(20,8) NOT NULL DEFAULT 1, position_intent TEXT, leg_group_id UUID)`,
 		`CREATE TABLE positions (id UUID PRIMARY KEY, strategy_id UUID REFERENCES strategies(id), ticker TEXT NOT NULL, side position_side NOT NULL, quantity NUMERIC(20,8) NOT NULL, avg_entry NUMERIC(20,8) NOT NULL, current_price NUMERIC(20,8), unrealized_pnl NUMERIC(20,8), realized_pnl NUMERIC(20,8) NOT NULL DEFAULT 0, stop_loss NUMERIC(20,8), take_profit NUMERIC(20,8), opened_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), closed_at TIMESTAMPTZ, market_type TEXT, asset_class TEXT NOT NULL DEFAULT 'stock', underlying_ticker TEXT, option_type TEXT, strike NUMERIC(20,8), expiry TIMESTAMPTZ, contract_multiplier NUMERIC(20,8) NOT NULL DEFAULT 1, leg_group_id UUID, delta NUMERIC(20,8), gamma NUMERIC(20,8), theta NUMERIC(20,8), vega NUMERIC(20,8))`,
 		`CREATE TABLE trades (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), external_id TEXT, order_id UUID REFERENCES orders(id), position_id UUID REFERENCES positions(id), ticker TEXT NOT NULL, side trade_side NOT NULL, quantity NUMERIC(20,8) NOT NULL CHECK (quantity > 0), price NUMERIC(20,8) NOT NULL, fee NUMERIC(20,8) NOT NULL DEFAULT 0, executed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), asset_class TEXT NOT NULL DEFAULT 'stock', open_close TEXT, contract_multiplier NUMERIC(20,8) NOT NULL DEFAULT 1, premium NUMERIC(20,8), exit_reason TEXT)`,
 		`CREATE TABLE financial_fill_idempotency (idempotency_key TEXT PRIMARY KEY, order_id UUID NOT NULL, position_id UUID, trade_id UUID NOT NULL, fill_quantity NUMERIC(20,8) NOT NULL, fill_price NUMERIC(20,8) NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
@@ -449,7 +591,10 @@ func createFinancialLifecycleStrategy(t *testing.T, ctx context.Context, pool *p
 
 func createFinancialLifecycleOrder(t *testing.T, ctx context.Context, pool *pgxpool.Pool, order *domain.Order) {
 	t.Helper()
-	if _, err := pool.Exec(ctx, `INSERT INTO orders (id, strategy_id, ticker, market_type, side, status, quantity, filled_quantity, filled_avg_price, filled_at, prediction_side) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`, order.ID, order.StrategyID, order.Ticker, order.MarketType, order.Side, order.Status, order.Quantity, order.FilledQuantity, order.FilledAvgPrice, order.FilledAt, order.PredictionSide); err != nil {
+	if _, err := pool.Exec(ctx, `INSERT INTO orders
+		(id,strategy_id,external_id,ticker,market_type,side,status,quantity,filled_quantity,filled_avg_price,submitted_at,filled_at,broker,prediction_side,asset_class,underlying_ticker,option_type,strike,expiry,contract_multiplier,position_intent,leg_group_id)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
+		order.ID, order.StrategyID, nullString(order.ExternalID), order.Ticker, order.MarketType, order.Side, order.Status, order.Quantity, order.FilledQuantity, order.FilledAvgPrice, order.SubmittedAt, order.FilledAt, nullString(order.Broker), order.PredictionSide, order.AssetClass, nullString(order.UnderlyingTicker), order.OptionType, order.Strike, order.Expiry, order.ContractMultiplier, order.PositionIntent, order.LegGroupID); err != nil {
 		t.Fatalf("failed to create order: %v", err)
 	}
 }

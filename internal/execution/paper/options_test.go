@@ -41,6 +41,16 @@ func TestSubmitOptionOrderFillsWithoutExternalBroker(t *testing.T) {
 	if balance.Cash != wantCash {
 		t.Fatalf("cash = %.2f, want %.2f", balance.Cash, wantCash)
 	}
+	if err := broker.RollbackOptionOrder(context.Background(), externalID); err != nil {
+		t.Fatalf("RollbackOptionOrder() error = %v", err)
+	}
+	balance, _ = broker.GetAccountBalance(context.Background())
+	if balance.Cash != 10000 {
+		t.Fatalf("rollback cash = %.2f, want 10000", balance.Cash)
+	}
+	if err := broker.RollbackOptionOrder(context.Background(), externalID); err == nil {
+		t.Fatal("duplicate option rollback must fail")
+	}
 }
 
 func TestSubmitSpreadOrderFailsClosed(t *testing.T) {
@@ -64,5 +74,34 @@ func TestSubmitSpreadOrderAtomicallyDebitsVertical(t *testing.T) {
 	balance, _ := broker.GetAccountBalance(context.Background())
 	if math.Abs(balance.Cash-9848.70) > 1e-9 {
 		t.Fatalf("cash = %.2f, want 9848.70", balance.Cash)
+	}
+	if err := broker.RollbackOptionSpread(context.Background(), ids); err != nil {
+		t.Fatalf("RollbackOptionSpread() error = %v", err)
+	}
+	balance, _ = broker.GetAccountBalance(context.Background())
+	if balance.Cash != 10000 {
+		t.Fatalf("spread rollback cash = %.2f, want 10000", balance.Cash)
+	}
+	if err := broker.RollbackOptionSpread(context.Background(), ids); err == nil {
+		t.Fatal("duplicate spread rollback must fail")
+	}
+}
+
+func TestFinalizeOptionSpreadRemovesCompensationRecord(t *testing.T) {
+	expiry := time.Date(2027, 12, 17, 0, 0, 0, 0, time.UTC)
+	spread := &domain.OptionSpread{StrategyType: domain.StrategyBullCallSpread, Underlying: "AAPL", MaxRisk: 150, MaxReward: 350, Legs: []domain.SpreadLeg{
+		{Contract: domain.OptionContract{OCCSymbol: "AAPL271217C00150000", Underlying: "AAPL", OptionType: domain.OptionTypeCall, Strike: 150, Expiry: expiry, Multiplier: 100}, Side: domain.OrderSideBuy, PositionIntent: domain.PositionIntentBuyToOpen, Ratio: 1, ExecutablePrice: 2.5},
+		{Contract: domain.OptionContract{OCCSymbol: "AAPL271217C00155000", Underlying: "AAPL", OptionType: domain.OptionTypeCall, Strike: 155, Expiry: expiry, Multiplier: 100}, Side: domain.OrderSideSell, PositionIntent: domain.PositionIntentSellToOpen, Ratio: 1, ExecutablePrice: 1},
+	}}
+	broker := NewPaperBroker(10000, 0, 0)
+	ids, err := broker.SubmitSpreadOrder(context.Background(), spread, 1)
+	if err != nil {
+		t.Fatalf("SubmitSpreadOrder() error = %v", err)
+	}
+	if err := broker.FinalizeOptionSpread(ids); err != nil {
+		t.Fatalf("FinalizeOptionSpread() error = %v", err)
+	}
+	if err := broker.RollbackOptionSpread(context.Background(), ids); err == nil {
+		t.Fatal("finalized spread must not retain a compensation record")
 	}
 }

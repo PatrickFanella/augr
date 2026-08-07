@@ -356,6 +356,9 @@ func (r *realStrategyRunner) executeOptionsSignal(ctx context.Context, strategy 
 	}
 	manager := execution.NewOptionsOrderManager(r.localPaperBroker, r.orderRepo, r.positionRepo, r.tradeRepo, r.riskEngine, r.logger).
 		WithBrokerName("paper").WithLiveTrading(false)
+	if optionFillRepo, ok := r.financialRepo.(repository.OptionFillRepository); ok {
+		manager.WithOptionFillRepo(optionFillRepo)
+	}
 	if signal.Signal == domain.PipelineSignalSell {
 		positions, err := r.positionRepo.GetByStrategy(ctx, strategy.ID, repository.PositionFilter{}, 100, 0)
 		if err != nil {

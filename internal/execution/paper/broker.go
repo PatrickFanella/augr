@@ -24,15 +24,16 @@ const (
 
 // PaperBroker implements an in-memory execution.Broker for paper trading.
 type PaperBroker struct {
-	mu          sync.RWMutex
-	nowMu       sync.RWMutex
-	orders      map[string]*domain.Order
-	positions   map[string]*domain.Position
-	balance     execution.Balance
-	slippageBps float64
-	feePct      float64
-	nextOrderID uint64
-	now         func() time.Time
+	mu            sync.RWMutex
+	nowMu         sync.RWMutex
+	orders        map[string]*domain.Order
+	positions     map[string]*domain.Position
+	optionSpreads map[string]float64
+	balance       execution.Balance
+	slippageBps   float64
+	feePct        float64
+	nextOrderID   uint64
+	now           func() time.Time
 }
 
 // NewPaperBroker constructs an in-memory paper trading broker.
@@ -45,8 +46,9 @@ func NewPaperBroker(initialBalance, slippageBps, feePct float64) *PaperBroker {
 	}
 
 	return &PaperBroker{
-		orders:    make(map[string]*domain.Order),
-		positions: make(map[string]*domain.Position),
+		orders:        make(map[string]*domain.Order),
+		positions:     make(map[string]*domain.Position),
+		optionSpreads: make(map[string]float64),
 		balance: execution.Balance{
 			Currency:    "USD",
 			Cash:        initialBalance,

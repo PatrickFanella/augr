@@ -465,6 +465,33 @@ type OptionSettlementRepository interface {
 	SettleOptionPosition(ctx context.Context, input OptionPositionSettlementInput) (OptionPositionSettlementResult, error)
 }
 
+// OptionFillInput carries one fully accounted option fill for atomic
+// order-position-trade persistence. PositionID is required for closing fills
+// and must be nil for opening fills.
+type OptionFillInput struct {
+	Order        *domain.Order
+	PositionID   *uuid.UUID
+	FillPrice    float64
+	FillQuantity float64
+	Fee          float64
+	Premium      float64
+	FilledAt     time.Time
+	ExitReason   string
+}
+
+// OptionFillResult returns the durable identities committed for one option fill.
+type OptionFillResult struct {
+	OrderID    uuid.UUID
+	PositionID uuid.UUID
+	TradeID    uuid.UUID
+}
+
+// OptionFillRepository atomically persists one or more option fills. A batch
+// is all-or-nothing so multi-leg spreads cannot leave a partial durable graph.
+type OptionFillRepository interface {
+	ApplyOptionFills(ctx context.Context, inputs []OptionFillInput) ([]OptionFillResult, error)
+}
+
 // FinancialLifecycleRepository persists atomic fill and prediction settlement lifecycles.
 type FinancialLifecycleRepository interface {
 	ApplyOrderFill(ctx context.Context, input OrderFillInput) (OrderFillResult, error)

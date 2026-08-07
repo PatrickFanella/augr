@@ -127,7 +127,77 @@ func (b *PaperBroker) SubmitSpreadOrder(ctx context.Context, spread *domain.Opti
 	for index := range spread.Legs {
 		ids[index] = b.nextExternalIDLocked()
 	}
+	if b.optionSpreads == nil {
+		b.optionSpreads = make(map[string]float64)
+	}
+	b.optionSpreads[strings.Join(ids, "|")] = total
 	return ids, nil
+}
+
+// RollbackOptionOrder compensates an immediate paper option fill when its
+// durable lifecycle transaction fails.
+func (b *PaperBroker) RollbackOptionOrder(ctx context.Context, externalID string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if b == nil || strings.TrimSpace(externalID) == "" {
+		return errors.New("paper: option rollback requires an external id")
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	order := b.orders[externalID]
+	if order == nil {
+		return fmt.Errorf("paper: option rollback order %s not found", externalID)
+	}
+	fill, err := SimulateOptionFill(order)
+	if err != nil {
+		return fmt.Errorf("paper: reconstruct option rollback: %w", err)
+	}
+	if order.Side == domain.OrderSideBuy {
+		b.balance.Cash += fill.Premium + fill.Fee
+	} else {
+		b.balance.Cash -= fill.Premium - fill.Fee
+	}
+	delete(b.orders, externalID)
+	b.balance.BuyingPower = b.balance.Cash
+	b.balance.Equity = b.markToMarketEquityLocked()
+	return nil
+}
+
+// RollbackOptionSpread compensates the paper broker's atomic net debit when
+// the matching durable multi-leg transaction fails.
+func (b *PaperBroker) RollbackOptionSpread(ctx context.Context, externalIDs []string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if b == nil || len(externalIDs) == 0 {
+		return errors.New("paper: spread rollback requires external ids")
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	key := strings.Join(externalIDs, "|")
+	total, ok := b.optionSpreads[key]
+	if !ok {
+		return errors.New("paper: spread rollback record not found")
+	}
+	b.balance.Cash += total
+	delete(b.optionSpreads, key)
+	b.balance.BuyingPower = b.balance.Cash
+	b.balance.Equity = b.markToMarketEquityLocked()
+	return nil
+}
+
+// FinalizeOptionSpread discards the transient compensation record after the
+// complete durable leg batch commits.
+func (b *PaperBroker) FinalizeOptionSpread(externalIDs []string) error {
+	if b == nil || len(externalIDs) == 0 {
+		return errors.New("paper: spread finalization requires external ids")
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	key := strings.Join(externalIDs, "|")
+	delete(b.optionSpreads, key)
+	return nil
 }
 
 // PreflightSpread fails before any leg orders are persisted. Atomic paper
