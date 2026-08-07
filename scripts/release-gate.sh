@@ -9,6 +9,14 @@ candidate_commit=$(git rev-parse HEAD)
 
 echo "Starting paper release gate for commit $candidate_commit."
 ./scripts/verify-release-tree.sh
+sh -n \
+  scripts/observe-automation-run.sh \
+  scripts/observe-paper-boundary.sh \
+  scripts/paper-week.sh \
+  scripts/release-gate.sh \
+  scripts/verify-release-tree.sh \
+  scripts/verify-secret-history.sh
+bash -n scripts/verify-prod-build.sh
 go test -count=1 ./...
 go vet ./...
 golangci-lint run ./...

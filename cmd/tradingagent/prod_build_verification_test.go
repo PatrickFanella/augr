@@ -129,6 +129,9 @@ func TestReleaseGateIncludesProductionVerificationAndPinnedPromtool(t *testing.T
 	for _, want := range []string{
 		`candidate_commit=$(git rev-parse HEAD)`,
 		`./scripts/verify-release-tree.sh`,
+		`sh -n \
+  scripts/observe-automation-run.sh`,
+		`bash -n scripts/verify-prod-build.sh`,
 		`go test -count=1 ./...`,
 		`go vet ./...`,
 		`golangci-lint run ./...`,
