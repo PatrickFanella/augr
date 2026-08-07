@@ -28,7 +28,7 @@ func (o *JobOrchestrator) registerOptionsLifecycleJobs() {
 }
 
 func (o *JobOrchestrator) optionsLifecycleReconcile(ctx context.Context) error {
-	orders, err := listAllOptionOrders(ctx, o.deps.OrderRepo)
+	orders, err := listAllOrders(ctx, o.deps.OrderRepo)
 	if err != nil {
 		return fmt.Errorf("options_lifecycle_reconcile: list orders: %w", err)
 	}
@@ -112,11 +112,11 @@ func listAllPositions(ctx context.Context, repo repository.PositionRepository) (
 	}
 }
 
-func listAllOptionOrders(ctx context.Context, repo repository.OrderRepository) ([]domain.Order, error) {
+func listAllOrders(ctx context.Context, repo repository.OrderRepository) ([]domain.Order, error) {
 	const pageSize = 250
 	var all []domain.Order
 	for offset := 0; ; offset += pageSize {
-		page, err := repo.List(ctx, repository.OrderFilter{MarketType: domain.MarketTypeOptions}, pageSize, offset)
+		page, err := repo.List(ctx, repository.OrderFilter{}, pageSize, offset)
 		if err != nil {
 			return nil, err
 		}

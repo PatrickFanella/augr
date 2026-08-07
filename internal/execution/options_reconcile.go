@@ -43,10 +43,16 @@ func ReconcileOptionsLifecycle(orders []domain.Order, positions []domain.Positio
 	}
 	groups := map[uuid.UUID][]domain.Position{}
 	for _, order := range orders {
-		if order.AssetClass != domain.AssetClassOption {
+		marketOption := order.MarketType.Normalize() == domain.MarketTypeOptions
+		assetOption := order.AssetClass == domain.AssetClassOption
+		if !marketOption && !assetOption {
 			continue
 		}
 		result.OptionOrders++
+		if marketOption != assetOption {
+			result.Findings = append(result.Findings, fmt.Sprintf("option order %s has inconsistent market and asset classification", order.ID))
+			continue
+		}
 		if order.Status == domain.OrderStatusFilled && tradesByOrder[order.ID] == 0 {
 			result.Findings = append(result.Findings, fmt.Sprintf("filled option order %s has no trade", order.ID))
 		}
