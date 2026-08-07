@@ -72,3 +72,11 @@ func TestBuildUniverseListQueryCanonicalizesBeforePagination(t *testing.T) {
 		t.Fatalf("buildUniverseListQuery() args = %#v, want filters then 25/50 pagination", args)
 	}
 }
+
+func TestUniverseCountQueryUsesCanonicalIdentity(t *testing.T) {
+	t.Parallel()
+
+	if !strings.Contains(universeCountQuery, "COUNT(DISTINCT upper(trim(ticker)))") {
+		t.Fatalf("universeCountQuery = %q, want canonical distinct count", universeCountQuery)
+	}
+}

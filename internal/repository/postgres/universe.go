@@ -178,12 +178,14 @@ func canonicalUniverseTicker(ticker string) string {
 // Count returns the total number of tickers in the universe.
 func (r *UniverseRepo) Count(ctx context.Context) (int, error) {
 	var count int
-	err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM universe_tickers`).Scan(&count)
+	err := r.pool.QueryRow(ctx, universeCountQuery).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("postgres: count universe tickers: %w", err)
 	}
 	return count, nil
 }
+
+const universeCountQuery = `SELECT COUNT(DISTINCT upper(trim(ticker))) FROM universe_tickers`
 
 // ---------------------------------------------------------------------------
 // Helpers
