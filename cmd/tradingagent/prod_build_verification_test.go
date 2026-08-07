@@ -263,6 +263,12 @@ func TestNUCDeploymentRunbooksRequireImmutableSingleReplacementAndRestoreProof(t
 		`AUGR_WEB_IMAGE="$previous_web_image"`,
 		`It does not select image names`,
 		`org.opencontainers.image.revision`,
+		`safety_baseline=$(docker compose -f docker-compose.nuc.yml`,
+		`${KALSHI_DEMO:-true}`,
+		`${KALSHI_DRY_RUN:-true}`,
+		`kalshi_nonpaper=$(docker compose -f docker-compose.nuc.yml`,
+		`test "$kalshi_nonpaper" = "0"`,
+		`require the candidate to match it exactly`,
 	} {
 		if !strings.Contains(rolling, want) {
 			t.Fatalf("rolling restart runbook missing required content %q", want)

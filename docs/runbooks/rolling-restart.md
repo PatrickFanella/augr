@@ -95,6 +95,32 @@ reconciliation runbooks.
 3. Capture health, schema version, scheduler/job state, live/paper/dry-run
    controls, and exact financial counts/hashes. Stop only `app` to quiesce
    application writes; leave PostgreSQL, Redis, OpenCode, and web intact.
+
+   Do not infer effective defaults from an unset container variable. Capture
+   the resolved safety baseline without printing credentials or allowlist
+   values:
+
+   ```bash
+   safety_baseline=$(docker compose -f docker-compose.nuc.yml exec -T app sh -ec '
+     printf "live=%s|alpaca_paper=%s|binance_paper=%s|kalshi_demo=%s|kalshi_dry_run=%s|polymarket=%s|broker_allowlist_set=%s|strategy_allowlist_set=%s\n" \
+       "${ENABLE_LIVE_TRADING:-false}" "${ALPACA_PAPER_MODE:-true}" \
+       "${BINANCE_PAPER_MODE:-true}" "${KALSHI_DEMO:-true}" \
+       "${KALSHI_DRY_RUN:-true}" "${ENABLE_POLYMARKET_AUTOMATION:-false}" \
+       "$([ -n "${LIVE_TRADING_ALLOWED_BROKERS:-}" ] && echo true || echo false)" \
+       "$([ -n "${LIVE_TRADING_ALLOWED_STRATEGIES:-}" ] && echo true || echo false)"')
+   kalshi_nonpaper=$(docker compose -f docker-compose.nuc.yml exec -T postgres \
+     sh -ec 'psql -X -qAt -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+       -c "SELECT count(*) FROM strategies WHERE lower(market_type::text) = (chr(107)||chr(97)||chr(108)||chr(115)||chr(104)||chr(105)) AND is_paper IS NOT TRUE"')
+   printf '%s\n' "$safety_baseline"
+   test "$kalshi_nonpaper" = "0"
+   ```
+
+   Require global live trading and Polymarket off, Alpaca/Binance paper and
+   effective Kalshi demo mode on, both live allowlists empty, and zero
+   non-paper Kalshi strategies. Record the effective `KALSHI_DRY_RUN` value and
+   require the candidate to match it exactly. A false value is authorized here
+   only for durable-gated settlement of local paper decisions; it does not
+   authorize external orders or a non-paper strategy.
 4. Take a custom-format schema-60 production backup from the explicit NUC
    manifest and restore it into an isolated, explicitly named validation
    database using `pg_restore --exit-on-error`. Verify restored schema 60 and the critical financial table
@@ -125,9 +151,10 @@ reconciliation runbooks.
    `org.opencontainers.image.revision` labels match `release_commit`; also
    require the app's runtime build commit to match. Confirm schema 62,
    API/database/Redis/web/OpenCode health,
-   scheduler readiness, zero orphan nonterminal rows, live trading off,
-   Alpaca/Binance paper modes on, Kalshi dry-run on, Polymarket off, and exact
-   pre/post financial invariants before beginning postdeployment canaries.
+   scheduler readiness, zero orphan nonterminal rows, the exact approved safety
+   baseline above (including unchanged Kalshi dry-run), zero non-paper Kalshi
+   strategies, and exact pre/post financial invariants before beginning
+   postdeployment canaries.
 
 ## Verification
 
