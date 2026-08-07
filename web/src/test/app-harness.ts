@@ -13,9 +13,11 @@ export const strategyId = fixtureId(10)
 export const state = createMockScenarioState('success')
 export const server = setupServer(...createP0RestHandlers({ apiBaseUrl, state }))
 
-// Route components are lazy-loaded in production. Give async DOM queries enough
-// time to include the dynamic import without requiring per-test timeout tuning.
-configure({ asyncUtilTimeout: 5_000 })
+// Route components are lazy-loaded in production. Under the full release gate,
+// Vite may need more than five seconds to transform the first route while the
+// host is also running the backend suite. Keep async DOM queries inside the
+// existing 20-second Vitest timeout without requiring per-test tuning.
+configure({ asyncUtilTimeout: 10_000 })
 
 type Listener = (event: { data: string }) => void
 
