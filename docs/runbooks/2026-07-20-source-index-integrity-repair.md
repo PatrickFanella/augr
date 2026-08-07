@@ -1,6 +1,7 @@
 ---
 title: "Source index integrity repair runbook"
 date: 2026-07-20
+updated: 2026-08-07
 tags: [runbook, operations, postgres, integrity, repair]
 type: runbook
 ---
@@ -15,7 +16,7 @@ Repair source-index integrity before any recovery can pass. This is a gated, rea
 
 1. Approve verified physical rollback artifact: cold `tar.zst` backup of `augr_postgres_data` under `/srv/server/backups`, SHA256 recorded, cloned into a separate volume/container, and restore-tested in isolation before mutation.
 2. Approve read-only preflight results and duplicate classification.
-3. Approve the `BF.B` merge rule: keep latest survivor, merge max(nonzero `watch_score`), max `last_scanned`, `bool_or(active)`, min `created_at`, max `updated_at`, latest non-null identity metadata.
+3. Approve the normalized-universe merge rules: `BF.B` keeps the latest survivor while merging max(nonzero `watch_score`), max `last_scanned`, `bool_or(active)`, min `created_at`, max `updated_at`, and latest non-null identity metadata; `BIO.B` uses the same survivor ordering; `FDXFW`/`FDXFw`, `FDXW`/`FDXw`, and `NVRIW`/`NVRIw` canonicalize to uppercase and keep the uppercase row after proving their non-timestamp payloads agree.
 4. Approve the affected-object-only reindex package; broader database/collation refresh remains out of scope for this artifact set.
 5. Approve production maintenance window, downtime, and explicit active-writer checks.
 
@@ -24,8 +25,8 @@ Repair source-index integrity before any recovery can pass. This is a gated, rea
 - Stop if any duplicate group has conflicting payload unless the runbook says the payloads must be identical and they are not.
 - Stop if the physical backup is missing, has a checksum mismatch, or cannot be restore-tested in isolation.
 - Stop if app/write quiescence cannot be achieved or any active writer remains.
-- Stop if forced sequential-scan checks do not exactly reproduce historical `1253` groups/extras, universe `2` groups/extras, news `40` groups/extras, or zero conflicting OHLCV payload groups.
-- Stop if `BF.B` is not the sole universe conflict or if `BIO.B`/news identity assertions fail closed.
+- Stop if forced sequential-scan checks do not exactly reproduce historical `1253` groups/extras, universe `2` exact-key groups/extras **and** `5` case-normalized groups/extras, news `40` groups/extras, or zero conflicting OHLCV payload groups.
+- Stop if `BF.B` is not the sole normalized-universe payload conflict, or if `BIO.B`, the three case-variant groups, or news identity assertions fail closed.
 - Stop if post-repair parity or reindex validation fails.
 - Roll back to the verified physical backup if mutation begins and any transactional step aborts.
 
@@ -45,8 +46,10 @@ Repair source-index integrity before any recovery can pass. This is a gated, rea
 ## Repair rules
 
 - Historical duplicates: assert exact payload groups, then keep one row using locked-transaction `ctid` rank.
+- Normalize universe identity as `upper(trim(ticker))`; the current five groups are `BF.B`, `BIO.B`, `FDXFW`, `FDXW`, and `NVRIW`.
 - `BF.B`/`BIO.B`: keep `updated_at DESC NULLS LAST`, `created_at DESC`, `ctid DESC` survivor.
 - `BF.B`: merge max(nonzero `watch_score`), max `last_scanned`, `bool_or(active)`, min `created_at`, max `updated_at`, latest non-null identity metadata.
+- Case-variant groups: require equal name/exchange/index-group/watch-score/last-scanned/active payloads, keep the uppercase spelling, and merge min `created_at` plus max `updated_at`.
 - news identity: keep `created_at DESC, id DESC` survivor; assert `source/title/description/link/published_at` equal; latest non-null/nonempty `category/sentiment/relevance/summary`; newest embedding if present, else remain null; `tickers` as sorted distinct union; delete non-survivors.
 - Audit all source rows and chosen survivors.
 - Use forced sequential scans to prove duplicate groups and compare source vs survivor inventory.
@@ -62,13 +65,13 @@ docker compose -f docker-compose.nuc.yml exec -T postgres psql -U "$POSTGRES_USE
   -c "\copy (select h.ctid as source_ctid,h.* from public.historical_ohlcv h join (select ticker,provider,timeframe,bar_time from public.historical_ohlcv group by 1,2,3,4 having count(*)>1) d using (ticker,provider,timeframe,bar_time) order by 2,3,4,5,h.ctid) to stdout with csv header" \
   > "$AUDIT_DIR/historical_duplicates.csv"
 docker compose -f docker-compose.nuc.yml exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
-  -c "\copy (select ctid as source_ctid,u.* from public.universe_tickers u where ticker in ('BF.B','BIO.B') order by ticker,updated_at desc nulls last,created_at desc,ctid desc) to stdout with csv header" \
+  -c "\copy (select upper(trim(ticker)) as normalized_ticker,ctid as source_ctid,u.* from public.universe_tickers u where upper(trim(ticker)) in (select upper(trim(ticker)) from public.universe_tickers group by 1 having count(*)>1) order by 1,ticker,updated_at desc nulls last,created_at desc,ctid desc) to stdout with csv header" \
   > "$AUDIT_DIR/universe_duplicates.csv"
 docker compose -f docker-compose.nuc.yml exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
   -c "\copy (select n.ctid as source_ctid,n.* from public.news_feed n join (select guid from public.news_feed group by guid having count(*)>1) d using (guid) order by guid,created_at desc,id desc) to stdout with csv header" \
   > "$AUDIT_DIR/news_duplicates.csv"
 docker compose -f docker-compose.nuc.yml exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
-  -c "\copy (select ticker,source_ctid,survivor_ctid,case when source_ctid=survivor_ctid then 'survive' else 'delete' end as planned_action from (select ticker,ctid as source_ctid,first_value(ctid) over(partition by ticker order by updated_at desc nulls last,created_at desc,ctid desc) as survivor_ctid from public.universe_tickers where ticker in ('BF.B','BIO.B')) m order by ticker,planned_action desc,source_ctid) to stdout with csv header" \
+  -c "\copy (select normalized_ticker,ticker,source_ctid,survivor_ctid,case when source_ctid=survivor_ctid then 'survive' else 'delete' end as planned_action from (select upper(trim(ticker)) as normalized_ticker,ticker,ctid as source_ctid,first_value(ctid) over(partition by upper(trim(ticker)) order by (ticker=upper(trim(ticker))) desc,updated_at desc nulls last,created_at desc,ctid desc) as survivor_ctid from public.universe_tickers where upper(trim(ticker)) in(select upper(trim(ticker)) from public.universe_tickers group by 1 having count(*)>1)) m order by normalized_ticker,planned_action desc,ticker,source_ctid) to stdout with csv header" \
   > "$AUDIT_DIR/universe_survivor_mapping.csv"
 docker compose -f docker-compose.nuc.yml exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
   -c "\copy (select guid,source_ctid,survivor_ctid,case when source_ctid=survivor_ctid then 'survive' else 'delete' end as planned_action from (select guid,ctid as source_ctid,first_value(ctid) over(partition by guid order by created_at desc,id desc) as survivor_ctid from public.news_feed where guid in(select guid from public.news_feed group by guid having count(*)>1)) m order by guid,planned_action desc,source_ctid) to stdout with csv header" \
