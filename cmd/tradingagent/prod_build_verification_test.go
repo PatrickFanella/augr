@@ -115,6 +115,12 @@ func TestReleaseGateIncludesProductionVerificationAndPinnedPromtool(t *testing.T
 	script := string(contents)
 	for _, want := range []string{
 		`./scripts/verify-release-tree.sh`,
+		`go test ./...`,
+		`go vet ./...`,
+		`golangci-lint run ./...`,
+		`npm --prefix web test`,
+		`npm --prefix web run lint`,
+		`npm --prefix web run build`,
 		`docker compose -f docker-compose.nuc.yml config --quiet`,
 		`docker compose -f docker-compose.nuc.yml -f deploy/docker-compose.nuc.rollback.yml config --quiet`,
 		`./scripts/verify-prod-build.sh`,
