@@ -66,6 +66,7 @@ func TestProductionBuildVerificationScriptContainsExpectedSteps(t *testing.T) {
 		`--no-owner >"$BACKUP_FILE"`,
 		`createdb -U "$POSTGRES_USER" "$RESTORE_DB"`,
 		`pg_restore`,
+		`--single-transaction`,
 		`--exit-on-error`,
 		`restored backup schema mismatch`,
 		`dropdb -U "$POSTGRES_USER" "$RESTORE_DB"`,
@@ -267,14 +268,19 @@ func TestNUCDeploymentRunbooksRequireImmutableSingleReplacementAndRestoreProof(t
 		`baseline_schema=$(docker compose -f docker-compose.nuc.yml`,
 		`baseline_counts=$(docker compose -f docker-compose.nuc.yml`,
 		`sh -ec 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB"`,
+		`backup_sha256=$(sha256sum "$BACKUP_FILE"`,
 		`restore_db="augr_restore_check_$release_short"`,
 		`sh -ec 'createdb -U "$POSTGRES_USER" "$RESTORE_DB"'`,
-		`--exit-on-error --no-owner`,
+		`--clean --if-exists --single-transaction --exit-on-error --no-owner`,
 		`SELECT version, dirty FROM schema_migrations`,
 		`test "$restored_schema" = "$baseline_schema"`,
 		`test "$restored_counts" = "$baseline_counts"`,
 		`sh -ec 'dropdb -U "$POSTGRES_USER" "$RESTORE_DB"'`,
 		`pre-backup critical-table counts`,
+		`EXPECTED_BACKUP_SHA256`,
+		`com.docker.compose.project`,
+		`com.docker.compose.service`,
+		`test "$restored_production_schema" = "60|f"`,
 	} {
 		if !strings.Contains(backup, want) {
 			t.Fatalf("database backup runbook missing required content %q", want)
@@ -282,7 +288,7 @@ func TestNUCDeploymentRunbooksRequireImmutableSingleReplacementAndRestoreProof(t
 	}
 	dumpIdx := strings.Index(backup, `sh -ec 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB"`)
 	createIdx := strings.Index(backup, `sh -ec 'createdb -U "$POSTGRES_USER" "$RESTORE_DB"'`)
-	restoreIdx := strings.Index(backup, `sh -ec 'pg_restore -U "$POSTGRES_USER" -d "$RESTORE_DB" --exit-on-error --no-owner'`)
+	restoreIdx := strings.Index(backup, `sh -ec 'pg_restore -U "$POSTGRES_USER" -d "$RESTORE_DB" --clean --if-exists --single-transaction --exit-on-error --no-owner'`)
 	validateIdx := strings.Index(backup, `SELECT version, dirty FROM schema_migrations`)
 	dropIdx := strings.Index(backup, `sh -ec 'dropdb -U "$POSTGRES_USER" "$RESTORE_DB"'`)
 	if dumpIdx >= createIdx || createIdx >= restoreIdx || restoreIdx >= validateIdx || validateIdx >= dropIdx {

@@ -107,6 +107,8 @@ docker compose -f docker-compose.nuc.yml exec -T postgres \
   > "$BACKUP_FILE"
 test -s "$BACKUP_FILE"
 pg_restore -l "$BACKUP_FILE" >/dev/null
+backup_sha256=$(sha256sum "$BACKUP_FILE" | awk '{print $1}')
+test -n "$backup_sha256"
 
 release_short=$(git rev-parse --short=12 HEAD)
 restore_db="augr_restore_check_$release_short"
@@ -117,7 +119,7 @@ esac
 docker compose -f docker-compose.nuc.yml exec -T -e RESTORE_DB="$restore_db" postgres \
   sh -ec 'createdb -U "$POSTGRES_USER" "$RESTORE_DB"'
 docker compose -f docker-compose.nuc.yml exec -T -e RESTORE_DB="$restore_db" postgres \
-  sh -ec 'pg_restore -U "$POSTGRES_USER" -d "$RESTORE_DB" --exit-on-error --no-owner' \
+  sh -ec 'pg_restore -U "$POSTGRES_USER" -d "$RESTORE_DB" --clean --if-exists --single-transaction --exit-on-error --no-owner' \
   < "$BACKUP_FILE"
 docker compose -f docker-compose.nuc.yml exec -T -e RESTORE_DB="$restore_db" postgres \
   sh -ec 'psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$RESTORE_DB" \
@@ -140,11 +142,51 @@ docker compose -f docker-compose.nuc.yml exec -T -e RESTORE_DB="$restore_db" pos
 Require the expected clean schema version and exact agreement with the
 pre-backup critical-table counts. If creation, restore, validation, or cleanup
 fails, stop the release and retain the dump; do not migrate production.
+Record `BACKUP_FILE`, `backup_sha256`, the schema/count baseline, and the
+successful validation database result in the release evidence.
+
+## NUC production restore during rollback
+
+This is a destructive recovery operation and requires explicit operator
+authorization after the guarded down-migration path has refused or failed. Use
+only the checksum-recorded, isolated-restore-proven predeployment dump. Keep app
+stopped and validate the exact Compose target before sending the dump:
+
+```bash
+: "${BACKUP_FILE:?BACKUP_FILE is required}"
+: "${EXPECTED_BACKUP_SHA256:?EXPECTED_BACKUP_SHA256 is required}"
+test -s "$BACKUP_FILE"
+test "$(sha256sum "$BACKUP_FILE" | awk '{print $1}')" = "$EXPECTED_BACKUP_SHA256"
+test -z "$(docker compose -f docker-compose.nuc.yml ps --status running -q app)" || {
+  echo "refusing restore while app is running" >&2; exit 1;
+}
+postgres_container=$(docker compose -f docker-compose.nuc.yml ps -q postgres)
+test -n "$postgres_container"
+test "$(docker inspect -f '{{ index .Config.Labels "com.docker.compose.project" }}' "$postgres_container")" = "augr"
+test "$(docker inspect -f '{{ index .Config.Labels "com.docker.compose.service" }}' "$postgres_container")" = "postgres"
+docker compose -f docker-compose.nuc.yml exec -T postgres \
+  sh -ec 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+    --clean --if-exists --single-transaction --exit-on-error --no-owner' \
+  < "$BACKUP_FILE"
+restored_production_schema=$(docker compose -f docker-compose.nuc.yml exec -T postgres \
+  sh -ec 'psql -X -qAt -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+    -c "SELECT concat_ws(chr(124), version::text, dirty::text) FROM schema_migrations"' \
+  | tr -d '[:space:]')
+test "$restored_production_schema" = "60|f" || {
+  echo "restored production schema mismatch: $restored_production_schema" >&2; exit 1;
+}
+```
+
+Reconcile restored critical counts with the recorded predeployment baseline
+before starting the exact old images. If `pg_restore` fails, its single
+transaction must roll back; keep app stopped, preserve all output and the dump,
+and escalate instead of retrying with weaker flags or another target.
 
 ## Verification
 
 - `pg_restore -l "$BACKUP_FILE"` succeeds for the backup you intend to use.
-- For production schema changes, an isolated `pg_restore --exit-on-error`
+- For production schema changes, an isolated `pg_restore --clean --if-exists
+  --single-transaction --exit-on-error`
   succeeds and restored schema/critical counts match the pre-backup baseline.
 - `docker compose exec postgres psql -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-tradingagent}" -c '\dt'` lists the expected tables after restore.
 - `SELECT version FROM schema_migrations` returns the expected current application schema version after `migrate ... up`.

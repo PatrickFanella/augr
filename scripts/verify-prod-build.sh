@@ -308,6 +308,9 @@ compose exec -T postgres createdb -U "$POSTGRES_USER" "$RESTORE_DB"
 compose exec -T postgres pg_restore \
     -U "$POSTGRES_USER" \
     -d "$RESTORE_DB" \
+    --clean \
+    --if-exists \
+    --single-transaction \
     --exit-on-error \
     --no-owner <"$BACKUP_FILE"
 RESTORED_SCHEMA_VERSION=$(compose exec -T postgres psql -U "$POSTGRES_USER" -d "$RESTORE_DB" -tAc \
