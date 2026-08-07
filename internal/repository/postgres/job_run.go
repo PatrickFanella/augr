@@ -67,6 +67,53 @@ func (r *JobRunRepo) Create(ctx context.Context, run *JobRun) error {
 	return row.Scan(&run.CreatedAt)
 }
 
+// Complete updates an admitted running row with its terminal outcome.
+func (r *JobRunRepo) Complete(ctx context.Context, run *JobRun) error {
+	var resultJSON []byte
+	if run.Result != nil {
+		var err error
+		resultJSON, err = json.Marshal(run.Result)
+		if err != nil {
+			return fmt.Errorf("postgres: marshal completed job run result: %w", err)
+		}
+	}
+	commandTag, err := r.pool.Exec(ctx,
+		`UPDATE automation_job_runs
+		 SET status = $2, completed_at = $3, duration_ns = $4, result = $5,
+		     error = $6, last_error_at = $7, consecutive_failures = $8
+		 WHERE id = $1 AND completed_at IS NULL`,
+		run.ID, run.Status, run.CompletedAt, run.DurationNs, resultJSON,
+		nullString(run.Error), run.LastErrorAt, run.ConsecutiveFailures,
+	)
+	if err != nil {
+		return fmt.Errorf("postgres: complete job run: %w", err)
+	}
+	if commandTag.RowsAffected() != 1 {
+		return fmt.Errorf("postgres: complete job run %s: expected one running row, updated %d", run.ID, commandTag.RowsAffected())
+	}
+	return nil
+}
+
+// FailIncomplete marks rows left running by a prior app process as terminal
+// errors before scheduler state is hydrated.
+func (r *JobRunRepo) FailIncomplete(ctx context.Context, completedAt time.Time, reason string) (int, error) {
+	commandTag, err := r.pool.Exec(ctx,
+		`UPDATE automation_job_runs
+		 SET status = 'error',
+		     completed_at = $1,
+		     duration_ns = GREATEST(0, (EXTRACT(EPOCH FROM ($1 - started_at)) * 1000000000)::bigint),
+		     error = $2,
+		     last_error_at = $1,
+		     consecutive_failures = consecutive_failures + 1
+		 WHERE completed_at IS NULL`,
+		completedAt, reason,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("postgres: fail incomplete job runs: %w", err)
+	}
+	return int(commandTag.RowsAffected()), nil
+}
+
 // ListByJob returns recent runs for a specific job, newest first.
 func (r *JobRunRepo) ListByJob(ctx context.Context, jobName string, limit int) ([]JobRun, error) {
 	if limit <= 0 {

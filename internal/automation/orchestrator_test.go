@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 	predictionexecution "github.com/PatrickFanella/get-rich-quick/internal/execution/prediction"
 	kalshidiscovery "github.com/PatrickFanella/get-rich-quick/internal/kalshidiscovery"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
+	pgrepo "github.com/PatrickFanella/get-rich-quick/internal/repository/postgres"
 	"github.com/google/uuid"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/scheduler"
@@ -151,6 +153,132 @@ func TestJobOrchestratorStatus_IncludesStuckForWhenRunning(t *testing.T) {
 	close(release)
 	waitForJobRuns(t, orch, "job", 1)
 }
+
+func TestJobOrchestratorPersistsRunningRowBeforeExecuting(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		run  func(*JobOrchestrator, *RegisteredJob)
+	}{
+		{name: "manual", run: func(o *JobOrchestrator, job *RegisteredJob) { o.runDirect(job) }},
+		{name: "scheduled", run: func(o *JobOrchestrator, job *RegisteredJob) { o.wrapAndRun(job) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			repo := newRecordingAutomationJobRunRepo()
+			started := make(chan struct{})
+			release := make(chan struct{})
+			done := make(chan struct{})
+			orch := NewJobOrchestrator(OrchestratorDeps{JobRunRepo: repo})
+			orch.Register("job", "durable running job", schedulerSpecEveryMinute(), func(context.Context) error {
+				close(started)
+				<-release
+				return nil
+			})
+
+			go func() {
+				defer close(done)
+				tc.run(orch, orch.jobs["job"])
+			}()
+			select {
+			case <-started:
+			case <-time.After(time.Second):
+				t.Fatal("job did not start")
+			}
+
+			running := repo.singleRun(t)
+			if running.Status != "running" || running.CompletedAt != nil || running.ID == uuid.Nil {
+				t.Fatalf("running row = %+v", running)
+			}
+
+			close(release)
+			select {
+			case <-done:
+			case <-time.After(time.Second):
+				t.Fatal("job did not finish")
+			}
+			completed := repo.singleRun(t)
+			if completed.ID != running.ID || completed.Status != "ok" || completed.CompletedAt == nil {
+				t.Fatalf("completed row = %+v", completed)
+			}
+		})
+	}
+}
+
+func TestJobOrchestratorDoesNotExecuteWithoutDurableRunningRow(t *testing.T) {
+	t.Parallel()
+	repo := newRecordingAutomationJobRunRepo()
+	repo.createErr = errors.New("database unavailable")
+	executed := false
+	orch := NewJobOrchestrator(OrchestratorDeps{JobRunRepo: repo})
+	orch.Register("job", "must be durable", schedulerSpecEveryMinute(), func(context.Context) error {
+		executed = true
+		return nil
+	})
+
+	orch.wrapAndRun(orch.jobs["job"])
+	if executed {
+		t.Fatal("job executed without a durable running row")
+	}
+	status := singleJobStatus(t, orch, "job")
+	if status.Running || status.ErrorCount != 1 || status.ConsecutiveFailures != 1 {
+		t.Fatalf("status after start persistence failure = %+v", status)
+	}
+}
+
+type recordingAutomationJobRunRepo struct {
+	mu        sync.Mutex
+	runs      []pgrepo.JobRun
+	createErr error
+}
+
+func newRecordingAutomationJobRunRepo() *recordingAutomationJobRunRepo {
+	return &recordingAutomationJobRunRepo{runs: make([]pgrepo.JobRun, 0)}
+}
+
+func (r *recordingAutomationJobRunRepo) Create(_ context.Context, run *pgrepo.JobRun) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.createErr != nil {
+		return r.createErr
+	}
+	if run.ID == uuid.Nil {
+		run.ID = uuid.New()
+	}
+	r.runs = append(r.runs, *run)
+	return nil
+}
+
+func (r *recordingAutomationJobRunRepo) Complete(_ context.Context, run *pgrepo.JobRun) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i := range r.runs {
+		if r.runs[i].ID == run.ID {
+			r.runs[i] = *run
+			return nil
+		}
+	}
+	return repository.ErrNotFound
+}
+
+func (r *recordingAutomationJobRunRepo) FailIncomplete(_ context.Context, _ time.Time, _ string) (int, error) {
+	return 0, nil
+}
+
+func (r *recordingAutomationJobRunRepo) Summaries(context.Context) ([]pgrepo.JobRunSummary, error) {
+	return nil, nil
+}
+
+func (r *recordingAutomationJobRunRepo) singleRun(t *testing.T) pgrepo.JobRun {
+	t.Helper()
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.runs) != 1 {
+		t.Fatalf("job runs = %+v, want one", r.runs)
+	}
+	return r.runs[0]
+}
+
+var _ AutomationJobRunRepository = (*recordingAutomationJobRunRepo)(nil)
 
 func TestJobOrchestratorRunJob_AutoDisablesAfterThreshold(t *testing.T) {
 	t.Parallel()

@@ -55,6 +55,13 @@ const (
 // ErrJobControlPersistence identifies a failed durable enable/disable write.
 var ErrJobControlPersistence = errors.New("automation: job control persistence failed")
 
+type AutomationJobRunRepository interface {
+	Create(context.Context, *pgrepo.JobRun) error
+	Complete(context.Context, *pgrepo.JobRun) error
+	FailIncomplete(context.Context, time.Time, string) (int, error)
+	Summaries(context.Context) ([]pgrepo.JobRunSummary, error)
+}
+
 // StrategyTrigger triggers an immediate pipeline run for a strategy.
 // The scheduler satisfies this interface.
 type StrategyTrigger interface {
@@ -89,7 +96,7 @@ type OrchestratorDeps struct {
 	OpportunityRepo        repository.OpportunityRepository
 	AllocationDecisionRepo repository.AllocationDecisionRepository
 	RunRepo                repository.PipelineRunRepository
-	JobRunRepo             *pgrepo.JobRunRepo
+	JobRunRepo             AutomationJobRunRepository
 	JobControlRepo         repository.AutomationJobControlRepository
 	OptionsScanRepo        *pgrepo.OptionsScanRepo
 	NewsFeedRepo           *pgrepo.NewsFeedRepo
@@ -463,6 +470,13 @@ func (o *JobOrchestrator) runClaimedDirect(job *RegisteredJob, startedAt time.Ti
 		job.StartedAt = nil
 		job.mu.Unlock()
 	}()
+	run, beginErr := o.beginRun(job, startedAt)
+	if beginErr != nil {
+		now := time.Now()
+		_ = o.applyRunPersistenceFailure(job, now, beginErr)
+		o.logger.Error("automation: failed to persist running job", slog.String("job", job.Name), slog.Any("error", beginErr))
+		return
+	}
 
 	o.logger.Info("automation: job starting", slog.String("job", job.Name))
 	start := time.Now()
@@ -500,7 +514,7 @@ func (o *JobOrchestrator) runClaimedDirect(job *RegisteredJob, startedAt time.Ti
 	}
 	job.mu.Unlock()
 
-	if persistErr := o.persistRun(job.Name, start, elapsed, err); persistErr != nil {
+	if persistErr := o.completeRun(run, job, time.Now(), elapsed, err); persistErr != nil {
 		o.logger.Error("automation: failed to persist job run", slog.String("job", job.Name), slog.Any("error", persistErr))
 		if err == nil {
 			_ = o.applyRunPersistenceFailure(job, now, persistErr)
@@ -615,6 +629,12 @@ func (o *JobOrchestrator) wrapAndRun(job *RegisteredJob) {
 		job.StartedAt = nil
 		job.mu.Unlock()
 	}()
+	run, beginErr := o.beginRun(job, startedAt)
+	if beginErr != nil {
+		_ = o.applyRunPersistenceFailure(job, time.Now(), beginErr)
+		o.logger.Error("automation: failed to persist running job", slog.String("job", job.Name), slog.Any("error", beginErr))
+		return
+	}
 
 	o.logger.Info("automation: job starting", slog.String("job", job.Name))
 	start := time.Now()
@@ -651,7 +671,7 @@ func (o *JobOrchestrator) wrapAndRun(job *RegisteredJob) {
 	}
 	job.mu.Unlock()
 
-	if persistErr := o.persistRun(job.Name, start, elapsed, err); persistErr != nil {
+	if persistErr := o.completeRun(run, job, time.Now(), elapsed, err); persistErr != nil {
 		o.logger.Error("automation: failed to persist job run", slog.String("job", job.Name), slog.Any("error", persistErr))
 		if err == nil {
 			err = o.applyRunPersistenceFailure(job, now, persistErr)
@@ -748,9 +768,31 @@ func (o *JobOrchestrator) recordDependencySkip(job *RegisteredJob, at time.Time,
 	}
 }
 
-// persistRun writes a job run to the database.
+func (o *JobOrchestrator) beginRun(job *RegisteredJob, start time.Time) (*pgrepo.JobRun, error) {
+	if o.deps.JobRunRepo == nil {
+		return nil, nil
+	}
+	job.mu.Lock()
+	lastErrorAt := job.LastErrorAt
+	consecutiveFailures := job.ConsecutiveFailures
+	job.mu.Unlock()
+	run := &pgrepo.JobRun{
+		JobName:             job.Name,
+		Status:              "running",
+		StartedAt:           start.UTC(),
+		LastErrorAt:         lastErrorAt,
+		ConsecutiveFailures: consecutiveFailures,
+	}
+	persistCtx, cancel := context.WithTimeout(context.Background(), jobRunPersistenceTimeout)
+	defer cancel()
+	if err := o.deps.JobRunRepo.Create(persistCtx, run); err != nil {
+		return nil, err
+	}
+	return run, nil
+}
+
 func (o *JobOrchestrator) applyRunPersistenceFailure(job *RegisteredJob, at time.Time, persistErr error) error {
-	err := fmt.Errorf("automation: persist completed run: %w", persistErr)
+	err := fmt.Errorf("automation: persist run state: %w", persistErr)
 	job.mu.Lock()
 	job.ErrorCount++
 	job.LastError = err.Error()
@@ -774,12 +816,11 @@ func (o *JobOrchestrator) applyRunPersistenceFailure(job *RegisteredJob, at time
 	return err
 }
 
-func (o *JobOrchestrator) persistRun(jobName string, start time.Time, elapsed time.Duration, jobErr error) error {
-	if o.deps.JobRunRepo == nil {
+func (o *JobOrchestrator) completeRun(run *pgrepo.JobRun, job *RegisteredJob, completedAt time.Time, elapsed time.Duration, jobErr error) error {
+	if o.deps.JobRunRepo == nil || run == nil {
 		return nil
 	}
 
-	completed := start.Add(elapsed)
 	status := "ok"
 	var errMsg string
 	if jobErr != nil {
@@ -787,7 +828,6 @@ func (o *JobOrchestrator) persistRun(jobName string, start time.Time, elapsed ti
 		errMsg = jobErr.Error()
 	}
 
-	job := o.jobs[jobName]
 	var lastErrorAt *time.Time
 	var consecutiveFailures int
 	var result map[string]int
@@ -799,21 +839,18 @@ func (o *JobOrchestrator) persistRun(jobName string, start time.Time, elapsed ti
 		job.mu.Unlock()
 	}
 
-	run := &pgrepo.JobRun{
-		JobName:             jobName,
-		Status:              status,
-		StartedAt:           start.UTC(),
-		CompletedAt:         &completed,
-		DurationNs:          elapsed.Nanoseconds(),
-		Result:              result,
-		Error:               errMsg,
-		LastErrorAt:         lastErrorAt,
-		ConsecutiveFailures: consecutiveFailures,
-	}
+	run.Status = status
+	completedAt = completedAt.UTC()
+	run.CompletedAt = &completedAt
+	run.DurationNs = elapsed.Nanoseconds()
+	run.Result = result
+	run.Error = errMsg
+	run.LastErrorAt = lastErrorAt
+	run.ConsecutiveFailures = consecutiveFailures
 
 	persistCtx, cancel := context.WithTimeout(context.Background(), jobRunPersistenceTimeout)
 	defer cancel()
-	return o.deps.JobRunRepo.Create(persistCtx, run)
+	return o.deps.JobRunRepo.Complete(persistCtx, run)
 }
 
 // hydrateFromDB loads historical run stats from the database to restore
@@ -822,6 +859,16 @@ func (o *JobOrchestrator) hydrateFromDB() {
 	o.hydrateJobControls()
 	if o.deps.JobRunRepo == nil {
 		return
+	}
+	recoveryAt := time.Now().UTC()
+	const recoveryReason = "automation process restarted before the job persisted a terminal outcome"
+	recoveryCtx, recoveryCancel := context.WithTimeout(context.Background(), jobRunPersistenceTimeout)
+	recovered, recoveryErr := o.deps.JobRunRepo.FailIncomplete(recoveryCtx, recoveryAt, recoveryReason)
+	recoveryCancel()
+	if recoveryErr != nil {
+		o.logger.Error("automation: failed to recover incomplete job runs", slog.Any("error", recoveryErr))
+	} else if recovered > 0 {
+		o.logger.Warn("automation: recovered incomplete job runs", slog.Int("runs", recovered))
 	}
 	if o.deps.KalshiSettlementGateRepo != nil {
 		if state, err := o.deps.KalshiSettlementGateRepo.Get(context.Background(), "kalshi_settlement"); err == nil {
