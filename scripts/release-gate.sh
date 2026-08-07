@@ -13,5 +13,6 @@ docker compose config --quiet
 docker run --rm --entrypoint promtool \
   -v "$repo_dir/monitoring/prometheus:/etc/prometheus:ro" \
   prom/prometheus:v3.3.0 check rules /etc/prometheus/alerts.yml
+./scripts/verify-secret-history.sh
 
 echo "Paper release gate passed. Complete the deployment soak before setting RELEASE_DRILLS_VERIFIED=true."
