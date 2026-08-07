@@ -212,6 +212,68 @@ func TestGitReconciliationRunbookPreservesAndPublishesVerifiedCommit(t *testing.
 	}
 }
 
+func TestNUCDeploymentRunbooksRequireImmutableSingleReplacementAndRestoreProof(t *testing.T) {
+	repoRoot := filepath.Join(filepath.Dir(productionBuildVerificationScriptPath(t)), "..")
+	rollingContents, err := os.ReadFile(filepath.Join(repoRoot, "docs", "runbooks", "rolling-restart.md"))
+	if err != nil {
+		t.Fatalf("ReadFile(rolling-restart.md) error = %v", err)
+	}
+	backupContents, err := os.ReadFile(filepath.Join(repoRoot, "docs", "runbooks", "database-backup-restore.md"))
+	if err != nil {
+		t.Fatalf("ReadFile(database-backup-restore.md) error = %v", err)
+	}
+
+	rolling := string(rollingContents)
+	for _, want := range []string{
+		`previous_app_image=$(docker inspect`,
+		`previous_web_image=$(docker inspect`,
+		`candidate_app_image="augr-app:$release_tag"`,
+		`candidate_web_image="augr-web:$release_tag"`,
+		`docker compose -f docker-compose.nuc.yml build app web`,
+		`docker compose -f docker-compose.nuc.yml --profile tools run --rm migrate`,
+		`up -d --no-build --no-deps app web`,
+		`Replace app and web together exactly once`,
+		`Require clean schema 62`,
+		`AUGR_APP_IMAGE="$previous_app_image"`,
+		`AUGR_WEB_IMAGE="$previous_web_image"`,
+		`It does not select image names`,
+	} {
+		if !strings.Contains(rolling, want) {
+			t.Fatalf("rolling restart runbook missing required content %q", want)
+		}
+	}
+	if strings.Contains(rolling, `up -d --build`) {
+		t.Fatal("rolling restart runbook permits mutable build-and-replace deployment")
+	}
+
+	backup := string(backupContents)
+	for _, want := range []string{
+		`baseline_schema=$(docker compose -f docker-compose.nuc.yml`,
+		`baseline_counts=$(docker compose -f docker-compose.nuc.yml`,
+		`sh -ec 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB"`,
+		`restore_db="augr_restore_check_$release_short"`,
+		`sh -ec 'createdb -U "$POSTGRES_USER" "$RESTORE_DB"'`,
+		`--exit-on-error --no-owner`,
+		`SELECT version, dirty FROM schema_migrations`,
+		`test "$restored_schema" = "$baseline_schema"`,
+		`test "$restored_counts" = "$baseline_counts"`,
+		`sh -ec 'dropdb -U "$POSTGRES_USER" "$RESTORE_DB"'`,
+		`pre-backup critical-table counts`,
+	} {
+		if !strings.Contains(backup, want) {
+			t.Fatalf("database backup runbook missing required content %q", want)
+		}
+	}
+	dumpIdx := strings.Index(backup, `sh -ec 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB"`)
+	createIdx := strings.Index(backup, `sh -ec 'createdb -U "$POSTGRES_USER" "$RESTORE_DB"'`)
+	restoreIdx := strings.Index(backup, `sh -ec 'pg_restore -U "$POSTGRES_USER" -d "$RESTORE_DB" --exit-on-error --no-owner'`)
+	validateIdx := strings.Index(backup, `SELECT version, dirty FROM schema_migrations`)
+	dropIdx := strings.Index(backup, `sh -ec 'dropdb -U "$POSTGRES_USER" "$RESTORE_DB"'`)
+	if dumpIdx >= createIdx || createIdx >= restoreIdx || restoreIdx >= validateIdx || validateIdx >= dropIdx {
+		t.Fatalf("database backup runbook expected dump -> create -> restore -> validate -> drop ordering, got %d %d %d %d %d", dumpIdx, createIdx, restoreIdx, validateIdx, dropIdx)
+	}
+}
+
 func TestPaperBoundaryObserverOmitsRawErrorsAndUsesPortableOutputs(t *testing.T) {
 	repoRoot := filepath.Join(filepath.Dir(productionBuildVerificationScriptPath(t)), "..")
 	contents, err := os.ReadFile(filepath.Join(repoRoot, "scripts", "observe-paper-boundary.sh"))

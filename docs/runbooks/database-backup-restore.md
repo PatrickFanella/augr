@@ -1,6 +1,7 @@
 ---
 title: "Database backup and restore"
 date: 2026-03-30
+updated: 2026-08-07
 tags: [runbook, operations, database]
 type: runbook
 ---
@@ -38,11 +39,15 @@ Use this runbook before risky schema work, before restoring production-like data
      --no-owner > "$BACKUP_FILE"
    ```
 
-4. Validate that the backup is readable before you touch the target database:
+4. Check the backup catalog before you touch the target database:
 
    ```bash
    pg_restore -l "$BACKUP_FILE" | head
    ```
+
+   This is an early corruption check, not restore proof. Before production
+   schema work, restore the exact backup into an isolated validation database
+   as described below.
 
 5. If you are restoring from another dump, take one more safety backup of the current database first using steps 2 through 4.
 6. Restore the chosen backup into the target database:
@@ -51,6 +56,7 @@ Use this runbook before risky schema work, before restoring production-like data
    docker compose exec -T postgres pg_restore \
      -U "${POSTGRES_USER:-postgres}" \
      -d "${POSTGRES_DB:-tradingagent}" \
+     --exit-on-error \
      --clean \
      --if-exists \
      --no-owner < "$BACKUP_FILE"
@@ -75,12 +81,74 @@ Use this runbook before risky schema work, before restoring production-like data
    docker compose exec -T postgres psql -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-tradingagent}" -At -c 'SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1'
    ```
 
+## Required pre-migration restore proof
+
+For production schema changes, listing a dump is insufficient. With application
+writes quiesced, restore the exact predeployment dump into a new validation
+database in the same PostgreSQL service, using a name derived only from the
+verified release commit. Validate the name before using it in create/drop
+commands; never target the production database. The NUC commands below name the
+authoritative manifest explicitly so a default development Compose project
+cannot be backed up by mistake.
+
+```bash
+mkdir -p backups
+BACKUP_FILE="backups/augr-predeploy-$(date -u +%Y%m%dT%H%M%SZ).dump"
+baseline_schema=$(docker compose -f docker-compose.nuc.yml exec -T postgres \
+  sh -ec 'psql -X -qAt -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+    -c "SELECT concat_ws(chr(124), version::text, dirty::text) FROM schema_migrations"' \
+  | tr -d '[:space:]')
+baseline_counts=$(docker compose -f docker-compose.nuc.yml exec -T postgres \
+  sh -ec 'psql -X -qAt -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+    -c "SELECT concat_ws(chr(124), (SELECT count(*) FROM orders)::text, (SELECT count(*) FROM trades)::text, (SELECT count(*) FROM positions)::text)"' \
+  | tr -d '[:space:]')
+docker compose -f docker-compose.nuc.yml exec -T postgres \
+  sh -ec 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" --format=custom --no-owner' \
+  > "$BACKUP_FILE"
+test -s "$BACKUP_FILE"
+pg_restore -l "$BACKUP_FILE" >/dev/null
+
+release_short=$(git rev-parse --short=12 HEAD)
+restore_db="augr_restore_check_$release_short"
+case "$restore_db" in
+  augr_restore_check_[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
+  *) echo "invalid restore database name" >&2; exit 1 ;;
+esac
+docker compose -f docker-compose.nuc.yml exec -T -e RESTORE_DB="$restore_db" postgres \
+  sh -ec 'createdb -U "$POSTGRES_USER" "$RESTORE_DB"'
+docker compose -f docker-compose.nuc.yml exec -T -e RESTORE_DB="$restore_db" postgres \
+  sh -ec 'pg_restore -U "$POSTGRES_USER" -d "$RESTORE_DB" --exit-on-error --no-owner' \
+  < "$BACKUP_FILE"
+docker compose -f docker-compose.nuc.yml exec -T -e RESTORE_DB="$restore_db" postgres \
+  sh -ec 'psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$RESTORE_DB" \
+    -c "SELECT version, dirty FROM schema_migrations" \
+    -c "SELECT (SELECT count(*) FROM orders) AS orders, (SELECT count(*) FROM trades) AS trades, (SELECT count(*) FROM positions) AS positions"'
+restored_schema=$(docker compose -f docker-compose.nuc.yml exec -T -e RESTORE_DB="$restore_db" postgres \
+  sh -ec 'psql -X -qAt -U "$POSTGRES_USER" -d "$RESTORE_DB" \
+    -c "SELECT concat_ws(chr(124), version::text, dirty::text) FROM schema_migrations"' \
+  | tr -d '[:space:]')
+restored_counts=$(docker compose -f docker-compose.nuc.yml exec -T -e RESTORE_DB="$restore_db" postgres \
+  sh -ec 'psql -X -qAt -U "$POSTGRES_USER" -d "$RESTORE_DB" \
+    -c "SELECT concat_ws(chr(124), (SELECT count(*) FROM orders)::text, (SELECT count(*) FROM trades)::text, (SELECT count(*) FROM positions)::text)"' \
+  | tr -d '[:space:]')
+test "$restored_schema" = "$baseline_schema"
+test "$restored_counts" = "$baseline_counts"
+docker compose -f docker-compose.nuc.yml exec -T -e RESTORE_DB="$restore_db" postgres \
+  sh -ec 'dropdb -U "$POSTGRES_USER" "$RESTORE_DB"'
+```
+
+Require the expected clean schema version and exact agreement with the
+pre-backup critical-table counts. If creation, restore, validation, or cleanup
+fails, stop the release and retain the dump; do not migrate production.
+
 ## Verification
 
 - `pg_restore -l "$BACKUP_FILE"` succeeds for the backup you intend to use.
+- For production schema changes, an isolated `pg_restore --exit-on-error`
+  succeeds and restored schema/critical counts match the pre-backup baseline.
 - `docker compose exec postgres psql -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-tradingagent}" -c '\dt'` lists the expected tables after restore.
 - `SELECT version FROM schema_migrations` returns the expected current application schema version after `migrate ... up`.
-- `curl -sS "${TRADINGAGENT_API_URL:-http://127.0.0.1:8080}/healthz"` returns `{"status":"all-ok"}` after the app is back up.
+- `curl -sS "${TRADINGAGENT_API_URL:-http://127.0.0.1:8080}/healthz"` reports healthy application, database, and Redis dependencies after the app is back up.
 - An authenticated read-only API call such as `GET /api/v1/strategies` succeeds.
 
 ## Rollback
