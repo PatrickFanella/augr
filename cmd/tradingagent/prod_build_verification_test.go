@@ -83,6 +83,7 @@ func TestReleaseGateIncludesProductionVerificationAndPinnedPromtool(t *testing.T
 
 	script := string(contents)
 	for _, want := range []string{
+		`docker compose -f docker-compose.nuc.yml config --quiet`,
 		`./scripts/verify-prod-build.sh`,
 		`prom/prometheus@sha256:`,
 		`"$promtool_image" check rules`,
