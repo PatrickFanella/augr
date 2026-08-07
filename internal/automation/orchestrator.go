@@ -85,6 +85,7 @@ type OrchestratorDeps struct {
 	PositionRepo           repository.PositionRepository
 	OrderRepo              repository.OrderRepository
 	TradeRepo              repository.TradeRepository
+	OptionSettlementRepo   repository.OptionSettlementRepository
 	OpportunityRepo        repository.OpportunityRepository
 	AllocationDecisionRepo repository.AllocationDecisionRepository
 	RunRepo                repository.PipelineRunRepository

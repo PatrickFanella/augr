@@ -716,6 +716,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 					PositionRepo:                positionRepo,
 					OrderRepo:                   orderRepo,
 					TradeRepo:                   tradeRepo,
+					OptionSettlementRepo:        db,
 					RunRepo:                     runRepo,
 					OpportunityRepo:             opportunityRepo,
 					AllocationDecisionRepo:      allocationDecisionRepo,

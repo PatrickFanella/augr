@@ -443,6 +443,28 @@ type PredictionDecisionSettlementResult struct {
 	Replayed      bool
 }
 
+// OptionPositionSettlementInput identifies one expired option position and
+// the intrinsic cash value that must be persisted with its closing trade.
+type OptionPositionSettlementInput struct {
+	PositionID      uuid.UUID
+	SettlementPrice float64
+	SettledAt       time.Time
+	ExitReason      string
+}
+
+// OptionPositionSettlementResult identifies the position and closing trade
+// committed by one atomic option-expiry settlement.
+type OptionPositionSettlementResult struct {
+	PositionID uuid.UUID
+	TradeID    uuid.UUID
+}
+
+// OptionSettlementRepository atomically closes one expired option position
+// and creates its linked cash-settlement trade.
+type OptionSettlementRepository interface {
+	SettleOptionPosition(ctx context.Context, input OptionPositionSettlementInput) (OptionPositionSettlementResult, error)
+}
+
 // FinancialLifecycleRepository persists atomic fill and prediction settlement lifecycles.
 type FinancialLifecycleRepository interface {
 	ApplyOrderFill(ctx context.Context, input OrderFillInput) (OrderFillResult, error)

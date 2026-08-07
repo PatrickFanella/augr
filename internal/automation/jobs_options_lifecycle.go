@@ -19,7 +19,7 @@ var (
 )
 
 func (o *JobOrchestrator) registerOptionsLifecycleJobs() {
-	if o.deps.PositionRepo != nil && o.deps.TradeRepo != nil && o.deps.DataService != nil {
+	if o.deps.PositionRepo != nil && o.deps.OptionSettlementRepo != nil && o.deps.DataService != nil {
 		o.Register("options_expiry_settlement", "Cash-settle expired paper option positions", optionsExpirySpec, o.optionsExpirySettlement)
 	}
 	if o.deps.OrderRepo != nil && o.deps.PositionRepo != nil && o.deps.TradeRepo != nil {
@@ -74,7 +74,7 @@ func (o *JobOrchestrator) optionsExpirySettlement(ctx context.Context) error {
 		}
 		prices[underlying] = bars[len(bars)-1].Close
 	}
-	summary, err := execution.SettleExpiredOptionPositions(ctx, positions, prices, now, o.deps.PositionRepo, o.deps.TradeRepo)
+	summary, err := execution.SettleExpiredOptionPositions(ctx, positions, prices, now, o.deps.OptionSettlementRepo)
 	if err != nil {
 		return err
 	}

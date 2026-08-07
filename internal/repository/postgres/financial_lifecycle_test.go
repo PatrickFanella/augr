@@ -118,6 +118,71 @@ func TestFinancialLifecycle_FirstDeliveryReplayRollbackAndPositions(t *testing.T
 	}
 }
 
+func TestFinancialLifecycle_OptionSettlementCommitsPositionAndTradeAtomically(t *testing.T) {
+	ctx := context.Background()
+	pool, cleanup := newFinancialLifecycleIntegrationPool(t, ctx)
+	defer cleanup()
+	repo := &DB{Pool: pool}
+	strategyID := createFinancialLifecycleStrategy(t, ctx, pool)
+	settledAt := time.Date(2027, 12, 18, 22, 0, 0, 0, time.UTC)
+	expiry := settledAt.Add(-24 * time.Hour)
+
+	var positionID uuid.UUID
+	if err := pool.QueryRow(ctx, `INSERT INTO positions
+		(id, strategy_id, ticker, side, quantity, avg_entry, asset_class, underlying_ticker, option_type, strike, expiry, contract_multiplier)
+		VALUES ($1,$2,$3,$4,1,2,'option','AAPL','call',150,$5,100) RETURNING id`,
+		uuid.New(), strategyID, "AAPL271217C00150000", domain.PositionSideLong, expiry,
+	).Scan(&positionID); err != nil {
+		t.Fatalf("create option position: %v", err)
+	}
+	result, err := repo.SettleOptionPosition(ctx, repository.OptionPositionSettlementInput{
+		PositionID: positionID, SettlementPrice: 5, SettledAt: settledAt, ExitReason: "exercise_cash_settled",
+	})
+	if err != nil {
+		t.Fatalf("SettleOptionPosition() error = %v", err)
+	}
+	var quantity, currentPrice, realizedPnL float64
+	var closedAt *time.Time
+	if err := pool.QueryRow(ctx, `SELECT quantity::double precision, current_price::double precision, realized_pnl::double precision, closed_at FROM positions WHERE id=$1`, positionID).Scan(&quantity, &currentPrice, &realizedPnL, &closedAt); err != nil {
+		t.Fatalf("load settled position: %v", err)
+	}
+	if quantity != 0 || currentPrice != 5 || realizedPnL != 300 || closedAt == nil {
+		t.Fatalf("unexpected settled position qty=%v current=%v pnl=%v closed=%v", quantity, currentPrice, realizedPnL, closedAt)
+	}
+	var tradePositionID uuid.UUID
+	var premium float64
+	var exitReason string
+	if err := pool.QueryRow(ctx, `SELECT position_id, premium::double precision, exit_reason FROM trades WHERE id=$1`, result.TradeID).Scan(&tradePositionID, &premium, &exitReason); err != nil {
+		t.Fatalf("load settlement trade: %v", err)
+	}
+	if tradePositionID != positionID || premium != 500 || exitReason != "exercise_cash_settled" {
+		t.Fatalf("unexpected settlement trade position=%s premium=%v reason=%q", tradePositionID, premium, exitReason)
+	}
+
+	var rollbackPositionID uuid.UUID
+	if err := pool.QueryRow(ctx, `INSERT INTO positions
+		(id, strategy_id, ticker, side, quantity, avg_entry, asset_class, underlying_ticker, option_type, strike, expiry, contract_multiplier)
+		VALUES ($1,$2,$3,$4,2,1,'option','AAPL','put',140,$5,100) RETURNING id`,
+		uuid.New(), strategyID, "AAPL271217P00140000", domain.PositionSideLong, expiry,
+	).Scan(&rollbackPositionID); err != nil {
+		t.Fatalf("create rollback position: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `ALTER TABLE trades ADD CONSTRAINT reject_new_exit_reason CHECK (exit_reason IS NULL) NOT VALID`); err != nil {
+		t.Fatalf("install trade failure constraint: %v", err)
+	}
+	if _, err := repo.SettleOptionPosition(ctx, repository.OptionPositionSettlementInput{
+		PositionID: rollbackPositionID, SettlementPrice: 0, SettledAt: settledAt, ExitReason: "expired_worthless",
+	}); err == nil {
+		t.Fatal("expected settlement trade failure")
+	}
+	if err := pool.QueryRow(ctx, `SELECT quantity::double precision, closed_at FROM positions WHERE id=$1`, rollbackPositionID).Scan(&quantity, &closedAt); err != nil {
+		t.Fatalf("load rolled-back position: %v", err)
+	}
+	if quantity != 2 || closedAt != nil {
+		t.Fatalf("position update was not rolled back: qty=%v closed=%v", quantity, closedAt)
+	}
+}
+
 func TestFinancialLifecycle_SettlePredictionDecisionSingleLotKeepsLinkage(t *testing.T) {
 	ctx := context.Background()
 	pool, cleanup := newFinancialLifecycleSettlementIntegrationPool(t, ctx)
@@ -325,7 +390,7 @@ func newFinancialLifecycleIntegrationPool(t *testing.T, ctx context.Context) (*p
 		`CREATE TABLE strategies (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), market_type TEXT NOT NULL DEFAULT 'stock')`,
 		`CREATE TABLE orders (id UUID PRIMARY KEY, strategy_id UUID REFERENCES strategies(id), ticker TEXT NOT NULL, market_type TEXT NOT NULL, side trade_side NOT NULL, status TEXT NOT NULL, quantity NUMERIC(20,8) NOT NULL, filled_quantity NUMERIC(20,8) NOT NULL DEFAULT 0, filled_avg_price NUMERIC(20,8), filled_at TIMESTAMPTZ, prediction_side TEXT)`,
 		`CREATE TABLE positions (id UUID PRIMARY KEY, strategy_id UUID REFERENCES strategies(id), ticker TEXT NOT NULL, side position_side NOT NULL, quantity NUMERIC(20,8) NOT NULL, avg_entry NUMERIC(20,8) NOT NULL, current_price NUMERIC(20,8), unrealized_pnl NUMERIC(20,8), realized_pnl NUMERIC(20,8) NOT NULL DEFAULT 0, stop_loss NUMERIC(20,8), take_profit NUMERIC(20,8), opened_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), closed_at TIMESTAMPTZ, market_type TEXT, asset_class TEXT NOT NULL DEFAULT 'stock', underlying_ticker TEXT, option_type TEXT, strike NUMERIC(20,8), expiry TIMESTAMPTZ, contract_multiplier NUMERIC(20,8) NOT NULL DEFAULT 1, leg_group_id UUID, delta NUMERIC(20,8), gamma NUMERIC(20,8), theta NUMERIC(20,8), vega NUMERIC(20,8))`,
-		`CREATE TABLE trades (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), external_id TEXT, order_id UUID REFERENCES orders(id), position_id UUID REFERENCES positions(id), ticker TEXT NOT NULL, side trade_side NOT NULL, quantity NUMERIC(20,8) NOT NULL CHECK (quantity > 0), price NUMERIC(20,8) NOT NULL, fee NUMERIC(20,8) NOT NULL DEFAULT 0, executed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), asset_class TEXT NOT NULL DEFAULT 'stock', open_close TEXT, contract_multiplier NUMERIC(20,8) NOT NULL DEFAULT 1, premium NUMERIC(20,8))`,
+		`CREATE TABLE trades (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), external_id TEXT, order_id UUID REFERENCES orders(id), position_id UUID REFERENCES positions(id), ticker TEXT NOT NULL, side trade_side NOT NULL, quantity NUMERIC(20,8) NOT NULL CHECK (quantity > 0), price NUMERIC(20,8) NOT NULL, fee NUMERIC(20,8) NOT NULL DEFAULT 0, executed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), asset_class TEXT NOT NULL DEFAULT 'stock', open_close TEXT, contract_multiplier NUMERIC(20,8) NOT NULL DEFAULT 1, premium NUMERIC(20,8), exit_reason TEXT)`,
 		`CREATE TABLE financial_fill_idempotency (idempotency_key TEXT PRIMARY KEY, order_id UUID NOT NULL, position_id UUID, trade_id UUID NOT NULL, fill_quantity NUMERIC(20,8) NOT NULL, fill_price NUMERIC(20,8) NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
 	}
 	for _, stmt := range ddl {

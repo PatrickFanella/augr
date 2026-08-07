@@ -241,6 +241,81 @@ func (db *DB) ApplyOrderFill(ctx context.Context, input repository.OrderFillInpu
 	return repository.OrderFillResult{OrderID: order.ID, PositionID: positionID, Position: position, TradeID: trade.ID, CreatedAt: trade.CreatedAt}, nil
 }
 
+// SettleOptionPosition atomically closes one expired option position and
+// creates its linked cash-settlement trade. The locked database row is the
+// source of truth for quantity, side, entry price, and contract multiplier.
+func (db *DB) SettleOptionPosition(ctx context.Context, input repository.OptionPositionSettlementInput) (repository.OptionPositionSettlementResult, error) {
+	if input.PositionID == uuid.Nil || input.SettledAt.IsZero() || input.SettlementPrice < 0 || math.IsNaN(input.SettlementPrice) || math.IsInf(input.SettlementPrice, 0) {
+		return repository.OptionPositionSettlementResult{}, fmt.Errorf("postgres: invalid option settlement input")
+	}
+	if (input.SettlementPrice == 0 && input.ExitReason != "expired_worthless") || (input.SettlementPrice > 0 && input.ExitReason != "exercise_cash_settled") {
+		return repository.OptionPositionSettlementResult{}, fmt.Errorf("postgres: invalid option settlement reason")
+	}
+
+	tx, err := db.Pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return repository.OptionPositionSettlementResult{}, fmt.Errorf("postgres: begin option settlement tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var (
+		ticker             string
+		side               domain.PositionSide
+		quantity           float64
+		avgEntry           float64
+		realizedPnL        float64
+		contractMultiplier float64
+		closedAt           *time.Time
+		assetClass         domain.AssetClass
+		expiry             *time.Time
+	)
+	if err := tx.QueryRow(ctx, `SELECT ticker, side, quantity::double precision, avg_entry::double precision,
+		COALESCE(realized_pnl, 0)::double precision, COALESCE(NULLIF(contract_multiplier, 0), 100)::double precision,
+		closed_at, asset_class, expiry
+		FROM positions WHERE id = $1 FOR UPDATE`, input.PositionID).Scan(
+		&ticker, &side, &quantity, &avgEntry, &realizedPnL, &contractMultiplier, &closedAt, &assetClass, &expiry,
+	); err != nil {
+		return repository.OptionPositionSettlementResult{}, fmt.Errorf("postgres: lock option settlement position: %w", err)
+	}
+	if assetClass != domain.AssetClassOption || closedAt != nil || quantity <= 0 || expiry == nil {
+		return repository.OptionPositionSettlementResult{}, fmt.Errorf("postgres: option settlement position is not eligible")
+	}
+	settledAt := input.SettledAt.UTC()
+	settlementDay := time.Date(settledAt.Year(), settledAt.Month(), settledAt.Day(), 0, 0, 0, 0, time.UTC)
+	expiryDay := time.Date(expiry.UTC().Year(), expiry.UTC().Month(), expiry.UTC().Day(), 0, 0, 0, 0, time.UTC)
+	if expiryDay.After(settlementDay) {
+		return repository.OptionPositionSettlementResult{}, fmt.Errorf("postgres: option settlement position has not expired")
+	}
+
+	realizedDelta := (input.SettlementPrice - avgEntry) * quantity * contractMultiplier
+	tradeSide := domain.OrderSideSell
+	if side == domain.PositionSideShort {
+		realizedDelta = (avgEntry - input.SettlementPrice) * quantity * contractMultiplier
+		tradeSide = domain.OrderSideBuy
+	} else if side != domain.PositionSideLong {
+		return repository.OptionPositionSettlementResult{}, fmt.Errorf("postgres: option settlement position has invalid side")
+	}
+	if _, err := tx.Exec(ctx, `UPDATE positions
+		SET quantity = 0, current_price = $1, realized_pnl = $2, unrealized_pnl = NULL, closed_at = $3
+		WHERE id = $4`, input.SettlementPrice, realizedPnL+realizedDelta, settledAt, input.PositionID); err != nil {
+		return repository.OptionPositionSettlementResult{}, fmt.Errorf("postgres: close option settlement position: %w", err)
+	}
+
+	tradeID := uuid.New()
+	if _, err := tx.Exec(ctx, `INSERT INTO trades
+		(id, position_id, ticker, side, quantity, price, executed_at, created_at, asset_class, open_close, contract_multiplier, premium, exit_reason)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$7,$8,'close',$9,$10,$11)`,
+		tradeID, input.PositionID, ticker, tradeSide, quantity, input.SettlementPrice, settledAt,
+		domain.AssetClassOption, contractMultiplier, input.SettlementPrice*quantity*contractMultiplier, input.ExitReason,
+	); err != nil {
+		return repository.OptionPositionSettlementResult{}, fmt.Errorf("postgres: create option settlement trade: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return repository.OptionPositionSettlementResult{}, fmt.Errorf("postgres: commit option settlement: %w", err)
+	}
+	return repository.OptionPositionSettlementResult{PositionID: input.PositionID, TradeID: tradeID}, nil
+}
+
 func (db *DB) SettlePredictionDecision(ctx context.Context, input repository.PredictionDecisionSettlementInput) (repository.PredictionDecisionSettlementResult, error) {
 	if input.Decision == nil || input.Decision.ID == uuid.Nil || input.Decision.StrategyID == nil || input.Decision.PaperOrderID == nil || input.IdempotencyKey == "" || input.PositionTicker == "" || input.ResolvedAt.IsZero() || math.IsNaN(input.Payout) || math.IsInf(input.Payout, 0) || input.Payout < 0 || input.Payout > 1 {
 		return repository.PredictionDecisionSettlementResult{}, fmt.Errorf("postgres: invalid settlement input")

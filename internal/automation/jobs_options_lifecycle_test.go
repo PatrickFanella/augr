@@ -5,7 +5,14 @@ import (
 	"testing"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/data"
+	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 )
+
+type optionSettlementRepoStub struct{}
+
+func (optionSettlementRepoStub) SettleOptionPosition(_ context.Context, input repository.OptionPositionSettlementInput) (repository.OptionPositionSettlementResult, error) {
+	return repository.OptionPositionSettlementResult{PositionID: input.PositionID}, nil
+}
 
 func TestRegisterOptionsLifecycleJobRequiresPersistenceAndMarketData(t *testing.T) {
 	withoutDeps := NewJobOrchestrator(OrchestratorDeps{})
@@ -15,7 +22,7 @@ func TestRegisterOptionsLifecycleJobRequiresPersistenceAndMarketData(t *testing.
 	}
 
 	orders := newRecordingOrderRepo()
-	withDeps := NewJobOrchestrator(OrchestratorDeps{PositionRepo: newRecordingPositionRepo(), OrderRepo: orders, TradeRepo: newRecordingTradeRepo(orders), DataService: &data.DataService{}})
+	withDeps := NewJobOrchestrator(OrchestratorDeps{PositionRepo: newRecordingPositionRepo(), OrderRepo: orders, TradeRepo: newRecordingTradeRepo(orders), OptionSettlementRepo: optionSettlementRepoStub{}, DataService: &data.DataService{}})
 	withDeps.RegisterAll()
 	job, ok := withDeps.jobs["options_expiry_settlement"]
 	if !ok || !job.Enabled || job.Schedule.Cron != "0 23 * * 1-5" {

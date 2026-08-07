@@ -31,9 +31,9 @@ func (r *TradeRepo) Create(ctx context.Context, trade *domain.Trade) error {
 	row := r.pool.QueryRow(ctx,
 		`INSERT INTO trades (
 			external_id, order_id, position_id, ticker, side, quantity, price, fee, executed_at,
-			asset_class, open_close, contract_multiplier, premium
+			asset_class, open_close, contract_multiplier, premium, exit_reason
 		)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 		 RETURNING id, created_at`,
 		nullString(trade.ExternalID),
 		trade.OrderID,
@@ -48,6 +48,7 @@ func (r *TradeRepo) Create(ctx context.Context, trade *domain.Trade) error {
 		nullString(trade.OpenClose),
 		trade.ContractMultiplier,
 		trade.Premium,
+		nullString(trade.ExitReason),
 	)
 
 	if err := row.Scan(&trade.ID, &trade.CreatedAt); err != nil {
@@ -81,7 +82,7 @@ const tradeSelectSQL = `SELECT id, external_id, order_id, position_id, ticker, s
 		quantity::double precision, price::double precision, fee::double precision,
 		executed_at, created_at, asset_class, open_close,
 		COALESCE(contract_multiplier, 100)::double precision,
-		COALESCE(premium, 0)::double precision
+		COALESCE(premium, 0)::double precision, COALESCE(exit_reason, '')
 	 FROM trades`
 
 func (r *TradeRepo) list(ctx context.Context, query string, args []any, op string) ([]domain.Trade, error) {
@@ -135,6 +136,7 @@ func scanTrade(sc scanner) (*domain.Trade, error) {
 		&openClose,
 		&trade.ContractMultiplier,
 		&trade.Premium,
+		&trade.ExitReason,
 	)
 	if err != nil {
 		return nil, err

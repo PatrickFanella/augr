@@ -1,0 +1,2 @@
+ALTER TABLE trades
+    ADD COLUMN IF NOT EXISTS exit_reason TEXT;

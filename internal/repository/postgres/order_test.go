@@ -446,7 +446,8 @@ func newOrderTradeIntegrationPool(t *testing.T, ctx context.Context) (*pgxpool.P
 			asset_class TEXT NOT NULL DEFAULT 'equity',
 			open_close TEXT,
 			contract_multiplier NUMERIC(10, 4) DEFAULT 100,
-			premium NUMERIC(20, 8)
+			premium NUMERIC(20, 8),
+			exit_reason TEXT
 		)`,
 		`CREATE TABLE position_provenance (
 			position_id UUID PRIMARY KEY REFERENCES positions(id) ON DELETE CASCADE,

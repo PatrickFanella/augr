@@ -51,6 +51,7 @@ func TestBuildTradeListQuery_EmptyFilter(t *testing.T) {
 	assertContains(t, query, "LIMIT $1 OFFSET $2")
 	assertContains(t, query, "COALESCE(contract_multiplier, 100)")
 	assertContains(t, query, "COALESCE(premium, 0)")
+	assertContains(t, query, "COALESCE(exit_reason, '')")
 }
 
 func TestBuildTradeScopedListQuery_UnsupportedScopePanics(t *testing.T) {
@@ -90,6 +91,7 @@ func TestTradeRepoIntegration_CreateListGetByOrderAndPosition(t *testing.T) {
 		Price:      185.00,
 		Fee:        0.25,
 		ExecutedAt: baseTime,
+		ExitReason: "expiry_cash_settlement",
 	}
 	tradeB := &domain.Trade{
 		OrderID:    &orderID,
@@ -141,6 +143,9 @@ func TestTradeRepoIntegration_CreateListGetByOrderAndPosition(t *testing.T) {
 	}
 	if byOrder[0].ExternalID == "" {
 		t.Fatal("expected returned trade to include external_id")
+	}
+	if byOrder[1].ExitReason != "expiry_cash_settlement" {
+		t.Fatalf("expected persisted exit reason, got %q", byOrder[1].ExitReason)
 	}
 
 	byPosition, err := tradeRepo.GetByPosition(ctx, positionID, repository.TradeFilter{
