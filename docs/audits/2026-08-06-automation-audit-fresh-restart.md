@@ -838,6 +838,10 @@ The following persistent user timers were revalidated `active/waiting`; each inv
 
 | Local start | Job | Required boundary / report |
 |---|---|---|
+| August 10 05:28 CDT | `ticker_discovery` | 10:30 UTC / `20260810-ticker-discovery.txt` |
+| August 10 06:58 CDT | `gap_scanner` | 12:00 UTC / `20260810-gap-scanner.txt` |
+| August 10 07:28 CDT | `discovery_run` | 12:30 UTC / `20260810-discovery-run.txt` |
+| August 10 07:58 CDT | `position_review` | 13:00 UTC / `20260810-position-review.txt` |
 | August 10 08:28 CDT | `current_data_refresh` | 13:30 UTC / `20260810-current-data-refresh.txt` |
 | August 10 08:33 CDT | `hot_scan` | 13:35 UTC / `20260810-hot-scan.txt` |
 | August 10 08:35 CDT | `news_scan` | 13:37 UTC / `20260810-news-scan.txt` |
