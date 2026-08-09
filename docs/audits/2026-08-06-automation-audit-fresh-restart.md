@@ -812,3 +812,38 @@ Under the owner-approved August 7 ordering change, the deployment may precede th
 | Sunday August 9, 16:00 / 18:00 | First valid postdeployment universe refresh and strategy tournament: fresh provider contact, expected August 7 daily bars, complete scanned/eligible/skipped/ranked/failed counters, ranking logs, zero unintended strategy/financial mutation, and enforced weekly-input freshness |
 
 Every window ends with automation row/result/error reconciliation, relevant domain tables, model/attempt evidence where invoked, retry/timeout behavior, duplicate/idempotency checks, pipeline row/event/snapshot pairing, and orders/trades/open-position totals plus hashes. A failed external provider run can classify a path and prove fail-closed behavior, but it cannot be reported as successful data coverage.
+
+## Postdeployment continuation — August 9
+
+This section supersedes the predeployment states in **Open completion gates** above. Production is deployed at commit `af61bba91bdb8d78fdbb477f599571b30ceccab8` with immutable app/web tags `audit-af61bba91bdb`; schema 62 is clean. The deployed app, PostgreSQL, Redis, web, and OpenCode services are running, and the exact safety state remains live trading off, Alpaca and Binance paper on, Kalshi demo on, Polymarket automation off, and live broker/strategy allowlists unset. The deployment and rollback evidence is stored outside the repository under `/srv/backups/augr`.
+
+Task-owned postdeployment canaries completed at approximately 21:50 UTC. `alpaca_reconcile` terminated `ok` with the expected reconciliation result shape and no order, trade, or position change. `kalshi_settlement` terminated `ok`, fetched the five distinct pending markets represented by the ten open Kalshi positions, found zero resolved markets and zero settlement candidates, and made no financial change. Their sanitized durable reports are `/srv/backups/augr/observations/20260809-alpaca-reconcile-canary.txt` and `/srv/backups/augr/observations/20260809-kalshi-settlement-canary.txt`. These are qualifying task-owned run results. Unrequested scheduler rows and predeployment executions remain non-counting except as current-state diagnostic context.
+
+### Postdeployment health-alert reconciliation
+
+Read-only production reconciliation at 22:21 UTC explained the four dashboard warnings without editing financial records or triggering another automation:
+
+| Warning | Authoritative current state | Classification and next action |
+|---|---|---|
+| `market stock has rejected decisions but no approved exposure` | The journal contains exactly one stock decision, a rejected decision created August 6 at 12:30:40 UTC. The cockpit aggregates the complete journal rather than a bounded operating window, so this historical record continues to raise the warning although no current stock exposure exists | **Misleading stale projection, non-safety-critical.** Correcting the warning horizon or wording requires application code and therefore a separately approved future deployment; do not erase or rewrite the decision |
+| `valuation incomplete: 0 of 10 open positions are marked` and `Valuation unavailable for 10 of 10 open positions` | All ten open rows are Kalshi paper positions across five unresolved markets, opened July 26–28. Every row has `current_price` and `unrealized_pnl` NULL. The stock refresh and Alpaca reconciliation paths intentionally exclude these contracts, while Kalshi settlement closes resolved outcomes but does not persist interim marks | **Genuine event-position valuation gap.** It does not block the stock market-open data/scan validation. A future mark-to-market design must use validated side-aware executable quotes and fail closed on zero, inverted, stale, or unavailable books; no ad hoc database mark is authorized in this continuation |
+| `2 automation jobs failing` — `filing_monitor` | The last five qualifying attempts ended on Finnhub HTTP 429 and the durable failure streak is five. Hydration correctly leaves the job auto-disabled; no new attempt was manufactured | **Known external blocker with healthy fail-closed suppression.** Retain disabled until the quota owner confirms capacity and explicitly approves re-enable |
+| `2 automation jobs failing` — `paper_validation_report` | The most recent run was August 7, before deployment, and failed only for ORCL's positive-infinite profit factor. Deployed commit `9064bfd` converts non-finite validation metrics to explicit finite JSON sentinels, but the weekend/session gate correctly prevents an out-of-window manual rerun | **Stale last-run failure awaiting valid postdeployment proof.** The next configured run is Monday August 10 at 21:00 UTC; a task-owned observer is armed from 20:58 UTC |
+
+The alert count therefore does not represent two running or hung jobs. There were zero nonterminal automation rows and zero nonterminal pipeline rows during the diagnosis. No warning was cleared cosmetically, no failure counter was reset, and no second deployment was performed.
+
+### Armed postdeployment observers
+
+The following persistent user timers were revalidated `active/waiting`; each invokes the tracked sanitized observer and writes outside the repository under `/srv/backups/augr/observations/`. The observer captures health, deployed images, schema, queue counts, financial counts, a same-ID durable job transition, result shape/keys, and whitelisted warning/error metadata. It does not trigger the automation.
+
+| Local start | Job | Required boundary / report |
+|---|---|---|
+| August 10 08:28 CDT | `current_data_refresh` | 13:30 UTC / `20260810-current-data-refresh.txt` |
+| August 10 08:33 CDT | `hot_scan` | 13:35 UTC / `20260810-hot-scan.txt` |
+| August 10 08:35 CDT | `news_scan` | 13:37 UTC / `20260810-news-scan.txt` |
+| August 10 09:08 CDT | `deep_scan` | 14:10 UTC / `20260810-deep-scan.txt` |
+| August 10 15:58 CDT | `paper_validation_report` | 21:00 UTC / `20260810-paper-validation-report.txt` |
+| August 16 06:58 CDT | `universe_refresh` | 12:00 UTC / `20260816-universe-refresh.txt` |
+| August 16 08:58 CDT | `strategy_tournament` | 14:00 UTC / `20260816-strategy-tournament.txt` |
+
+The August 10 runs must prove the deployed market-data freshness and dependency fixes with task-owned evidence. The August 16 runs remain required because the August 9 weekly executions did not both produce qualifying postdeployment proof. Until those reports are terminally reconciled, the audit and active goal remain incomplete.
