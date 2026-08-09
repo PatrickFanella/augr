@@ -35,6 +35,9 @@ func TestPaperAccountRepoExcludesNonLocalPaperRowsAndParsesSequence(t *testing.T
 			t.Fatal("alpaca paper trade was included, want excluded")
 		}
 	}
+	if trades[0].ExitReason != "paper_restore_regression" {
+		t.Fatalf("latest paper trade exit reason = %q, want paper_restore_regression", trades[0].ExitReason)
+	}
 
 	positions, err := repo.GetOpenPaperPositions(ctx, 100, 0)
 	if err != nil {
@@ -150,8 +153,8 @@ func seedPaperAccountFixtures(t *testing.T, ctx context.Context, pool *pgxpool.P
 		VALUES ($1,$2,'YES','long',3,0.5,0.75,0.75,0,$3,NULL,'stock','equity',100)`, secondPositionID, paperStrategyID, now)
 	mustExecPaperAccount(t, ctx, pool, `INSERT INTO positions (id, strategy_id, ticker, side, quantity, avg_entry, current_price, unrealized_pnl, realized_pnl, opened_at, closed_at, market_type, asset_class, contract_multiplier)
 		VALUES ($1,$2,'MSFT','long',1,100,100,0,0,$3,NULL,'stock','equity',100)`, uuid.New(), alpacaStrategyID, now)
-	mustExecPaperAccount(t, ctx, pool, `INSERT INTO trades (id, order_id, position_id, ticker, side, quantity, price, fee, executed_at, created_at, asset_class, open_close, contract_multiplier, premium)
-		VALUES ($1,$2,$3,'AAPL','buy',1,100,0.5,$4,$4,'equity','open',100,100)`, trade2ID, paperOrderID, openPositionID, now)
+	mustExecPaperAccount(t, ctx, pool, `INSERT INTO trades (id, order_id, position_id, ticker, side, quantity, price, fee, executed_at, created_at, asset_class, open_close, contract_multiplier, premium, exit_reason)
+		VALUES ($1,$2,$3,'AAPL','buy',1,100,0.5,$4::timestamptz,$4::timestamptz + interval '1 second','equity','open',100,100,'paper_restore_regression')`, trade2ID, paperOrderID, openPositionID, now)
 	mustExecPaperAccount(t, ctx, pool, `INSERT INTO trades (id, order_id, position_id, ticker, side, quantity, price, fee, executed_at, created_at, asset_class, open_close, contract_multiplier, premium)
 		VALUES ($1,$2,$3,'AAPL','buy',1,100,0.5,$4,$4,'equity','open',100,100)`, trade3ID, paperOrderID, openPositionID, now)
 	mustExecPaperAccount(t, ctx, pool, `INSERT INTO trades (id, order_id, position_id, ticker, side, quantity, price, fee, executed_at, created_at, asset_class, open_close, contract_multiplier, premium)
@@ -207,7 +210,7 @@ func newPaperAccountIntegrationPool(t *testing.T, ctx context.Context) (*pgxpool
 		`CREATE TABLE strategies (id UUID PRIMARY KEY, is_paper BOOLEAN NOT NULL DEFAULT false, market_type TEXT NOT NULL, ticker TEXT NOT NULL, name TEXT NOT NULL DEFAULT '')`,
 		`CREATE TABLE orders (id UUID PRIMARY KEY, strategy_id UUID NOT NULL, pipeline_run_id UUID, external_id TEXT, ticker TEXT NOT NULL, market_type TEXT NOT NULL, side TEXT NOT NULL, order_type TEXT NOT NULL, quantity NUMERIC NOT NULL, limit_price NUMERIC, stop_price NUMERIC, filled_quantity NUMERIC NOT NULL DEFAULT 0, filled_avg_price NUMERIC, status TEXT NOT NULL, broker TEXT NOT NULL, submitted_at TIMESTAMPTZ, filled_at TIMESTAMPTZ, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), asset_class TEXT NOT NULL DEFAULT 'equity', underlying_ticker TEXT, option_type TEXT, strike NUMERIC, expiry TIMESTAMPTZ, contract_multiplier NUMERIC NOT NULL DEFAULT 100, position_intent TEXT, leg_group_id UUID, prediction_side TEXT, polymarket_intent TEXT, CONSTRAINT orders_prediction_side_check CHECK (prediction_side IS NULL OR prediction_side IN ('YES', 'NO')))`,
 		`CREATE TABLE positions (id UUID PRIMARY KEY, strategy_id UUID NOT NULL, ticker TEXT NOT NULL, side TEXT NOT NULL, quantity NUMERIC NOT NULL, avg_entry NUMERIC NOT NULL, current_price NUMERIC, unrealized_pnl NUMERIC, realized_pnl NUMERIC, stop_loss NUMERIC, take_profit NUMERIC, opened_at TIMESTAMPTZ NOT NULL, closed_at TIMESTAMPTZ, market_type TEXT NOT NULL DEFAULT 'stock', asset_class TEXT NOT NULL DEFAULT 'equity', underlying_ticker TEXT, option_type TEXT, strike NUMERIC, expiry TIMESTAMPTZ, contract_multiplier NUMERIC NOT NULL DEFAULT 100, leg_group_id UUID, delta NUMERIC, gamma NUMERIC, theta NUMERIC, vega NUMERIC)`,
-		`CREATE TABLE trades (id UUID PRIMARY KEY, external_id TEXT, order_id UUID NOT NULL, position_id UUID NOT NULL, ticker TEXT NOT NULL, side TEXT NOT NULL, quantity NUMERIC NOT NULL, price NUMERIC NOT NULL, fee NUMERIC NOT NULL DEFAULT 0, executed_at TIMESTAMPTZ NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), asset_class TEXT NOT NULL DEFAULT 'equity', open_close TEXT, contract_multiplier NUMERIC NOT NULL DEFAULT 100, premium NUMERIC)`,
+		`CREATE TABLE trades (id UUID PRIMARY KEY, external_id TEXT, order_id UUID NOT NULL, position_id UUID NOT NULL, ticker TEXT NOT NULL, side TEXT NOT NULL, quantity NUMERIC NOT NULL, price NUMERIC NOT NULL, fee NUMERIC NOT NULL DEFAULT 0, executed_at TIMESTAMPTZ NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), asset_class TEXT NOT NULL DEFAULT 'equity', open_close TEXT, contract_multiplier NUMERIC NOT NULL DEFAULT 100, premium NUMERIC, exit_reason TEXT)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := pool.Exec(ctx, stmt); err != nil {

@@ -20,7 +20,8 @@ func (r *PaperAccountRepo) ListPaperTrades(ctx context.Context, limit, offset in
 	rows, err := r.pool.Pool.Query(ctx, `SELECT t.id, t.external_id, t.order_id, t.position_id, t.ticker, t.side,
 			t.quantity::double precision, t.price::double precision, t.fee::double precision,
 			t.executed_at, t.created_at, t.asset_class, t.open_close,
-			COALESCE(t.contract_multiplier, 100)::double precision, COALESCE(t.premium, 0)::double precision
+			COALESCE(t.contract_multiplier, 100)::double precision, COALESCE(t.premium, 0)::double precision,
+			COALESCE(t.exit_reason, '')
 		FROM trades t
 		INNER JOIN orders o ON o.id = t.order_id AND o.broker = 'paper'
 		ORDER BY t.executed_at DESC, t.created_at DESC, t.id DESC LIMIT $1 OFFSET $2`, limit, offset)
