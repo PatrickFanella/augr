@@ -279,3 +279,7 @@ docs/                   Architecture docs, ADRs, research
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for branch strategy, commit conventions, and the definition of done.
+
+## License
+
+Licensed under `GPL-3.0-or-later`. See [LICENSE](LICENSE).
