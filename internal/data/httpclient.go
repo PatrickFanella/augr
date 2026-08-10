@@ -225,6 +225,14 @@ func (c *APIClient) SetBaseURL(baseURL string) {
 	c.baseURL = baseURL
 }
 
+// SetRateLimiter updates the rate limiter used before each request.
+func (c *APIClient) SetRateLimiter(limiter *RateLimiter) {
+	if c == nil {
+		return
+	}
+	c.rateLimiter = limiter
+}
+
 // SetHTTPClient replaces the underlying *http.Client. This is primarily useful
 // for testing.
 func (c *APIClient) SetHTTPClient(httpClient *http.Client) {

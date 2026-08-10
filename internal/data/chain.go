@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -11,6 +12,10 @@ import (
 
 // ErrNoProviders is returned when a ProviderChain contains no providers.
 var ErrNoProviders = errors.New("data: no providers in chain")
+
+// ErrProviderCoverageIncomplete is returned when a provider chain observed
+// empty OHLCV from at least one provider and hard provider failures from others.
+var ErrProviderCoverageIncomplete = errors.New("data: provider coverage incomplete")
 
 // ProviderChain tries each DataProvider in order and returns the first
 // successful result. If all providers fail, the last error is returned.
@@ -85,6 +90,9 @@ func (c *ProviderChain) GetOHLCV(ctx context.Context, ticker string, timeframe T
 			continue
 		}
 		if c.fallback.shouldRecord(err) {
+			if errors.Is(err, ErrNotImplemented) {
+				continue
+			}
 			c.logger.Warn("data provider failed, trying next",
 				slog.String("method", "GetOHLCV"),
 				slog.String("ticker", ticker),
@@ -92,6 +100,9 @@ func (c *ProviderChain) GetOHLCV(ctx context.Context, ticker string, timeframe T
 			)
 			lastErr = err
 		}
+	}
+	if sawEmpty && lastErr != nil {
+		return nil, fmt.Errorf("%w for %s %s: %w", ErrProviderCoverageIncomplete, ticker, timeframe.String(), lastErr)
 	}
 	if sawEmpty {
 		return []domain.OHLCV{}, nil

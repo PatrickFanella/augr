@@ -226,6 +226,7 @@ type HistoricalOHLCVDownload struct {
 	Bars             map[string][]domain.OHLCV
 	ProviderRequests map[string]int
 	FreshBars        map[string]int
+	ProviderFailures map[string]int
 }
 
 // DownloadHistoricalOHLCV bulk downloads and persists OHLCV history for the
@@ -274,7 +275,9 @@ func (s *DataService) DownloadHistoricalOHLCVWithStats(
 		Bars:             make(map[string][]domain.OHLCV, len(tickers)),
 		ProviderRequests: make(map[string]int, len(tickers)),
 		FreshBars:        make(map[string]int, len(tickers)),
+		ProviderFailures: make(map[string]int, len(tickers)),
 	}
+	var downloadErrs []error
 	for _, ticker := range tickers {
 		trimmedTicker := strings.TrimSpace(ticker)
 		if trimmedTicker == "" {
@@ -303,7 +306,9 @@ func (s *DataService) DownloadHistoricalOHLCVWithStats(
 			result.ProviderRequests[trimmedTicker]++
 			bars, err := chain.GetOHLCV(ctx, trimmedTicker, timeframe, gap.From, gap.To)
 			if err != nil {
-				return nil, fmt.Errorf("data: download historical ohlcv for %s: %w", trimmedTicker, err)
+				result.ProviderFailures[trimmedTicker]++
+				downloadErrs = append(downloadErrs, fmt.Errorf("data: download historical ohlcv for %s: %w", trimmedTicker, err))
+				continue
 			}
 
 			if len(bars) > 0 {
@@ -331,7 +336,7 @@ func (s *DataService) DownloadHistoricalOHLCVWithStats(
 		result.Bars[trimmedTicker] = stored
 	}
 
-	return result, nil
+	return result, errors.Join(downloadErrs...)
 }
 
 // GetSocialSentiment aggregates social sentiment from all configured social

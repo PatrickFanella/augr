@@ -23,3 +23,16 @@ func TestNewRuntimeFinnhubLimitersPacesInsteadOfBursting(t *testing.T) {
 		t.Fatalf("second Wait() elapsed = %v, want paced delay", elapsed)
 	}
 }
+
+func TestNewRuntimePolygonLimiterPacesInsteadOfBursting(t *testing.T) {
+	limiter := newRuntimePolygonLimiter()
+	if err := limiter.Wait(context.Background()); err != nil {
+		t.Fatalf("first Wait() error = %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+	if err := limiter.Wait(ctx); err == nil {
+		t.Fatal("second Wait() error = nil, want pacing delay beyond short context")
+	}
+}

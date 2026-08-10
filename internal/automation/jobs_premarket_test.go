@@ -18,6 +18,12 @@ func (s *positionReviewStrategyRepo) Count(context.Context, repository.StrategyF
 	return len(s.strategies), nil
 }
 
+type providerStatusError struct{ code int }
+
+func (e providerStatusError) Error() string { return "provider status error" }
+
+func (e providerStatusError) StatusCode() int { return e.code }
+
 func TestGapScannerCompletionErrorRejectsPartialCoverage(t *testing.T) {
 	t.Parallel()
 
@@ -27,6 +33,22 @@ func TestGapScannerCompletionErrorRejectsPartialCoverage(t *testing.T) {
 	err := gapScannerCompletionError(map[string]int{"missing_snapshots": 3, "score_failed": 1})
 	if err == nil || !strings.Contains(err.Error(), "missing_snapshots=3") || !strings.Contains(err.Error(), "score_failed=1") {
 		t.Fatalf("gapScannerCompletionError(partial) = %v", err)
+	}
+}
+
+func TestProviderAccessBlockedDetectsEntitlementAndQuotaFailures(t *testing.T) {
+	t.Parallel()
+
+	for _, code := range []int{401, 403, 429} {
+		if !providerAccessBlocked(providerStatusError{code: code}) {
+			t.Fatalf("providerAccessBlocked(%d) = false, want true", code)
+		}
+	}
+	if providerAccessBlocked(providerStatusError{code: 500}) {
+		t.Fatal("providerAccessBlocked(500) = true, want false")
+	}
+	if providerAccessBlocked(errors.New("plain error")) {
+		t.Fatal("providerAccessBlocked(plain error) = true, want false")
 	}
 }
 

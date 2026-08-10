@@ -111,6 +111,23 @@ func TestProviderChainGetOHLCVAllFail(t *testing.T) {
 	}
 }
 
+func TestProviderChainGetOHLCVDoesNotMaskFailureWithEmptyResult(t *testing.T) {
+	chain := data.NewProviderChain(
+		discardLogger(),
+		&stubProvider{ohlcv: []domain.OHLCV{}},
+		&stubProvider{ohlcvErr: errProviderFailed},
+		&stubProvider{ohlcvErr: data.ErrNotImplemented},
+	)
+
+	_, err := chain.GetOHLCV(context.Background(), "AAPL", data.Timeframe5m, time.Now(), time.Now())
+	if !errors.Is(err, data.ErrProviderCoverageIncomplete) {
+		t.Fatalf("GetOHLCV() error = %v, want ErrProviderCoverageIncomplete", err)
+	}
+	if !errors.Is(err, errProviderFailed) {
+		t.Fatalf("GetOHLCV() error = %v, want wrapped provider failure", err)
+	}
+}
+
 func TestProviderChainGetOHLCVNoProviders(t *testing.T) {
 	chain := data.NewProviderChain(discardLogger())
 

@@ -54,12 +54,14 @@ func (o *JobOrchestrator) currentDataRefresh(ctx context.Context) error {
 		"cache_only":              0,
 		"stale":                   0,
 		"provider_requests":       0,
+		"provider_failures":       0,
 		"fresh_bars":              0,
 		"daily_updated":           0,
 		"daily_empty":             0,
 		"daily_cache_only":        0,
 		"daily_stale":             0,
 		"daily_provider_requests": 0,
+		"daily_provider_failures": 0,
 		"daily_fresh_bars":        0,
 		"errors":                  0,
 	}
@@ -157,6 +159,7 @@ func (o *JobOrchestrator) currentDataRefresh(ctx context.Context) error {
 			cacheOnlyKey := prefix + "cache_only"
 			staleKey := prefix + "stale"
 			providerRequestsKey := prefix + "provider_requests"
+			providerFailuresKey := prefix + "provider_failures"
 			freshBarsKey := prefix + "fresh_bars"
 			download, err := o.deps.DataService.DownloadHistoricalOHLCVWithStats(ctx, domain.MarketTypeStock, batch, timeframe, from, now, false)
 			if err != nil {
@@ -167,11 +170,17 @@ func (o *JobOrchestrator) currentDataRefresh(ctx context.Context) error {
 					slog.Any("error", err),
 				)
 				summary["errors"]++
-				return
+				if download == nil {
+					return
+				}
 			}
 			for _, ticker := range batch {
 				summary[providerRequestsKey] += download.ProviderRequests[ticker]
+				summary[providerFailuresKey] += download.ProviderFailures[ticker]
 				summary[freshBarsKey] += download.FreshBars[ticker]
+				if download.ProviderFailures[ticker] > 0 {
+					continue
+				}
 				if download.ProviderRequests[ticker] == 0 {
 					summary[cacheOnlyKey]++
 					continue
@@ -203,8 +212,10 @@ func (o *JobOrchestrator) currentDataRefresh(ctx context.Context) error {
 		slog.Int("batches", summary["batches"]),
 		slog.Int("updated", summary["updated"]),
 		slog.Int("empty", summary["empty"]),
+		slog.Int("provider_failures", summary["provider_failures"]),
 		slog.Int("daily_updated", summary["daily_updated"]),
 		slog.Int("daily_empty", summary["daily_empty"]),
+		slog.Int("daily_provider_failures", summary["daily_provider_failures"]),
 		slog.Int("errors", summary["errors"]),
 	)
 	return currentDataRefreshCompletionError(summary)
@@ -457,14 +468,14 @@ func (o *JobOrchestrator) deepScan(ctx context.Context) error {
 }
 
 func currentDataRefreshCompletionError(summary map[string]int) error {
-	incomplete := summary["errors"] + summary["empty"] + summary["cache_only"] + summary["stale"] +
-		summary["daily_empty"] + summary["daily_cache_only"] + summary["daily_stale"]
+	incomplete := summary["errors"] + summary["provider_failures"] + summary["empty"] + summary["cache_only"] + summary["stale"] +
+		summary["daily_provider_failures"] + summary["daily_empty"] + summary["daily_cache_only"] + summary["daily_stale"]
 	if incomplete == 0 {
 		return nil
 	}
-	return fmt.Errorf("current_data_refresh: incomplete provider refresh: errors=%d intraday(empty=%d cache_only=%d stale=%d) daily(empty=%d cache_only=%d stale=%d)",
-		summary["errors"], summary["empty"], summary["cache_only"], summary["stale"],
-		summary["daily_empty"], summary["daily_cache_only"], summary["daily_stale"])
+	return fmt.Errorf("current_data_refresh: incomplete provider refresh: errors=%d intraday(provider_failures=%d empty=%d cache_only=%d stale=%d) daily(provider_failures=%d empty=%d cache_only=%d stale=%d)",
+		summary["errors"], summary["provider_failures"], summary["empty"], summary["cache_only"], summary["stale"],
+		summary["daily_provider_failures"], summary["daily_empty"], summary["daily_cache_only"], summary["daily_stale"])
 }
 
 func marketScanCompletionError(job string, summary map[string]int) error {

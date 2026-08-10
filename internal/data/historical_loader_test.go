@@ -306,6 +306,33 @@ func TestDataServiceDownloadHistoricalOHLCVWithStatsIdentifiesCacheOnlyTicker(t 
 	}
 }
 
+func TestDataServiceDownloadHistoricalOHLCVWithStatsReportsProviderFailures(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	from := time.Date(2026, 3, 7, 0, 0, 0, 0, time.UTC)
+	to := from.Add(24 * time.Hour)
+	repo := newFakeHistoricalOHLCVRepo()
+	providerErr := errors.New("provider failed")
+	provider := &historicalStubProvider{getErr: providerErr}
+	service := &DataService{stockChain: provider, historyRepo: repo, logger: logger, now: func() time.Time { return to.Add(time.Hour) }}
+
+	download, err := service.DownloadHistoricalOHLCVWithStats(context.Background(), domain.MarketTypeStock, []string{"AAPL", "MSFT"}, Timeframe1d, from, to, false)
+	if err == nil {
+		t.Fatal("DownloadHistoricalOHLCVWithStats() error = nil, want provider failure")
+	}
+	if download == nil {
+		t.Fatal("DownloadHistoricalOHLCVWithStats() download = nil, want partial stats")
+	}
+	if download.ProviderRequests["AAPL"] != 1 || download.ProviderFailures["AAPL"] != 1 {
+		t.Fatalf("AAPL stats = requests:%d failures:%d, want 1/1", download.ProviderRequests["AAPL"], download.ProviderFailures["AAPL"])
+	}
+	if download.ProviderRequests["MSFT"] != 1 || download.ProviderFailures["MSFT"] != 1 {
+		t.Fatalf("MSFT stats = requests:%d failures:%d, want 1/1", download.ProviderRequests["MSFT"], download.ProviderFailures["MSFT"])
+	}
+	if len(provider.calls) != 2 {
+		t.Fatalf("provider calls = %d, want 2", len(provider.calls))
+	}
+}
+
 func TestDataServiceDownloadHistoricalOHLCVIncrementalFetchesOnlyMissingSubRanges(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	providerName := cacheProviderStockChain

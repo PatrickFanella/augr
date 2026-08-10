@@ -2,9 +2,11 @@ package automation
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math"
+	"net/http"
 	"strings"
 	"time"
 
@@ -187,6 +189,9 @@ func (o *JobOrchestrator) gapScanner(ctx context.Context) error {
 				slog.Int("offset", i),
 				slog.Any("error", snapErr),
 			)
+			if providerAccessBlocked(snapErr) {
+				return fmt.Errorf("gap_scanner: Polygon snapshot access blocked after first failed batch: %w", snapErr)
+			}
 			continue
 		}
 		summary["snapshots"] += len(snapshots)
@@ -360,6 +365,21 @@ func (o *JobOrchestrator) discoveryRun(ctx context.Context) error {
 	}
 
 	return discoveryRunCompletionError(result.Errors)
+}
+
+type providerStatusCoder interface{ StatusCode() int }
+
+func providerAccessBlocked(err error) bool {
+	var sc providerStatusCoder
+	if !errors.As(err, &sc) {
+		return false
+	}
+	switch sc.StatusCode() {
+	case http.StatusForbidden, http.StatusUnauthorized, http.StatusTooManyRequests:
+		return true
+	default:
+		return false
+	}
 }
 
 func gapScannerCompletionError(summary map[string]int) error {

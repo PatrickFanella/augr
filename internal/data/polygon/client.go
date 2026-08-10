@@ -42,7 +42,7 @@ type ErrorResponse struct {
 
 // NewClient constructs a Polygon.io HTTP client.
 // If logger is nil, slog.Default() is used.
-func NewClient(apiKey string, logger *slog.Logger) *Client {
+func NewClient(apiKey string, logger *slog.Logger, rateLimiters ...*data.RateLimiter) *Client {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -63,6 +63,12 @@ func NewClient(apiKey string, logger *slog.Logger) *Client {
 		Logger:  logger,
 		Prefix:  "polygon",
 	})
+	for _, limiter := range rateLimiters {
+		if limiter != nil {
+			api.SetRateLimiter(limiter)
+			break
+		}
+	}
 	api.SetHTTPClient(httpClient)
 
 	return &Client{

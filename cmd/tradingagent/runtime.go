@@ -86,6 +86,10 @@ func newRuntimeFinnhubLimiters(requestsPerMinute int, global *data.RateLimiter) 
 	return limiters
 }
 
+func newRuntimePolygonLimiter() *data.RateLimiter {
+	return data.NewRateLimiter(1, 12*time.Second)
+}
+
 type watchedMarketsLoaderAdapter struct {
 	repo repository.PolymarketWatchedMarketsRepository
 }
@@ -456,6 +460,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 	// starts (via cli.Execute → runServeLifecycle) after newAPIServer returns,
 	// so any closure that reads serverRef will see the final non-nil value.
 	var serverRef *api.Server
+	var polygonLimiter *data.RateLimiter
 
 	if strings.EqualFold(cfg.Environment, "smoke") {
 		pipeline := newSmokePipeline(runRepo, snapshotRepo, decisionRepo, eventRepo, logger)
@@ -482,11 +487,12 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 		// same API key. A full token bucket permits a startup burst that Finnhub
 		// rejects before the configured minute quota is reached.
 		finnhubLimiters := newRuntimeFinnhubLimiters(cfg.DataProviders.Finnhub.RateLimitPerMinute, globalDataLimiter)
+		polygonLimiter = newRuntimePolygonLimiter()
 		kalshiDataClient, kalshiExecClient, kalshiGov, kalshiErr := newRuntimeKalshiClients(cfg, appMetrics, logger, db)
 		_ = kalshiGov
 
 		reg := data.NewProviderRegistry()
-		polygon.Register(reg)
+		polygon.RegisterWithLimiter(reg, polygonLimiter)
 		alphavantage.Register(reg)
 		finnhub.RegisterWithLimiters(reg, finnhubLimiters...)
 		fmp.Register(reg)
@@ -557,7 +563,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 			optProviders = append(optProviders, alpacaData.NewOptionsDataProvider(cfg.Brokers.Alpaca.APIKey, cfg.Brokers.Alpaca.APISecret, logger))
 		}
 		if strings.TrimSpace(cfg.DataProviders.Polygon.APIKey) != "" {
-			optProviders = append(optProviders, polygon.NewOptionsProvider(polygon.NewClient(cfg.DataProviders.Polygon.APIKey, logger)))
+			optProviders = append(optProviders, polygon.NewOptionsProvider(polygon.NewClient(cfg.DataProviders.Polygon.APIKey, logger, polygonLimiter)))
 		}
 		deps.OptionsProvider = data.NewOptionsProviderChain(logger, optProviders...)
 		deps.ResearchScanner = service.NewResearchScannerService(deps.OptionsProvider, deps.PolymarketClient, logger)
@@ -633,7 +639,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 		}
 
 		if cfg.Features.EnableTickerDiscovery && strings.TrimSpace(cfg.DataProviders.Polygon.APIKey) != "" {
-			polygonClient := polygon.NewClient(cfg.DataProviders.Polygon.APIKey, logger)
+			polygonClient := polygon.NewClient(cfg.DataProviders.Polygon.APIKey, logger, polygonLimiter)
 			universeRepo := pgrepo.NewUniverseRepo(db.Pool)
 			deps.Universe = universe.NewUniverse(universeRepo, polygonClient, logger)
 			deps.UniverseRepo = universeRepo
@@ -667,7 +673,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 		{
 			var polygonClientForAuto *polygon.Client
 			if strings.TrimSpace(cfg.DataProviders.Polygon.APIKey) != "" {
-				polygonClientForAuto = polygon.NewClient(cfg.DataProviders.Polygon.APIKey, logger)
+				polygonClientForAuto = polygon.NewClient(cfg.DataProviders.Polygon.APIKey, logger, polygonLimiter)
 			}
 			embeddingBaseURL := cfg.Embedding.BaseURL
 			if embeddingBaseURL == "" {
@@ -848,7 +854,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 
 	// Wire universe to API deps if not already set (non-discovery path).
 	if deps.Universe == nil && strings.TrimSpace(cfg.DataProviders.Polygon.APIKey) != "" {
-		polygonClient := polygon.NewClient(cfg.DataProviders.Polygon.APIKey, logger)
+		polygonClient := polygon.NewClient(cfg.DataProviders.Polygon.APIKey, logger, polygonLimiter)
 		universeRepo := pgrepo.NewUniverseRepo(db.Pool)
 		univ := universe.NewUniverse(universeRepo, polygonClient, logger)
 		deps.Universe = univ
