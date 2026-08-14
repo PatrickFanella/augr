@@ -30,11 +30,12 @@ type submissionsFilings struct {
 
 // recentFilings represents the columnar arrays within filings.recent.
 type recentFilings struct {
-	AccessionNumber []string `json:"accessionNumber"`
-	FilingDate      []string `json:"filingDate"`
-	Form            []string `json:"form"`
-	PrimaryDocument []string `json:"primaryDocument"`
-	ReportDate      []string `json:"reportDate"`
+	AccessionNumber    []string `json:"accessionNumber"`
+	FilingDate         []string `json:"filingDate"`
+	AcceptanceDateTime []string `json:"acceptanceDateTime"`
+	Form               []string `json:"form"`
+	PrimaryDocument    []string `json:"primaryDocument"`
+	ReportDate         []string `json:"reportDate"`
 }
 
 // NewProvider constructs an EDGAR filing provider.

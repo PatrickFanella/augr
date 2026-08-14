@@ -617,3 +617,128 @@ export type ReplayDecision = {
     rejection_reasons?: string[]
   }
 }
+
+export type CopyLeader = {
+  id: UUID
+  entity_type: 'individual' | 'institution'
+  display_name: string
+  sec_cik?: string
+  identity_status: string
+  metadata?: RawJson
+  created_at: ISODate
+  updated_at: ISODate
+}
+
+export type CopyLeaderSource = {
+  id: UUID
+  leader_id: UUID
+  provider: string
+  source_type: 'sec_13f' | 'sec_form4' | 'connected_broker' | 'kalshi_connected'
+  external_key: string
+  status: string
+  metadata?: RawJson
+  checkpoint?: RawJson
+  last_observed_at?: ISODate
+  created_at: ISODate
+  updated_at: ISODate
+}
+
+export type CopyLeaderDetail = { leader: CopyLeader; sources: CopyLeaderSource[] }
+
+export type CopyObservation = {
+  id: UUID
+  source_id: UUID
+  provider_observation_id: string
+  observation_kind: string
+  schema_version: number
+  effective_at: ISODate
+  published_at: ISODate
+  observed_at: ISODate
+  amendment_number: number
+  supersedes_id?: UUID
+  status: string
+  content_hash: string
+  normalized_payload?: RawJson
+  source_url?: string
+  created_at: ISODate
+}
+
+export type CopyPortfolioSnapshot = {
+  id: UUID
+  observation_id: UUID
+  report_period: ISODate
+  total_disclosed_value: number
+  holding_count: number
+  created_at: ISODate
+}
+
+export type CopySubscription = {
+  id: UUID
+  leader_id: UUID
+  source_id: UUID
+  strategy_id: UUID
+  status: 'draft' | 'previewed' | 'paper_active' | 'paused' | 'live_eligible' | 'live_active' | 'stopped'
+  is_paper: boolean
+  method: 'target_weight' | 'fixed_notional' | 'source_ratio'
+  capital_budget: number
+  cash_buffer_pct: number
+  top_n: number
+  min_source_weight: number
+  max_position_weight: number
+  max_turnover_pct: number
+  min_price: number
+  min_avg_dollar_volume: number
+  max_spread_bps: number
+  stock_allowlist: string[]
+  stock_blocklist: string[]
+  created_by: string
+  created_at: ISODate
+  updated_at: ISODate
+  stopped_at?: ISODate
+}
+
+export type CopyTradeIntent = {
+  id: UUID
+  subscription_id: UUID
+  source_observation_id: UUID
+  pipeline_run_id?: UUID
+  instrument_key: string
+  ticker: string
+  side: string
+  target_weight: number
+  target_value: number
+  attributed_current_value: number
+  requested_notional: number
+  executable_price?: number
+  calculation_version: number
+  calculation?: RawJson
+  policy_status: string
+  policy_reasons: string[]
+  risk_status: string
+  risk_reasons: string[]
+  order_id?: UUID
+  status: string
+  created_at: ISODate
+  updated_at: ISODate
+}
+
+export type CopyPreview = {
+  observation: CopyObservation
+  snapshot: CopyPortfolioSnapshot
+  intents: CopyTradeIntent[]
+  summary: {
+    total_disclosed_value: number
+    mapped_weight: number
+    unmapped_weight: number
+    excluded_weight: number
+    target_invested_value: number
+    target_cash_value: number
+    desired_turnover: number
+    approved_turnover: number
+    turnover_scale: number
+    warnings: string[]
+  }
+}
+
+export type CopyRefreshResult = { created: boolean; observation: CopyObservation; snapshot: CopyPortfolioSnapshot }
+export type CopyRebalanceResult = { run: PipelineRun; preview: CopyPreview; intents: CopyTradeIntent[] }

@@ -66,6 +66,7 @@ A multi-agent LLM trading system built with **Go**, **TypeScript/React**, and **
 
 - [[execution-overview]] — Multi-market execution architecture
 - [[paper-trading]] — Simulated trading for validation
+- [[copy-trading]] — Stock leader following, institutional portfolio replication, and connected-account copy trading
 
 ---
 

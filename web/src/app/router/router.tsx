@@ -75,6 +75,9 @@ const JournalPage = lazy(() =>
 const ReplayPage = lazy(() =>
   import('@/features/journal/ReplayPage').then((m) => ({ default: m.ReplayPage })),
 )
+const CopyTradingPage = lazy(() =>
+  import('@/features/copy-trading/CopyTradingPage').then((m) => ({ default: m.CopyTradingPage })),
+)
 
 const routeFallback = <LoadingState />
 
@@ -105,6 +108,7 @@ export function createAppRouter() {
             { path: '/runs', element: withSuspense(<RunsListPage />) },
             { path: '/runs/:id', element: withSuspense(<RunDetailPage />) },
             { path: '/strategies', element: withSuspense(<StrategiesListPage />) },
+            { path: '/copy-trading', element: withSuspense(<CopyTradingPage />) },
             { path: '/strategies/new', element: withSuspense(<StrategyCreatePage />) },
             { path: '/strategies/:id/edit', element: withSuspense(<StrategyEditPage />) },
             { path: '/strategies/:id', element: withSuspense(<StrategyDetailPage />) },

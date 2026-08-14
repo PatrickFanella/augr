@@ -122,6 +122,19 @@ type TradeDecisionFilter struct {
 	CreatedBefore *time.Time
 }
 
+// CopyLeaderFilter selects stock copy-trading leaders.
+type CopyLeaderFilter struct {
+	EntityType domain.CopyLeaderEntityType
+	Query      string
+}
+
+// CopySubscriptionFilter selects stock copy-trading subscriptions.
+type CopySubscriptionFilter struct {
+	LeaderID *uuid.UUID
+	SourceID *uuid.UUID
+	Status   domain.CopySubscriptionStatus
+}
+
 // AlpacaPLAggregateRepository provides read-only Alpaca-only P/L aggregates.
 type AlpacaPLAggregateRepository interface {
 	ClosedRealizedPnL(ctx context.Context) (float64, error)
@@ -658,4 +671,36 @@ type KalshiSettlementGateRepository interface {
 type PolymarketResolvedMarketsRepository interface {
 	IsProcessed(ctx context.Context, slug string) (bool, error)
 	MarkProcessed(ctx context.Context, slug, winningSide string, resolvedAt time.Time) error
+}
+
+// CopyTradingRepository stores stock leaders, filing sources, normalized 13F
+// snapshots, instrument mappings, subscriptions, and execution intents.
+type CopyTradingRepository interface {
+	CreateLeader(ctx context.Context, leader *domain.CopyLeader) error
+	GetLeader(ctx context.Context, id uuid.UUID) (*domain.CopyLeader, error)
+	ListLeaders(ctx context.Context, filter CopyLeaderFilter, limit, offset int) ([]domain.CopyLeader, error)
+	CountLeaders(ctx context.Context, filter CopyLeaderFilter) (int, error)
+	UpdateLeaderIdentityStatus(ctx context.Context, id uuid.UUID, status domain.CopyIdentityStatus) error
+
+	CreateSource(ctx context.Context, source *domain.CopyLeaderSource) error
+	GetSource(ctx context.Context, id uuid.UUID) (*domain.CopyLeaderSource, error)
+	ListSourcesByLeader(ctx context.Context, leaderID uuid.UUID) ([]domain.CopyLeaderSource, error)
+	UpdateSourceObserved(ctx context.Context, id uuid.UUID, observedAt time.Time, checkpoint json.RawMessage) error
+
+	Save13FSnapshot(ctx context.Context, observation *domain.CopySourceObservation, snapshot *domain.CopyPortfolioSnapshot) (bool, error)
+	GetObservation(ctx context.Context, id uuid.UUID) (*domain.CopySourceObservation, error)
+	GetLatest13FSnapshot(ctx context.Context, sourceID uuid.UUID) (*domain.CopySourceObservation, *domain.CopyPortfolioSnapshot, error)
+
+	UpsertInstrumentMapping(ctx context.Context, mapping *domain.CopyInstrumentMapping) error
+	ListInstrumentMappings(ctx context.Context, provider, identifierType string, identifierValues []string) ([]domain.CopyInstrumentMapping, error)
+
+	CreateSubscription(ctx context.Context, subscription *domain.CopySubscription) error
+	GetSubscription(ctx context.Context, id uuid.UUID) (*domain.CopySubscription, error)
+	ListSubscriptions(ctx context.Context, filter CopySubscriptionFilter, limit, offset int) ([]domain.CopySubscription, error)
+	CountSubscriptions(ctx context.Context, filter CopySubscriptionFilter) (int, error)
+	UpdateSubscription(ctx context.Context, subscription *domain.CopySubscription) error
+
+	CreateIntent(ctx context.Context, intent *domain.CopyTradeIntent) (bool, error)
+	ListIntents(ctx context.Context, subscriptionID uuid.UUID, limit, offset int) ([]domain.CopyTradeIntent, error)
+	UpdateIntent(ctx context.Context, intent *domain.CopyTradeIntent) error
 }

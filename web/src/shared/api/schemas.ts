@@ -638,6 +638,42 @@ export const replayDecisionSchema = z.object({
   summary: z.object({ event_count: z.number(), first_event_at: isoDateSchema.optional(), last_event_at: isoDateSchema.optional(), has_paper_order: z.boolean(), has_live_order: z.boolean(), has_fill: z.boolean(), has_outcome: z.boolean(), latest_status: z.string(), total_approved_size: z.number(), total_net_ev: z.number(), rejection_count: z.number(), rejection_reasons: z.array(z.string()).optional() }).passthrough(),
 }).passthrough()
 
+export const copyLeaderSchema = z.object({
+  id: uuidSchema, entity_type: z.enum(['individual', 'institution']), display_name: z.string(), sec_cik: z.string().optional(), identity_status: z.string(), metadata: rawJsonSchema.optional(), created_at: isoDateSchema, updated_at: isoDateSchema,
+}).passthrough()
+
+export const copyLeaderSourceSchema = z.object({
+  id: uuidSchema, leader_id: uuidSchema, provider: z.string(), source_type: z.enum(['sec_13f', 'sec_form4', 'connected_broker', 'kalshi_connected']), external_key: z.string(), status: z.string(), metadata: rawJsonSchema.optional(), checkpoint: rawJsonSchema.optional(), last_observed_at: isoDateSchema.optional(), created_at: isoDateSchema, updated_at: isoDateSchema,
+}).passthrough()
+
+export const copyLeaderDetailSchema = z.object({ leader: copyLeaderSchema, sources: z.array(copyLeaderSourceSchema) }).passthrough()
+
+export const copyObservationSchema = z.object({
+  id: uuidSchema, source_id: uuidSchema, provider_observation_id: z.string(), observation_kind: z.string(), schema_version: z.number().int(), effective_at: isoDateSchema, published_at: isoDateSchema, observed_at: isoDateSchema, amendment_number: z.number().int(), supersedes_id: uuidSchema.optional(), status: z.string(), content_hash: z.string(), normalized_payload: rawJsonSchema.optional(), source_url: z.string().optional(), created_at: isoDateSchema,
+}).passthrough()
+
+export const copyPortfolioSnapshotSchema = z.object({
+  id: uuidSchema, observation_id: uuidSchema, report_period: isoDateSchema, total_disclosed_value: z.number(), holding_count: z.number().int(), created_at: isoDateSchema,
+}).passthrough()
+
+export const copySubscriptionSchema = z.object({
+  id: uuidSchema, leader_id: uuidSchema, source_id: uuidSchema, strategy_id: uuidSchema, status: z.enum(['draft', 'previewed', 'paper_active', 'paused', 'live_eligible', 'live_active', 'stopped']), is_paper: z.boolean(), method: z.enum(['target_weight', 'fixed_notional', 'source_ratio']), capital_budget: z.number(), cash_buffer_pct: z.number(), top_n: z.number().int(), min_source_weight: z.number(), max_position_weight: z.number(), max_turnover_pct: z.number(), min_price: z.number(), min_avg_dollar_volume: z.number(), max_spread_bps: z.number().int(), stock_allowlist: z.array(z.string()), stock_blocklist: z.array(z.string()), created_by: z.string(), created_at: isoDateSchema, updated_at: isoDateSchema, stopped_at: isoDateSchema.optional(),
+}).passthrough()
+
+export const copyTradeIntentSchema = z.object({
+  id: uuidSchema, subscription_id: uuidSchema, source_observation_id: uuidSchema, pipeline_run_id: uuidSchema.optional(), instrument_key: z.string(), ticker: z.string(), side: z.string(), target_weight: z.number(), target_value: z.number(), attributed_current_value: z.number(), requested_notional: z.number(), executable_price: z.number().optional(), calculation_version: z.number().int(), calculation: rawJsonSchema.optional(), policy_status: z.string(), policy_reasons: z.array(z.string()), risk_status: z.string(), risk_reasons: z.array(z.string()), order_id: uuidSchema.optional(), status: z.string(), created_at: isoDateSchema, updated_at: isoDateSchema,
+}).passthrough()
+
+export const copyPreviewSchema = z.object({
+  observation: copyObservationSchema,
+  snapshot: copyPortfolioSnapshotSchema,
+  intents: z.array(copyTradeIntentSchema),
+  summary: z.object({ total_disclosed_value: z.number(), mapped_weight: z.number(), unmapped_weight: z.number(), excluded_weight: z.number(), target_invested_value: z.number(), target_cash_value: z.number(), desired_turnover: z.number(), approved_turnover: z.number(), turnover_scale: z.number(), warnings: z.array(z.string()) }).passthrough(),
+}).passthrough()
+
+export const copyRefreshResultSchema = z.object({ created: z.boolean(), observation: copyObservationSchema, snapshot: copyPortfolioSnapshotSchema }).passthrough()
+export const copyRebalanceResultSchema = z.object({ run: pipelineRunSchema, preview: copyPreviewSchema, intents: z.array(copyTradeIntentSchema) }).passthrough()
+
 export const websocketCommandSchema = z
   .discriminatedUnion('action', [
     z.object({ action: z.literal('subscribe'), strategy_ids: z.array(uuidSchema).optional(), run_ids: z.array(uuidSchema).optional() }).passthrough(),

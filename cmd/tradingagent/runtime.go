@@ -22,11 +22,13 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/backtest"
 	"github.com/PatrickFanella/get-rich-quick/internal/cli"
 	"github.com/PatrickFanella/get-rich-quick/internal/config"
+	"github.com/PatrickFanella/get-rich-quick/internal/copytrading"
 	"github.com/PatrickFanella/get-rich-quick/internal/data"
 	alpacaData "github.com/PatrickFanella/get-rich-quick/internal/data/alpaca"
 	"github.com/PatrickFanella/get-rich-quick/internal/data/alphavantage"
 	"github.com/PatrickFanella/get-rich-quick/internal/data/binance"
 	"github.com/PatrickFanella/get-rich-quick/internal/data/bluesky"
+	"github.com/PatrickFanella/get-rich-quick/internal/data/edgar"
 	"github.com/PatrickFanella/get-rich-quick/internal/data/finnhub"
 	"github.com/PatrickFanella/get-rich-quick/internal/data/fmp"
 	kalshidata "github.com/PatrickFanella/get-rich-quick/internal/data/kalshi"
@@ -335,6 +337,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 	polymarketAccountRepo := pgrepo.NewPolymarketAccountRepo(db.Pool)
 	polymarketWatchedRepo := pgrepo.NewPolymarketWatchedMarketsRepo(db.Pool)
 	polymarketResolvedRepo := pgrepo.NewPolymarketResolvedMarketsRepo(db.Pool)
+	copyTradingRepo := pgrepo.NewCopyTradingRepo(db.Pool)
 	riskBreakerRepo := pgrepo.NewRiskBreakerRepo(db.Pool)
 	riskBreaker := risk.NewDrawdownBreaker(risk.DrawdownBreakerConfig{}, riskBreakerRepo)
 	reportArtifactRepo := pgrepo.NewReportArtifactRepo(db.Pool)
@@ -636,6 +639,31 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 		}
 		strategyRunner.portfolioAllocatorMode = portfolioAllocatorMode
 		deps.Runner = strategyRunner
+		var edgarProvider *edgar.Provider
+		edgarEmail := strings.TrimSpace(os.Getenv("SEC_EDGAR_APP_EMAIL"))
+		if edgarEmail != "" {
+			edgarAppName := strings.TrimSpace(os.Getenv("SEC_EDGAR_APP_NAME"))
+			if edgarAppName == "" {
+				edgarAppName = "Augr Trading Research"
+			}
+			edgarProvider = edgar.NewProvider(edgar.NewClient(edgarAppName, edgarEmail, logger), logger)
+		} else {
+			logger.Warn("copy trading SEC refresh disabled: SEC_EDGAR_APP_EMAIL is not configured")
+		}
+		deps.CopyTrading = copytrading.NewService(copytrading.ServiceDeps{
+			Repo:       copyTradingRepo,
+			Strategies: strategyRepo,
+			Runs:       runRepo,
+			Positions:  positionRepo,
+			EDGAR:      edgarProvider,
+			Prices:     copytrading.OHLCVPriceProvider{Source: dataService},
+			Executor: copytrading.NewOrderManagerExecutor(copytrading.OrderManagerExecutorDeps{
+				Broker: strategyRunner.localPaperBroker, Risk: riskEngine, Positions: positionRepo,
+				Orders: orderRepo, Trades: tradeRepo, FinancialLifecycle: db, Audit: auditLogRepo,
+				Events: eventRepo, DecisionRecorder: tradeDecisionRecorder, Metrics: appMetrics, Logger: logger,
+			}),
+			Logger: logger,
+		})
 		if cfg.Features.EnablePolymarketAutomation {
 			if err := bootstrapPolymarketStopGuards(ctx, strategyRunner, positionRepo, logger); err != nil {
 				logger.Warn("polymarket stop guard bootstrap failed", slog.Any("error", err))
@@ -782,6 +810,15 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 				orch.WithJobMetrics(appMetrics)
 				orch.WithReportMetrics(appMetrics)
 				orch.RegisterAll()
+				if edgarProvider != nil && deps.CopyTrading != nil {
+					orch.Register("copy_13f_sync", "Refresh subscribed 13F filings and rebalance active paper replicas", scheduler.ScheduleSpec{
+						Type: scheduler.ScheduleTypeMarketHours, Cron: "5 10 * * 1-5", SkipWeekends: true, SkipHolidays: true,
+					}, func(jobCtx context.Context) error {
+						summary, syncErr := deps.CopyTrading.Sync13FSubscriptions(jobCtx)
+						orch.SetLastSummary("copy_13f_sync", map[string]int{"subscriptions": summary.Subscriptions, "sources_checked": summary.SourcesChecked, "new_filings": summary.NewFilings, "rebalanced": summary.Rebalanced})
+						return syncErr
+					})
+				}
 				if err := orch.Start(); err != nil {
 					logger.Warn("automation: failed to start job orchestrator", slog.Any("error", err))
 				} else {

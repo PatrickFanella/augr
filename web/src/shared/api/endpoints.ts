@@ -43,10 +43,18 @@ import {
   backtestRunSchema,
   tradeDecisionSchema,
   replayDecisionSchema,
+  copyLeaderSchema,
+  copyLeaderSourceSchema,
+  copyLeaderDetailSchema,
+  copySubscriptionSchema,
+  copyTradeIntentSchema,
+  copyPreviewSchema,
+  copyRefreshResultSchema,
+  copyRebalanceResultSchema,
 } from '@/shared/api/schemas'
 import type { ListResponse, PortfolioSummary } from '@/shared/types/api'
 import type { AuthResponse, LoginRequest } from '@/shared/types/auth'
-import type { AgentDecision, AgentEvent, AllocationDecision, AllocatorDiagnostics, AllocatorOpportunity, AllocatorSummary, AutomationHealthResponse, AutomationJobRun, AutomationJobStatus, BacktestConfig, BacktestRun, BreakerResetRequest, BreakerResetResponse, EventMarketsSummaryResponse, HealthStatusResponse, KillSwitchToggleRequest, KillSwitchToggleResponse, MarketKillSwitchRequest, MarketKillSwitchResponse, OptionSnapshot, Order, OrderDetailResponse, PipelineRun, PolymarketDataStatus, Position, ReplayDecision, ReportArtifact, ReportLatestResponse, RiskBreakersResponse, RiskCockpitSummary, RiskEngineStatus, RunSnapshot, Strategy, StrategyCreateRequest, StrategyRunAcceptedResponse, StrategyUpdateRequest, Trade, TradeDecision, User } from '@/shared/types/domain'
+import type { AgentDecision, AgentEvent, AllocationDecision, AllocatorDiagnostics, AllocatorOpportunity, AllocatorSummary, AutomationHealthResponse, AutomationJobRun, AutomationJobStatus, BacktestConfig, BacktestRun, BreakerResetRequest, BreakerResetResponse, CopyLeader, CopyLeaderDetail, CopyLeaderSource, CopyPreview, CopyRebalanceResult, CopyRefreshResult, CopySubscription, CopyTradeIntent, EventMarketsSummaryResponse, HealthStatusResponse, KillSwitchToggleRequest, KillSwitchToggleResponse, MarketKillSwitchRequest, MarketKillSwitchResponse, OptionSnapshot, Order, OrderDetailResponse, PipelineRun, PolymarketDataStatus, Position, ReplayDecision, ReportArtifact, ReportLatestResponse, RiskBreakersResponse, RiskCockpitSummary, RiskEngineStatus, RunSnapshot, Strategy, StrategyCreateRequest, StrategyRunAcceptedResponse, StrategyUpdateRequest, Trade, TradeDecision, User } from '@/shared/types/domain'
 import type { SettingsResponse } from '@/shared/types/settings'
 
 export type StrategyListParams = {
@@ -334,6 +342,60 @@ export function setAutomationJobEnabled(name: string, enabled: boolean, signal?:
 
 export function getHealth(signal?: AbortSignal): Promise<HealthStatusResponse> {
   return api.get<HealthStatusResponse>('/health', { schema: healthStatusResponseSchema as never, signal, auth: false })
+}
+
+export function getCopyLeaders(signal?: AbortSignal): Promise<ListResponse<CopyLeader>> {
+  return api.get<ListResponse<CopyLeader>>('/copy-trading/leaders?limit=100&offset=0', { schema: listResponseSchema(copyLeaderSchema) as never, signal })
+}
+
+export function createCopyLeader(request: Pick<CopyLeader, 'entity_type' | 'display_name'> & { sec_cik?: string }, signal?: AbortSignal): Promise<CopyLeader> {
+  return api.post<CopyLeader>('/copy-trading/leaders', request, { schema: copyLeaderSchema as never, signal, retryOnUnauthorized: false })
+}
+
+export function getCopyLeader(id: string, signal?: AbortSignal): Promise<CopyLeaderDetail> {
+  return api.get<CopyLeaderDetail>(`/copy-trading/leaders/${encodeURIComponent(id)}`, { schema: copyLeaderDetailSchema as never, signal })
+}
+
+export function addCopySource(leaderId: string, request: Pick<CopyLeaderSource, 'provider' | 'source_type' | 'external_key'>, signal?: AbortSignal): Promise<CopyLeaderSource> {
+  return api.post<CopyLeaderSource>(`/copy-trading/leaders/${encodeURIComponent(leaderId)}/sources`, request, { schema: copyLeaderSourceSchema as never, signal, retryOnUnauthorized: false })
+}
+
+export function refreshCopySource(sourceId: string, signal?: AbortSignal): Promise<CopyRefreshResult> {
+  return api.post<CopyRefreshResult>(`/copy-trading/sources/${encodeURIComponent(sourceId)}/refresh`, undefined, { schema: copyRefreshResultSchema as never, signal, retryOnUnauthorized: false })
+}
+
+export function upsertCopyMapping(request: { provider: string; identifier_type: string; identifier_value: string; instrument_key?: string; ticker: string; confidence?: string; mapping_method?: string }, signal?: AbortSignal) {
+  return api.put('/copy-trading/mappings', request, { signal, retryOnUnauthorized: false })
+}
+
+export function getCopySubscriptions(signal?: AbortSignal): Promise<ListResponse<CopySubscription>> {
+  return api.get<ListResponse<CopySubscription>>('/copy-trading/subscriptions?limit=100&offset=0', { schema: listResponseSchema(copySubscriptionSchema) as never, signal })
+}
+
+export type CopySubscriptionCreateRequest = Pick<CopySubscription, 'leader_id' | 'source_id' | 'capital_budget' | 'cash_buffer_pct' | 'top_n' | 'min_source_weight' | 'max_position_weight' | 'max_turnover_pct' | 'min_price' | 'min_avg_dollar_volume' | 'max_spread_bps'> & { is_paper: true; method: 'target_weight'; stock_allowlist?: string[]; stock_blocklist?: string[] }
+
+export function createCopySubscription(request: CopySubscriptionCreateRequest, signal?: AbortSignal): Promise<CopySubscription> {
+  return api.post<CopySubscription>('/copy-trading/subscriptions', request, { schema: copySubscriptionSchema as never, signal, retryOnUnauthorized: false })
+}
+
+export function getCopySubscription(id: string, signal?: AbortSignal): Promise<CopySubscription> {
+  return api.get<CopySubscription>(`/copy-trading/subscriptions/${encodeURIComponent(id)}`, { schema: copySubscriptionSchema as never, signal })
+}
+
+export function previewCopySubscription(id: string, signal?: AbortSignal): Promise<CopyPreview> {
+  return api.post<CopyPreview>(`/copy-trading/subscriptions/${encodeURIComponent(id)}/preview`, undefined, { schema: copyPreviewSchema as never, signal, retryOnUnauthorized: false })
+}
+
+export function setCopySubscriptionStatus(id: string, action: 'activate' | 'pause' | 'resume' | 'stop', signal?: AbortSignal): Promise<CopySubscription> {
+  return api.post<CopySubscription>(`/copy-trading/subscriptions/${encodeURIComponent(id)}/${action}`, undefined, { schema: copySubscriptionSchema as never, signal, retryOnUnauthorized: false })
+}
+
+export function rebalanceCopySubscription(id: string, signal?: AbortSignal): Promise<CopyRebalanceResult> {
+  return api.post<CopyRebalanceResult>(`/copy-trading/subscriptions/${encodeURIComponent(id)}/rebalance`, undefined, { schema: copyRebalanceResultSchema as never, signal, retryOnUnauthorized: false })
+}
+
+export function getCopyIntents(id: string, signal?: AbortSignal): Promise<ListResponse<CopyTradeIntent>> {
+  return api.get<ListResponse<CopyTradeIntent>>(`/copy-trading/subscriptions/${encodeURIComponent(id)}/intents?limit=100&offset=0`, { schema: listResponseSchema(copyTradeIntentSchema) as never, signal })
 }
 
 export function getStrategy(id: string, signal?: AbortSignal): Promise<Strategy> {

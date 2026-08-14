@@ -20,6 +20,7 @@ import {
   ChartCandlestick,
   FlaskConical,
   BookOpenText,
+  UsersRound,
 } from 'lucide-react';
 
 import { useTheme } from '@/app/providers/theme-context';
@@ -42,6 +43,7 @@ const navGroups = [
   { label: 'Operate', items: [
     { to: '/automation', label: 'Automation', icon: Bot },
     { to: '/strategies', label: 'Strategies', icon: Lightbulb },
+    { to: '/copy-trading', label: 'Copy trading', icon: UsersRound },
     { to: '/runs', label: 'Runs', icon: Play },
     { to: '/orders', label: 'Orders', icon: ShoppingCart },
     { to: '/trades', label: 'Trades', icon: ArrowLeftRight },

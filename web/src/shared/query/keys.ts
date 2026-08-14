@@ -32,4 +32,9 @@ export const queryKeys = {
   automationRuns: (filters: Record<string, string | number | undefined>) => ['automation', 'runs', filters] as const,
   automationDetail: (name: string) => ['automation', 'detail', name] as const,
   health: ['health'] as const,
+  copyLeaders: ['copy-trading', 'leaders'] as const,
+  copyLeader: (id: string) => ['copy-trading', 'leaders', id] as const,
+  copySubscriptions: ['copy-trading', 'subscriptions'] as const,
+  copySubscription: (id: string) => ['copy-trading', 'subscriptions', id] as const,
+  copyIntents: (id: string) => ['copy-trading', 'subscriptions', id, 'intents'] as const,
 }

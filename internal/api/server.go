@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/automation"
+	"github.com/PatrickFanella/get-rich-quick/internal/copytrading"
 	"github.com/PatrickFanella/get-rich-quick/internal/data"
 	"github.com/PatrickFanella/get-rich-quick/internal/discovery"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
@@ -122,6 +123,7 @@ type Server struct {
 	conversationSvc *service.ConversationService
 	runSvc          *service.RunService
 	researchSvc     service.ResearchScannerService
+	copyTrading     *copytrading.Service
 }
 
 // StrategyRunResult captures the persisted artifacts created by a manual run.
@@ -226,6 +228,7 @@ type Deps struct {
 	Prompts                *PromptSettingsService
 	Runner                 StrategyRunner
 	ResearchScanner        service.ResearchScannerService
+	CopyTrading            *copytrading.Service
 	DBHealth               HealthCheck
 	RedisHealth            HealthCheck
 	MetricsHandler         http.Handler
@@ -362,6 +365,7 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 		auth:                  authManager,
 		hub:                   hub,
 		researchSvc:           deps.ResearchScanner,
+		copyTrading:           deps.CopyTrading,
 		wsUpgrader:            newUpgrader(cfg.CORSConfig.AllowedOrigins),
 		metricsHandler:        deps.MetricsHandler,
 		signalStore:           deps.SignalStore,
@@ -440,6 +444,26 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 			// Report artifacts (nested under strategy)
 			sr.Get("/{id}/reports/latest", s.handleGetLatestReport)
 			sr.Get("/{id}/reports", s.handleListReports)
+		})
+
+		v1.Route("/copy-trading", func(cr chi.Router) {
+			cr.Get("/leaders", s.handleListCopyLeaders)
+			cr.Post("/leaders", s.handleCreateCopyLeader)
+			cr.Get("/leaders/{id}", s.handleGetCopyLeader)
+			cr.Post("/leaders/{id}/sources", s.handleAddCopySource)
+			cr.Post("/sources/{id}/refresh", s.handleRefreshCopySource)
+			cr.Put("/mappings", s.handleUpsertCopyMapping)
+			cr.Get("/subscriptions", s.handleListCopySubscriptions)
+			cr.Post("/subscriptions", s.handleCreateCopySubscription)
+			cr.Get("/subscriptions/{id}", s.handleGetCopySubscription)
+			cr.Put("/subscriptions/{id}", s.handleUpdateCopySubscription)
+			cr.Post("/subscriptions/{id}/preview", s.handlePreviewCopySubscription)
+			cr.Post("/subscriptions/{id}/activate", s.handleActivateCopySubscription)
+			cr.Post("/subscriptions/{id}/pause", s.handlePauseCopySubscription)
+			cr.Post("/subscriptions/{id}/resume", s.handleResumeCopySubscription)
+			cr.Post("/subscriptions/{id}/stop", s.handleStopCopySubscription)
+			cr.Post("/subscriptions/{id}/rebalance", s.handleRebalanceCopySubscription)
+			cr.Get("/subscriptions/{id}/intents", s.handleListCopyIntents)
 		})
 
 		v1.Route("/polymarket", func(pr chi.Router) {
