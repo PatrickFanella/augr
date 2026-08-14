@@ -70,14 +70,14 @@ func TestCreateOrReuseDiscoveryStrategyStagesNewStrategyUntilBacktestConfigExist
 	if err != nil {
 		t.Fatalf("createOrReuseDiscoveryStrategy() error = %v", err)
 	}
-	if !wasCreated || created.Status != domain.StrategyStatusActive {
+	if !wasCreated || created.Status != domain.StrategyStatusInactive || created.ScheduleCron != "" {
 		t.Fatalf("created = %+v, wasCreated = %v", created, wasCreated)
 	}
-	if len(strategies.createStatuses) != 1 || strategies.createStatuses[0] != domain.StrategyStatusPaused {
-		t.Fatalf("create statuses = %v, want [paused]", strategies.createStatuses)
+	if len(strategies.createStatuses) != 1 || strategies.createStatuses[0] != domain.StrategyStatusInactive {
+		t.Fatalf("create statuses = %v, want [inactive]", strategies.createStatuses)
 	}
-	if len(strategies.updateStatuses) != 1 || strategies.updateStatuses[0] != domain.StrategyStatusActive {
-		t.Fatalf("update statuses = %v, want [active]", strategies.updateStatuses)
+	if len(strategies.updateStatuses) != 0 {
+		t.Fatalf("update statuses = %v, want no activation", strategies.updateStatuses)
 	}
 	if len(configs.items) != 1 || configs.items[0].StrategyID != created.ID || configs.items[0].Simulation.InitialCapital != 50_000 {
 		t.Fatalf("backtest configs = %+v", configs.items)
@@ -114,11 +114,11 @@ func TestCreateOrReuseDiscoveryStrategyRepairsReusedActiveStrategyFailClosed(t *
 	if err != nil {
 		t.Fatalf("createOrReuseDiscoveryStrategy() error = %v", err)
 	}
-	if wasCreated || reused.ID != existing.ID || reused.Status != domain.StrategyStatusActive {
+	if wasCreated || reused.ID != existing.ID || reused.Status != domain.StrategyStatusPaused {
 		t.Fatalf("reused = %+v, wasCreated = %v", reused, wasCreated)
 	}
-	if len(strategies.updateStatuses) != 2 || strategies.updateStatuses[0] != domain.StrategyStatusPaused || strategies.updateStatuses[1] != domain.StrategyStatusActive {
-		t.Fatalf("update statuses = %v, want [paused active]", strategies.updateStatuses)
+	if len(strategies.updateStatuses) != 1 || strategies.updateStatuses[0] != domain.StrategyStatusPaused {
+		t.Fatalf("update statuses = %v, want [paused]", strategies.updateStatuses)
 	}
 	if len(configs.items) != 1 || configs.items[0].StrategyID != existing.ID {
 		t.Fatalf("backtest configs = %+v", configs.items)

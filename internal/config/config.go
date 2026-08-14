@@ -8,6 +8,15 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
+
+	"github.com/PatrickFanella/get-rich-quick/internal/domain"
+)
+
+const (
+	DefaultPaperInitialCapital        = 100_000.0
+	DefaultPaperBuyingPowerMultiplier = 2.0
+	DefaultPaperSlippageBPS           = 5.0
+	DefaultPaperFeePct                = 0.0001
 )
 
 // Config contains application configuration loaded from the environment.
@@ -20,6 +29,7 @@ type Config struct {
 	Embedding                    EmbeddingConfig
 	DataProviders                DataProviderConfigs
 	Brokers                      BrokerConfigs
+	Paper                        PaperConfig
 	Polygon                      PolygonConnectionConfig
 	Risk                         RiskConfig
 	Notifications                NotificationConfig
@@ -185,6 +195,26 @@ type BrokerConfig struct {
 	APIKey    string
 	APISecret string
 	PaperMode bool
+}
+
+// PaperConfig identifies one isolated paper-evaluation environment. A scored
+// profile may produce promotion evidence; stress mode is always synthetic.
+type PaperConfig struct {
+	EvaluationMode        domain.PaperEvaluationMode
+	InitialCapital        float64
+	BuyingPowerMultiplier float64
+	SlippageBPS           float64
+	FeePct                float64
+}
+
+func (c PaperConfig) EvaluationProfile() (domain.PaperEvaluationProfile, error) {
+	return domain.NewPaperEvaluationProfile(
+		c.EvaluationMode,
+		c.InitialCapital,
+		c.BuyingPowerMultiplier,
+		c.SlippageBPS,
+		c.FeePct,
+	)
 }
 
 // RiskConfig contains application-wide risk management defaults.
@@ -386,6 +416,23 @@ func loadFromEnvironment() (Config, error) {
 	}
 
 	binancePaperMode, err := getEnvBool("BINANCE_PAPER_MODE", true)
+	if err != nil {
+		return Config{}, err
+	}
+
+	paperInitialCapital, err := getEnvFloat64("PAPER_INITIAL_CAPITAL", DefaultPaperInitialCapital)
+	if err != nil {
+		return Config{}, err
+	}
+	paperBuyingPowerMultiplier, err := getEnvFloat64("PAPER_BUYING_POWER_MULTIPLIER", DefaultPaperBuyingPowerMultiplier)
+	if err != nil {
+		return Config{}, err
+	}
+	paperSlippageBPS, err := getEnvFloat64("PAPER_SLIPPAGE_BPS", DefaultPaperSlippageBPS)
+	if err != nil {
+		return Config{}, err
+	}
+	paperFeePct, err := getEnvFloat64("PAPER_FEE_PCT", DefaultPaperFeePct)
 	if err != nil {
 		return Config{}, err
 	}
@@ -711,6 +758,13 @@ func loadFromEnvironment() (Config, error) {
 				AutoExitsEnabled:        kalshiAutoExitsEnabled,
 				SettlementGateThreshold: kalshiSettlementGateThreshold,
 			},
+		},
+		Paper: PaperConfig{
+			EvaluationMode:        domain.PaperEvaluationMode(getEnvString("PAPER_EVALUATION_MODE", string(domain.PaperEvaluationModeScored))),
+			InitialCapital:        paperInitialCapital,
+			BuyingPowerMultiplier: paperBuyingPowerMultiplier,
+			SlippageBPS:           paperSlippageBPS,
+			FeePct:                paperFeePct,
 		},
 		Risk: RiskConfig{
 			MaxPositionSizePct:      maxPositionSizePct,

@@ -13,6 +13,9 @@ for shell_script in \
   scripts/observe-automation-run.sh \
   scripts/observe-paper-boundary.sh \
   scripts/paper-week.sh \
+  scripts/emergency-brake-drill.sh \
+  scripts/freeze-generated-strategies.sh \
+  scripts/overhaul-baseline.sh \
   scripts/release-gate.sh \
   scripts/verify-release-tree.sh \
   scripts/verify-secret-history.sh

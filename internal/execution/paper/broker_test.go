@@ -78,6 +78,33 @@ func TestPaperBrokerSubmitOrder_DeductsFee(t *testing.T) {
 	assertFloatClose(t, balance.Equity, 998, 1e-9)
 }
 
+func TestPaperBrokerEvaluationProfilesRemainDistinct(t *testing.T) {
+	t.Parallel()
+
+	scoredProfile, err := domain.NewPaperEvaluationProfile(domain.PaperEvaluationModeScored, 100_000, 2, 5, 0.0001)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stressProfile, err := domain.NewPaperEvaluationProfile(domain.PaperEvaluationModeStress, 100_000, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scored, err := NewPaperBrokerWithProfile(scoredProfile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stress, err := NewPaperBrokerWithProfile(stressProfile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if scored.EvaluationProfile().CanShareStorageWith(stress.EvaluationProfile()) {
+		t.Fatal("scored and stress brokers share an evidence namespace")
+	}
+	if !scored.EvaluationProfile().PromotionEligible() || stress.EvaluationProfile().PromotionEligible() {
+		t.Fatal("broker promotion eligibility does not match its profile")
+	}
+}
+
 func TestPaperBrokerSubmitOrder_RejectsInsufficientBalance(t *testing.T) {
 	t.Parallel()
 

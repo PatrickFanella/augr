@@ -2,6 +2,7 @@ package risk
 
 import (
 	"context"
+	"errors"
 	"math"
 	"strings"
 	"testing"
@@ -62,6 +63,97 @@ func TestCheckPreTrade_KillSwitchActive(t *testing.T) {
 	}
 	if reason == "" {
 		t.Fatal("expected non-empty reason")
+	}
+}
+
+func TestCheckPreTrade_EmergencyBrakeAllowsExplicitReduceOnly(t *testing.T) {
+	t.Parallel()
+
+	engine := newTestEngine()
+	ctx := context.Background()
+	if err := engine.ActivateKillSwitch(ctx, "manual halt"); err != nil {
+		t.Fatal(err)
+	}
+	if err := engine.ActivateMarketKillSwitch(ctx, domain.MarketTypeStock, "stock halt"); err != nil {
+		t.Fatal(err)
+	}
+	if err := engine.TripCircuitBreaker(ctx, "loss limit"); err != nil {
+		t.Fatal(err)
+	}
+	closeIntent := domain.PositionIntentSellToClose
+	order := &domain.Order{Ticker: "AAPL", MarketType: domain.MarketTypeStock, Side: domain.OrderSideSell, Quantity: 10, PositionIntent: &closeIntent}
+
+	approved, reason, err := engine.CheckPreTrade(ctx, order, Portfolio{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !approved || reason != "" {
+		t.Fatalf("reduce-only order rejected: approved=%v reason=%q", approved, reason)
+	}
+}
+
+func TestEmergencyBrakeDrill_RestartRestoresReduceOnlyMode(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	persister := &memoryRiskPersister{}
+	first := newTestEngine().WithStatePersister(ctx, persister)
+	if err := first.ActivateKillSwitch(ctx, "phase-0 drill"); err != nil {
+		t.Fatal(err)
+	}
+	if len(persister.saved) != 1 || !persister.saved[0].KillSwitch.Active {
+		t.Fatalf("activation was not persisted: %+v", persister.saved)
+	}
+
+	restarted := newTestEngine().WithStatePersister(ctx, persister)
+	active, err := restarted.IsKillSwitchActive(ctx)
+	if err != nil || !active {
+		t.Fatalf("restart active=%v err=%v, want durable halt", active, err)
+	}
+	opening := &domain.Order{Ticker: "AAPL", MarketType: domain.MarketTypeStock, Side: domain.OrderSideBuy, Quantity: 1}
+	approved, _, err := restarted.CheckPreTrade(ctx, opening, Portfolio{})
+	if err != nil || approved {
+		t.Fatalf("opening after restart approved=%v err=%v, want blocked", approved, err)
+	}
+	closeIntent := domain.PositionIntentSellToClose
+	closing := &domain.Order{Ticker: "AAPL", MarketType: domain.MarketTypeStock, Side: domain.OrderSideSell, Quantity: 1, PositionIntent: &closeIntent}
+	approved, reason, err := restarted.CheckPreTrade(ctx, closing, Portfolio{})
+	if err != nil || !approved {
+		t.Fatalf("reduce-only after restart approved=%v reason=%q err=%v", approved, reason, err)
+	}
+
+	if err := restarted.DeactivateKillSwitch(ctx); err != nil {
+		t.Fatal(err)
+	}
+	afterAcknowledgement := newTestEngine().WithStatePersister(ctx, persister)
+	active, err = afterAcknowledgement.IsKillSwitchActive(ctx)
+	if err != nil || active {
+		t.Fatalf("explicit acknowledgement did not persist: active=%v err=%v", active, err)
+	}
+}
+
+func TestEmergencyBrakeFailsClosedWhenStateCannotLoad(t *testing.T) {
+	t.Parallel()
+
+	engine := newTestEngine().WithStatePersister(context.Background(), &memoryRiskPersister{load: errors.New("corrupt state")})
+	active, err := engine.IsKillSwitchActive(context.Background())
+	if err != nil || !active {
+		t.Fatalf("load failure active=%v err=%v, want fail-closed halt", active, err)
+	}
+}
+
+func TestEmergencyBrakeReportsPersistenceFailure(t *testing.T) {
+	t.Parallel()
+
+	persister := &memoryRiskPersister{save: errors.New("database unavailable")}
+	engine := newTestEngine().WithStatePersister(context.Background(), persister)
+	err := engine.ActivateKillSwitch(context.Background(), "incident")
+	if err == nil || !strings.Contains(err.Error(), "database unavailable") {
+		t.Fatalf("ActivateKillSwitch() error = %v, want persistence failure", err)
+	}
+	active, activeErr := engine.IsKillSwitchActive(context.Background())
+	if activeErr != nil || !active {
+		t.Fatalf("in-memory brake active=%v err=%v, want active despite persistence error", active, activeErr)
 	}
 }
 
@@ -1289,6 +1381,7 @@ func TestKillSwitch_DeactivateAPIDoesNotAffectFileOrEnv(t *testing.T) {
 type memoryRiskPersister struct {
 	state PersistedRiskState
 	load  error
+	save  error
 	saved []PersistedRiskState
 }
 
@@ -1297,6 +1390,10 @@ func (m *memoryRiskPersister) Load(context.Context) (PersistedRiskState, error) 
 }
 
 func (m *memoryRiskPersister) Save(_ context.Context, state PersistedRiskState) error {
+	if m.save != nil {
+		return m.save
+	}
+	m.state = state
 	m.saved = append(m.saved, state)
 	return nil
 }

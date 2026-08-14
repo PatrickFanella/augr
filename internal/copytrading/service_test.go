@@ -25,8 +25,8 @@ func (r *syncRepo) ListSubscriptions(context.Context, repository.CopySubscriptio
 }
 
 func (r *syncRepo) GetSource(context.Context, uuid.UUID) (*domain.CopyLeaderSource, error) {
-	copy := r.source
-	return &copy, nil
+	sourceCopy := r.source
+	return &sourceCopy, nil
 }
 
 func (r *syncRepo) Save13FSnapshot(_ context.Context, observation *domain.CopySourceObservation, snapshot *domain.CopyPortfolioSnapshot) (bool, error) {

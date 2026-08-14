@@ -1,14 +1,14 @@
 ---
 title: "ADR-006: Paper trading slippage and fee assumptions"
 description: "Architecture decision record."
-status: "canonical"
-updated: "2026-04-03"
+status: "superseded"
+updated: "2026-08-14"
 tags: [adr]
 ---
 
 # ADR-006: Paper trading slippage and fee assumptions
 
-- **Status:** accepted
+- **Status:** superseded by [ADR-018](018-scored-and-stress-paper-modes.md)
 - **Date:** 2026-03-27
 - **Deciders:** Engineering
 - **Technical Story:** [#96](https://github.com/PatrickFanella/get-rich-quick/issues/96)

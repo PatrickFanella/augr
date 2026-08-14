@@ -48,7 +48,6 @@ const (
 	postCloseDataGrace     = 30 * time.Minute
 	requiredNewsMaxAge     = 36 * time.Hour
 	requiredNewsMinDirect  = 3
-	localPaperBuyingPower  = 100_000.0
 	nativeTerminalTimeout  = 5 * time.Second
 )
 
@@ -177,7 +176,7 @@ func newRealStrategyRunner(
 		kalshiLiveClient:      kalshiLiveClient,
 		polymarketWorkerCtx:   workerCtx,
 		polymarketWorkerStop:  workerStop,
-		localPaperBroker:      paper.NewPaperBroker(localPaperBuyingPower, 0, 0),
+		localPaperBroker:      newConfiguredPaperBroker(cfg.Paper, logger),
 	}
 	runner.setRiskPortfolioSnapshotSource(runner.localPaperBroker)
 
@@ -2230,17 +2229,38 @@ func brokerNameForStrategy(strategy domain.Strategy) string {
 
 func (r *realStrategyRunner) fallbackPaperBroker() *paper.PaperBroker {
 	if r == nil {
-		return paper.NewPaperBroker(localPaperBuyingPower, 0, 0)
+		return newConfiguredPaperBroker(config.PaperConfig{}, slog.Default())
 	}
 
 	r.localPaperMu.Lock()
 	defer r.localPaperMu.Unlock()
 
 	if r.localPaperBroker == nil {
-		r.localPaperBroker = paper.NewPaperBroker(localPaperBuyingPower, 0, 0)
+		r.localPaperBroker = newConfiguredPaperBroker(r.cfg.Paper, r.logger)
 	}
 
 	return r.localPaperBroker
+}
+
+func newConfiguredPaperBroker(cfg config.PaperConfig, logger *slog.Logger) *paper.PaperBroker {
+	profile, err := cfg.EvaluationProfile()
+	if err != nil {
+		profile, _ = domain.NewPaperEvaluationProfile(
+			domain.PaperEvaluationModeScored,
+			config.DefaultPaperInitialCapital,
+			config.DefaultPaperBuyingPowerMultiplier,
+			config.DefaultPaperSlippageBPS,
+			config.DefaultPaperFeePct,
+		)
+		if logger != nil {
+			logger.Warn("paper evaluation config invalid; using scored defaults", slog.Any("error", err))
+		}
+	}
+	broker, brokerErr := paper.NewPaperBrokerWithProfile(profile)
+	if brokerErr != nil {
+		panic(fmt.Sprintf("validated paper profile rejected: %v", brokerErr))
+	}
+	return broker
 }
 
 func (r *realStrategyRunner) setRiskPortfolioSnapshotSource(broker execution.Broker) {

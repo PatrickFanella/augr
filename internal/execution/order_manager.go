@@ -230,6 +230,8 @@ func (m *OrderManager) ProcessSignal(
 ) error {
 	marketType := planMarketType(plan)
 	predictionExitMaxQuantity := 0.0
+	stockExitMaxQuantity := 0.0
+	riskReducingExit := false
 
 	if marketType.Normalize() == domain.MarketTypeKalshi {
 		kalshiExposureMu.Lock()
@@ -254,11 +256,11 @@ func (m *OrderManager) ProcessSignal(
 	// actionable trades. Non-stock markets have different SELL semantics and are
 	// intentionally left to their market-specific execution/risk paths.
 	if signal.Signal == domain.PipelineSignalSell && marketType == domain.MarketTypeStock {
-		owned, err := m.hasOpenLongPosition(ctx, strategyID, plan.Ticker)
+		ownedQuantity, err := m.openLongPositionQuantity(ctx, strategyID, plan.Ticker)
 		if err != nil {
 			return err
 		}
-		if !owned {
+		if ownedQuantity <= 0 {
 			m.logger.InfoContext(ctx, "sell signal has no open long position, skipping order", "ticker", plan.Ticker, "strategy_id", strategyID)
 
 			decision := m.newTradeDecision(
@@ -294,6 +296,8 @@ func (m *OrderManager) ProcessSignal(
 
 			return nil
 		}
+		stockExitMaxQuantity = ownedQuantity
+		riskReducingExit = true
 	}
 
 	if signal.Signal == domain.PipelineSignalSell && isPredictionMarket(marketType) {
@@ -345,6 +349,7 @@ func (m *OrderManager) ProcessSignal(
 			return nil
 		}
 		predictionExitMaxQuantity = ownedQuantity
+		riskReducingExit = true
 	}
 
 	// 1. Check kill switch via risk engine.
@@ -353,7 +358,7 @@ func (m *OrderManager) ProcessSignal(
 		return fmt.Errorf("order_manager: kill switch check: %w", err)
 	}
 
-	if active {
+	if active && !riskReducingExit {
 		m.logger.WarnContext(ctx, "kill switch active, order blocked", "ticker", plan.Ticker)
 
 		if auditErr := m.audit(ctx, "kill_switch_blocked", "order", nil, map[string]any{
@@ -366,6 +371,17 @@ func (m *OrderManager) ProcessSignal(
 		}
 
 		return fmt.Errorf("order_manager: kill switch active, order blocked for %s", plan.Ticker)
+	}
+	if active {
+		m.logger.WarnContext(ctx, "kill switch active; verified reduce-only exit admitted", "ticker", plan.Ticker, "strategy_id", strategyID)
+		if auditErr := m.audit(ctx, "kill_switch_reduce_only_admitted", "order", nil, map[string]any{
+			"ticker":      plan.Ticker,
+			"strategy_id": strategyID,
+			"run_id":      runID,
+			"signal":      signal.Signal,
+		}); auditErr != nil {
+			m.logger.ErrorContext(ctx, "audit log failed", "error", auditErr)
+		}
 	}
 
 	// 1b. Live execution gate (paper/default paths skip this entirely).
@@ -423,6 +439,12 @@ func (m *OrderManager) ProcessSignal(
 		}
 		if marketType.Normalize() == domain.MarketTypeKalshi {
 			quantity = quantizeKalshiContracts(quantity)
+		}
+	}
+	if signal.Signal == domain.PipelineSignalSell && marketType == domain.MarketTypeStock && stockExitMaxQuantity > 0 {
+		quantity = math.Min(quantity, stockExitMaxQuantity)
+		if plan.PositionSize > 0 {
+			quantity = math.Min(plan.PositionSize, stockExitMaxQuantity)
 		}
 	}
 
@@ -504,6 +526,10 @@ func (m *OrderManager) ProcessSignal(
 		Broker:         m.brokerName,
 		CreatedAt:      now,
 		PredictionSide: plan.Side,
+	}
+	if riskReducingExit {
+		intent := domain.PositionIntentSellToClose
+		order.PositionIntent = &intent
 	}
 
 	if plan.EntryPrice > 0 {
@@ -785,10 +811,10 @@ func (m *OrderManager) recordTradeDecisionReplay(ctx context.Context, decisionID
 	}
 }
 
-func (m *OrderManager) hasOpenLongPosition(ctx context.Context, strategyID uuid.UUID, ticker string) (bool, error) {
+func (m *OrderManager) openLongPositionQuantity(ctx context.Context, strategyID uuid.UUID, ticker string) (float64, error) {
 	ticker = strings.TrimSpace(ticker)
 	if ticker == "" {
-		return false, fmt.Errorf("order_manager: open long ownership check requires ticker")
+		return 0, fmt.Errorf("order_manager: open long ownership check requires ticker")
 	}
 
 	positions, err := m.positionRepo.GetByStrategy(ctx, strategyID, repository.PositionFilter{
@@ -796,16 +822,16 @@ func (m *OrderManager) hasOpenLongPosition(ctx context.Context, strategyID uuid.
 		Side:   domain.PositionSideLong,
 	}, riskSnapshotPositionLimit, 0)
 	if err != nil {
-		return false, fmt.Errorf("order_manager: get open long position for %s: %w", ticker, err)
+		return 0, fmt.Errorf("order_manager: get open long position for %s: %w", ticker, err)
 	}
 
+	total := 0.0
 	for _, position := range positions {
 		if position.ClosedAt == nil && position.Quantity > 0 {
-			return true, nil
+			total += position.Quantity
 		}
 	}
-
-	return false, nil
+	return total, nil
 }
 
 func (m *OrderManager) openPredictionPositionQuantity(ctx context.Context, strategyID uuid.UUID, marketType domain.MarketType, slug, side string) (float64, error) {

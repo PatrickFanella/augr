@@ -137,3 +137,21 @@ type Order struct {
 	PredictionSide   string `json:"prediction_side,omitempty"`
 	PolymarketIntent string `json:"polymarket_intent,omitempty"`
 }
+
+// IsReduceOnly reports whether the order carries an explicit close intent. The
+// execution manager must verify the matching open position and clamp quantity
+// before setting this intent; the risk engine deliberately does not infer it
+// from BUY/SELL alone.
+func (o *Order) IsReduceOnly() bool {
+	if o == nil || o.PositionIntent == nil {
+		return false
+	}
+	switch *o.PositionIntent {
+	case PositionIntentBuyToClose:
+		return o.Side == OrderSideBuy
+	case PositionIntentSellToClose:
+		return o.Side == OrderSideSell
+	default:
+		return false
+	}
+}

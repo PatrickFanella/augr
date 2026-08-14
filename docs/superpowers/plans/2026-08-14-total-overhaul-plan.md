@@ -1,0 +1,817 @@
+---
+title: "Augr Total Overhaul Plan"
+date: 2026-08-14
+status: active
+target_branch: main
+target_commit_reviewed: 5517405
+tags: [architecture, profitability, paper-trading, autonomy, execution, ledger, research, ai]
+---
+
+# Augr Total Overhaul Plan
+
+## Executive decision
+
+Rebuild Augr as an autonomous, personal, paper-first trading research and execution laboratory. The project is not a product, fund, signal service, or business. Its purpose is to determine whether a trustworthy autonomous system can discover, evaluate, and operate modestly profitable strategies while producing an exact explanation of what happened.
+
+The overhaul is a consolidation, not a greenfield rewrite. Keep the broker adapters, market integrations, risk controls, paper-account restoration, realistic backtest components, portfolio allocator, observability, UI shell, and the deterministic copy-trading foundation. Replace the fragmented center with four authoritative cores:
+
+1. an immutable economic ledger;
+2. a common intent, order, fill, settlement, and reconciliation lifecycle;
+3. a point-in-time research and promotion system;
+4. an autonomous control plane in which AI can generate and critique work but cannot bypass deterministic trading and risk contracts.
+
+No additional product interview is needed before implementation. Remaining choices should be versioned configuration or evidence-driven decisions, not hidden assumptions in code.
+
+## Locked mandate
+
+| Decision | Mandate |
+| --- | --- |
+| Purpose | Fun, technically ambitious personal project; modest profitability is sufficient. |
+| Product direction | Do not pivot to selling Augr, managing outside funds, publishing signals, or copy-trading for other users. |
+| Current environment | Paper only. Live credentials and live submission remain disabled throughout this program. |
+| Default starting capital | $100,000 paper net liquidation value. |
+| Capital portability | The same strategy and accounting architecture must work from $500 through at least $5 million. |
+| Margin | Support broker-realistic margin in scored experiments and an explicitly unscored unlimited-margin stress mode. |
+| Risk tolerance | Paper losses may be large, but an emergency brake, exposure limits, and failure containment are mandatory. |
+| Asset scope | Architecturally open to any asset or venue; implementation remains adapter-by-adapter and evidence-gated. |
+| Autonomy | The intended steady state is deposit/configure, then unattended operation with alerts and fail-closed recovery. |
+| Options | Assignment, exercise, expiration, and owning assigned stock are acceptable. |
+| Users | One operator and one beneficial owner. No multi-tenant or public-user requirements. |
+| Preferred work | AI systems, infrastructure, and generative research workflows should be first-class surfaces. |
+
+### Why unlimited paper margin cannot be the scored default
+
+An unlimited balance is useful for saturation, capacity, and failure testing. It is not useful for measuring economic performance. It removes financing constraints, hides position-sizing bugs, allows impossible recovery trades, and produces results that cannot transfer to a $500 or $5 million account.
+
+Augr therefore needs two distinct paper modes:
+
+- `paper_scored`: declared capital tier, broker-realistic buying power, fees, settlement, borrow, and portfolio constraints. Only this mode can produce promotion evidence.
+- `paper_stress`: configurable or unlimited buying power for chaos, throughput, and risk-breaker tests. Results are labeled synthetic and excluded from strategy rankings.
+
+Never merge their orders, positions, ledger, performance, or dashboards.
+
+## Starting point and repository boundary
+
+This plan targets `main` commit `5517405`, which contains migration `000063_stock_copy_trading` and the paper-only 13F replication MVP. The current planning worktree is at `abec3ea`; implementation must begin from an updated branch based on `main`, not by assigning migration 63 to a second feature.
+
+### Preserve and extend
+
+| Existing component | Decision |
+| --- | --- |
+| `internal/execution/alpaca`, `binance`, `kalshi`, `polymarket` | Preserve as venue adapters; move economic state and lifecycle decisions out of adapter-specific code. |
+| `internal/execution/paper` | Replace immediate-fill authority with a configurable simulation venue backed by shared fill models. Retain restoration APIs during migration. |
+| `internal/backtest` fill, latency, depth, queue, adverse-selection, options, replay, and walk-forward components | Promote into the common simulation/research core rather than reimplementing them. |
+| `internal/risk` kill switches, persisted breaker state, exposure checks, and capital ladder | Preserve, then change inputs from fragmented position repositories to the authoritative portfolio projection. |
+| `internal/portfolio` opportunity and allocator work | Preserve scoring as an experimental allocator, but remove it as a second execution/accounting path. |
+| `internal/copytrading` | Keep deterministic target construction and source provenance; fix freshness, drift, execution, attribution, and evaluation gaps. |
+| `internal/providergovernor` | Make mandatory for every external provider and broker adapter. |
+| PostgreSQL and TimescaleDB | Keep as the system of record. Use immutable events and materialized projections rather than introducing another database. |
+| Existing web application | Keep as operator console; rebuild pages around accounts, experiments, evidence, risk, and reconciliation. |
+| LLM pipeline and memory | Retain as a research/control-plane capability. Remove it from the default order hot path. |
+
+### Supersede
+
+- Supersede ADR-006 paper assumptions with quote-aware, venue-specific simulation.
+- Supersede ADR-009's general human review requirement for paper mode with deterministic promotion and risk gates. Live activation remains a separate future decision.
+- Replace `active/paused/inactive` plus `is_active` ambiguity with one lifecycle state machine.
+- Replace strategy-created paper accounts and fake backing strategies with explicit accounts and execution origins.
+- Demote bar-return win rate and profit factor from promotion metrics; retain them only as descriptive curve diagnostics.
+- Retire fixed-probability and synthetic-depth prediction-market logic from scored execution.
+
+## Target architecture
+
+```mermaid
+flowchart TD
+    A["External sources and generative research"] --> B["Versioned observations and datasets"]
+    B --> C["Strategy or workflow compiler"]
+    C --> D["Deterministic strategy version"]
+    D --> E["Experiment and signal runner"]
+    E --> F["Trade intent"]
+    F --> G["Portfolio allocator"]
+    G --> H["Risk policy engine"]
+    H --> I["Order lifecycle service"]
+    I --> J["Simulation or venue adapter"]
+    J --> K["Order and fill events"]
+    K --> L["Immutable economic ledger"]
+    L --> M["Portfolio, P&L, attribution, and tax-lot projections"]
+    M --> G
+    M --> H
+    M --> N["Reconciliation and evidence engine"]
+    N --> O["Promotion, retirement, and alerts"]
+    O --> D
+```
+
+### Runtime separation
+
+Run five logical services in one deployable Go application initially. Preserve module boundaries so they can split later without requiring distributed systems now.
+
+1. **Ingestion:** market data, filings, news, calendars, reference data, and broker streams.
+2. **Research:** datasets, experiments, replays, generated strategy specifications, and evaluation.
+3. **Decision:** deterministic signals, targets, portfolio allocation, and risk admission.
+4. **Execution:** order state machine, venue adapters, simulation, settlement, and reconciliation.
+5. **Operations:** scheduler, leases, health, alerts, emergency controls, and the operator API.
+
+PostgreSQL transactions and an outbox table are the initial event bus. Do not add Kafka or another operational dependency until measured throughput requires it.
+
+## Canonical domain contracts
+
+Every market-specific adapter must translate into these common concepts.
+
+### Account
+
+An account is the economic and risk boundary. It is not inferred from a strategy.
+
+Required fields:
+
+- stable account ID;
+- environment: `paper_scored`, `paper_stress`, `shadow`, or future `live`;
+- venue and external account ID when applicable;
+- base currency;
+- starting capital and capital-flow history;
+- buying-power policy and margin profile;
+- current lifecycle status;
+- immutable creation metadata.
+
+### Instrument
+
+Create a canonical instrument master rather than using ticker strings as identity. An instrument includes asset class, venue, currency, tick and lot size, multiplier, expiration, exercise style, settlement method, and provider identifiers. Symbols become dated aliases. Corporate actions and futures rolls must not silently rewrite historical identity.
+
+### Execution origin
+
+Every intent, order, fill, position lot, and P&L contribution carries a typed origin:
+
+- `strategy_version`;
+- `copy_subscription`;
+- `portfolio_rebalance`;
+- `risk_reduction`;
+- `operator`;
+- `settlement`;
+- `reconciliation`.
+
+An origin can reference a strategy, experiment, copy observation, or operator action. It must not require creating a fake strategy record.
+
+### Strategy family, version, and deployment
+
+- **Family:** the durable thesis, such as quality-filtered wheel or 12-1 momentum.
+- **Version:** immutable code/config/data-contract combination with a content hash.
+- **Experiment:** one reproducible evaluation of a version against a dataset and simulation policy.
+- **Deployment:** assignment of an approved version to an account, capital budget, schedule, and risk policy.
+
+The same version may have several experiments and deployments. Editing rules creates a new version; it never changes historical evidence.
+
+### Intent and order lifecycle
+
+An intent says what economic change is desired and why. It is not a broker order.
+
+```text
+proposed -> allocated -> risk_approved -> routed -> working
+                                      \-> risk_rejected
+working -> partially_filled -> filled
+working -> cancelled | expired | rejected
+any nonterminal state -> failed_reconciliation
+```
+
+Intent creation and order submission use idempotency keys. Every state transition is append-only, timestamped, and linked to the market-data snapshot used for the decision.
+
+## Workstream A — Immutable economic ledger
+
+### Objective
+
+Create one source of truth for cash, collateral, positions, realized P&L, fees, settlement, and capital flows across all venues and modes.
+
+### Design
+
+Use double-entry postings with numeric amounts and explicit units. Store raw venue events separately, then derive balanced ledger transactions. Recommended accounts include:
+
+- cash by currency;
+- unsettled cash and receivables;
+- security inventory by instrument and lot;
+- option premium and contract inventory;
+- event-contract inventory;
+- margin collateral and borrowing;
+- realized P&L;
+- fees, rebates, interest, borrow, data, and model costs;
+- deposits and withdrawals;
+- settlement and assignment clearing accounts.
+
+Market value and unrealized P&L are projections using immutable mark observations, not destructive updates to historical cost.
+
+### Repository changes
+
+- Add `internal/ledger` for transactions, postings, lot matching, marks, and projections.
+- Move financial mutation out of `internal/execution/paper/broker.go` and venue-specific order managers.
+- Keep `orders`, `trades`, and `positions` as compatibility projections until parity is proven.
+- Add explicit account and origin IDs to all new economic events.
+- Store decimal quantities and money as PostgreSQL `NUMERIC`; avoid binary floating point in the authoritative ledger.
+
+### Invariants
+
+- Every ledger transaction balances by currency and unit.
+- A fill is applied once even after retry, restart, or duplicated broker events.
+- Cash cannot change without a referenced economic event.
+- Closed-lot realized P&L includes allocated entry and exit costs.
+- Equity equals cash plus marked assets minus liabilities.
+- Rebuilding projections from the event log produces byte-equivalent economic totals.
+
+### Exit gate
+
+For 30 consecutive daily snapshots, every paper and external paper account reconciles cash, buying power, positions, fees, and equity to its authoritative source or to the simulation event log with zero unexplained drift.
+
+## Workstream B — Capital, margin, and scale portability
+
+### Capital profiles
+
+Evaluate every candidate at several tiers using the same signals and dates:
+
+| Tier | Primary constraints to expose |
+| ---: | --- |
+| $500 | Fractional availability, minimum contract/notional, concentration, options infeasibility. |
+| $5,000 | Cash drag, assignment affordability, limited diversification. |
+| $25,000 | Day-trading and option collateral boundaries where applicable. |
+| $100,000 | Default paper operating account and main dashboard. |
+| $1,000,000 | Participation rate, market impact, strategy capacity. |
+| $5,000,000 | Venue concentration, depth, borrow, and operational capacity. |
+
+### Requirements
+
+- Capital flows are first-class ledger events; deposits do not reset performance history.
+- Time-weighted and money-weighted returns are both available.
+- Margin is a policy module selected by venue/account profile, not simply `buying_power = cash`.
+- The simulator supports cash, Reg-T-like, portfolio-style, and stress/unlimited profiles without claiming perfect broker parity.
+- Capacity constraints use participation rate, quote depth, spread, and order duration.
+- A strategy may be valid only for a subset of capital tiers; this is a result, not a failure.
+
+### Starter paper defaults
+
+Use these as conservative operating defaults, not permanent strategy truths:
+
+- scored net liquidation value: $100,000;
+- target gross exposure: 70%; hard gross exposure: 100%;
+- cash reserve: 20%;
+- maximum position: 5% unless the strategy contract justifies a lower or higher cap;
+- maximum strategy sleeve: 20%;
+- maximum event-market aggregate exposure: 10%;
+- warning at 5% drawdown, pause new risk at 10%, hard emergency halt at 15%;
+- maximum daily realized plus marked loss: 3%;
+- no automatic reset of a hard emergency halt.
+
+The stress account may lift these limits but cannot contribute to promotion metrics.
+
+## Workstream C — Common execution and simulation engine
+
+### Objective
+
+Backtest, internal paper, external paper, shadow, and future live execution must share one order state machine and differ only in venue capabilities and fill source.
+
+### Components
+
+- `internal/execution/lifecycle`: idempotent intent and order state machine.
+- `internal/execution/venue`: capability discovery, submission, cancellation, status, fills, balances, positions, and calendar contract.
+- `internal/simulation`: configurable venue simulator using current backtest fill, latency, queue, depth, adverse-selection, and options models.
+- `internal/reconciliation`: local-to-venue comparison, drift classification, and controlled correction intents.
+
+### Quote and fill contract
+
+Every executable decision needs:
+
+- bid, ask, last, and mark where available;
+- provider and venue;
+- exchange and receive timestamps;
+- quote age at intent and route time;
+- size/depth used for capacity;
+- tick and lot rules;
+- spread and expected cost;
+- session and market status.
+
+Fail closed on missing or stale required fields. A missing spread is not zero.
+
+### Simulation policies
+
+Implement versioned policies by asset class:
+
+- **Equities:** bid/ask crossing, spread capture for resting limits, ADV participation, latency, partial fills, corporate actions, dividends, and settlement.
+- **Options:** quote-side execution, contract multiplier, whole contracts, multi-leg atomicity assumptions, assignment, exercise, expiration, dividends, pin risk, and early exercise scenarios.
+- **Crypto:** venue fees, precision, 24/7 calendars, depth, maker/taker behavior, funding for derivatives when added, and venue outages.
+- **Prediction markets:** contract ticks, fee schedule, book depth, maker queue, partial and orphan fills, settlement, cancellation, resolution, and capital lockup.
+- **Futures:** contract definitions, initial/maintenance margin, variation settlement, roll policy, expiry, session breaks, and exchange fees before any futures strategy is scored.
+
+### Exit gate
+
+One golden replay must produce consistent intents and economic outcomes across backtest and internal paper when fed the same timestamped observations. Differences from external paper must be measured and attributed to known venue behavior.
+
+## Workstream D — Emergency brake and autonomous safety
+
+### Brake hierarchy
+
+Extend the existing persistent global and per-market kill switches with:
+
+- account scope;
+- strategy-deployment scope;
+- provider/venue scope;
+- entry-only halt;
+- cancel-working-orders action;
+- reduce-only mode;
+- explicit flatten action requiring a separate command;
+- heartbeat watchdog and stale-data trip;
+- restart persistence and acknowledgement workflow.
+
+Do not automatically flatten on every error. Cancellation and liquidation can make an incident worse. The default emergency action is: stop new exposure, cancel safe-to-cancel entries, preserve protective exits, and alert.
+
+### Trip conditions
+
+- ledger imbalance or reconciliation drift above zero tolerance for cash/fills;
+- stale required market data;
+- duplicate or impossible fill transition;
+- daily loss or drawdown threshold;
+- abnormal order rate or turnover;
+- provider authentication or clock-skew failure;
+- scheduler lease duplication;
+- position outside declared account or strategy caps;
+- repeated rejection or unexpected assignment;
+- operator command, file flag, or startup environment flag.
+
+### Exit gate
+
+Automated drills prove that API, database, file, and environment mechanisms survive process restart; no new exposure occurs after activation; protective exits still work in reduce-only mode; and resumption requires explicit acknowledgement.
+
+## Workstream E — Point-in-time data platform
+
+### Objective
+
+Make every research result reproducible and prevent future information from entering historical decisions.
+
+### Data contract
+
+Each dataset manifest stores:
+
+- provider and source identifiers;
+- request/query or file hash;
+- effective, published, observed, and available-at timestamps;
+- symbology version;
+- adjustment policy;
+- timezone and calendar;
+- revision and correction lineage;
+- row count and quality checks;
+- license/retention metadata;
+- content hash.
+
+### Required datasets
+
+- equities and ETFs: prices, quotes, corporate actions, fundamentals, and benchmark constituents;
+- options: chains, NBBO, open interest, rates/dividends, expirations, and contract definitions;
+- filings: original and amended 13F/Form 4 documents and availability timestamps;
+- prediction markets: book snapshots, trades, fees, market rules, and final resolution;
+- futures only when added: point-in-time definitions, rolls, settlements, and session calendars.
+
+### Quality gates
+
+- uniqueness and monotonic timestamps;
+- missing-session and stale-quote detection;
+- split/dividend reconciliation;
+- bid less than or equal to ask;
+- nonnegative volume/depth;
+- identifier validity windows;
+- provider-to-provider spot comparisons;
+- quarantine rather than silent repair for material defects.
+
+## Workstream F — Research and evidence laboratory
+
+### Experiment specification
+
+An experiment pins:
+
+- strategy version and source commit;
+- dataset manifests;
+- universe construction as of each date;
+- benchmark and cash return;
+- capital tier and margin profile;
+- simulation version and cost model;
+- train, validation, and test windows;
+- parameter grid or generation lineage;
+- random seed;
+- promotion policy version.
+
+### Evaluation sequence
+
+1. deterministic unit examples;
+2. in-sample development;
+3. walk-forward validation with purge/embargo where needed;
+4. untouched out-of-sample test;
+5. regime and parameter-stability analysis;
+6. fee, spread, latency, and impact sensitivity;
+7. bootstrap confidence intervals and return-concentration analysis;
+8. multiple-testing adjustment across generated variants;
+9. live-data shadow comparison;
+10. realistic paper deployment.
+
+### Metrics
+
+Primary metrics:
+
+- after-cost total and annualized return;
+- benchmark excess return and information ratio;
+- maximum drawdown and recovery time;
+- Sharpe, Sortino, and Calmar with stated frequency assumptions;
+- trade-level expectancy and profit factor;
+- turnover and total ownership cost;
+- exposure and concentration;
+- capacity by capital tier;
+- tracking error for replication strategies;
+- fill ratio and modeled-versus-observed slippage;
+- sample size and uncertainty intervals.
+
+Keep bar-return win rate only as a curve descriptor. Never present it as trade win rate.
+
+### Promotion rule
+
+Promotion is a policy evaluation, not a mutable status chosen in the UI. A candidate must show positive after-cost expectancy in the untouched test and shadow/paper evidence, acceptable drawdown, no critical data defects, stable behavior under reasonable perturbations, and a clear advantage or diversification benefit relative to the passive control.
+
+## Workstream G — Strategy lifecycle and portfolio allocation
+
+### Lifecycle
+
+```text
+idea -> specified -> researching -> validated -> shadow -> paper_candidate
+paper_candidate -> paper_active -> scale_candidate -> scaled
+any nonterminal state -> paused -> retired
+```
+
+Only deployments in `shadow`, `paper_candidate`, `paper_active`, or `scaled` may be scheduled. Discovery output begins at `idea`; it never starts active.
+
+### Initial strategy portfolio
+
+Limit the first program to these families:
+
+1. passive benchmark control;
+2. quality-filtered wheel;
+3. cross-sectional momentum plus quality/low-volatility controls;
+4. time-series trend across liquid ETFs initially;
+5. selected 13F replication;
+6. defined-risk volatility premium;
+7. complete-set prediction-market arbitrage;
+8. maker-first prediction-market quoting after book simulation is validated.
+
+Do not activate all eight simultaneously. Start with the benchmark plus two deterministic candidates, then add one family at a time.
+
+### Allocator
+
+The allocator receives normalized opportunities or target portfolios and returns approved account-level intents. It must:
+
+- use authoritative ledger projections;
+- prevent duplicate and conflicting exposure;
+- consider correlation and common underlyings;
+- reserve cash, margin, and event collateral;
+- allocate by risk and capacity rather than strategy confidence alone;
+- provide deterministic rejection reasons;
+- use compare-and-claim leases for multi-instance safety;
+- never infer missing liquidity or edge as zero-cost approval.
+
+## Workstream H — Copy-trading hardening
+
+Keep the new `copy_leaders`, sources, observations, mappings, subscriptions, and immutable 13F snapshots. Make the following changes before treating 13F replication as evidence-bearing:
+
+1. Add `max_source_age`, `max_quote_age`, and fail-closed quote requirements.
+2. Replace daily close execution prices with timestamped bid/ask or an explicitly delayed evaluation price.
+3. Populate and enforce real spread observations; missing spread rejects the intent.
+4. Run drift reconciliation every eligible session, not only when a new filing is ingested.
+5. Track remaining target drift and complete it across bounded sessions after turnover caps.
+6. Replace backing-strategy attribution with `copy_subscription` execution origin.
+7. Add amendment, supersession, restart, concurrency, idempotency, mapping-expiry, and corporate-action tests.
+8. Build a point-in-time multi-manager, multi-filing replay using actual publication availability.
+9. Report mapped, excluded, derivative, and confidential/unknown weight as cash.
+10. Evaluate after-publication return, benchmark alpha, tracking error, turnover, cost, and manager-selection stability.
+11. Require a manager-selection rule fixed before the test period; do not select famous managers using future performance.
+12. Keep paper-only status until all common promotion gates pass.
+
+## Workstream I — Prediction-market reconstruction
+
+### Structural strategies first
+
+Prioritize complete-set and mutually exclusive outcome arbitrage because the payoff can be calculated directly. Require all-leg reservation, executable depth, exact fees, and positive worst-case value after an orphan-leg scenario.
+
+### Market making second
+
+Implement post-only quoting with inventory skew, stale cancellation, maximum time in queue, adverse-selection markouts, per-market inventory caps, and resolution/closure handling. Score spread capture net of adverse selection and locked capital.
+
+### Directional forecasting last
+
+Directional models must output calibrated probabilities and abstain when edge does not clear fees, spread, uncertainty, and resolution risk. Track Brier/log loss by probability bucket and compare every model to market price and simple domain baselines. Remove any fixed fair-probability default from scored decisions.
+
+## Workstream J — AI and generative workflow control plane
+
+### Desired role
+
+AI is a force multiplier for research and operations, not an oracle with an order button.
+
+Build versioned workflows that can:
+
+- propose falsifiable hypotheses;
+- generate a typed strategy specification from a constrained schema;
+- generate implementation and tests on a branch;
+- create experiment grids and data requirements;
+- critique leakage, multiple testing, and cost assumptions;
+- compare results to baselines;
+- summarize filings and market rules with source timestamps;
+- investigate operational incidents;
+- recommend promotion or retirement with cited evidence.
+
+### Hard boundary
+
+An LLM cannot directly submit an order, change a risk limit, promote itself, alter historical evidence, or bypass a failed gate. It may create a candidate artifact. Deterministic services validate and execute that artifact.
+
+### Generative strategy contract
+
+Generated work must compile into:
+
+- typed inputs and freshness requirements;
+- deterministic entry, exit, and sizing rules;
+- explicit universe and benchmark;
+- prohibited behaviors;
+- cost and capacity assumptions;
+- property and example tests;
+- retirement criteria;
+- authoring model, prompt hash, token count, and monetary cost.
+
+Deduplicate generated hypotheses by family and behavior. New variants become experiment arms under one family, not new active strategies.
+
+## Workstream K — Autonomy, scheduling, and operations
+
+### Job contract
+
+Every recurring job has:
+
+- stable job type and version;
+- idempotency key;
+- compare-and-claim lease;
+- bounded retry policy by error class;
+- checkpoint and progress record;
+- dead-letter/attention state;
+- dependency-health requirements;
+- maximum runtime and cancellation behavior;
+- structured result counts;
+- no-op semantics that are distinguishable from failure.
+
+### Autonomous daily loop
+
+```text
+health and clock checks
+  -> reconcile accounts and settlements
+  -> ingest and validate data
+  -> update marks and risk projections
+  -> evaluate due deployments
+  -> allocate and risk-check intents
+  -> route or simulate orders
+  -> consume fills and settlements
+  -> reconcile again
+  -> compute evidence and drift
+  -> notify only on decisions, anomalies, and daily summary
+```
+
+Provider outage or corrupt data defaults to no new exposure. Exit and settlement workers remain available when safe.
+
+### Operator experience
+
+Reorganize the UI around:
+
+- account truth and capital flows;
+- global/market/account/strategy brake status;
+- reconciliation exceptions;
+- strategy families, versions, and promotion evidence;
+- experiments and reproducibility manifests;
+- paper-scored versus stress results;
+- execution-quality diagnostics;
+- copy-source freshness and drift;
+- AI workflow runs, artifacts, costs, and approvals;
+- one daily autonomous operations brief.
+
+## Provider and venue plan
+
+### Near-term recommendation
+
+1. **Keep Alpaca as the primary US equity/options paper adapter.** It already exists in Augr, paper options are enabled, and the API covers option contracts, positions, fills, assignment/exercise/expiration activities, and market data. Its paper behavior still requires independent modeling and reconciliation: paper non-trade option activities may appear the next day, and assignment events require REST polling rather than relying only on WebSockets. See [Alpaca options documentation](https://docs.alpaca.markets/us/docs/options-trading).
+2. **Keep Kalshi as the event-market venue.** Use the demo/live-data boundaries honestly and preserve exact fee, depth, resolution, and settlement provenance.
+3. **Add Tradier only as an options integration cross-check after the common lifecycle is complete.** Its sandbox exposes the trading API for equities and complex options, but sandbox market data is delayed; do not use its sandbox quote as an execution-quality ground truth. See [Tradier environments](https://docs.tradier.com/docs/endpoints) and [trading API](https://docs.tradier.com/docs/trading).
+4. **Defer Interactive Brokers until broad live multi-asset or futures support is justified.** It is the strongest strategic candidate for broad asset coverage, but its gateway/session operations and paper/live behavioral differences create substantial complexity. Its own documentation warns that paper execution can vary from live behavior. See [IBKR paper trading](https://www.interactivebrokers.com/docs/tws-api/doc/notes-limitations/limitations/paper-trading).
+5. **Evaluate Databento for decision-grade historical replay and future futures/options work.** Its normalized historical/live/reference coverage includes equities, OPRA options, futures, order-book data, corporate actions, security master, and market replay. Go can use its HTTP historical and Raw live APIs, but licensing and data cost must be tracked as experiment costs. See [Databento quickstart and coverage](https://databento.com/docs/quickstart).
+
+### Adapter order
+
+```text
+common lifecycle and ledger
+  -> Alpaca equities/options
+  -> Kalshi
+  -> internal simulation
+  -> Binance or current crypto test environment
+  -> Tradier comparison adapter
+  -> IBKR/futures only after an approved design experiment
+```
+
+“Anything” is an architectural capability, not permission to implement every venue before one strategy works.
+
+## Database migration sequence
+
+Begin after migration 63 on `main`. Exact columns should be finalized in ADRs and tests, but preserve this dependency order.
+
+| Migration | Scope | Cutover rule |
+| --- | --- | --- |
+| 064 | `accounts`, `capital_flows`, account environment and margin profile | Backfill one explicit paper account; do not infer future accounts from strategies. |
+| 065 | `ledger_transactions`, `ledger_postings`, `mark_observations`, projection checkpoints | Dual-write from existing financial lifecycle; abort on unbalanced postings. |
+| 066 | canonical instruments, aliases, venue contracts, corporate actions | Backfill existing symbols with effective-date aliases; quarantine ambiguity. |
+| 067 | execution origins, intents, intent events, order events, fill events | Link existing orders/trades where provenance is defensible; label unknown rather than inventing it. |
+| 068 | strategy families, immutable versions, experiments, deployments, lifecycle events | Map current strategies to legacy families; no legacy record becomes validated automatically. |
+| 069 | dataset manifests, observations, quality findings, experiment inputs | Pin new experiments; historical legacy runs remain `legacy_unpinned`. |
+| 070 | promotion policies, evaluations, evidence links, retirement decisions | Promotion becomes computed and auditable. |
+| 071 | risk-policy versions, scoped brake events, acknowledgements, watchdog state | Migrate current global/market breaker state without auto-clearing it. |
+| 072 | provider costs, model costs, data licenses, operational cost attribution | Replace zero-as-unknown with nullable/estimated/actual cost states. |
+
+Do not drop legacy tables during these migrations. Run dual projections, reconcile, cut reads over, then remove obsolete writes in a later cleanup migration.
+
+### Cutover method
+
+Use a strangler migration rather than a flag-day rewrite:
+
+1. add the new schema and pure domain packages without changing trading behavior;
+2. backfill only facts that have defensible provenance and label the rest `legacy_unknown`;
+3. dual-write or translate new lifecycle events into both the legacy and new projections;
+4. compare ledger, order, fill, position, and P&L projections continuously;
+5. switch read paths one bounded context at a time behind a killable feature flag;
+6. stop legacy writes only after a recorded parity window;
+7. retain rollback reads until the next release proves stable;
+8. remove dead code and columns in separate cleanup changes.
+
+Do not combine the ledger, execution, strategy-lifecycle, and AI cutovers in one pull request. Each boundary needs its own invariant tests and rollback instructions.
+
+## Dependency-ordered engineering backlog
+
+### Milestone 0 — Baseline and containment
+
+| ID | Work | Acceptance |
+| --- | --- | --- |
+| OVR-001 | Branch from `main` and capture database/code/config baseline | Commit, schema 63, strategy inventory, account snapshot, and open exposure are recorded. |
+| OVR-002 | Freeze generative activation and mass scheduling | New discoveries create `idea` artifacts only; no automatic active strategy creation. |
+| OVR-003 | Define and isolate scored versus stress paper modes | Configuration, storage namespaces, metrics, and UI cannot mix scored and synthetic stress results. |
+| OVR-004 | Expand emergency-brake drills | Entry halt, reduce-only, restart persistence, and out-of-band activation pass. |
+| OVR-005 | Write ADRs for ledger, lifecycle, paper modes, and AI boundary | Decisions are accepted before schema or interface cutover. |
+
+#### Phase 0 implementation record — 2026-08-14
+
+Phase 0 is code-complete on `codex/augr-overhaul`. It intentionally makes no production database, scheduler, strategy, or deployment mutation; those remain explicit operator actions after review.
+
+| ID | Result | Evidence and handoff |
+| --- | --- | --- |
+| OVR-001 | Complete | The reproducible [Phase 0 baseline](../../reports/2026-08-14-phase-0-baseline.txt) and SHA-256 sidecar record commit identity, runtime image, safe configuration, schema state, strategy inventory, pipeline outcomes, orders, trades, positions, reconciliation indicators, risk state, automation, and copy-trading schema. It exposes the important starting mismatch: code expects schema 63 while the observed runtime remains on schema 62 and an older application image. |
+| OVR-002 | Complete in code; production quarantine pending review | New generative discoveries are paper-only, inactive `idea` artifacts with no schedule and manual promotion metadata. Durable-backtest completion can no longer reactivate them. `scripts/freeze-generated-strategies.sh plan` found 171 legacy candidates; `apply` was deliberately not run against production and requires an explicit confirmation token. |
+| OVR-003 | Containment contract complete; account persistence continues in OVR-101 | `paper_scored` and `paper_stress` have distinct configuration identities, evidence classes, storage namespaces, broker profiles, and metrics. API and UI surfaces show the runtime profile and fail closed for stress or unlabelled evidence. Existing database aggregates predate account namespaces, so they are explicitly returned as `results_isolated=false` with a legacy-unscoped warning and cannot be treated as promotion evidence. Physical account-scoped persistence, deposits, and margin enforcement begin in OVR-101 rather than being faked here. |
+| OVR-004 | Complete | Entry orders halt under global, market, or breaker stops; only position-proven close intents pass as reduce-only and quantities are clamped to owned exposure. Kill-switch state persists across restart, state-load failure starts stopped, state-save failure is reported, and `scripts/emergency-brake-drill.sh` exercises API/file/env activation, restart, entry halt, and reduce-only behavior. |
+| OVR-005 | Complete | Accepted ADRs define the immutable ledger, common execution lifecycle, scored/stress paper boundary, and deterministic AI order boundary before schema cutover. |
+
+Local or deployment follow-up must preserve this order: review the branch, deploy schema 63, recapture the baseline, review and explicitly apply the legacy generated-strategy quarantine, run the emergency-brake drill in the target environment, and only then resume selected paper automation. No legacy strategy should be reactivated merely because it existed before Phase 0.
+
+### Milestone 1 — Economic truth
+
+| ID | Depends on | Work | Acceptance |
+| --- | --- | --- | --- |
+| OVR-101 | OVR-001, OVR-003, OVR-005 | Add accounts and capital flows | Deposits at every capital tier preserve return history and reconcile. |
+| OVR-102 | OVR-101 | Implement balanced ledger | Property tests reject unbalanced, duplicate, or wrong-currency postings. |
+| OVR-103 | OVR-102 | Adapt fills, fees, settlements, options events, and prediction payouts | All supported economic events create idempotent ledger transactions. |
+| OVR-104 | OVR-103 | Build cash, lot, position, P&L, and equity projections | Rebuild from zero matches stored projections. |
+| OVR-105 | OVR-104 | Dual-run legacy and new accounting | Differences are classified; unexplained drift is zero before cutover. |
+
+### Milestone 2 — Market truth and execution
+
+| ID | Depends on | Work | Acceptance |
+| --- | --- | --- | --- |
+| OVR-201 | OVR-005 | Canonical instrument and alias master | Corporate actions and dated aliases do not alter historical identity. |
+| OVR-202 | OVR-201 | Timestamped quote/depth snapshot contract | Missing age, bid, ask, or source fails closed when required. |
+| OVR-203 | OVR-102, OVR-202 | Common intent/order/fill lifecycle | Retries and restarts cannot duplicate economic effects. |
+| OVR-204 | OVR-203 | Move backtest fill models into common simulation venue | Backtest and paper share identical lifecycle and policy versions. |
+| OVR-205 | OVR-203 | Adapt Alpaca and Kalshi to common lifecycle | Adapter-specific order states map losslessly; unknown states halt safely. |
+| OVR-206 | OVR-204 | Add capital-tier and margin profiles | The same replay runs at $500 through $5 million plus stress mode. |
+| OVR-207 | OVR-104, OVR-205 | Common reconciliation service | Cash/fill/position drift creates incidents, not silent mutations. |
+
+### Milestone 3 — Strategy and research system
+
+| ID | Depends on | Work | Acceptance |
+| --- | --- | --- | --- |
+| OVR-301 | OVR-201, OVR-202 | Dataset manifests and quality service | Every new experiment pins point-in-time inputs and quality results. |
+| OVR-302 | OVR-301 | Strategy family/version/experiment/deployment model | Editing config creates a new immutable version. |
+| OVR-303 | OVR-204, OVR-206, OVR-302 | Reproducible experiment runner | Clean rerun reproduces intents, fills, metrics, and hashes. |
+| OVR-304 | OVR-303 | Trade-level and portfolio evaluation suite | Bar-return win rate is visibly separated from trade-level evidence. |
+| OVR-305 | OVR-304 | Walk-forward, perturbation, bootstrap, and multiple-testing gates | Generated variants cannot win by unadjusted search alone. |
+| OVR-306 | OVR-305 | Promotion and retirement evaluator | Status transitions are policy results with evidence links. |
+
+### Milestone 4 — Deterministic strategy program
+
+| ID | Depends on | Work | Acceptance |
+| --- | --- | --- | --- |
+| OVR-401 | OVR-303 | Passive benchmark control | Every experiment reports opportunity cost against the declared benchmark. |
+| OVR-402 | OVR-303 | Quality-filtered wheel version 1 | Assignment, dividends, capped upside, collateral, and total return are modeled. |
+| OVR-403 | OVR-303 | Momentum/quality baseline | Point-in-time universe, turnover, and regime tests pass. |
+| OVR-404 | OVR-303 | ETF time-series trend baseline | Multi-horizon rules and volatility scaling are deterministic and costed. |
+| OVR-405 | OVR-202, OVR-203, OVR-303 | Defined-risk options baseline | Multi-leg fill and orphan-risk assumptions are explicit. |
+| OVR-406 | OVR-304, OVR-401–OVR-405 | Compare candidates at all capital tiers | Capacity and minimum viable capital are reported per family. |
+
+### Milestone 5 — Copy and event-market repair
+
+| ID | Depends on | Work | Acceptance |
+| --- | --- | --- | --- |
+| OVR-501 | OVR-202, OVR-203, OVR-302 | Replace copy backing strategies with origins | Subscription attribution remains exact without registry sprawl. |
+| OVR-502 | OVR-501 | Quote freshness, real spread, and session gates | Zero/missing spread and stale closes cannot approve an intent. |
+| OVR-503 | OVR-501 | Multi-session target-drift reconciler | Turnover-capped targets converge without requiring a new filing. |
+| OVR-504 | OVR-301, OVR-303, OVR-503 | Point-in-time 13F replay | Manager selection and all decisions use publication-available data only. |
+| OVR-505 | OVR-203, OVR-301 | Prediction-market book and fee recorder | Replays use executable historical size and exact fee policy. |
+| OVR-506 | OVR-505 | Complete-set arbitrage engine | All legs, capital reservation, and orphan worst case must remain profitable. |
+| OVR-507 | OVR-505 | Maker simulation and quoting | Net spread capture remains positive after markouts and inventory cost. |
+
+### Milestone 6 — AI workbench and autonomy
+
+| ID | Depends on | Work | Acceptance |
+| --- | --- | --- | --- |
+| OVR-601 | OVR-302 | Typed generative strategy schema and compiler | Invalid or nondeterministic outputs never become deployments. |
+| OVR-602 | OVR-301, OVR-305, OVR-601 | Hypothesis generation and critic workflows | Each artifact includes sources, prompt/model hash, tests, and search lineage. |
+| OVR-603 | OVR-306, OVR-602 | Evidence-review workflow | AI recommendations cannot change promotion state; policy evaluator remains authoritative. |
+| OVR-604 | OVR-203 | Idempotent leased scheduler for every financial job | Two instances cannot create duplicate intents, orders, or settlements. |
+| OVR-605 | OVR-207, OVR-604 | Autonomous daily supervisor | Dependency failure halts new exposure and preserves safe exits/reconciliation. |
+| OVR-606 | OVR-102, OVR-301, OVR-603 | Full cost attribution | Model, data, fee, rebate, and infrastructure costs are actual, estimated, or explicitly unknown. |
+| OVR-607 | OVR-605 | Daily operator brief and incident inbox | One brief explains performance, decisions, drift, risk, costs, and required attention. |
+
+### Milestone 7 — Evidence program
+
+| ID | Depends on | Work | Acceptance |
+| --- | --- | --- | --- |
+| OVR-701 | Milestones 1–3 | Golden replay and restart campaign | Determinism, idempotency, and ledger reconstruction pass under injected failures. |
+| OVR-702 | OVR-401 plus two candidates | 30-day shadow run | Data and simulated execution have no critical defects; slippage divergence is measured. |
+| OVR-703 | OVR-702 | 60–90 day scored paper run | At least one candidate shows positive after-cost expectancy or is honestly rejected. |
+| OVR-704 | OVR-703 | Portfolio paper run | Combined allocation improves or preserves risk-adjusted evidence versus the best single sleeve. |
+| OVR-705 | OVR-704 | Architecture readiness review | System can accept deposits, resize safely, run unattended, brake, restart, and reconcile. |
+
+## Test and verification contract
+
+### Required layers
+
+- Unit tests for pure calculations and every state transition.
+- Property tests for ledger balance, idempotency, lot conservation, margin, and target convergence.
+- Golden replays for deterministic strategy, execution, and accounting results.
+- PostgreSQL migration and repository integration tests.
+- Contract tests for every venue adapter using captured and synthetic edge cases.
+- Restart tests at every nonterminal order and settlement state.
+- Concurrency tests with two scheduler/worker instances.
+- Chaos tests for timeouts, duplicate messages, stale quotes, partial fills, provider 429s, and database restarts.
+- End-to-end tests from observation through ledger posting and dashboard projection.
+- Browser tests for emergency controls, evidence inspection, and inaccessible/partial data states.
+
+### Release gates
+
+At minimum:
+
+```bash
+go test ./...
+go test -race ./internal/ledger/... ./internal/execution/... ./internal/risk/... ./internal/automation/...
+npm --prefix web test
+npm --prefix web run build
+./scripts/release-gate.sh
+```
+
+Add migration-up, migration-down-on-fixture, replay-determinism, and ledger-rebuild commands to the release gate. A failed financial invariant blocks deployment even if all nonfinancial features pass.
+
+## Operational service levels
+
+- scheduled decision completion: at least 99% excluding deliberate no-op/closed-market runs;
+- unexplained fill, cash, or position drift: zero;
+- orders using stale required data: zero;
+- duplicate economic events: zero;
+- unversioned new experiments: zero;
+- unpriced open positions beyond venue-specific grace period: zero;
+- time from hard trip to entry halt: under one scheduler/worker cycle and under 10 seconds for streaming execution;
+- autonomous restart recovery: no manual database edits;
+- daily brief delivery: 100% or a surfaced delivery incident;
+- model/data costs recorded or explicitly unknown: 100%.
+
+## Explicit non-goals
+
+- Selling Augr, accepting other people's capital, public leaderboards, subscriptions, custody, or social trading.
+- Enabling live trading during this overhaul.
+- Supporting every broker or asset before the common ledger and lifecycle prove themselves.
+- Ultra-low-latency or colocated trading.
+- Hiding losing experiments or optimizing dashboards to look profitable.
+- Letting an LLM directly control orders or risk limits.
+- Treating unlimited paper margin as investment evidence.
+
+## Definition of overhaul complete
+
+The overhaul is complete when all of the following are true:
+
+1. A clean deployment can create a scored paper account with any supported starting capital, including $500 and $5 million.
+2. Deposits and withdrawals flow through a balanced ledger without resetting history.
+3. Every intent, order, fill, position, fee, settlement, and P&L amount is attributable to an account and typed origin.
+4. Restarting at any lifecycle point neither loses nor duplicates economic state.
+5. Paper simulation uses timestamped executable market data, realistic costs, partial fills, and venue rules.
+6. The emergency brake works out of band, persists, supports reduce-only behavior, and requires explicit acknowledgement.
+7. Strategy versions and experiments are immutable, reproducible, point-in-time, and compared with a passive control.
+8. Generated strategies cannot activate themselves and cannot bypass deterministic evaluation.
+9. Copy trading uses fresh quotes, multi-session drift reconciliation, clean origins, and point-in-time historical evidence.
+10. Prediction-market strategies use actual book, fee, and settlement semantics.
+11. At least one deterministic candidate completes shadow and scored-paper evaluation; profitability may be modest, but the result is after cost and statistically honest.
+12. The system can operate unattended, fail closed, reconcile itself, and produce one concise daily explanation of what it did.
+
+If no strategy clears the evidence gates, the overhaul still succeeds technically: Augr will have answered the experiment honestly instead of manufacturing a profitable-looking result.

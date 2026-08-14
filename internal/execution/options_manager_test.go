@@ -373,7 +373,8 @@ func TestProcessSpreadSignalAtomicallyClosesPersistedLegGroup(t *testing.T) {
 		{Contract: domain.OptionContract{OCCSymbol: positions[1].Ticker, Underlying: "AAPL", OptionType: optionType, Strike: shortStrike, Expiry: expiry, Multiplier: 100}, Side: domain.OrderSideBuy, PositionIntent: domain.PositionIntentBuyToClose, Ratio: 1, ExecutablePrice: 1.2},
 	}}
 	fillRepo := &recordingOptionFillRepo{}
-	mgr := newTestOptionsManagerWithFillRepo(paper.NewPaperBroker(100000, 0, 0), orderRepo, positionRepo, tradeRepo, &mockRiskEngine{}, fillRepo).WithBrokerName("paper")
+	riskEng := &mockRiskEngine{isKillSwitchActiveFn: func(context.Context) (bool, error) { return true, nil }}
+	mgr := newTestOptionsManagerWithFillRepo(paper.NewPaperBroker(100000, 0, 0), orderRepo, positionRepo, tradeRepo, riskEng, fillRepo).WithBrokerName("paper")
 	if err := mgr.ProcessSpreadSignal(context.Background(), spread, 1, strategyID, uuid.New()); err != nil {
 		t.Fatalf("ProcessSpreadSignal(close) error = %v", err)
 	}

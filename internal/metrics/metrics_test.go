@@ -80,6 +80,9 @@ func TestNew(t *testing.T) {
 	if m.KillSwitchActive == nil {
 		t.Fatal("KillSwitchActive is nil")
 	}
+	if m.PaperEvaluationProfile == nil {
+		t.Fatal("PaperEvaluationProfile is nil")
+	}
 	if m.LLMRetryTotal == nil {
 		t.Fatal("LLMRetryTotal is nil")
 	}

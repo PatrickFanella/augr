@@ -80,6 +80,7 @@ type Server struct {
 	riskBreaker       risk.Breaker
 	riskBreakerLister RiskBreakerLister
 	accountBalance    AccountBalanceSource
+	paperEvaluation   *domain.PaperEvaluationProfile
 	settings          SettingsService
 	prompts           *PromptSettingsService
 	runner            StrategyRunner
@@ -224,6 +225,7 @@ type Deps struct {
 	RiskBreaker            risk.Breaker
 	RiskBreakerLister      RiskBreakerLister
 	AccountBalance         AccountBalanceSource
+	PaperEvaluation        *domain.PaperEvaluationProfile
 	Settings               SettingsService
 	Prompts                *PromptSettingsService
 	Runner                 StrategyRunner
@@ -359,6 +361,7 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 		riskBreaker:           deps.RiskBreaker,
 		riskBreakerLister:     deps.RiskBreakerLister,
 		accountBalance:        deps.AccountBalance,
+		paperEvaluation:       deps.PaperEvaluation,
 		settings:              settingsService,
 		prompts:               promptService,
 		runner:                deps.Runner,

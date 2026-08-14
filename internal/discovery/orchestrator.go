@@ -420,10 +420,10 @@ func RunDiscovery(ctx context.Context, cfg DiscoveryConfig, deps DiscoveryDeps) 
 	return result, nil
 }
 
-// createOrReuseDiscoveryStrategy makes the backtest definition a deployment
-// precondition. New strategies are inserted paused and become active only after
-// their config is durable. A reused active strategy that predates this invariant
-// is paused while its missing config is repaired, so failure remains fail-closed.
+// createOrReuseDiscoveryStrategy makes the backtest definition a durable
+// research precondition. New candidates remain inactive and unscheduled after
+// their config is stored. A reused active legacy strategy is paused only when a
+// missing config must be repaired; discovery never reactivates it.
 func createOrReuseDiscoveryStrategy(
 	ctx context.Context,
 	strategy domain.Strategy,
@@ -442,14 +442,9 @@ func createOrReuseDiscoveryStrategy(
 		return domain.Strategy{}, false, fmt.Errorf("at least two historical bars are required")
 	}
 
-	desiredStatus := strategy.Status
-	strategy.Status = domain.StrategyStatusPaused
 	persisted, created, err := CreateOrReusePaperStrategy(ctx, strategies, strategy)
 	if err != nil {
 		return domain.Strategy{}, false, err
-	}
-	if !created {
-		desiredStatus = persisted.Status
 	}
 
 	existingConfigs, err := configs.List(ctx, repository.BacktestConfigFilter{StrategyID: &persisted.ID}, 1, 0)
@@ -482,22 +477,7 @@ func createOrReuseDiscoveryStrategy(
 			}
 			return domain.Strategy{}, false, fmt.Errorf("create backtest config: %w", err)
 		}
-		return persisted, false, fmt.Errorf("create backtest config; strategy remains paused: %w", err)
-	}
-
-	if desiredStatus == domain.StrategyStatusActive {
-		persisted.Status = domain.StrategyStatusActive
-		if err := strategies.Update(ctx, &persisted); err != nil {
-			if created {
-				configCleanupErr := configs.Delete(ctx, btCfg.ID)
-				strategyCleanupErr := strategies.Delete(ctx, persisted.ID)
-				if configCleanupErr != nil || strategyCleanupErr != nil {
-					return persisted, true, fmt.Errorf("activate strategy: %w; remove config: %v; remove paused strategy: %v", err, configCleanupErr, strategyCleanupErr)
-				}
-				return domain.Strategy{}, false, fmt.Errorf("activate strategy: %w", err)
-			}
-			return persisted, false, fmt.Errorf("reactivate repaired strategy; strategy remains paused: %w", err)
-		}
+		return persisted, false, fmt.Errorf("create backtest config; strategy remains fail-closed: %w", err)
 	}
 
 	return persisted, created, nil

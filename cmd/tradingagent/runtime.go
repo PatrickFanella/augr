@@ -302,6 +302,11 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 	redisHealth, closeRedis := newRedisHealthCheck(cfg)
 
 	appMetrics := metrics.New()
+	var paperEvaluation *domain.PaperEvaluationProfile
+	if paperProfile, profileErr := cfg.Paper.EvaluationProfile(); profileErr == nil {
+		appMetrics.SetPaperEvaluationProfile(string(paperProfile.Mode), paperProfile.StorageNamespace, paperProfile.EvidenceClass)
+		paperEvaluation = &paperProfile
+	}
 	surfersMetricsOnce.Do(func() { surfersMetricsInst = observability.NewSurfersMetrics(prometheus.DefaultRegisterer) })
 	surfersMetrics := surfersMetricsInst
 	sharedLLMBudget := llm.BuildLLMBudget(cfg.LLM)
@@ -390,6 +395,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 		Risk:                   riskEngine,
 		RiskBreaker:            riskBreaker,
 		RiskBreakerLister:      riskBreakerRepo,
+		PaperEvaluation:        paperEvaluation,
 		Settings:               settingsSvc,
 		Prompts:                promptSettingsSvc,
 		DBHealth:               api.HealthCheckFunc(db.Pool.Ping),

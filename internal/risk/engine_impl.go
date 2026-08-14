@@ -215,6 +215,17 @@ func (e *RiskEngineImpl) tripLocked(reason string) bool {
 
 // CheckPreTrade evaluates whether an order should be allowed before submission.
 func (e *RiskEngineImpl) CheckPreTrade(ctx context.Context, order *domain.Order, _ Portfolio) (bool, string, error) {
+	if order == nil {
+		return false, "order is nil", nil
+	}
+	if order.Ticker == "" {
+		return false, "order ticker is required", nil
+	}
+	if order.Quantity <= 0 {
+		return false, "order quantity must be positive", nil
+	}
+	reduceOnly := order.IsReduceOnly()
+
 	e.state.mu.Lock()
 	cooldownReset := e.checkCooldownLocked()
 	apiKS := e.state.ks
@@ -226,7 +237,7 @@ func (e *RiskEngineImpl) CheckPreTrade(ctx context.Context, order *domain.Order,
 	}
 
 	ksActive, _ := e.isKillSwitchActiveUnlocked(apiKS)
-	if ksActive {
+	if ksActive && !reduceOnly {
 		reason := apiKS.Reason
 		if reason == "" {
 			reason = "external mechanism"
@@ -237,7 +248,7 @@ func (e *RiskEngineImpl) CheckPreTrade(ctx context.Context, order *domain.Order,
 	// Per-market kill switch check.
 	if order != nil && order.MarketType != "" {
 		mks, hasMKS := e.activeMarketKillSwitchSnapshot(order.MarketType)
-		if hasMKS && mks.Active {
+		if hasMKS && mks.Active && !reduceOnly {
 			reason := mks.Reason
 			if reason == "" {
 				reason = "market kill switch active"
@@ -246,23 +257,14 @@ func (e *RiskEngineImpl) CheckPreTrade(ctx context.Context, order *domain.Order,
 		}
 	}
 
-	if cb.State == CircuitBreakerPhaseTripped {
+	if cb.State == CircuitBreakerPhaseTripped && !reduceOnly {
 		return false, fmt.Sprintf("circuit breaker tripped: %s", cb.Reason), nil
-	}
-
-	if order == nil {
-		return false, "order is nil", nil
-	}
-	if order.Ticker == "" {
-		return false, "order ticker is required", nil
-	}
-	if order.Quantity <= 0 {
-		return false, "order quantity must be positive", nil
 	}
 
 	e.logger.InfoContext(ctx, "pre-trade check passed",
 		slog.String("ticker", order.Ticker),
 		slog.Float64("quantity", order.Quantity),
+		slog.Bool("reduce_only", reduceOnly),
 	)
 	return true, "", nil
 }
@@ -367,8 +369,7 @@ func (e *RiskEngineImpl) ActivateKillSwitch(ctx context.Context, reason string) 
 		slog.String("reason", reason),
 		slog.String("mechanism", KillSwitchMechanismAPI.String()),
 	)
-	e.saveState(ctx, snapshot)
-	return nil
+	return e.saveState(ctx, snapshot)
 }
 
 // DeactivateKillSwitch deactivates the API toggle mechanism of the kill switch.
@@ -382,8 +383,7 @@ func (e *RiskEngineImpl) DeactivateKillSwitch(ctx context.Context) error {
 	e.logger.InfoContext(ctx, "kill switch deactivated",
 		slog.String("mechanism", KillSwitchMechanismAPI.String()),
 	)
-	e.saveState(ctx, snapshot)
-	return nil
+	return e.saveState(ctx, snapshot)
 }
 
 // IsMarketKillSwitchActive returns whether the kill switch is active for the
@@ -405,8 +405,7 @@ func (e *RiskEngineImpl) ActivateMarketKillSwitch(ctx context.Context, marketTyp
 		slog.String("market_type", string(marketType)),
 		slog.String("reason", reason),
 	)
-	e.saveState(ctx, snapshot)
-	return nil
+	return e.saveState(ctx, snapshot)
 }
 
 // DeactivateMarketKillSwitch clears the kill switch for the given market type.
@@ -419,8 +418,7 @@ func (e *RiskEngineImpl) DeactivateMarketKillSwitch(ctx context.Context, marketT
 	e.logger.InfoContext(ctx, "market kill switch deactivated",
 		slog.String("market_type", string(marketType)),
 	)
-	e.saveState(ctx, snapshot)
-	return nil
+	return e.saveState(ctx, snapshot)
 }
 
 // UpdateMetrics evaluates post-trade metrics and auto-trips the circuit breaker

@@ -37,8 +37,11 @@ func (e *RiskEngineImpl) WithStatePersister(ctx context.Context, p StatePersiste
 	e.persister = p
 	state, err := p.Load(ctx)
 	if err != nil {
-		e.logger.Warn("risk: failed to load persisted state, starting clean",
+		e.logger.Error("risk: failed to load persisted state, failing closed",
 			slog.String("error", err.Error()))
+		e.state.mu.Lock()
+		e.activateKillSwitchLocked("risk state restore failed: " + err.Error())
+		e.state.mu.Unlock()
 		return e
 	}
 
@@ -73,15 +76,17 @@ func (e *RiskEngineImpl) buildPersistedStateLocked() PersistedRiskState {
 	}
 }
 
-// saveState writes the risk state to the persister if one is configured.
-// Errors are logged but not returned — persistence is best-effort and must
-// not block the safety path.
-func (e *RiskEngineImpl) saveState(ctx context.Context, state PersistedRiskState) {
+// saveState writes the risk state to the persister if one is configured. The
+// in-memory safety action happens first, but callers receive persistence errors
+// so they never mistake a restart-unsafe toggle for a durable one.
+func (e *RiskEngineImpl) saveState(ctx context.Context, state PersistedRiskState) error {
 	if e.persister == nil {
-		return
+		return nil
 	}
 	if err := e.persister.Save(ctx, state); err != nil {
 		e.logger.Error("risk: failed to persist kill switch state",
 			slog.String("error", err.Error()))
+		return err
 	}
+	return nil
 }

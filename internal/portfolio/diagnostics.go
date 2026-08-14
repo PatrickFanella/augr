@@ -33,6 +33,16 @@ type DecisionDiagnostic struct {
 	Evidence    map[string]any
 }
 
+// PaperEvaluationDiagnostic makes the evidence boundary visible to API and UI
+// consumers. Unlabelled legacy data is deliberately never promotion eligible.
+type PaperEvaluationDiagnostic struct {
+	Mode              string `json:"mode"`
+	StorageNamespace  string `json:"storage_namespace"`
+	EvidenceClass     string `json:"evidence_class"`
+	PromotionEligible bool   `json:"promotion_eligible"`
+	ResultsIsolated   bool   `json:"results_isolated"`
+}
+
 type DiagnosticsInput struct {
 	StrategyRuns             []RunDiagnostic
 	TradeDecisions           []DecisionDiagnostic
@@ -55,28 +65,31 @@ type DiagnosticsInput struct {
 	AccountBalanceAvailable  bool
 	GrossExposure            float64
 	TargetGrossExposurePct   float64
+	PaperEvaluation          *domain.PaperEvaluationProfile
+	PaperResultsIsolated     bool
 }
 
 type DiagnosticsSummary struct {
-	TotalStrategyRuns         int            `json:"total_strategy_runs"`
-	TotalTradeDecisions       int            `json:"total_trade_decisions"`
-	TotalStrategies           int            `json:"total_strategies"`
-	TotalOpenPositions        int            `json:"total_open_positions"`
-	SampleStrategyRuns        int            `json:"sample_strategy_runs"`
-	SampleTradeDecisions      int            `json:"sample_trade_decisions"`
-	SampleStrategies          int            `json:"sample_strategies"`
-	SampleOpenPositions       int            `json:"sample_open_positions"`
-	RunCountsBySignal         map[string]int `json:"run_counts_by_signal"`
-	RunCountsByStatus         map[string]int `json:"run_counts_by_status"`
-	DecisionCountsByStatus    map[string]int `json:"decision_counts_by_status"`
-	NoActionReasons           map[string]int `json:"no_action_reasons"`
-	ActiveStrategiesByMarket  map[string]int `json:"active_strategies_by_market"`
-	OpenPositionsByMarket     map[string]int `json:"open_positions_by_market"`
-	BuyingPowerUtilizationPct float64        `json:"buying_power_utilization_pct"`
-	GrossExposurePct          float64        `json:"gross_exposure_pct"`
-	TargetGrossExposurePct    float64        `json:"target_gross_exposure_pct"`
-	UtilizationGapPct         float64        `json:"utilization_gap_pct"`
-	Warnings                  []string       `json:"warnings"`
+	TotalStrategyRuns         int                       `json:"total_strategy_runs"`
+	TotalTradeDecisions       int                       `json:"total_trade_decisions"`
+	TotalStrategies           int                       `json:"total_strategies"`
+	TotalOpenPositions        int                       `json:"total_open_positions"`
+	SampleStrategyRuns        int                       `json:"sample_strategy_runs"`
+	SampleTradeDecisions      int                       `json:"sample_trade_decisions"`
+	SampleStrategies          int                       `json:"sample_strategies"`
+	SampleOpenPositions       int                       `json:"sample_open_positions"`
+	RunCountsBySignal         map[string]int            `json:"run_counts_by_signal"`
+	RunCountsByStatus         map[string]int            `json:"run_counts_by_status"`
+	DecisionCountsByStatus    map[string]int            `json:"decision_counts_by_status"`
+	NoActionReasons           map[string]int            `json:"no_action_reasons"`
+	ActiveStrategiesByMarket  map[string]int            `json:"active_strategies_by_market"`
+	OpenPositionsByMarket     map[string]int            `json:"open_positions_by_market"`
+	BuyingPowerUtilizationPct float64                   `json:"buying_power_utilization_pct"`
+	GrossExposurePct          float64                   `json:"gross_exposure_pct"`
+	TargetGrossExposurePct    float64                   `json:"target_gross_exposure_pct"`
+	UtilizationGapPct         float64                   `json:"utilization_gap_pct"`
+	PaperEvaluation           PaperEvaluationDiagnostic `json:"paper_evaluation"`
+	Warnings                  []string                  `json:"warnings"`
 }
 
 func BuildDiagnosticsSummary(input DiagnosticsInput) DiagnosticsSummary {
@@ -95,7 +108,21 @@ func BuildDiagnosticsSummary(input DiagnosticsInput) DiagnosticsSummary {
 		NoActionReasons:          map[string]int{},
 		ActiveStrategiesByMarket: map[string]int{},
 		OpenPositionsByMarket:    map[string]int{},
-		Warnings:                 []string{},
+		PaperEvaluation: PaperEvaluationDiagnostic{
+			Mode:             "unlabelled",
+			StorageNamespace: "legacy_unknown",
+			EvidenceClass:    "legacy_unknown",
+		},
+		Warnings: []string{},
+	}
+	if profile := input.PaperEvaluation; profile != nil {
+		summary.PaperEvaluation = PaperEvaluationDiagnostic{
+			Mode:              string(profile.Mode),
+			StorageNamespace:  profile.StorageNamespace,
+			EvidenceClass:     profile.EvidenceClass,
+			PromotionEligible: profile.PromotionEligible(),
+			ResultsIsolated:   input.PaperResultsIsolated,
+		}
 	}
 
 	for k, v := range input.RunCountsBySignal {

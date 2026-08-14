@@ -179,6 +179,13 @@ export type AllocatorDiagnostics = {
   gross_exposure_pct: number
   target_gross_exposure_pct: number
   utilization_gap_pct: number
+  paper_evaluation: {
+    mode: string
+    storage_namespace: string
+    evidence_class: string
+    promotion_eligible: boolean
+    results_isolated: boolean
+  }
   warnings: string[]
 }
 

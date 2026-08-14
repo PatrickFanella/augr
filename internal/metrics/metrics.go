@@ -44,6 +44,7 @@ type Metrics struct {
 	PositionsOpen                      prometheus.Gauge
 	CircuitBreakerState                prometheus.Gauge
 	KillSwitchActive                   prometheus.Gauge
+	PaperEvaluationProfile             *prometheus.GaugeVec
 	LLMRetryTotal                      *prometheus.CounterVec
 	LLMBudgetExhaustedTotal            prometheus.Counter
 	ReportWorkerSuccessTotal           *prometheus.CounterVec
@@ -231,6 +232,11 @@ func New() *Metrics {
 			Help: "Kill switch state: 1 = active, 0 = inactive.",
 		}),
 
+		PaperEvaluationProfile: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "tradingagent_paper_evaluation_profile_info",
+			Help: "Active paper evidence namespace; exactly one label set should have value 1.",
+		}, []string{"mode", "storage_namespace", "evidence_class"}),
+
 		LLMRetryTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "tradingagent_llm_retry_total",
 			Help: "Total LLM retry attempts by provider.",
@@ -292,6 +298,7 @@ func New() *Metrics {
 		m.PositionsOpen,
 		m.CircuitBreakerState,
 		m.KillSwitchActive,
+		m.PaperEvaluationProfile,
 		m.LLMRetryTotal,
 		m.LLMBudgetExhaustedTotal,
 		m.ReportWorkerSuccessTotal,
@@ -501,6 +508,16 @@ func (m *Metrics) SetKillSwitchActive(active bool) {
 	} else {
 		m.KillSwitchActive.Set(0)
 	}
+}
+
+// SetPaperEvaluationProfile exposes the active evidence namespace without
+// collapsing scored and synthetic stress results into one metric series.
+func (m *Metrics) SetPaperEvaluationProfile(mode, namespace, evidenceClass string) {
+	if m == nil {
+		return
+	}
+	m.PaperEvaluationProfile.Reset()
+	m.PaperEvaluationProfile.WithLabelValues(mode, namespace, evidenceClass).Set(1)
 }
 
 // RecordLLMRetry increments the retry counter for a given provider.

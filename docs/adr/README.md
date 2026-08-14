@@ -2,7 +2,7 @@
 title: "Architecture Decision Records"
 description: "Index and authoring rules for ADRs in get-rich-quick."
 status: "canonical"
-updated: "2026-04-03"
+updated: "2026-08-14"
 tags: [adr, architecture, decisions]
 ---
 
@@ -17,16 +17,20 @@ This directory records material technical decisions that shaped the current syst
 - [ADR-003: PostgreSQL full-text search for memory](003-postgres-fts-memory.md)
 - [ADR-004: Custom DAG/runner engine](004-custom-dag-engine.md)
 - [ADR-005: Position sizing strategy](005-position-sizing-strategy.md)
-- [ADR-006: Paper trading assumptions](006-paper-trading-assumptions.md)
+- [ADR-006: Paper trading assumptions](006-paper-trading-assumptions.md) — superseded by ADR-018
 - [ADR-007: Deployment topology](007-deployment-topology.md)
 - [ADR-008: Correlated exposure controls](008-correlated-exposure.md)
-- [ADR-009: Human review gate](009-human-review-gate.md)
+- [ADR-009: Human review gate](009-human-review-gate.md) — superseded by ADR-019
 - [ADR-010: Frontend routing, app shell, and repository organization](010-frontend-routing-app-shell-organization.md)
 - [ADR-011: Frontend server state and API client](011-frontend-server-state-api-client.md)
 - [ADR-012: Frontend authentication, token storage, and refresh](012-frontend-auth-token-refresh.md)
 - [ADR-013: Frontend WebSocket and realtime cache synchronization](013-frontend-websocket-realtime.md)
 - [ADR-014: Frontend UI data entry and display infrastructure](014-frontend-ui-data-entry-display.md)
 - [ADR-015: Frontend testing, mocks, accessibility, E2E, and observability](015-frontend-testing-mocks-observability.md)
+- [ADR-016: Immutable double-entry economic ledger](016-immutable-economic-ledger.md)
+- [ADR-017: Common intent and execution lifecycle](017-common-execution-lifecycle.md)
+- [ADR-018: Isolate scored and stress paper modes](018-scored-and-stress-paper-modes.md)
+- [ADR-019: Deterministic boundary between AI research and orders](019-deterministic-ai-order-boundary.md)
 
 ## ADR status lifecycle
 

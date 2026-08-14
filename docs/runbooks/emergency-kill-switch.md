@@ -9,7 +9,9 @@ type: runbook
 
 ## Context
 
-Use this runbook when trading must stop immediately because of a bad deployment, runaway strategy behavior, market data corruption, broker instability, or manual incident response. The risk engine blocks new orders when any kill switch mechanism is active. This service checks three mechanisms: API toggle, local file flag at `/tmp/tradingagent_kill`, and the `TRADING_AGENT_KILL=true` process environment variable.
+Use this runbook when trading must stop immediately because of a bad deployment, runaway strategy behavior, market data corruption, broker instability, or manual incident response. An active kill switch puts execution into **verified reduce-only mode**: new or increasing risk is blocked, while a close order may proceed only when the execution manager has found the matching open position, clamped the order to owned quantity, and attached an explicit close intent. A bare `SELL` is never inferred to be reduce-only. This service checks three mechanisms: API toggle, local file flag at `/tmp/tradingagent_kill`, and the `TRADING_AGENT_KILL=true` process environment variable.
+
+If persisted risk state cannot be loaded, startup fails closed into the same reduce-only mode. API activation and deactivation return an error when their state cannot be saved; the in-process brake still activates before that error is returned.
 
 ## Steps
 
@@ -42,7 +44,7 @@ Use this runbook when trading must stop immediately because of a bad deployment,
    ```
 
 6. If you are intentionally starting the service in a halted state for maintenance, set `TRADING_AGENT_KILL=true` in the deployment environment before the process starts. Do not rely on exporting that variable in a separate shell to affect an already-running process.
-7. Notify trading, incident response, and any downstream consumers that new order submission is halted until the kill switch is cleared.
+7. Notify trading, incident response, and any downstream consumers that new or increasing risk is halted until the kill switch is cleared. Do not assume a close will pass: it must meet the verified reduce-only contract.
 
 ## Verification
 
@@ -51,11 +53,19 @@ Use this runbook when trading must stop immediately because of a bad deployment,
   - `api_toggle` for the CLI/API path
   - `file_flag` for `/tmp/tradingagent_kill`
   - `env_var` for `TRADING_AGENT_KILL=true`
-- Any new pre-trade checks are rejected while the switch is active.
+- Any opening or risk-increasing pre-trade check is rejected while the switch is active.
+- A verified close intent is admitted, and its quantity cannot exceed the matching owned position.
+- Run the non-mutating automated drill from a repository checkout:
+
+  ```bash
+  ./scripts/emergency-brake-drill.sh
+  ```
+
+  This exercises API, file, and environment activation; entry rejection; reduce-only admission; persistence failure; and restart restoration without toggling the live service.
 
 ## Rollback
 
-1. Confirm the triggering incident is mitigated and approval to resume trading is documented.
+1. Confirm the triggering incident is mitigated, reconciliation is clean, and explicit approval to resume trading is documented. A hard emergency halt must never be cleared by a timer.
 2. Clear the API toggle:
 
    ```bash

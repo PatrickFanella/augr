@@ -29,6 +29,8 @@ const (
 	portfolioDiagnosticsWarningPositions    = "positions_unavailable"
 	portfolioDiagnosticsWarningUnknownOpen  = "open_positions_market_unknown"
 	portfolioDiagnosticsWarningAccountBal   = "account_balance_unavailable"
+	portfolioDiagnosticsWarningPaperProfile = "paper_evaluation_profile_unavailable"
+	portfolioDiagnosticsWarningPaperScope   = "paper_results_include_legacy_unscoped_records"
 	portfolioAllocatorRecentLimit           = 10
 	portfolioAllocatorWarningOpportunities  = "opportunities_unavailable"
 	portfolioAllocatorWarningDecisions      = "allocation_decisions_unavailable"
@@ -174,8 +176,15 @@ func (s *Server) buildPortfolioDiagnosticsInput(ctx context.Context) (portfolio.
 	input := portfolio.DiagnosticsInput{
 		ActiveStrategiesByMarket: map[domain.MarketType]int{},
 		OpenPositionsByMarket:    map[domain.MarketType]int{},
+		PaperEvaluation:          s.paperEvaluation,
 	}
 	warnings := make([]string, 0, 4)
+	if s.paperEvaluation == nil {
+		warnings = append(warnings, portfolioDiagnosticsWarningPaperProfile)
+	}
+	// Existing portfolio records predate account-scoped storage. Keep the
+	// aggregate visibly fail-closed until OVR-101 introduces that boundary.
+	warnings = append(warnings, portfolioDiagnosticsWarningPaperScope)
 
 	if s.runs != nil {
 		totalRuns, err := s.runs.Count(ctx, repository.PipelineRunFilter{})

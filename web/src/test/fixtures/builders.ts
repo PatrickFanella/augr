@@ -208,6 +208,13 @@ export function buildAllocatorDiagnostics(overrides: Partial<AllocatorDiagnostic
     gross_exposure_pct: 18.25,
     target_gross_exposure_pct: 30,
     utilization_gap_pct: 11.75,
+    paper_evaluation: {
+      mode: 'paper_scored',
+      storage_namespace: 'paper_scored',
+      evidence_class: 'promotion_evidence',
+      promotion_eligible: true,
+      results_isolated: false,
+    },
     warnings: ['account_balance_unavailable'],
     ...overrides,
   }

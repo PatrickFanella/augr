@@ -7,16 +7,34 @@ trap 'rm -rf "$scan_dir"' EXIT HUP INT TERM
 
 image="${GITLEAKS_IMAGE:-zricethezav/gitleaks@sha256:cdbb7c955abce02001a9f6c9f602fb195b7fadc1e812065883f695d1eeaba854}"
 
-docker run --rm \
-  -v "$repo_dir:/repo:ro" \
-  -v "$scan_dir:/out" \
-  "$image" detect \
-  --source=/repo \
-  --no-banner \
-  --redact \
-  --exit-code=0 \
-  --report-format=json \
-  --report-path=/out/report.json >/dev/null
+if [ -f "$repo_dir/.git" ]; then
+  # Linked worktrees store an absolute pointer in .git. Preserve that path in
+  # the container and mount the common Git directory so history scanning cannot
+  # silently degrade to a zero-commit filesystem scan.
+  git_common_dir=$(git -C "$repo_dir" rev-parse --path-format=absolute --git-common-dir)
+  docker run --rm \
+    -v "$repo_dir:$repo_dir:ro" \
+    -v "$git_common_dir:$git_common_dir:ro" \
+    -v "$scan_dir:/out" \
+    "$image" detect \
+    --source="$repo_dir" \
+    --no-banner \
+    --redact \
+    --exit-code=0 \
+    --report-format=json \
+    --report-path=/out/report.json >/dev/null
+else
+  docker run --rm \
+    -v "$repo_dir:/repo:ro" \
+    -v "$scan_dir:/out" \
+    "$image" detect \
+    --source=/repo \
+    --no-banner \
+    --redact \
+    --exit-code=0 \
+    --report-format=json \
+    --report-path=/out/report.json >/dev/null
+fi
 
 jq -r '.[] | [.RuleID, .File, (.StartLine | tostring), .Commit] | @tsv' \
   "$scan_dir/report.json" | LC_ALL=C sort >"$scan_dir/actual.tsv"

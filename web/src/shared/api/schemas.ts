@@ -193,6 +193,13 @@ export const allocatorDiagnosticsSchema = z
     gross_exposure_pct: z.number(),
     target_gross_exposure_pct: z.number(),
     utilization_gap_pct: z.number(),
+    paper_evaluation: z.object({
+      mode: z.string().min(1),
+      storage_namespace: z.string().min(1),
+      evidence_class: z.string().min(1),
+      promotion_eligible: z.boolean(),
+      results_isolated: z.boolean(),
+    }),
     warnings: z.array(z.string()),
   })
   .passthrough()
