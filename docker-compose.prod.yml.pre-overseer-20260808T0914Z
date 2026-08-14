@@ -56,7 +56,6 @@ services:
     networks:
       - public
       - backend
-      - monitoring
 
 volumes:
   postgres_data:
@@ -66,6 +65,3 @@ networks:
   public:
   backend:
     internal: true
-  monitoring:
-    external: true
-    name: monitoring
