@@ -261,6 +261,12 @@ func TestParseSentimentResponse(t *testing.T) {
 			wantResult: SentimentResult{Mentions: 1, Neutral: 1},
 		},
 		{
+			name:       "reasoning before array",
+			content:    "I analyzed the posts first.\n```json\n[{\"mentions_ticker\":true,\"sentiment\":\"bullish\"}]\n```",
+			wantOK:     true,
+			wantResult: SentimentResult{Mentions: 1, Bullish: 1},
+		},
+		{
 			name:    "invalid JSON",
 			content: "not json",
 			wantOK:  false,

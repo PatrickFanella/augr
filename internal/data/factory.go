@@ -38,6 +38,7 @@ type ProviderRegistry struct {
 	Kalshi       ProviderFactory
 	Reddit       ProviderFactory
 	StockTwits   ProviderFactory
+	Bluesky      ProviderFactory
 }
 
 // NewProviderRegistry returns an empty registry. Callers should populate the
@@ -373,6 +374,52 @@ func (s *DataService) GetSocialSentiment(ctx context.Context, marketType domain.
 	}
 
 	return snapshots, nil
+}
+
+// GetSocialSentimentBySource returns normalized provider snapshots without
+// merging away provenance. Scheduled collection uses this so operators can
+// distinguish broad coverage from one noisy provider.
+func (s *DataService) GetSocialSentimentBySource(ctx context.Context, marketType domain.MarketType, ticker string, from, to time.Time) ([]SocialSentiment, error) {
+	if _, err := s.selection.CacheSelection(marketType, cacheDataTypeSocial); err != nil {
+		return nil, err
+	}
+	if len(s.socialProviders) == 0 {
+		return nil, nil
+	}
+
+	fromUTC, toUTC := from.UTC(), to.UTC()
+	var (
+		mu      sync.Mutex
+		results []SocialSentiment
+	)
+	g, gCtx := errgroup.WithContext(ctx)
+	for _, configured := range s.socialProviders {
+		provider := configured
+		g.Go(func() error {
+			snapshots, err := provider.GetSocialSentiment(gCtx, ticker, fromUTC, toUTC)
+			if err != nil {
+				if !errors.Is(err, ErrNotImplemented) {
+					s.logger.Warn("social collector: provider failed", slog.String("ticker", ticker), slog.Any("error", err))
+				}
+				return nil
+			}
+			snapshots = normalizeSocialSentiment(snapshots, fromUTC, toUTC)
+			if len(snapshots) > 0 {
+				mu.Lock()
+				results = append(results, snapshots...)
+				mu.Unlock()
+			}
+			return nil
+		})
+	}
+	_ = g.Wait()
+	sort.Slice(results, func(i, j int) bool {
+		if results[i].MeasuredAt.Equal(results[j].MeasuredAt) {
+			return results[i].Source < results[j].Source
+		}
+		return results[i].MeasuredAt.Before(results[j].MeasuredAt)
+	})
+	return results, nil
 }
 
 // aggregateSocialSentiment calls GetSocialSentiment on each social provider

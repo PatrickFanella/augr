@@ -79,6 +79,19 @@ func WithMetrics(m SchedulerMetrics) Option {
 	}
 }
 
+// WithDisabledMarketTypes prevents retired provider strategies from being
+// registered or admitted without deleting their historical records.
+func WithDisabledMarketTypes(marketTypes ...domain.MarketType) Option {
+	return func(s *Scheduler) {
+		if s.disabledMarketTypes == nil {
+			s.disabledMarketTypes = make(map[domain.MarketType]struct{}, len(marketTypes))
+		}
+		for _, marketType := range marketTypes {
+			s.disabledMarketTypes[marketType.Normalize()] = struct{}{}
+		}
+	}
+}
+
 // WithBacktestScheduling enables cron-triggered backtest runs and persistence.
 func WithBacktestScheduling(
 	configRepo repository.BacktestConfigRepository,
@@ -130,6 +143,7 @@ type Scheduler struct {
 	backtestDedup         strategyDedup
 	riskMonitor           *riskMonitor
 	strategySem           chan struct{} // limits concurrent strategy executions
+	disabledMarketTypes   map[domain.MarketType]struct{}
 }
 
 type strategyScheduleKey struct {
@@ -221,6 +235,13 @@ func (s *Scheduler) Start() error {
 	seenActiveStrategySchedules := make(map[strategyScheduleKey]uuid.UUID)
 
 	for _, strategy := range strategies {
+		if s.marketTypeDisabled(strategy.MarketType) {
+			s.logger.Info("scheduler: retired market strategy not registered",
+				slog.String("strategy_id", strategy.ID.String()),
+				slog.String("market_type", strategy.MarketType.String()),
+			)
+			continue
+		}
 		spec := strings.TrimSpace(strategy.ScheduleCron)
 		if spec == "" {
 			continue
@@ -495,6 +516,13 @@ func (s *Scheduler) containStrategyPanic(strategy domain.Strategy) {
 
 func (s *Scheduler) runStrategyWithAdmission(strategy domain.Strategy, waitForCapacity bool) {
 	defer s.containStrategyPanic(strategy)
+	if s.marketTypeDisabled(strategy.MarketType) {
+		s.logger.Info("scheduler: retired market strategy ignored",
+			slog.String("strategy_id", strategy.ID.String()),
+			slog.String("market_type", strategy.MarketType.String()),
+		)
+		return
+	}
 
 	if s.metrics != nil {
 		s.metrics.RecordSchedulerTick("strategy")
@@ -542,6 +570,14 @@ func (s *Scheduler) runStrategyWithAdmission(strategy domain.Strategy, waitForCa
 	}
 
 	s.executeAdmittedStrategy(strategy)
+}
+
+func (s *Scheduler) marketTypeDisabled(marketType domain.MarketType) bool {
+	if s == nil || len(s.disabledMarketTypes) == 0 {
+		return false
+	}
+	_, disabled := s.disabledMarketTypes[marketType.Normalize()]
+	return disabled
 }
 
 func (s *Scheduler) executeAdmittedStrategy(strategy domain.Strategy) {

@@ -468,9 +468,12 @@ func (o *JobOrchestrator) deepScan(ctx context.Context) error {
 }
 
 func currentDataRefreshCompletionError(summary map[string]int) error {
-	incomplete := summary["errors"] + summary["provider_failures"] + summary["empty"] + summary["cache_only"] + summary["stale"] +
-		summary["daily_provider_failures"] + summary["daily_empty"] + summary["daily_cache_only"] + summary["daily_stale"]
-	if incomplete == 0 {
+	// Individual symbols routinely disappear, halt, or lack intraday coverage.
+	// Keep those counts visible, but do not auto-disable the entire refresh chain
+	// when other symbols were refreshed successfully. Only systemic input failure
+	// or zero usable output blocks dependent scans.
+	completed := summary["updated"] + summary["daily_updated"]
+	if summary["errors"] == 0 && (summary["tickers"] == 0 || completed > 0) {
 		return nil
 	}
 	return fmt.Errorf("current_data_refresh: incomplete provider refresh: errors=%d intraday(provider_failures=%d empty=%d cache_only=%d stale=%d) daily(provider_failures=%d empty=%d cache_only=%d stale=%d)",

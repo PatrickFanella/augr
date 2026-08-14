@@ -11,7 +11,7 @@ import { apiBaseUrl, installAppTestHarness, resetApp, server, state } from '@/te
 describe('recovered product surfaces', () => {
   installAppTestHarness()
 
-  it('renders event-market paper readiness and feed status', async () => {
+  it('renders Kalshi event-market readiness', async () => {
     resetApp('/event-markets')
     setTokenSnapshot(buildAuthResponse())
     render(<App />)
@@ -19,9 +19,8 @@ describe('recovered product surfaces', () => {
     expect(await screen.findByRole('heading', { name: /^event markets$/i })).toBeTruthy()
     expect(await screen.findByRole('table', { name: /event market providers/i })).toBeTruthy()
     expect(await screen.findByText('kalshi')).toBeTruthy()
-    expect(screen.getByText('polymarket')).toBeTruthy()
-    expect(screen.getAllByText(/not ready/i)).toHaveLength(2)
-    expect(screen.getByText(/12.50 ms/i)).toBeTruthy()
+    expect(screen.queryByText('polymarket')).toBeNull()
+    expect(screen.getAllByText(/not ready/i)).toHaveLength(1)
   })
 
   it('renders event-market empty and feature-unavailable states', async () => {
@@ -32,14 +31,14 @@ describe('recovered product surfaces', () => {
     expect(await screen.findByText(/no event-market providers are configured/i)).toBeTruthy()
   })
 
-  it('keeps feed data visible when the shared summary is unavailable', async () => {
+  it('shows the shared Kalshi summary unavailable state', async () => {
     resetApp('/event-markets')
     setTokenSnapshot(buildAuthResponse())
     server.use(http.get(`${apiBaseUrl}/event-markets/summary`, () => HttpResponse.json({ error: 'event markets not configured', code: 'ERR_NOT_IMPLEMENTED' }, { status: 501 })))
     render(<App />)
 
     expect(await screen.findByText(/feature unavailable/i)).toBeTruthy()
-    expect(await screen.findByText(/12.50 ms/i)).toBeTruthy()
+    expect(screen.queryByText(/12.50 ms/i)).toBeNull()
   })
 
   it('renders a filtered read-only options chain', async () => {

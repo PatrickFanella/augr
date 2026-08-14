@@ -314,6 +314,7 @@ func (p *Provider) GetSocialSentiment(ctx context.Context, ticker string, from, 
 
 		out = append(out, data.SocialSentiment{
 			Ticker:     ticker,
+			Source:     "finnhub",
 			Score:      score,
 			Bullish:    bullish,
 			Bearish:    bearish,

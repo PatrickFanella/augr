@@ -3,6 +3,7 @@ package automation
 import (
 	"context"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -10,10 +11,19 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/PatrickFanella/get-rich-quick/internal/config"
+	"github.com/PatrickFanella/get-rich-quick/internal/data"
+	stocktwitsdata "github.com/PatrickFanella/get-rich-quick/internal/data/stocktwits"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 	pgrepo "github.com/PatrickFanella/get-rich-quick/internal/repository/postgres"
 )
+
+func testSocialDataService() *data.DataService {
+	registry := data.NewProviderRegistry()
+	stocktwitsdata.Register(registry)
+	return data.NewDataService(config.Config{}, registry, nil, slog.New(slog.NewTextHandler(io.Discard, nil)), nil)
+}
 
 type roundTripperFunc func(*http.Request) (*http.Response, error)
 
@@ -59,6 +69,7 @@ func TestJobOrchestratorSocialScan_SkipsStockTwitsForPolymarketStrategies(t *tes
 
 	orch := NewJobOrchestrator(OrchestratorDeps{
 		NewsFeedRepo: &pgrepo.NewsFeedRepo{},
+		DataService:  testSocialDataService(),
 		StrategyRepo: &stubStrategyRepoForReports{
 			strategies: []domain.Strategy{
 				{ID: uuid.New(), Name: "stock", Status: domain.StrategyStatusActive, Ticker: "AAPL", MarketType: domain.MarketTypeStock},
@@ -111,6 +122,7 @@ func TestJobOrchestratorSocialScan_SkipsPredictionMarketPositions(t *testing.T) 
 
 	orch := NewJobOrchestrator(OrchestratorDeps{
 		NewsFeedRepo: &pgrepo.NewsFeedRepo{},
+		DataService:  testSocialDataService(),
 		PositionRepo: newRecordingPositionRepo(
 			&domain.Position{ID: uuid.New(), Ticker: "AAPL", MarketType: domain.MarketTypeStock},
 			&domain.Position{ID: uuid.New(), Ticker: "KXTEST:YES", MarketType: domain.MarketTypeKalshi},

@@ -112,6 +112,9 @@ func (SelectionPolicy) BuildProviderChains(cfg config.Config, reg *ProviderRegis
 	if reg.StockTwits != nil {
 		chains.Social = append(chains.Social, reg.StockTwits(ProviderConfig{Logger: logger}))
 	}
+	if reg.Bluesky != nil && socialTriage != nil && socialTriage.Provider != nil {
+		chains.Social = append(chains.Social, reg.Bluesky(ProviderConfig{Logger: logger, LLMProvider: socialTriage.Provider, LLMModel: socialTriage.Model}))
+	}
 	if reg.Reddit != nil && socialTriage != nil && socialTriage.Provider != nil {
 		chains.Social = append(chains.Social, reg.Reddit(ProviderConfig{Logger: logger, LLMProvider: socialTriage.Provider, LLMModel: socialTriage.Model}))
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strings"
 	"time"
 
@@ -32,7 +33,7 @@ var (
 
 func (o *JobOrchestrator) registerNewsJobs() {
 	o.Register("news_scan", "Aggregate financial news from RSS feeds with LLM triage", newsScanSpec, o.newsScan)
-	o.Register("social_scan", "StockTwits trending + sentiment for portfolio tickers", socialScanSpec, o.socialScan)
+	o.Register("social_scan", "Multi-source social sentiment for positions, strategies, watchlist, and trending tickers", socialScanSpec, o.socialScan)
 }
 
 // newsScan fetches RSS feeds, runs LLM triage, and persists tagged articles.
@@ -155,23 +156,28 @@ func (o *JobOrchestrator) newsScan(ctx context.Context) error {
 
 // socialScan fetches StockTwits trending + sentiment for active strategy and open position tickers.
 func (o *JobOrchestrator) socialScan(ctx context.Context) error {
-	summary := map[string]int{"trending_fetched": 0, "trending_saved": 0, "tickers": 0, "sentiment_saved": 0, "errors": 0}
+	summary := map[string]int{"trending_fetched": 0, "trending_saved": 0, "tickers": 0, "sentiment_saved": 0, "provider_errors": 0, "errors": 0}
 	defer func() { o.SetLastSummary("social_scan", summary) }()
 	if o.deps.NewsFeedRepo == nil {
 		return fmt.Errorf("social_scan: news feed repo not configured")
 	}
+	if o.deps.DataService == nil {
+		return fmt.Errorf("social_scan: data service not configured")
+	}
 
 	client := stocktwits.NewClient(o.logger)
+	var trendingSymbols []string
 
 	// Fetch trending symbols.
 	trending, err := client.GetTrending(ctx)
 	if err != nil {
-		summary["errors"]++
+		summary["provider_errors"]++
 		o.logger.Warn("social_scan: trending fetch failed", slog.Any("error", err))
 	} else {
 		summary["trending_fetched"] = len(trending)
 		now := time.Now()
 		for _, t := range trending {
+			trendingSymbols = append(trendingSymbols, t.Symbol)
 			if err := o.deps.NewsFeedRepo.InsertSocialSentiment(ctx, &pgrepo.SocialSentimentRow{
 				Ticker:     t.Symbol,
 				Source:     "stocktwits",
@@ -189,12 +195,17 @@ func (o *JobOrchestrator) socialScan(ctx context.Context) error {
 
 	// Fetch sentiment for active strategy and open position tickers.
 	tickers := make(map[string]struct{})
+	priorityTickers := make(map[string]struct{})
 	addTicker := func(ticker string) {
 		ticker = strings.ToUpper(strings.TrimSpace(ticker))
 		if ticker == "" {
 			return
 		}
 		tickers[ticker] = struct{}{}
+	}
+	for _, ticker := range trendingSymbols {
+		addTicker(ticker)
+		priorityTickers[strings.ToUpper(strings.TrimSpace(ticker))] = struct{}{}
 	}
 
 	if o.deps.StrategyRepo != nil {
@@ -222,37 +233,64 @@ func (o *JobOrchestrator) socialScan(ctx context.Context) error {
 					continue
 				}
 				addTicker(pos.Ticker)
+				priorityTickers[strings.ToUpper(strings.TrimSpace(pos.Ticker))] = struct{}{}
 			}
 		}
 	}
-	summary["tickers"] = len(tickers)
-
-	for ticker := range tickers {
-		sentiment, err := client.GetSymbolSentiment(ctx, ticker)
+	if o.deps.Universe != nil {
+		watchlist, err := o.deps.Universe.GetWatchlist(ctx, 25)
 		if err != nil {
 			summary["errors"]++
-			o.logger.Warn("social_scan: sentiment fetch failed",
-				slog.String("ticker", ticker),
-				slog.Any("error", err),
-			)
+			o.logger.Warn("social_scan: watchlist fetch failed", slog.Any("error", err))
+		} else {
+			for _, item := range watchlist {
+				addTicker(item.Ticker)
+				priorityTickers[strings.ToUpper(strings.TrimSpace(item.Ticker))] = struct{}{}
+			}
+		}
+	}
+
+	priority := make([]string, 0, len(priorityTickers))
+	remaining := make([]string, 0, len(tickers))
+	for ticker := range tickers {
+		if _, ok := priorityTickers[ticker]; ok {
+			priority = append(priority, ticker)
+		} else {
+			remaining = append(remaining, ticker)
+		}
+	}
+	sort.Strings(priority)
+	sort.Strings(remaining)
+	ordered := append(append([]string(nil), priority...), remaining...)
+	const maxSocialTickers = 50
+	if len(ordered) > maxSocialTickers {
+		ordered = ordered[:maxSocialTickers]
+	}
+	summary["tickers"] = len(ordered)
+
+	now := time.Now().UTC()
+	for _, ticker := range ordered {
+		snapshots, err := o.deps.DataService.GetSocialSentimentBySource(ctx, domain.MarketTypeStock, ticker, now.Add(-24*time.Hour), now)
+		if err != nil {
+			summary["errors"]++
+			o.logger.Warn("social_scan: aggregate sentiment failed", slog.String("ticker", ticker), slog.Any("error", err))
 			continue
 		}
-
-		if sentiment.Total > 0 {
-			score, bullishRatio, bearishRatio := normalizeStocktwitsSentiment(sentiment)
+		for _, sentiment := range snapshots {
+			source := strings.TrimSpace(sentiment.Source)
+			if source == "" {
+				source = "social-aggregate"
+			}
 			if err := o.deps.NewsFeedRepo.InsertSocialSentiment(ctx, &pgrepo.SocialSentimentRow{
-				Ticker:     sentiment.Symbol,
-				Source:     "stocktwits",
-				Sentiment:  score,
-				Bullish:    bullishRatio,
-				Bearish:    bearishRatio,
-				PostCount:  sentiment.Total,
-				MeasuredAt: sentiment.MeasuredAt,
+				Ticker: sentiment.Ticker, Source: source, Sentiment: sentiment.Score,
+				Bullish: sentiment.Bullish, Bearish: sentiment.Bearish,
+				PostCount: sentiment.PostCount, MeasuredAt: sentiment.MeasuredAt,
 			}); err != nil {
 				summary["errors"]++
 				continue
 			}
 			summary["sentiment_saved"]++
+			summary["source_"+source]++
 		}
 	}
 

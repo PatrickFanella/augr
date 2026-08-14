@@ -183,7 +183,7 @@ func newRealStrategyRunner(
 
 	// Wire Polymarket client if credentials are configured.
 	pm := cfg.Brokers.Polymarket
-	if strings.TrimSpace(pm.KeyID) != "" {
+	if cfg.Features.EnablePolymarketAutomation && strings.TrimSpace(pm.KeyID) != "" {
 		client := polymarketexecution.NewClient(pm.KeyID, pm.SecretKey, logger)
 		client.SetL2Auth(pm.Address, pm.KeyID, pm.SecretKey, pm.Passphrase)
 		client.SetAPIBaseURL(pm.APIBaseURL)
@@ -198,7 +198,7 @@ func newRealStrategyRunner(
 			}
 		}
 	}
-	if runner.polymarketMarketData == nil {
+	if cfg.Features.EnablePolymarketAutomation && runner.polymarketMarketData == nil {
 		client := polymarketexecution.NewClient("", "", logger)
 		client.SetGatewayBaseURL(pm.GatewayBaseURL)
 		runner.polymarketMarketData = client
@@ -215,6 +215,9 @@ func (r *realStrategyRunner) RunStrategy(ctx context.Context, strategy domain.St
 		return r.runKalshiNative(ctx, strategy)
 	}
 	if strategy.MarketType.Normalize() == domain.MarketTypePolymarket {
+		if !r.cfg.Features.EnablePolymarketAutomation {
+			return nil, errors.New("polymarket execution is retired; use a Kalshi strategy")
+		}
 		return r.runPolymarketNative(ctx, strategy)
 	}
 

@@ -26,6 +26,7 @@ import (
 	alpacaData "github.com/PatrickFanella/get-rich-quick/internal/data/alpaca"
 	"github.com/PatrickFanella/get-rich-quick/internal/data/alphavantage"
 	"github.com/PatrickFanella/get-rich-quick/internal/data/binance"
+	"github.com/PatrickFanella/get-rich-quick/internal/data/bluesky"
 	"github.com/PatrickFanella/get-rich-quick/internal/data/finnhub"
 	"github.com/PatrickFanella/get-rich-quick/internal/data/fmp"
 	kalshidata "github.com/PatrickFanella/get-rich-quick/internal/data/kalshi"
@@ -88,6 +89,13 @@ func newRuntimeFinnhubLimiters(requestsPerMinute int, global *data.RateLimiter) 
 
 func newRuntimePolygonLimiter() *data.RateLimiter {
 	return data.NewRateLimiter(1, 12*time.Second)
+}
+
+func disabledStrategyMarketTypes(cfg config.Config) []domain.MarketType {
+	if cfg.Features.EnablePolymarketAutomation {
+		return nil
+	}
+	return []domain.MarketType{domain.MarketTypePolymarket}
 }
 
 type watchedMarketsLoaderAdapter struct {
@@ -398,24 +406,26 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 		JobRunRepo:             jobRunRepo,
 		ReportArtifacts:        reportArtifactRepo,
 		ReportMetrics:          appMetrics,
-		PolymarketAccountRepo:  polymarketAccountRepo,
-		PolymarketWatchedRepo:  polymarketWatchedRepo,
 		PolymarketClient:       nil,
 		KalshiWatchedRepo:      pgrepo.NewKalshiWatchedMarketsRepo(db.Pool),
 		KalshiSnapshotsRepo:    pgrepo.NewKalshiMarketSnapshotsRepo(db.Pool),
 		KalshiDiscoveryRuns:    pgrepo.NewKalshiDiscoveryRunRepo(db.Pool),
 	}
-	polymarketReadClient := polymarketexecution.NewClient(cfg.Brokers.Polymarket.KeyID, cfg.Brokers.Polymarket.SecretKey, logger)
-	polymarketReadClient.SetAPIBaseURL(cfg.Brokers.Polymarket.APIBaseURL)
-	polymarketReadClient.SetGatewayBaseURL(cfg.Brokers.Polymarket.GatewayBaseURL)
-	if polymarketL2Configured(cfg.Brokers.Polymarket) {
-		polymarketReadClient.SetL2Auth(cfg.Brokers.Polymarket.Address, cfg.Brokers.Polymarket.KeyID, cfg.Brokers.Polymarket.SecretKey, cfg.Brokers.Polymarket.Passphrase)
+	if cfg.Features.EnablePolymarketAutomation {
+		deps.PolymarketAccountRepo = polymarketAccountRepo
+		deps.PolymarketWatchedRepo = polymarketWatchedRepo
+		polymarketReadClient := polymarketexecution.NewClient(cfg.Brokers.Polymarket.KeyID, cfg.Brokers.Polymarket.SecretKey, logger)
+		polymarketReadClient.SetAPIBaseURL(cfg.Brokers.Polymarket.APIBaseURL)
+		polymarketReadClient.SetGatewayBaseURL(cfg.Brokers.Polymarket.GatewayBaseURL)
+		if polymarketL2Configured(cfg.Brokers.Polymarket) {
+			polymarketReadClient.SetL2Auth(cfg.Brokers.Polymarket.Address, cfg.Brokers.Polymarket.KeyID, cfg.Brokers.Polymarket.SecretKey, cfg.Brokers.Polymarket.Passphrase)
+		}
+		deps.PolymarketClient = polymarketReadClient
 	}
-	deps.PolymarketClient = polymarketReadClient
 	var polymarketFeed *polymarketws.Feed
 	var polymarketRecorder *recorder.Recorder
 	var strategyRunner *realStrategyRunner
-	if strings.EqualFold(strings.TrimSpace(os.Getenv("POLYMARKET_WS_ENABLED")), "true") {
+	if cfg.Features.EnablePolymarketAutomation && strings.EqualFold(strings.TrimSpace(os.Getenv("POLYMARKET_WS_ENABLED")), "true") {
 		pcfg := polymarketws.DefaultConfig()
 		if v := strings.TrimSpace(os.Getenv("POLYMARKET_WS_URL")); v != "" {
 			pcfg.WSURL = v
@@ -474,6 +484,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 			logger,
 			scheduler.WithJobTimeout(cfg.Features.SchedulerJobTimeout),
 			scheduler.WithMetrics(appMetrics),
+			scheduler.WithDisabledMarketTypes(disabledStrategyMarketTypes(cfg)...),
 			scheduler.WithStrategyExecution(func(ctx context.Context, strategy domain.Strategy) error {
 				_, err := strategyRunner.RunStrategy(ctx, strategy)
 				return err
@@ -502,9 +513,14 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 		reg.Kalshi = func(cfg data.ProviderConfig) data.DataProvider {
 			return kalshidata.NewProviderWithClient(kalshiDataClient, cfg.Logger)
 		}
-		polymarketData.Register(reg)
+		if cfg.Features.EnablePolymarketAutomation {
+			polymarketData.Register(reg)
+		}
 		stocktwitsData.Register(reg)
 		redditData.Register(reg)
+		reg.Bluesky = func(cfg data.ProviderConfig) data.DataProvider {
+			return bluesky.NewProvider(cfg.LLMProvider, cfg.LLMModel, cfg.Logger)
+		}
 
 		var socialTriage *data.SocialTriageConfig
 		if deps.LLMProvider != nil {
@@ -518,7 +534,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 		deps.DataService = dataService
 		var alpacaReconciler *automation.AlpacaReconciler
 		var polymarketExecutionReconciler *polymarketexecution.Reconciler
-		if polymarketL2Configured(cfg.Brokers.Polymarket) {
+		if cfg.Features.EnablePolymarketAutomation && polymarketL2Configured(cfg.Brokers.Polymarket) {
 			polymarketClient := polymarketexecution.NewClient(cfg.Brokers.Polymarket.KeyID, cfg.Brokers.Polymarket.SecretKey, logger)
 			polymarketClient.SetL2Auth(cfg.Brokers.Polymarket.Address, cfg.Brokers.Polymarket.KeyID, cfg.Brokers.Polymarket.SecretKey, cfg.Brokers.Polymarket.Passphrase)
 			polymarketClient.SetAPIBaseURL(cfg.Brokers.Polymarket.APIBaseURL)
@@ -620,8 +636,10 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 		}
 		strategyRunner.portfolioAllocatorMode = portfolioAllocatorMode
 		deps.Runner = strategyRunner
-		if err := bootstrapPolymarketStopGuards(ctx, strategyRunner, positionRepo, logger); err != nil {
-			logger.Warn("polymarket stop guard bootstrap failed", slog.Any("error", err))
+		if cfg.Features.EnablePolymarketAutomation {
+			if err := bootstrapPolymarketStopGuards(ctx, strategyRunner, positionRepo, logger); err != nil {
+				logger.Warn("polymarket stop guard bootstrap failed", slog.Any("error", err))
+			}
 		}
 
 		var kalshiCatalog interface {
@@ -663,7 +681,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 				nil,
 				riskEngine,
 				logger,
-				append([]scheduler.Option{scheduler.WithJobTimeout(cfg.Features.SchedulerJobTimeout), scheduler.WithMetrics(appMetrics)}, schedOpts...)...,
+				append([]scheduler.Option{scheduler.WithJobTimeout(cfg.Features.SchedulerJobTimeout), scheduler.WithMetrics(appMetrics), scheduler.WithDisabledMarketTypes(disabledStrategyMarketTypes(cfg)...)}, schedOpts...)...,
 			)
 		}
 
@@ -807,7 +825,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 			MinWinRate:   0.65,
 		}, polymarketAccountRepo, logger))
 	}
-	if cfg.Polygon.RPCURL != "" && cfg.Polygon.WSURL != "" {
+	if cfg.Features.EnablePolymarketAutomation && cfg.Polygon.RPCURL != "" && cfg.Polygon.WSURL != "" {
 		logger.Info("polygon mempool source enabled", slog.String("ws_url", cfg.Polygon.WSURL))
 		signalSources = append(signalSources, signal.NewPolygonMempoolSource(signal.PolygonMempoolSourceConfig{
 			RPCURL:         cfg.Polygon.RPCURL,

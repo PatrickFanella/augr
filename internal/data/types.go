@@ -54,6 +54,7 @@ type NewsArticle struct {
 // SocialSentiment aggregates social-media sentiment signals for a ticker.
 type SocialSentiment struct {
 	Ticker       string    `json:"ticker"`
+	Source       string    `json:"source,omitempty"`
 	Score        float64   `json:"score"`
 	Bullish      float64   `json:"bullish"`
 	Bearish      float64   `json:"bearish"`

@@ -214,6 +214,7 @@ func cleanContent(raw string) string {
 }
 
 func parseSentimentResponse(content string) (SentimentResult, bool) {
+	content = extractJSONArray(content)
 	var sentiments []postSentiment
 	if err := json.Unmarshal([]byte(content), &sentiments); err != nil {
 		// Try wrapper: {"results": [...]}
@@ -242,4 +243,17 @@ func parseSentimentResponse(content string) (SentimentResult, bool) {
 		}
 	}
 	return result, true
+}
+
+// extractJSONArray tolerates reasoning or markdown surrounding the model's
+// structured response. Some local/OpenAI-compatible models ignore JSON mode
+// and prepend an explanation even when explicitly asked not to.
+func extractJSONArray(content string) string {
+	trimmed := cleanContent(content)
+	start := strings.Index(trimmed, "[")
+	end := strings.LastIndex(trimmed, "]")
+	if start >= 0 && end > start {
+		return trimmed[start : end+1]
+	}
+	return trimmed
 }

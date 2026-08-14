@@ -75,7 +75,7 @@ func TestNormalizePolymarketStrategySide(t *testing.T) {
 func TestRunStrategy_PolymarketUsesNativePathBeforeLegacyOHLCV(t *testing.T) {
 	t.Parallel()
 
-	runner := withNativeAuditDeps(&realStrategyRunner{polymarketMarketData: failingPolymarketMarketData{err: fmt.Errorf("native data used")}})
+	runner := withNativeAuditDeps(&realStrategyRunner{cfg: config.Config{Features: config.FeatureFlags{EnablePolymarketAutomation: true}}, polymarketMarketData: failingPolymarketMarketData{err: fmt.Errorf("native data used")}})
 	_, err := runner.RunStrategy(context.Background(), domain.Strategy{
 		Name:       "native disabled",
 		Ticker:     "will-example-happen",

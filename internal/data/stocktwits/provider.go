@@ -8,8 +8,17 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/PatrickFanella/get-rich-quick/internal/data"
 )
+
+var stocktwitsThrottle = struct {
+	sync.Mutex
+	cooldownUntil time.Time
+	limiter       *data.RateLimiter
+}{limiter: data.NewRateLimiter(30, time.Minute)}
 
 const (
 	baseURL        = "https://api.stocktwits.com/api/2"
@@ -142,6 +151,23 @@ func (c *Client) GetSymbolSentiment(ctx context.Context, symbol string) (*Symbol
 }
 
 func (c *Client) get(ctx context.Context, path string) ([]byte, error) {
+	stocktwitsThrottle.Lock()
+	wait := time.Until(stocktwitsThrottle.cooldownUntil)
+	stocktwitsThrottle.Unlock()
+	if wait > 0 {
+		timer := time.NewTimer(wait)
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
+				<-timer.C
+			}
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
+	}
+	if err := stocktwitsThrottle.limiter.Wait(ctx); err != nil {
+		return nil, fmt.Errorf("wait for rate limiter: %w", err)
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+path, nil)
 	if err != nil {
 		return nil, err
@@ -160,6 +186,16 @@ func (c *Client) get(ctx context.Context, path string) ([]byte, error) {
 	}
 
 	if resp.StatusCode == http.StatusTooManyRequests {
+		cooldown := 15 * time.Minute
+		if parsed := parseRetryAfter(resp.Header.Get("Retry-After")); parsed > 0 {
+			cooldown = parsed
+		}
+		stocktwitsThrottle.Lock()
+		until := time.Now().Add(cooldown)
+		if until.After(stocktwitsThrottle.cooldownUntil) {
+			stocktwitsThrottle.cooldownUntil = until
+		}
+		stocktwitsThrottle.Unlock()
 		return nil, fmt.Errorf("rate limited (429)")
 	}
 	if resp.StatusCode != http.StatusOK {
@@ -167,4 +203,18 @@ func (c *Client) get(ctx context.Context, path string) ([]byte, error) {
 	}
 
 	return body, nil
+}
+
+func parseRetryAfter(raw string) time.Duration {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0
+	}
+	if duration, err := time.ParseDuration(raw + "s"); err == nil {
+		return duration
+	}
+	if at, err := http.ParseTime(raw); err == nil {
+		return time.Until(at)
+	}
+	return 0
 }

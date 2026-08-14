@@ -15,7 +15,7 @@ import { queryKeys } from '@/shared/query/keys'
 import type { KnownMarketType, Strategy, StrategyCreateRequest } from '@/shared/types/domain'
 
 const defaultConfig = '{\n  "fixture": true,\n  "mode": "paper"\n}'
-const marketOptions: KnownMarketType[] = ['stock', 'crypto', 'polymarket', 'kalshi', 'options']
+const marketOptions: KnownMarketType[] = ['stock', 'crypto', 'kalshi', 'options']
 type FieldErrors = Partial<Record<'name' | 'ticker' | 'market_type' | 'schedule_cron' | 'config' | 'submit', string>>
 
 function createErrorMessage(error: unknown) {

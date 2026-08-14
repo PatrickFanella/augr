@@ -561,7 +561,10 @@ func loadFromEnvironment() (Config, error) {
 		return Config{}, err
 	}
 
-	enablePolymarketAutomation, err := getEnvBool("ENABLE_POLYMARKET_AUTOMATION", true)
+	// Polymarket is retained as a historical/read compatibility surface only.
+	// New installations must opt in explicitly; Kalshi is the active event-market
+	// provider and a missing environment variable must never restart Polymarket jobs.
+	enablePolymarketAutomation, err := getEnvBool("ENABLE_POLYMARKET_AUTOMATION", false)
 	if err != nil {
 		return Config{}, err
 	}

@@ -29,6 +29,18 @@ const (
 	testScheduleSpec   = "@every 1m"
 )
 
+func TestWithDisabledMarketTypes(t *testing.T) {
+	t.Parallel()
+
+	s := NewScheduler(nil, nil, nil, nil, WithDisabledMarketTypes(domain.MarketTypePolymarket))
+	if !s.marketTypeDisabled(domain.MarketTypePolymarket) {
+		t.Fatal("Polymarket should be disabled")
+	}
+	if s.marketTypeDisabled(domain.MarketTypeKalshi) {
+		t.Fatal("Kalshi should remain enabled")
+	}
+}
+
 type mockStrategyRepo struct {
 	mu          sync.Mutex
 	strategies  []domain.Strategy

@@ -69,6 +69,7 @@ func (p *DataProvider) GetSocialSentiment(ctx context.Context, ticker string, _,
 
 	return []data.SocialSentiment{{
 		Ticker:     ticker,
+		Source:     "stocktwits",
 		Score:      score,
 		Bullish:    bullRatio,
 		Bearish:    bearRatio,

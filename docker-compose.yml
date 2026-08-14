@@ -43,6 +43,7 @@ services:
     env_file:
       - .env
     environment:
+      ENABLE_POLYMARKET_AUTOMATION: "false"
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-tradingagent}?sslmode=disable
       REDIS_URL: redis://redis:6379/0
     extra_hosts:

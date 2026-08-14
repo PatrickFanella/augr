@@ -134,14 +134,17 @@ func TestMarketBarFreshnessUsesRegularSessionAndTradingDate(t *testing.T) {
 	}
 }
 
-func TestCurrentDataRefreshCompletionErrorRejectsCacheOnlyAndStale(t *testing.T) {
+func TestCurrentDataRefreshCompletionErrorOnlyRejectsSystemicFailure(t *testing.T) {
 	t.Parallel()
 
 	if err := currentDataRefreshCompletionError(map[string]int{}); err != nil {
 		t.Fatalf("currentDataRefreshCompletionError(empty) = %v, want nil", err)
 	}
-	err := currentDataRefreshCompletionError(map[string]int{"cache_only": 2, "daily_stale": 1})
+	if err := currentDataRefreshCompletionError(map[string]int{"tickers": 4, "updated": 1, "cache_only": 2, "daily_stale": 1}); err != nil {
+		t.Fatalf("currentDataRefreshCompletionError(partial success) = %v, want nil", err)
+	}
+	err := currentDataRefreshCompletionError(map[string]int{"tickers": 4, "cache_only": 2, "daily_stale": 1})
 	if err == nil || !strings.Contains(err.Error(), "cache_only=2") || !strings.Contains(err.Error(), "stale=1") {
-		t.Fatalf("currentDataRefreshCompletionError(partial) = %v", err)
+		t.Fatalf("currentDataRefreshCompletionError(systemic failure) = %v", err)
 	}
 }

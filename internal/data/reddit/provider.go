@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/data"
@@ -20,6 +21,9 @@ type Provider struct {
 	model       string
 	subreddits  []string
 	logger      *slog.Logger
+	postsMu     sync.Mutex
+	posts       []RedditPost
+	postsAt     time.Time
 }
 
 // Compile-time check that Provider satisfies data.DataProvider.
@@ -66,7 +70,7 @@ func (p *Provider) GetSocialSentiment(ctx context.Context, ticker string, from, 
 		return nil, errors.New("reddit: provider is nil")
 	}
 
-	posts := p.client.FetchSubreddits(ctx, p.subreddits)
+	posts := p.cachedPosts(ctx)
 	if len(posts) == 0 {
 		p.logger.Info("reddit: no posts fetched",
 			slog.String("ticker", ticker),
@@ -112,10 +116,26 @@ func (p *Provider) GetSocialSentiment(ctx context.Context, ticker string, from, 
 	now := time.Now().UTC()
 	return []data.SocialSentiment{{
 		Ticker:     ticker,
+		Source:     "reddit",
 		Score:      score,
 		Bullish:    bullish,
 		Bearish:    bearish,
 		PostCount:  result.Mentions,
 		MeasuredAt: now,
 	}}, nil
+}
+
+// cachedPosts fetches the shared subreddit corpus once per scan window. A
+// social run scores many tickers against the same posts; refetching every feed
+// per ticker both wastes quota and triggers Reddit's provider-wide throttle.
+func (p *Provider) cachedPosts(ctx context.Context) []RedditPost {
+	p.postsMu.Lock()
+	defer p.postsMu.Unlock()
+	if !p.postsAt.IsZero() && time.Since(p.postsAt) < 5*time.Minute {
+		return append([]RedditPost(nil), p.posts...)
+	}
+	posts := p.client.FetchSubreddits(ctx, p.subreddits)
+	p.posts = append(p.posts[:0], posts...)
+	p.postsAt = time.Now()
+	return append([]RedditPost(nil), posts...)
 }

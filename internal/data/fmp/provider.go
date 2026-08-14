@@ -37,6 +37,7 @@ type historicalBar struct {
 
 type profileEntry struct {
 	MktCap        *float64 `json:"mktCap"`
+	MarketCap     *float64 `json:"marketCap"`
 	PE            *float64 `json:"pe"`
 	EPS           *float64 `json:"eps"`
 	DividendYield *float64 `json:"lastDiv"`
@@ -80,7 +81,7 @@ func (p *Provider) GetOHLCV(ctx context.Context, ticker string, timeframe data.T
 		return nil, fmt.Errorf("fmp: unsupported timeframe %q (only daily supported)", timeframe)
 	}
 
-	path := fmt.Sprintf("/historical-price-full/%s", url.PathEscape(ticker))
+	path := fmt.Sprintf("/api/v3/historical-price-full/%s", url.PathEscape(ticker))
 	params := url.Values{
 		"from": []string{from.UTC().Format("2006-01-02")},
 		"to":   []string{to.UTC().Format("2006-01-02")},
@@ -138,9 +139,7 @@ func (p *Provider) GetFundamentals(ctx context.Context, ticker string) (data.Fun
 		return data.Fundamentals{}, errors.New("fmp: ticker is required")
 	}
 
-	path := fmt.Sprintf("/profile/%s", url.PathEscape(ticker))
-
-	body, err := p.client.Get(ctx, path, nil)
+	body, err := p.client.Get(ctx, "/stable/profile", url.Values{"symbol": []string{ticker}})
 	if err != nil {
 		return data.Fundamentals{}, fmt.Errorf("fmp: GetFundamentals: %w", err)
 	}
@@ -157,9 +156,12 @@ func (p *Provider) GetFundamentals(ctx context.Context, ticker string) (data.Fun
 	profile := profiles[0]
 	fundamentals := data.Fundamentals{Ticker: ticker, FetchedAt: time.Now().UTC()}
 	missing := make([]string, 0, 9)
-	if profile.MktCap != nil {
+	switch {
+	case profile.MktCap != nil:
 		fundamentals.MarketCap = *profile.MktCap
-	} else {
+	case profile.MarketCap != nil:
+		fundamentals.MarketCap = *profile.MarketCap
+	default:
 		missing = append(missing, data.FundamentalFieldMarketCap)
 	}
 	if profile.PE != nil {
@@ -224,7 +226,7 @@ func (p *Provider) GetNews(ctx context.Context, ticker string, from, to time.Tim
 		"limit":   []string{"50"},
 	}
 
-	body, err := p.client.Get(ctx, "/stock_news", params)
+	body, err := p.client.Get(ctx, "/api/v3/stock_news", params)
 	if err != nil {
 		return nil, err
 	}

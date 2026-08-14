@@ -15,7 +15,7 @@ import { queryKeys } from '@/shared/query/keys'
 import type { KnownMarketType, Strategy, StrategyUpdateRequest } from '@/shared/types/domain'
 import { useRealtime } from '@/shared/websocket/RealtimeProvider'
 
-const marketOptions: KnownMarketType[] = ['stock', 'crypto', 'polymarket', 'kalshi', 'options']
+const marketOptions: KnownMarketType[] = ['stock', 'crypto', 'kalshi', 'options']
 type Snapshot = { name: string; description: string; ticker: string; market_type: string; schedule_cron: string; config: string }
 type FieldErrors = Partial<Record<keyof Snapshot | 'submit', string>>
 

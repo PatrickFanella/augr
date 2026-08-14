@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	defaultBaseURL = "https://financialmodelingprep.com/api/v3"
+	defaultBaseURL = "https://financialmodelingprep.com"
 	defaultTimeout = 30 * time.Second
 )
 
