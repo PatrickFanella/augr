@@ -317,6 +317,124 @@ venue contract; that joined boundary requires an active, unexpired instrument,
 checks the contract at both observation and evaluation time, and rejects
 off-tick executable prices or off-lot displayed sizes.
 
+Schema 68 adds the raw-first economic-event boundary. Provider or operator
+evidence is appended as exact JSON bytes, JSONB, and SHA-256 before a typed
+normalizer may create a ledger transaction. Fill, cost, cash settlement,
+expiration, physical option exercise/assignment, and prediction-payout
+normalizations retain their source identity, immutable dated mechanics, and
+execution provenance. This schema is additive: legacy order, trade, position,
+settlement, and accounting paths are not cut over by applying it.
+
+Schema 69 adds canonical instrument marks and deterministic full-rebuild FIFO
+portfolio checkpoints. A rebuild uses only ledger transactions and marks whose
+effective and observed timestamps are both available at its `as_of`, starts
+from zero, and fails on an unknown transaction, missing/stale mark, inconsistent
+mechanics, or a violated P&L equation. Checkpoints preserve the exact canonical
+bytes and input/output checksums, but remain caches and evidence artifacts; the
+immutable ledger is still the source of economic truth. Applying migration 69
+does not schedule rebuilds or change any legacy API, UI, risk, order, trade, or
+position read/write path. OVR-105 must prove dual-run parity before cutover.
+
+Checkpoint persistence has an explicit database trust boundary. Migration 69
+revokes public access to its byte-only persistence function and to immutable
+versioned HMAC verification keys, and grants no role automatically. A
+projection worker must receive the matching 32-byte signing secret from a
+separate runtime secret provider and use a dedicated non-owner, non-superuser
+database login. That login gets read access to replay inputs, append/select
+access to canonical marks, select access to checkpoints, and only `EXECUTE`
+access to the controlled function. It must not own the schema, read the HMAC
+key tables, or have direct checkpoint `INSERT`, `UPDATE`, or `DELETE`.
+`ProjectionRepo` checks these database capabilities and refuses to rebuild
+under the current owner-style development/Compose database login. The database
+writer credential alone can replay identical signed bytes but cannot sign an
+altered projection. Do not grant the function to the general app role or use
+the migration owner as a shortcut.
+
+For a disposable local database, an administrator can create a narrowly scoped
+example role after applying migration 69. Supply a fresh local-only password;
+also generate a distinct cryptographically random 32-byte HMAC secret, store it
+outside the repository, and provision the verifier copy through the database
+owner. Do not copy this role, password, or HMAC secret into a shared environment
+without a separate deployment review:
+
+```sql
+CREATE ROLE augr_projection_writer LOGIN PASSWORD '<fresh-local-password>'
+    NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT;
+GRANT CONNECT ON DATABASE tradingagent TO augr_projection_writer;
+GRANT USAGE ON SCHEMA public TO augr_projection_writer;
+GRANT SELECT ON
+    accounts,
+    ledger_transactions,
+    ledger_postings,
+    economic_event_normalizations,
+    venue_contracts,
+    option_contract_terms,
+    instruments,
+    mark_observations,
+    projection_checkpoints
+TO augr_projection_writer;
+GRANT INSERT ON mark_observations TO augr_projection_writer;
+GRANT EXECUTE ON FUNCTION persist_canonical_projection_checkpoint(BYTEA, TEXT, BYTEA)
+TO augr_projection_writer;
+REVOKE INSERT, UPDATE, DELETE ON projection_checkpoints
+FROM augr_projection_writer;
+
+INSERT INTO projection_checkpoint_signing_keys (
+    key_id,
+    signing_secret,
+    created_by
+) VALUES (
+    'local-2026-08-v1',
+    decode('<64-lowercase-hex-characters-from-a-random-32-byte-secret>', 'hex'),
+    'local-developer'
+);
+```
+
+Pass the same decoded secret and key ID to `NewProjectionRepo` through
+`ProjectionCheckpointAttestor`; do not log either value or put the secret in a
+tracked env file. The concrete Vault/cloud/native secret store and workload
+identity for a shared environment remain an OVR-105 deployment decision.
+
+Verify the effective privileges while connected as that login before using the
+repository. The required result is `direct_insert = false`,
+`signing_key_read = false`, and `controlled_write = true`:
+
+```sql
+SELECT
+    has_table_privilege(
+        current_user,
+        'projection_checkpoints',
+        'INSERT'
+    ) AS direct_insert,
+    has_table_privilege(
+        current_user,
+        'projection_checkpoint_signing_keys',
+        'SELECT'
+    ) AS signing_key_read,
+    has_function_privilege(
+        current_user,
+        'persist_canonical_projection_checkpoint(bytea,text,bytea)',
+        'EXECUTE'
+    ) AS controlled_write;
+```
+
+Rotate without rewriting old checkpoints: append a new key row, switch the
+worker's key ID/secret, verify new checkpoints, then append a revocation for the
+old key. Revocation is itself immutable and causes every later persistence
+attempt under that key to fail:
+
+```sql
+INSERT INTO projection_checkpoint_signing_key_revocations (
+    key_id,
+    reason,
+    revoked_by
+) VALUES (
+    'local-2026-08-v1',
+    'rotated after local verification',
+    'local-developer'
+);
+```
+
 ## Creating a local user
 
 There is no self-service registration flow yet. For local dev:

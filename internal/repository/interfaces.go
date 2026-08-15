@@ -62,6 +62,15 @@ type EconomicEventRepository interface {
 	GetEconomicNormalizationBySourceEventID(context.Context, uuid.UUID) (*ledger.EconomicNormalization, error)
 }
 
+// ProjectionRepository persists canonical marks and immutable rebuild
+// checkpoints without changing any legacy position or balance read path.
+type ProjectionRepository interface {
+	RecordMarkObservation(context.Context, *ledger.MarkObservation) (*ledger.MarkObservation, error)
+	GetMarkObservationByID(context.Context, uuid.UUID) (*ledger.MarkObservation, error)
+	RebuildPortfolioProjection(context.Context, ledger.ProjectionRequest) (*ledger.PortfolioProjection, error)
+	GetProjectionCheckpointByID(context.Context, uuid.UUID) (*ledger.ProjectionCheckpoint, error)
+}
+
 // QuoteSnapshotRepository persists immutable, exact market observations and
 // selects only observations available at a requested point in time.
 type QuoteSnapshotRepository interface {
