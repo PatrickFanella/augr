@@ -2,7 +2,7 @@
 title: "Development Setup"
 description: "Complete local development workflow for backend, frontend, database, testing, and smoke-mode execution."
 status: "canonical"
-updated: "2026-08-14"
+updated: "2026-08-15"
 tags: [development, setup, local-dev]
 ---
 
@@ -96,11 +96,14 @@ task dev:restart
 task dev:psql
 ```
 
-### Isolated Phase 1 services
+### Isolated Phase 1 and Phase 2 services
 
 When another Augr Compose project is already using this checkout, keep Phase 1
-schema work on separate loopback-only ports and named volumes. The built-in
-Docker bridge avoids allocating another custom subnet.
+and Phase 2 schema work on separate loopback-only ports and named volumes. The
+built-in Docker bridge avoids allocating another custom subnet. The existing
+`augr-phase1-*` container names are retained while Phase 2 uses the same
+isolated development database; they do not refer to a shared or deployed
+environment.
 
 First-time creation:
 
@@ -220,6 +223,30 @@ The schema includes persistence for:
 - explicit accounts and append-only capital flows
 - immutable ledger transactions and balanced postings
 - mark observations and projection checkpoints
+- canonical instruments and immutable dated alias events
+- venue contracts and corporate-action facts
+- explicit instrument-identity quarantine findings
+
+Schema 66 deliberately leaves existing ticker-based application reads in
+place. It backfills legacy symbols as deterministic quarantined identities and
+does not infer currency, tick size, lot size, multiplier, settlement, or
+tradability. Inspect the local quarantine before using any canonical identity
+in new work:
+
+```sql
+SELECT
+    instrument.identity_key,
+    instrument.asset_class,
+    instrument.primary_venue,
+    finding.finding_code,
+    finding.source,
+    finding.details
+FROM instruments AS instrument
+JOIN instrument_identity_quarantine AS finding
+  ON finding.instrument_id = instrument.id
+WHERE instrument.status = 'quarantined'
+ORDER BY instrument.identity_key, finding.observed_at, finding.id;
+```
 
 ## Creating a local user
 

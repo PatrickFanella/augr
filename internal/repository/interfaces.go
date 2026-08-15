@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
+	"github.com/PatrickFanella/get-rich-quick/internal/instrument"
 	"github.com/PatrickFanella/get-rich-quick/internal/ledger"
 )
 
@@ -36,6 +37,17 @@ type AccountRepository interface {
 type LedgerRepository interface {
 	PostTransaction(ctx context.Context, transaction *ledger.Transaction) (*ledger.Transaction, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*ledger.Transaction, error)
+}
+
+// InstrumentRepository persists canonical instrument identity and immutable
+// effective-time reference facts without changing legacy ticker read paths.
+type InstrumentRepository interface {
+	CreateInstrument(context.Context, *instrument.Instrument) (*instrument.Instrument, error)
+	GetInstrumentByID(context.Context, uuid.UUID) (*instrument.Instrument, error)
+	AppendAliasEvent(context.Context, *instrument.AliasEvent) (*instrument.AliasEvent, error)
+	ResolveAlias(context.Context, string, instrument.AliasType, string, time.Time) (*instrument.Instrument, error)
+	RegisterVenueContract(context.Context, *instrument.VenueContract) (*instrument.VenueContract, error)
+	RecordCorporateAction(context.Context, *instrument.CorporateAction) (*instrument.CorporateAction, error)
 }
 
 // StrategyFilter defines supported filters when listing strategies.
