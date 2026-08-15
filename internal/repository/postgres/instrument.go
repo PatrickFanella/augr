@@ -225,6 +225,102 @@ func (repo *InstrumentRepo) RegisterVenueContract(ctx context.Context, contract 
 	return repo.getVenueContractByID(ctx, persistedID)
 }
 
+// RegisterOptionContractTerms appends one provenance-backed physical option
+// terms fact. PostgreSQL serializes effective-time history per option.
+func (repo *InstrumentRepo) RegisterOptionContractTerms(ctx context.Context, terms *instrument.OptionContractTerms) (*instrument.OptionContractTerms, error) {
+	if terms == nil {
+		return nil, fmt.Errorf("postgres: register option contract terms: terms are required")
+	}
+	if err := terms.Validate(); err != nil {
+		return nil, fmt.Errorf("postgres: register option contract terms: %w", err)
+	}
+
+	databaseTransaction, err := repo.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("postgres: begin option contract terms: %w", err)
+	}
+	defer func() { _ = databaseTransaction.Rollback(ctx) }()
+	if err := acquireEconomicOptionTermsLock(ctx, databaseTransaction, terms.OptionInstrumentID); err != nil {
+		return nil, fmt.Errorf("postgres: lock option contract terms history: %w", err)
+	}
+
+	var persistedID uuid.UUID
+	err = databaseTransaction.QueryRow(ctx, `INSERT INTO option_contract_terms (
+		id, option_instrument_id, underlying_instrument_id, contract_type,
+		strike_price, strike_currency, deliverable_quantity,
+		source, source_namespace, source_record_id, source_revision,
+		effective_at, observed_at, raw_payload, payload_sha256, payload,
+		metadata, created_at
+	) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::JSONB,$17,$18)
+	ON CONFLICT (option_instrument_id, source, source_namespace, source_record_id) DO NOTHING
+	RETURNING id`,
+		terms.ID,
+		terms.OptionInstrumentID,
+		terms.UnderlyingInstrumentID,
+		terms.ContractType,
+		terms.StrikePrice.StringFixed(12),
+		terms.StrikeCurrency,
+		terms.DeliverableQuantity.StringFixed(12),
+		terms.Source,
+		terms.SourceNamespace,
+		terms.SourceRecordID,
+		terms.SourceRevision,
+		terms.EffectiveAt,
+		terms.ObservedAt,
+		[]byte(terms.RawPayload),
+		terms.PayloadSHA256,
+		string(terms.RawPayload),
+		jsonForStorage(terms.Metadata),
+		terms.CreatedAt,
+	).Scan(&persistedID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		existing, loadErr := scanOptionContractTerms(databaseTransaction.QueryRow(ctx, optionContractTermsSelectSQL+`
+			WHERE option_instrument_id = $1 AND source = $2 AND source_namespace = $3 AND source_record_id = $4`,
+			terms.OptionInstrumentID,
+			terms.Source,
+			terms.SourceNamespace,
+			terms.SourceRecordID,
+		))
+		if loadErr != nil {
+			return nil, fmt.Errorf("postgres: load replayed option contract terms: %w", loadErr)
+		}
+		if !instrument.SameOptionContractTermsPayload(existing, terms) {
+			return nil, fmt.Errorf("postgres: option contract terms source identity reused with mismatched payload: %w", repository.ErrIdempotencyConflict)
+		}
+		if err := databaseTransaction.Commit(ctx); err != nil {
+			return nil, fmt.Errorf("postgres: commit replayed option contract terms: %w", err)
+		}
+		return existing, nil
+	}
+	if err != nil {
+		return nil, instrumentWriteError("register option contract terms", err)
+	}
+	if err := databaseTransaction.Commit(ctx); err != nil {
+		return nil, instrumentWriteError("commit option contract terms", err)
+	}
+	return repo.GetOptionContractTermsByID(ctx, persistedID)
+}
+
+func acquireEconomicOptionTermsLock(ctx context.Context, databaseTransaction pgx.Tx, optionInstrumentID uuid.UUID) error {
+	_, err := databaseTransaction.Exec(ctx,
+		`SELECT pg_advisory_xact_lock(hashtextextended('economic-option-terms:' || $1::UUID::TEXT, 0))`,
+		optionInstrumentID,
+	)
+	return err
+}
+
+// GetOptionContractTermsByID loads one exact immutable option terms fact.
+func (repo *InstrumentRepo) GetOptionContractTermsByID(ctx context.Context, id uuid.UUID) (*instrument.OptionContractTerms, error) {
+	terms, err := scanOptionContractTerms(repo.pool.QueryRow(ctx, optionContractTermsSelectSQL+` WHERE id = $1`, id))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, repository.ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("postgres: get option contract terms %s: %w", id, err)
+	}
+	return terms, nil
+}
+
 func (repo *InstrumentRepo) RecordCorporateAction(ctx context.Context, action *instrument.CorporateAction) (*instrument.CorporateAction, error) {
 	if action == nil {
 		return nil, fmt.Errorf("postgres: record corporate action: action is required")
@@ -379,6 +475,56 @@ FROM venue_contracts`
 
 func (repo *InstrumentRepo) getVenueContractByID(ctx context.Context, id uuid.UUID) (*instrument.VenueContract, error) {
 	return scanVenueContract(repo.pool.QueryRow(ctx, venueContractSelectSQL+` WHERE id = $1`, id))
+}
+
+const optionContractTermsSelectSQL = `SELECT
+	id, option_instrument_id, underlying_instrument_id, contract_type,
+	strike_price::TEXT, strike_currency, deliverable_quantity::TEXT,
+	source, source_namespace, source_record_id, source_revision,
+	effective_at, observed_at, raw_payload, payload_sha256, metadata, created_at
+FROM option_contract_terms`
+
+func scanOptionContractTerms(row accountRow) (*instrument.OptionContractTerms, error) {
+	var terms instrument.OptionContractTerms
+	var strikePrice, deliverableQuantity string
+	var rawPayload, metadata []byte
+	if err := row.Scan(
+		&terms.ID,
+		&terms.OptionInstrumentID,
+		&terms.UnderlyingInstrumentID,
+		&terms.ContractType,
+		&strikePrice,
+		&terms.StrikeCurrency,
+		&deliverableQuantity,
+		&terms.Source,
+		&terms.SourceNamespace,
+		&terms.SourceRecordID,
+		&terms.SourceRevision,
+		&terms.EffectiveAt,
+		&terms.ObservedAt,
+		&rawPayload,
+		&terms.PayloadSHA256,
+		&metadata,
+		&terms.CreatedAt,
+	); err != nil {
+		return nil, err
+	}
+	var err error
+	if terms.StrikePrice, err = decimal.NewFromString(strikePrice); err != nil {
+		return nil, fmt.Errorf("parse option terms strike price %q: %w", strikePrice, err)
+	}
+	if terms.DeliverableQuantity, err = decimal.NewFromString(deliverableQuantity); err != nil {
+		return nil, fmt.Errorf("parse option terms deliverable quantity %q: %w", deliverableQuantity, err)
+	}
+	terms.RawPayload = append(json.RawMessage(nil), rawPayload...)
+	terms.Metadata = append(json.RawMessage(nil), metadata...)
+	terms.EffectiveAt = terms.EffectiveAt.UTC()
+	terms.ObservedAt = terms.ObservedAt.UTC()
+	terms.CreatedAt = terms.CreatedAt.UTC()
+	if err := terms.Validate(); err != nil {
+		return nil, fmt.Errorf("validate loaded option contract terms: %w", err)
+	}
+	return &terms, nil
 }
 
 func (repo *InstrumentRepo) getVenueContractByIdentity(ctx context.Context, venue, contractID string, validFrom time.Time) (*instrument.VenueContract, error) {

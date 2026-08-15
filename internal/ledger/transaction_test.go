@@ -104,6 +104,98 @@ func TestNewTransactionNormalizesTimestampsToPostgresPrecision(t *testing.T) {
 	}
 }
 
+func TestNewDeterministicTransactionReproducesAllIDs(t *testing.T) {
+	input := TransactionInput{
+		AccountID:      uuid.New(),
+		EventType:      "fill.buy",
+		IdempotencyKey: "economic-source-event:event-1",
+		OriginType:     "economic_source_event",
+		OriginID:       "22222222-2222-2222-2222-222222222222",
+		ReferenceType:  "fill",
+		ReferenceID:    "fill-1",
+		EffectiveAt:    time.Date(2026, time.August, 15, 15, 0, 0, 0, time.UTC),
+		ObservedAt:     time.Date(2026, time.August, 15, 15, 0, 1, 0, time.UTC),
+		Postings: []PostingInput{
+			{IdempotencyKey: "inventory", LedgerAccount: "asset:security_inventory", UnitKind: UnitKindInstrument, Unit: uuid.NewString(), Amount: decimal.NewFromInt(1)},
+			{IdempotencyKey: "clearing-inventory", LedgerAccount: "clearing:execution", UnitKind: UnitKindInstrument, Unit: "temporary", Amount: decimal.NewFromInt(-1)},
+		},
+	}
+	input.Postings[1].Unit = input.Postings[0].Unit
+	seed := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+
+	first, err := newDeterministicTransaction(seed, "economic_event_v1", input)
+	if err != nil {
+		t.Fatalf("newDeterministicTransaction() error = %v", err)
+	}
+	retry, err := newDeterministicTransaction(seed, "economic_event_v1", input)
+	if err != nil {
+		t.Fatalf("newDeterministicTransaction(retry) error = %v", err)
+	}
+	if first.ID != retry.ID {
+		t.Fatalf("transaction IDs differ: %s != %s", first.ID, retry.ID)
+	}
+	for index := range first.Postings {
+		if first.Postings[index].ID != retry.Postings[index].ID {
+			t.Fatalf("posting %d IDs differ: %s != %s", index, first.Postings[index].ID, retry.Postings[index].ID)
+		}
+	}
+
+	distinctVersion, err := newDeterministicTransaction(seed, "economic_event_v2", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if distinctVersion.ID == first.ID {
+		t.Fatal("normalizer version did not domain-separate transaction identity")
+	}
+}
+
+func TestNewDeterministicTransactionRequiresObservedTime(t *testing.T) {
+	input := TransactionInput{
+		AccountID:      uuid.New(),
+		EventType:      "cost.fee",
+		IdempotencyKey: "economic-source-event:event-2",
+		OriginType:     "economic_source_event",
+		OriginID:       uuid.NewString(),
+		EffectiveAt:    time.Now().UTC(),
+		Postings: []PostingInput{
+			{IdempotencyKey: "fee-expense", LedgerAccount: "expense:fees", UnitKind: UnitKindCurrency, Unit: "USD", Amount: decimal.NewFromInt(1)},
+			{IdempotencyKey: "fee-cash", LedgerAccount: "asset:cash", UnitKind: UnitKindCurrency, Unit: "USD", Amount: decimal.NewFromInt(-1)},
+		},
+	}
+	if _, err := newDeterministicTransaction(uuid.New(), "economic_event_v1", input); err == nil {
+		t.Fatal("newDeterministicTransaction() accepted a missing observed time")
+	}
+}
+
+func TestNewTransactionLegacyIdentityAndObservedFallbackRemainUnchanged(t *testing.T) {
+	input := TransactionInput{
+		AccountID:      uuid.New(),
+		EventType:      "test.legacy",
+		IdempotencyKey: uuid.NewString(),
+		OriginType:     "property_test",
+		OriginID:       uuid.NewString(),
+		EffectiveAt:    time.Now().UTC(),
+		Postings: []PostingInput{
+			{IdempotencyKey: "debit", LedgerAccount: "asset:cash", UnitKind: UnitKindCurrency, Unit: "USD", Amount: decimal.NewFromInt(1)},
+			{IdempotencyKey: "credit", LedgerAccount: "equity:test", UnitKind: UnitKindCurrency, Unit: "USD", Amount: decimal.NewFromInt(-1)},
+		},
+	}
+	first, err := NewTransaction(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := NewTransaction(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.ID == second.ID {
+		t.Fatal("legacy NewTransaction() stopped allocating random IDs")
+	}
+	if first.ObservedAt.IsZero() || second.ObservedAt.IsZero() {
+		t.Fatal("legacy NewTransaction() stopped defaulting observed time")
+	}
+}
+
 func TestTransactionPropertyRejectsUnbalancedPostings(t *testing.T) {
 	property := func(rawAmount uint32, rawDifference uint8) bool {
 		amount := decimal.NewFromInt(int64(rawAmount%1_000_000) + 1)

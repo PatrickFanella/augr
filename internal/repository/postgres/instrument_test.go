@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -312,6 +313,106 @@ func TestInstrumentRepoRejectsCorporateActionPayloadConflict(t *testing.T) {
 	}
 }
 
+func TestOptionTermsRepoPersistsExactTermsAndReplaysIdentically(t *testing.T) {
+	ctx := context.Background()
+	pool := newInstrumentIntegrationPool(t, ctx)
+	repo := NewInstrumentRepo(pool)
+	option, underlying := createPhysicalOptionTermsFixture(t, ctx, repo)
+	input := instrument.OptionContractTermsInput{
+		OptionInstrumentID: option.ID, UnderlyingInstrumentID: underlying.ID,
+		ContractType: instrument.OptionContractCall, StrikePrice: decimal.RequireFromString("125.50"),
+		StrikeCurrency: "USD", DeliverableQuantity: decimal.NewFromInt(100),
+		Source: "occ-feed", SourceNamespace: "terms/test", SourceRecordID: "terms-1", SourceRevision: "v1",
+		EffectiveAt: time.Date(2026, time.August, 1, 0, 0, 0, 0, time.UTC),
+		ObservedAt:  time.Date(2026, time.August, 1, 0, 0, 1, 0, time.UTC),
+		RawPayload:  json.RawMessage(" {\n\"id\":\"terms-1\",\"strike\":\"125.50\"\n} "),
+		Metadata:    json.RawMessage(`{"authority":"occ"}`),
+	}
+	first, err := instrument.NewOptionContractTerms(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	persisted, err := repo.RegisterOptionContractTerms(ctx, first)
+	if err != nil {
+		t.Fatalf("RegisterOptionContractTerms() error = %v", err)
+	}
+	loaded, err := repo.GetOptionContractTermsByID(ctx, persisted.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !instrument.SameOptionContractTermsPayload(persisted, loaded) ||
+		!bytes.Equal(loaded.RawPayload, input.RawPayload) {
+		t.Fatalf("loaded terms lost exact payload: %+v", loaded)
+	}
+
+	retry, err := instrument.NewOptionContractTerms(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	replayed, err := repo.RegisterOptionContractTerms(ctx, retry)
+	if err != nil {
+		t.Fatalf("RegisterOptionContractTerms(retry) error = %v", err)
+	}
+	if replayed.ID != persisted.ID {
+		t.Fatalf("replayed terms ID = %s, want %s", replayed.ID, persisted.ID)
+	}
+}
+
+func TestOptionTermsRepoRejectsRevisionOrEconomicConflict(t *testing.T) {
+	ctx := context.Background()
+	pool := newInstrumentIntegrationPool(t, ctx)
+	repo := NewInstrumentRepo(pool)
+	option, underlying := createPhysicalOptionTermsFixture(t, ctx, repo)
+	input := instrument.OptionContractTermsInput{
+		OptionInstrumentID: option.ID, UnderlyingInstrumentID: underlying.ID,
+		ContractType: instrument.OptionContractPut, StrikePrice: decimal.NewFromInt(100),
+		StrikeCurrency: "USD", DeliverableQuantity: decimal.NewFromInt(100),
+		Source: "occ-feed", SourceNamespace: "terms/test", SourceRecordID: "terms-conflict", SourceRevision: "v1",
+		EffectiveAt: time.Date(2026, time.August, 1, 0, 0, 0, 0, time.UTC),
+		ObservedAt:  time.Date(2026, time.August, 1, 0, 0, 1, 0, time.UTC),
+		RawPayload:  json.RawMessage(`{"id":"terms-conflict"}`),
+	}
+	first, err := instrument.NewOptionContractTerms(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.RegisterOptionContractTerms(ctx, first); err != nil {
+		t.Fatal(err)
+	}
+
+	input.SourceRevision = "v2"
+	input.StrikePrice = decimal.NewFromInt(101)
+	input.RawPayload = json.RawMessage(`{"id":"terms-conflict","revision":2}`)
+	conflict, err := instrument.NewOptionContractTerms(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.RegisterOptionContractTerms(ctx, conflict); !errors.Is(err, repository.ErrIdempotencyConflict) {
+		t.Fatalf("RegisterOptionContractTerms(conflict) error = %v, want ErrIdempotencyConflict", err)
+	}
+}
+
+func createPhysicalOptionTermsFixture(t *testing.T, ctx context.Context, repo *InstrumentRepo) (*instrument.Instrument, *instrument.Instrument) {
+	t.Helper()
+	underlying := createInstrumentFixture(t, ctx, repo, "figi:test:option-underlying:"+uuid.NewString())
+	expiration := time.Date(2026, time.August, 15, 20, 0, 0, 0, time.UTC)
+	option, err := instrument.NewInstrument(instrument.InstrumentInput{
+		IdentityKey: "occ:test:" + uuid.NewString(), AssetClass: instrument.AssetClassOption,
+		PrimaryVenue: "test", Currency: "USD", TickSize: decimal.RequireFromString("0.01"),
+		LotSize: decimal.NewFromInt(1), Multiplier: decimal.NewFromInt(100), Expiration: &expiration,
+		ExerciseStyle: instrument.ExerciseAmerican, SettlementMethod: instrument.SettlementPhysical,
+		UnderlyingID: &underlying.ID, Status: instrument.StatusActive,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	persisted, err := repo.CreateInstrument(ctx, option)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return persisted, underlying
+}
+
 func createInstrumentFixture(t *testing.T, ctx context.Context, repo *InstrumentRepo, identityKey string) *instrument.Instrument {
 	t.Helper()
 	value, err := instrument.NewInstrument(instrument.InstrumentInput{
@@ -389,13 +490,13 @@ func newInstrumentIntegrationPool(t *testing.T, ctx context.Context) *pgxpool.Po
 	migrationNames := make([]string, 0, len(entries))
 	for _, entry := range entries {
 		name := entry.Name()
-		if !entry.IsDir() && strings.HasSuffix(name, ".up.sql") && name <= "000066_canonical_instruments.up.sql" {
+		if !entry.IsDir() && strings.HasSuffix(name, ".up.sql") && name <= "000068_economic_events.up.sql" {
 			migrationNames = append(migrationNames, name)
 		}
 	}
 	sort.Strings(migrationNames)
-	if len(migrationNames) == 0 || migrationNames[len(migrationNames)-1] != "000066_canonical_instruments.up.sql" {
-		t.Fatal("migration 66 was not found")
+	if len(migrationNames) == 0 || migrationNames[len(migrationNames)-1] != "000068_economic_events.up.sql" {
+		t.Fatal("migration 68 was not found")
 	}
 	for _, migrationName := range migrationNames {
 		migration, err := os.ReadFile(filepath.Join(migrationDirectory, migrationName))

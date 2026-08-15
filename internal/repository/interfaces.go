@@ -48,7 +48,18 @@ type InstrumentRepository interface {
 	AppendAliasEvent(context.Context, *instrument.AliasEvent) (*instrument.AliasEvent, error)
 	ResolveAlias(context.Context, string, instrument.AliasType, string, time.Time) (*instrument.Instrument, error)
 	RegisterVenueContract(context.Context, *instrument.VenueContract) (*instrument.VenueContract, error)
+	RegisterOptionContractTerms(context.Context, *instrument.OptionContractTerms) (*instrument.OptionContractTerms, error)
+	GetOptionContractTermsByID(context.Context, uuid.UUID) (*instrument.OptionContractTerms, error)
 	RecordCorporateAction(context.Context, *instrument.CorporateAction) (*instrument.CorporateAction, error)
+}
+
+// EconomicEventRepository persists raw economic evidence before atomically
+// applying at most one exact ledger normalization.
+type EconomicEventRepository interface {
+	RecordEconomicSourceEvent(context.Context, *ledger.EconomicSourceEvent) (*ledger.EconomicSourceEvent, error)
+	GetEconomicSourceEventByID(context.Context, uuid.UUID) (*ledger.EconomicSourceEvent, error)
+	ApplyEconomicNormalization(context.Context, *ledger.EconomicNormalization) (*ledger.EconomicNormalization, error)
+	GetEconomicNormalizationBySourceEventID(context.Context, uuid.UUID) (*ledger.EconomicNormalization, error)
 }
 
 // QuoteSnapshotRepository persists immutable, exact market observations and

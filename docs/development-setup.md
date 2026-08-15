@@ -148,6 +148,30 @@ migrate -path migrations -database "$AUGR_PHASE1_DB_URL" version
 docker exec augr-phase1-redis redis-cli ping
 ```
 
+Schema 68 is the local economic-event adapter boundary. It adds append-only
+raw source events, provenance-backed physical option terms, and typed
+normalizations linked to exact balanced ledger aggregates. Adapter code must
+call `RecordEconomicSourceEvent` and allow that transaction to commit before
+calling `ApplyEconomicNormalization`; a failed or temporarily impossible
+normalization must leave the original wire JSON and SHA-256 evidence durable.
+The option-term and physical-normalization repositories serialize on the same
+per-option database lock so a concurrent terms change cannot silently alter an
+already-selected deliverable.
+
+Migration 68 performs no legacy backfill and does not cut over the existing
+order, trade, position, broker, expiration, or settlement paths. Its down
+migration succeeds only while all three schema-68 tables and all
+`economic_source_event` ledger origins remain empty. Run repository and
+migration integration tests only against this disposable database:
+
+```bash
+DB_URL="$AUGR_PHASE1_DB_URL" go test -race -count=1 \
+  -run '^TestLedgerRepo|^TestEconomicEventRepo|^TestOptionTermsRepo|^TestOptionTermsAndPhysical' \
+  ./internal/repository/postgres
+DB_URL="$AUGR_PHASE1_DB_URL" go test -race -count=1 \
+  -run '^TestEconomicEventMigration' ./migrations
+```
+
 These credentials and ports are intentionally local-development-only. Do not
 reuse them for a shared, staging, or production database.
 

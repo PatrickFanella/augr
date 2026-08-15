@@ -8,6 +8,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
+
+	"github.com/PatrickFanella/get-rich-quick/internal/economicid"
 )
 
 // UnitKind identifies the quantity dimension in which postings balance.
@@ -78,7 +80,36 @@ type PostingInput struct {
 
 // NewTransaction materializes one immutable transaction and its posting IDs.
 func NewTransaction(input TransactionInput) (*Transaction, error) {
-	transactionID := uuid.New()
+	return materializeTransaction(input, uuid.New(), func(string) uuid.UUID {
+		return uuid.New()
+	}, true)
+}
+
+// newDeterministicTransaction materializes an economic-event transaction whose
+// IDs are reproducible in PostgreSQL. Unlike the legacy constructor, it never
+// invents a missing source observation timestamp.
+func newDeterministicTransaction(seed uuid.UUID, normalizerVersion string, input TransactionInput) (*Transaction, error) {
+	if seed == uuid.Nil {
+		return nil, fmt.Errorf("deterministic ledger transaction seed is required")
+	}
+	if !isNormalizedRequired(normalizerVersion) {
+		return nil, fmt.Errorf("deterministic ledger normalizer version must be non-empty and normalized")
+	}
+	if input.ObservedAt.IsZero() {
+		return nil, fmt.Errorf("deterministic ledger observed time is required")
+	}
+	transactionID := economicid.DeterministicUUID("economic-ledger-transaction", seed.String(), normalizerVersion)
+	return materializeTransaction(input, transactionID, func(postingKey string) uuid.UUID {
+		return economicid.DeterministicUUID("economic-ledger-posting", seed.String(), normalizerVersion, postingKey)
+	}, false)
+}
+
+func materializeTransaction(
+	input TransactionInput,
+	transactionID uuid.UUID,
+	postingID func(string) uuid.UUID,
+	defaultObservedAt bool,
+) (*Transaction, error) {
 	createdAt := time.Now().UTC().Truncate(time.Microsecond)
 	metadata, err := normalizeJSONObject(input.Metadata, "transaction metadata")
 	if err != nil {
@@ -95,10 +126,11 @@ func NewTransaction(input TransactionInput) (*Transaction, error) {
 		if candidate.UnitKind == UnitKindCurrency {
 			unit = strings.ToUpper(unit)
 		}
+		postingKey := strings.TrimSpace(candidate.IdempotencyKey)
 		postings = append(postings, Posting{
-			ID:             uuid.New(),
+			ID:             postingID(postingKey),
 			TransactionID:  transactionID,
-			IdempotencyKey: strings.TrimSpace(candidate.IdempotencyKey),
+			IdempotencyKey: postingKey,
 			LedgerAccount:  strings.TrimSpace(candidate.LedgerAccount),
 			UnitKind:       candidate.UnitKind,
 			Unit:           unit,
@@ -109,7 +141,7 @@ func NewTransaction(input TransactionInput) (*Transaction, error) {
 	}
 
 	observedAt := input.ObservedAt.UTC().Truncate(time.Microsecond)
-	if observedAt.IsZero() {
+	if observedAt.IsZero() && defaultObservedAt {
 		observedAt = createdAt
 	}
 	transaction := &Transaction{

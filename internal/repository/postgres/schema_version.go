@@ -9,7 +9,7 @@ import (
 )
 
 // RequiredSchemaVersion is the minimum schema version this runtime requires.
-const RequiredSchemaVersion = 67
+const RequiredSchemaVersion = 68
 
 type SchemaVersionState string
 
