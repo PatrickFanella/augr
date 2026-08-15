@@ -9,11 +9,34 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
+	"github.com/PatrickFanella/get-rich-quick/internal/ledger"
 )
 
-// ErrNotFound is returned by repository implementations when a requested
-// entity does not exist. Callers should check with errors.Is.
-var ErrNotFound = errors.New("not found")
+var (
+	// ErrNotFound is returned by repository implementations when a requested
+	// entity does not exist. Callers should check with errors.Is.
+	ErrNotFound = errors.New("not found")
+
+	// ErrIdempotencyConflict is returned when a previously accepted key is
+	// reused for a different payload.
+	ErrIdempotencyConflict = errors.New("idempotency conflict")
+)
+
+// AccountRepository persists explicit economic accounts together with their
+// append-only capital-flow history.
+type AccountRepository interface {
+	Create(ctx context.Context, account *domain.Account) error
+	GetByID(ctx context.Context, id uuid.UUID) (*domain.Account, error)
+	RecordCapitalFlow(ctx context.Context, flow *domain.CapitalFlow) (*domain.CapitalFlow, error)
+	ListCapitalFlows(ctx context.Context, accountID uuid.UUID, limit, offset int) ([]domain.CapitalFlow, error)
+	GetCapitalSummary(ctx context.Context, accountID uuid.UUID) (*domain.AccountCapitalSummary, error)
+}
+
+// LedgerRepository persists immutable, balanced economic transactions.
+type LedgerRepository interface {
+	PostTransaction(ctx context.Context, transaction *ledger.Transaction) (*ledger.Transaction, error)
+	GetByID(ctx context.Context, id uuid.UUID) (*ledger.Transaction, error)
+}
 
 // StrategyFilter defines supported filters when listing strategies.
 type StrategyFilter struct {

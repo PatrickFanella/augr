@@ -2,7 +2,7 @@
 title: "Development Setup"
 description: "Complete local development workflow for backend, frontend, database, testing, and smoke-mode execution."
 status: "canonical"
-updated: "2026-04-03"
+updated: "2026-08-14"
 tags: [development, setup, local-dev]
 ---
 
@@ -14,8 +14,8 @@ This guide is for contributors who need the full day-to-day workflow rather than
 
 Required:
 
-- Go 1.25
-- Node.js 20+
+- Go 1.25.8 or newer (the minimum is declared in `go.mod`)
+- Node.js 22 (pinned in `.nvmrc` and `mise.toml`, and used by frontend CI)
 - npm
 - Docker and Docker Compose v2+
 - PostgreSQL client tools if you want to inspect the database outside Compose
@@ -24,7 +24,8 @@ Recommended:
 
 - [Task](https://taskfile.dev) for the project command runner
 - `jq` for API and login scripting
-- `golangci-lint`
+- the Go quality/migration tools installed by `task tools`: `gofumpt`,
+  `golangci-lint`, `govulncheck`, and `migrate`
 
 ## Repository layout
 
@@ -95,6 +96,58 @@ task dev:restart
 task dev:psql
 ```
 
+### Isolated Phase 1 services
+
+When another Augr Compose project is already using this checkout, keep Phase 1
+schema work on separate loopback-only ports and named volumes. The built-in
+Docker bridge avoids allocating another custom subnet.
+
+First-time creation:
+
+```bash
+docker volume create augr_phase1_postgres_data
+docker volume create augr_phase1_redis_data
+
+docker run -d \
+  --name augr-phase1-postgres \
+  --network bridge \
+  --label com.subcult.augr.environment=phase1-local \
+  -e POSTGRES_USER=postgres \
+  -e POSTGRES_PASSWORD=postgres \
+  -e POSTGRES_DB=tradingagent \
+  -p 127.0.0.1:55464:5432 \
+  -v augr_phase1_postgres_data:/var/lib/postgresql/data \
+  timescale/timescaledb-ha:pg17
+
+docker run -d \
+  --name augr-phase1-redis \
+  --network bridge \
+  --label com.subcult.augr.environment=phase1-local \
+  -p 127.0.0.1:56380:6379 \
+  -v augr_phase1_redis_data:/data \
+  redis:7-alpine
+```
+
+Start or stop the existing environment without touching the default Augr
+stack:
+
+```bash
+docker start augr-phase1-postgres augr-phase1-redis
+docker stop augr-phase1-postgres augr-phase1-redis
+```
+
+Apply or inspect migrations explicitly:
+
+```bash
+export AUGR_PHASE1_DB_URL='postgres://postgres:postgres@127.0.0.1:55464/tradingagent?sslmode=disable'
+migrate -path migrations -database "$AUGR_PHASE1_DB_URL" up
+migrate -path migrations -database "$AUGR_PHASE1_DB_URL" version
+docker exec augr-phase1-redis redis-cli ping
+```
+
+These credentials and ports are intentionally local-development-only. Do not
+reuse them for a shared, staging, or production database.
+
 ## Running the backend natively
 
 If you want the API server outside Docker:
@@ -118,6 +171,14 @@ task build
 ## Running the frontend
 
 ```bash
+# Use the version manager already available on this host. `mise exec` makes
+# the selected version explicit even in shells without the activation hook:
+mise install
+mise exec -- npm --prefix web install
+mise exec -- npm --prefix web run dev
+
+# Or, with nvm:
+nvm use
 cd web
 npm install
 npm run dev
@@ -156,6 +217,9 @@ The schema includes persistence for:
 - users
 - API keys
 - backtest configs and backtest runs
+- explicit accounts and append-only capital flows
+- immutable ledger transactions and balanced postings
+- mark observations and projection checkpoints
 
 ## Creating a local user
 
@@ -198,6 +262,7 @@ Primary Task targets:
 
 ```bash
 task build
+task tools
 task test
 task test:race
 task test:integration
@@ -212,10 +277,17 @@ task check
 task ci
 ```
 
+The Go task targets are scoped to `cmd/`, `internal/`, and `migrations/` so a
+completed frontend install cannot make Go discover language ports bundled by
+packages under `web/node_modules/`. Frontend tests also force relative mock API
+and WebSocket paths; an ignored `web/.env.local` remains available for manual
+development without redirecting the test suite to a running backend.
+
 Notes:
 
 - integration tests require PostgreSQL
-- the current repository contains unresolved merge conflict markers in multiple Go and TypeScript files, so some broad test/build commands may fail before your specific change is even exercised
+- database integration tests create and remove isolated schemas; point `DB_URL` or
+  `DATABASE_URL` at a disposable development database, never production
 - docs-only validation currently relies mostly on file/link checks and the dedicated docs tests in `cmd/tradingagent`
 
 ## CLI workflow

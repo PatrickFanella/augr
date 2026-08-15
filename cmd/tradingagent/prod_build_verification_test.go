@@ -138,9 +138,9 @@ func TestReleaseGateIncludesProductionVerificationAndPinnedPromtool(t *testing.T
 		`scripts/verify-secret-history.sh`,
 		`sh -n "$shell_script"`,
 		`bash -n scripts/verify-prod-build.sh`,
-		`go test -count=1 ./...`,
-		`go vet ./...`,
-		`golangci-lint run ./...`,
+		`go test -count=1 ./cmd/... ./internal/... ./migrations/...`,
+		`go vet ./cmd/... ./internal/... ./migrations/...`,
+		`golangci-lint run ./cmd/... ./internal/... ./migrations/...`,
 		`npm --prefix web test`,
 		`npm --prefix web run lint`,
 		`npm --prefix web run build`,
@@ -166,7 +166,7 @@ func TestReleaseGateIncludesProductionVerificationAndPinnedPromtool(t *testing.T
 
 	candidateIdx := strings.Index(script, `candidate_commit=$(git rev-parse HEAD)`)
 	firstTreeIdx := strings.Index(script, `./scripts/verify-release-tree.sh`)
-	goTestIdx := strings.Index(script, `go test -count=1 ./...`)
+	goTestIdx := strings.Index(script, `go test -count=1 ./cmd/... ./internal/... ./migrations/...`)
 	secretIdx := strings.Index(script, `./scripts/verify-secret-history.sh`)
 	lastTreeIdx := strings.LastIndex(script, `./scripts/verify-release-tree.sh`)
 	verifiedIdx := strings.Index(script, `verified_commit=$(git rev-parse HEAD)`)

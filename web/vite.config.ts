@@ -44,5 +44,11 @@ export default defineConfig({
     globals: false,
     testTimeout: 20_000,
     hookTimeout: 20_000,
+    env: {
+      // Tests must not inherit a developer's ignored .env.local API origin;
+      // MSW owns the relative test endpoints.
+      VITE_API_BASE_URL: '/api/v1',
+      VITE_WS_BASE_URL: '/ws',
+    },
   },
 })
