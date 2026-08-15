@@ -226,6 +226,7 @@ The schema includes persistence for:
 - canonical instruments and immutable dated alias events
 - venue contracts and corporate-action facts
 - explicit instrument-identity quarantine findings
+- canonical append-only quote snapshots and exact ordered depth levels
 
 Schema 66 deliberately leaves existing ticker-based application reads in
 place. It backfills legacy symbols as deterministic quarantined identities and
@@ -247,6 +248,50 @@ JOIN instrument_identity_quarantine AS finding
 WHERE instrument.status = 'quarantined'
 ORDER BY instrument.identity_key, finding.observed_at, finding.id;
 ```
+
+Schema 67 adds the canonical market-observation boundary without cutting over
+any provider, strategy, order, fill, cache, or recorder path. It intentionally
+does not backfill legacy `DOUBLE PRECISION`/JSON snapshots: those rows do not
+prove a canonical instrument, source namespace/revision, exact decimal input,
+or decision-availability time. New adapters must provide that evidence
+explicitly.
+
+Inspect which observations are actually eligible for a point-in-time consumer:
+
+```sql
+SELECT
+    quote.id,
+    quote.ingest_sequence,
+    instrument.identity_key,
+    quote.provider,
+    quote.venue,
+    quote.observation_namespace,
+    quote.observation_id,
+    quote.source_revision,
+    quote.exchange_at,
+    quote.received_at,
+    quote.available_at,
+    quote.bid,
+    quote.ask,
+    quote.bid_depth_count,
+    quote.ask_depth_count
+FROM quote_snapshots AS quote
+JOIN instruments AS instrument ON instrument.id = quote.instrument_id
+WHERE quote.available_at IS NOT NULL
+ORDER BY quote.available_at DESC, quote.source_sequence DESC NULLS LAST,
+         quote.ingest_sequence DESC;
+```
+
+An observation with a missing `available_at`, source, venue contract, bid, ask,
+market/session status, or requested depth side may still preserve attributable
+evidence, but the `internal/marketdata` assessment contract fails closed when a
+consumer requires that fact. Present zero prices remain distinct from SQL
+`NULL`; missing spread is never treated as zero. `QuoteSnapshot.Assess` checks
+fact sufficiency only. An intent, order, or fill route must call
+`QuoteSnapshot.AssessForExecution` with the resolved immutable instrument and
+venue contract; that joined boundary requires an active, unexpired instrument,
+checks the contract at both observation and evaluation time, and rejects
+off-tick executable prices or off-lot displayed sizes.
 
 ## Creating a local user
 

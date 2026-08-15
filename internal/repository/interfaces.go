@@ -11,6 +11,7 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/instrument"
 	"github.com/PatrickFanella/get-rich-quick/internal/ledger"
+	"github.com/PatrickFanella/get-rich-quick/internal/marketdata"
 )
 
 var (
@@ -48,6 +49,14 @@ type InstrumentRepository interface {
 	ResolveAlias(context.Context, string, instrument.AliasType, string, time.Time) (*instrument.Instrument, error)
 	RegisterVenueContract(context.Context, *instrument.VenueContract) (*instrument.VenueContract, error)
 	RecordCorporateAction(context.Context, *instrument.CorporateAction) (*instrument.CorporateAction, error)
+}
+
+// QuoteSnapshotRepository persists immutable, exact market observations and
+// selects only observations available at a requested point in time.
+type QuoteSnapshotRepository interface {
+	RecordQuoteSnapshot(context.Context, *marketdata.QuoteSnapshot) (*marketdata.QuoteSnapshot, error)
+	GetQuoteSnapshotByID(context.Context, uuid.UUID) (*marketdata.QuoteSnapshot, error)
+	LatestQuoteSnapshotAt(context.Context, marketdata.QuoteSelector) (*marketdata.QuoteSnapshot, error)
 }
 
 // StrategyFilter defines supported filters when listing strategies.
