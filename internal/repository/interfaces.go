@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/PatrickFanella/get-rich-quick/internal/accountingrecon"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/instrument"
 	"github.com/PatrickFanella/get-rich-quick/internal/ledger"
@@ -69,6 +70,15 @@ type ProjectionRepository interface {
 	GetMarkObservationByID(context.Context, uuid.UUID) (*ledger.MarkObservation, error)
 	RebuildPortfolioProjection(context.Context, ledger.ProjectionRequest) (*ledger.PortfolioProjection, error)
 	GetProjectionCheckpointByID(context.Context, uuid.UUID) (*ledger.ProjectionCheckpoint, error)
+}
+
+// AccountingReconciliationRepository appends and reloads immutable structural
+// evidence. It does not authenticate source or reviewer identity and cannot
+// authorize a read cutover by itself.
+type AccountingReconciliationRepository interface {
+	RecordAccountingRun(context.Context, *accountingrecon.Run) (*accountingrecon.Run, error)
+	GetAccountingRunByID(context.Context, uuid.UUID) (*accountingrecon.Run, error)
+	ListAccountingRuns(context.Context, uuid.UUID, int, int) ([]*accountingrecon.Run, error)
 }
 
 // QuoteSnapshotRepository persists immutable, exact market observations and

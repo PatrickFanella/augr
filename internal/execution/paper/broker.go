@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/PatrickFanella/get-rich-quick/internal/accountingrecon"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution"
 )
@@ -388,6 +389,39 @@ func (b *PaperBroker) GetAccountBalance(ctx context.Context) (execution.Balance,
 	defer b.mu.RUnlock()
 
 	return b.balance, nil
+}
+
+// CaptureLegacyAccounting returns balance and open positions under one read
+// lock so the two parts cannot describe different paper-broker mutations.
+// Cross-system atomicity with the ledger still requires the OVR-105 external
+// account-scoped capture fence; this method alone does not provide it.
+func (b *PaperBroker) CaptureLegacyAccounting(ctx context.Context) (accountingrecon.LegacyCapture, error) {
+	if b == nil {
+		return accountingrecon.LegacyCapture{}, errors.New("paper: broker is required")
+	}
+	if err := ctx.Err(); err != nil {
+		return accountingrecon.LegacyCapture{}, fmt.Errorf("paper: capture legacy accounting: %w", err)
+	}
+
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
+	tickers := make([]string, 0, len(b.positions))
+	for ticker := range b.positions {
+		tickers = append(tickers, ticker)
+	}
+	sort.Strings(tickers)
+	positions := make([]domain.Position, 0, len(tickers))
+	for _, ticker := range tickers {
+		positions = append(positions, *clonePosition(b.positions[ticker]))
+	}
+	return accountingrecon.LegacyCapture{
+		Balance: accountingrecon.LegacyBalance{
+			Currency: b.balance.Currency, Cash: b.balance.Cash,
+			BuyingPower: b.balance.BuyingPower, Equity: b.balance.Equity,
+		},
+		Positions: positions, CapturedAt: b.currentTime().UTC().Truncate(time.Microsecond),
+	}, nil
 }
 
 func (b *PaperBroker) nextExternalIDLocked() string {

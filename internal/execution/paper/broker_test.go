@@ -682,6 +682,35 @@ func TestPaperBrokerGetAccountBalance_ReturnsSnapshot(t *testing.T) {
 	assertFloatClose(t, refetched.Cash, 850, 1e-9)
 }
 
+func TestPaperBrokerCaptureLegacyAccountingIsOneCloneSafeSnapshot(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 8, 15, 12, 0, 0, 123000, time.UTC)
+	broker := NewPaperBroker(1000, 0, 0)
+	broker.SetNowFunc(func() time.Time { return now })
+	price := 12.5
+	if err := broker.RestorePositions([]domain.Position{{Ticker: "AAPL", Side: domain.PositionSideLong, Quantity: 2, AvgEntry: 10, CurrentPrice: &price}}); err != nil {
+		t.Fatal(err)
+	}
+
+	first, err := broker.CaptureLegacyAccounting(context.Background())
+	if err != nil {
+		t.Fatalf("CaptureLegacyAccounting() error = %v", err)
+	}
+	if first.Balance.Cash != 1000 || len(first.Positions) != 1 || !first.CapturedAt.Equal(now) {
+		t.Fatalf("capture = %+v", first)
+	}
+	*first.Positions[0].CurrentPrice = 999
+	first.Positions[0].Quantity = 999
+	second, err := broker.CaptureLegacyAccounting(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Positions[0].Quantity != 2 || second.Positions[0].CurrentPrice == nil || *second.Positions[0].CurrentPrice != price {
+		t.Fatalf("capture leaked mutable position: %+v", second.Positions[0])
+	}
+}
+
 func TestPaperBrokerSubmitOrder_MarketOrderPrefersLimitPriceOverStopPrice(t *testing.T) {
 	t.Parallel()
 

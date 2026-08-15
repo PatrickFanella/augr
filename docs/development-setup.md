@@ -251,6 +251,7 @@ The schema includes persistence for:
 - venue contracts and corporate-action facts
 - explicit instrument-identity quarantine findings
 - canonical append-only quote snapshots and exact ordered depth levels
+- immutable legacy-versus-ledger accounting reconciliation evidence
 
 Schema 66 deliberately leaves existing ticker-based application reads in
 place. It backfills legacy symbols as deterministic quarantined identities and
@@ -434,6 +435,46 @@ INSERT INTO projection_checkpoint_signing_key_revocations (
     'local-developer'
 );
 ```
+
+Schema 70 adds the OVR-105 accounting dual-run evidence boundary. It stores
+the exact legacy snapshot, immutable-ledger snapshot, comparison bytes,
+SHA-256 checksums, deterministic identities, capture-fence identity/epoch,
+classification rows, and opaque future attestation fields. Parent and result
+rows are append-only; incomplete child sets fail at commit; downgrade takes
+exclusive locks first and refuses to discard any recorded evidence.
+
+Applying schema 70 does not make dual-run evidence authentic, start a worker,
+grant a runtime role, or switch an accounting read. Database triggers establish
+structural consistency only. A qualifying run additionally requires an
+approved verifier for the exact bytes and named identities. The present code
+has no shared runtime capture fence covering every paper mutation and ledger
+normalization, and it has no approved reconciliation attestation/workload
+identity. Therefore do not grant `INSERT` on
+`accounting_reconciliation_runs` or `accounting_reconciliation_results`, do not
+schedule `accountingrecon.Runner`, and do not interpret a manually inserted row
+as parity evidence.
+
+Use only the disposable loopback database for the current schema-70 tests:
+
+```bash
+export AUGR_PHASE1_DB_URL='postgres://postgres:postgres@127.0.0.1:55464/tradingagent?sslmode=disable'
+
+go test -race -count=1 ./internal/accountingrecon ./internal/execution/paper
+DB_URL="$AUGR_PHASE1_DB_URL" go test -race -count=1 \
+  -run '^TestAccountingReconciliationRepo' ./internal/repository/postgres
+DB_URL="$AUGR_PHASE1_DB_URL" go test -race -count=1 \
+  -run '^TestAccountingDualRunMigration' ./migrations
+```
+
+The pure cutover evaluator requires an injected trusted wall clock and 30
+consecutive fully completed UTC dates for one account under one unchanged
+projection/mark/comparison policy; the current UTC date cannot count. Every
+required fact and position must be exactly equal or carry an allowed independently reviewed
+explanation; missing, unexplained, conflicting, future, synthetic, unsigned,
+unknown-key, revoked-key, or invalid evidence fails closed. Passing that pure
+evaluator still returns evidence only and cannot change a runtime read path.
+See [Accounting read cutover](runbooks/accounting-read-cutover.md) before any
+deployment design or operational work.
 
 ## Creating a local user
 
