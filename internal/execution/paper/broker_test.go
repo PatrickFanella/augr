@@ -51,6 +51,52 @@ func TestPaperBrokerSubmitOrder_MarketOrderAppliesSlippage(t *testing.T) {
 	}
 }
 
+func TestPaperBrokerSubmitOrder_MarketOrderWithoutReferenceFailsClosed(t *testing.T) {
+	t.Parallel()
+
+	broker := NewPaperBroker(1000, 25, 0.01)
+	beforeBalance, err := broker.GetAccountBalance(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	beforePositions, err := broker.GetPositions(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	order := &domain.Order{
+		Ticker: "AAPL", Side: domain.OrderSideBuy,
+		OrderType: domain.OrderTypeMarket, Quantity: 10,
+	}
+
+	externalID, submitErr := broker.SubmitOrder(context.Background(), order)
+	if submitErr == nil || !strings.Contains(submitErr.Error(), "executable reference price") {
+		t.Fatalf("SubmitOrder() error = %v, want missing executable reference", submitErr)
+	}
+	if externalID == "" || order.Status != domain.OrderStatusRejected || order.FilledQuantity != 0 ||
+		order.FilledAvgPrice != nil || order.FilledAt != nil {
+		t.Fatalf("rejected unpriced order = id:%q order:%+v", externalID, order)
+	}
+	afterBalance, err := broker.GetAccountBalance(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	afterPositions, err := broker.GetPositions(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if afterBalance != beforeBalance || len(afterPositions) != len(beforePositions) {
+		t.Fatalf("unpriced order mutated account = balance:%+v/%+v positions:%+v/%+v",
+			beforeBalance, afterBalance, beforePositions, afterPositions)
+	}
+	status, err := broker.GetOrderStatus(context.Background(), externalID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status != domain.OrderStatusRejected {
+		t.Fatalf("stored unpriced order status = %q", status)
+	}
+}
+
 func TestPaperBrokerSubmitOrder_DeductsFee(t *testing.T) {
 	t.Parallel()
 

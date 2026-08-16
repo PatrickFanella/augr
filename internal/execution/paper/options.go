@@ -10,6 +10,7 @@ import (
 
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution"
+	"github.com/PatrickFanella/get-rich-quick/internal/simulation"
 )
 
 // DefaultOptionFeePerContract is the standard per-contract option commission ($0.65).
@@ -23,10 +24,8 @@ type OptionsFillResult struct {
 	Fee       float64 // per-contract fee
 }
 
-// SimulateOptionFill calculates the fill for an options order.
-// For market orders the fill price defaults to the order's LimitPrice (used as the
-// mid price reference) or falls back to 1.0. The returned premium accounts for the
-// contract multiplier.
+// SimulateOptionFill calculates the fill for an explicitly priced options
+// order through the relocated common simulation compatibility primitive.
 func SimulateOptionFill(order *domain.Order) (*OptionsFillResult, error) {
 	if order == nil {
 		return nil, errors.New("paper: order is required")
@@ -38,21 +37,20 @@ func SimulateOptionFill(order *domain.Order) (*OptionsFillResult, error) {
 	if order.LimitPrice == nil || *order.LimitPrice <= 0 {
 		return nil, errors.New("paper: executable option price is required")
 	}
-	fillPrice := *order.LimitPrice
-
-	multiplier := order.ContractMultiplier
-	if multiplier <= 0 {
-		multiplier = 100
+	legacy, err := simulation.SimulateOptionsFill(
+		order,
+		domain.OHLCV{Close: *order.LimitPrice},
+		simulation.OptionsFillConfig{FeePerContract: DefaultOptionFeePerContract},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("paper: simulate option fill: %w", err)
 	}
 
-	premium := fillPrice * order.Quantity * multiplier
-	fee := order.Quantity * DefaultOptionFeePerContract
-
 	return &OptionsFillResult{
-		FillPrice: fillPrice,
-		Quantity:  order.Quantity,
-		Premium:   premium,
-		Fee:       fee,
+		FillPrice: legacy.FillPrice,
+		Quantity:  legacy.Quantity,
+		Premium:   legacy.FillPrice * legacy.Quantity * legacy.Multiplier,
+		Fee:       legacy.Fee,
 	}, nil
 }
 

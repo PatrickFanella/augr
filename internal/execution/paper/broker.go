@@ -18,9 +18,8 @@ import (
 )
 
 const (
-	defaultReferencePrice = 1.0
-	bpsToDecimalDivisor   = 10000
-	minFillPrice          = 1e-9
+	bpsToDecimalDivisor = 10000
+	minFillPrice        = 1e-9
 )
 
 // PaperBroker implements an in-memory execution.Broker for paper trading.
@@ -449,7 +448,7 @@ func (b *PaperBroker) simulateFillPrice(order *domain.Order) (float64, bool, err
 	case domain.OrderTypeMarket:
 		referencePrice, ok := resolveReferencePrice(order)
 		if !ok {
-			referencePrice = defaultReferencePrice
+			return 0, false, errors.New("paper: executable reference price is required for market order")
 		}
 		return applySlippage(referencePrice, order.Side, b.slippageBps), true, nil
 	case domain.OrderTypeLimit:
