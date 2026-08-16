@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/economicid"
 )
@@ -61,6 +62,7 @@ func TestVenueObservationIdentityExcludesRevisionTimesAndBytesButReplayDoesNot(t
 		"receive time":   func(value *ObservationInput) { value.ReceivedAt = value.ReceivedAt.Add(time.Microsecond) },
 		"raw bytes":      func(value *ObservationInput) { value.RawPayload = json.RawMessage(`{"id":"fill-1","price":"0.43"}`) },
 		"mapped outcome": func(value *ObservationInput) { value.MappedOutcome = OutcomeContradiction },
+		"provider price": func(value *ObservationInput) { value.ProviderPrice = observationDecimalPointer("0.43") },
 	}
 	for name, mutate := range mutations {
 		t.Run(name, func(t *testing.T) {
@@ -154,6 +156,12 @@ func TestVenueObservationRejectsInvalidShapeAndVocabulary(t *testing.T) {
 		"kalshi outcome":   func(value *ObservationInput) { value.CanonicalOutcome = "maybe" },
 		"kalshi book side": func(value *ObservationInput) { value.ProviderBookSide = "yes" },
 		"kalshi action":    func(value *ObservationInput) { value.ProviderAction = "hold" },
+		"negative provider price": func(value *ObservationInput) {
+			value.ProviderPrice = observationDecimalPointer("-0.01")
+		},
+		"inexact provider price": func(value *ObservationInput) {
+			value.ProviderPrice = observationDecimalPointer("0.1234567890123")
+		},
 	}
 	for name, mutate := range mutations {
 		t.Run(name, func(t *testing.T) {
@@ -170,13 +178,19 @@ func TestVenueObservationValidateDetectsTamperingAndClonesOptionalBinding(t *tes
 	input := validObservationInput()
 	bindingID := uuid.MustParse("55555555-5555-5555-5555-555555555555")
 	input.BindingID = &bindingID
+	providerPrice := decimal.RequireFromString("0.42")
+	input.ProviderPrice = &providerPrice
 	observation, err := NewObservation(input)
 	if err != nil {
 		t.Fatal(err)
 	}
 	bindingID = uuid.Nil
+	providerPrice = decimal.RequireFromString("0.99")
 	if observation.BindingID == nil || *observation.BindingID == uuid.Nil {
 		t.Fatal("observation aliases caller binding ID")
+	}
+	if observation.ProviderPrice == nil || !observation.ProviderPrice.Equal(decimal.RequireFromString("0.42")) {
+		t.Fatal("observation aliases caller provider price")
 	}
 
 	tests := map[string]func(*Observation){
@@ -215,6 +229,7 @@ func validObservationInput() ObservationInput {
 		CanonicalOutcome:   "no",
 		ProviderBookSide:   "ask",
 		ProviderAction:     "buy",
+		ProviderPrice:      observationDecimalPointer("0.42"),
 		IdentityKind:       SourceIdentityProvider,
 		SourceNamespace:    "kalshi/portfolio/fills",
 		SourceEventID:      "fill-1",
@@ -224,6 +239,11 @@ func validObservationInput() ObservationInput {
 		RawPayload:         json.RawMessage(`{"id":"fill-1","price":"0.42"}`),
 		CreatedAt:          time.Date(2026, time.August, 15, 15, 0, 3, 0, time.UTC),
 	}
+}
+
+func observationDecimalPointer(value string) *decimal.Decimal {
+	parsed := decimal.RequireFromString(value)
+	return &parsed
 }
 
 func stringsOf(value string, count int) string {

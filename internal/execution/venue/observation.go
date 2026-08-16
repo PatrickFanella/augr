@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/economicid"
 )
@@ -67,6 +68,7 @@ type ObservationInput struct {
 	CanonicalOutcome   string
 	ProviderBookSide   string
 	ProviderAction     string
+	ProviderPrice      *decimal.Decimal
 	IdentityKind       SourceIdentityKind
 	SourceNamespace    string
 	SourceEventID      string
@@ -98,6 +100,7 @@ type Observation struct {
 	CanonicalOutcome   string
 	ProviderBookSide   string
 	ProviderAction     string
+	ProviderPrice      *decimal.Decimal
 	IdentityKind       SourceIdentityKind
 	SourceNamespace    string
 	SourceEventID      string
@@ -134,7 +137,8 @@ func NewObservation(input ObservationInput) (*Observation, error) {
 		ExternalOrderID: strings.TrimSpace(input.ExternalOrderID), ClientOrderID: strings.TrimSpace(input.ClientOrderID),
 		ProviderContractID: strings.TrimSpace(input.ProviderContractID), CanonicalOutcome: strings.TrimSpace(input.CanonicalOutcome),
 		ProviderBookSide: strings.TrimSpace(input.ProviderBookSide), ProviderAction: strings.TrimSpace(input.ProviderAction),
-		IdentityKind: input.IdentityKind, SourceNamespace: strings.TrimSpace(input.SourceNamespace),
+		ProviderPrice: cloneObservationDecimal(input.ProviderPrice),
+		IdentityKind:  input.IdentityKind, SourceNamespace: strings.TrimSpace(input.SourceNamespace),
 		SourceEventID: strings.TrimSpace(input.SourceEventID), SourceRevision: strings.TrimSpace(input.SourceRevision),
 		SourceAt: normalizeObservationTime(input.SourceAt), ReceivedAt: normalizeObservationTime(input.ReceivedAt),
 		RawPayload: rawPayload, PayloadSHA256: hex.EncodeToString(digestBytes[:]), Payload: parsedPayload,
@@ -184,8 +188,9 @@ func (observation Observation) Validate() error {
 	}
 	if !validOptionalToken(observation.CanonicalOutcome, "yes", "no") ||
 		!validOptionalToken(observation.ProviderBookSide, "bid", "ask") ||
-		!validOptionalToken(observation.ProviderAction, "buy", "sell") {
-		return fmt.Errorf("venue observation outcome, book side, or action is invalid")
+		!validOptionalToken(observation.ProviderAction, "buy", "sell") ||
+		!validObservationPrice(observation.ProviderPrice) {
+		return fmt.Errorf("venue observation outcome, book side, action, or price is invalid")
 	}
 	if !validSourceIdentityKind(observation.IdentityKind) ||
 		!normalizedRequired(observation.SourceNamespace, 256) || !normalizedRequired(observation.SourceEventID, 512) ||
@@ -239,7 +244,8 @@ func SameObservationPayload(left, right *Observation) bool {
 		left.MappedOutcome == right.MappedOutcome && left.ExternalOrderID == right.ExternalOrderID &&
 		left.ClientOrderID == right.ClientOrderID && left.ProviderContractID == right.ProviderContractID &&
 		left.CanonicalOutcome == right.CanonicalOutcome && left.ProviderBookSide == right.ProviderBookSide &&
-		left.ProviderAction == right.ProviderAction && left.IdentityKind == right.IdentityKind &&
+		left.ProviderAction == right.ProviderAction && equalObservationDecimal(left.ProviderPrice, right.ProviderPrice) &&
+		left.IdentityKind == right.IdentityKind &&
 		left.SourceNamespace == right.SourceNamespace && left.SourceEventID == right.SourceEventID &&
 		left.SourceRevision == right.SourceRevision && left.SourceAt.Equal(right.SourceAt) &&
 		left.ReceivedAt.Equal(right.ReceivedAt) && left.PayloadSHA256 == right.PayloadSHA256 &&
@@ -248,6 +254,7 @@ func SameObservationPayload(left, right *Observation) bool {
 
 func cloneObservation(value Observation) Observation {
 	value.BindingID = cloneObservationUUID(value.BindingID)
+	value.ProviderPrice = cloneObservationDecimal(value.ProviderPrice)
 	value.RawPayload = append(json.RawMessage(nil), value.RawPayload...)
 	value.Payload = append(json.RawMessage(nil), value.Payload...)
 	return value
@@ -397,4 +404,27 @@ func equalObservationUUID(left, right *uuid.UUID) bool {
 		return left == nil && right == nil
 	}
 	return *left == *right
+}
+
+func validObservationPrice(value *decimal.Decimal) bool {
+	if value == nil {
+		return true
+	}
+	maximum := decimal.RequireFromString("100000000000000000000000000")
+	return !value.IsNegative() && value.Equal(value.Round(12)) && value.LessThan(maximum)
+}
+
+func cloneObservationDecimal(value *decimal.Decimal) *decimal.Decimal {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
+}
+
+func equalObservationDecimal(left, right *decimal.Decimal) bool {
+	if left == nil || right == nil {
+		return left == nil && right == nil
+	}
+	return left.Equal(*right)
 }
