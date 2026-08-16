@@ -123,6 +123,18 @@ type PolicyArtifact struct {
 	CreatedAt      time.Time
 }
 
+// SamePolicyArtifactPayload reports content and identity equality. CreatedAt
+// is local persistence evidence and is deliberately excluded from replay
+// identity.
+func SamePolicyArtifactPayload(left, right *PolicyArtifact) bool {
+	if left == nil || right == nil {
+		return false
+	}
+	return left.ID == right.ID && left.Schema == right.Schema && left.Provider == right.Provider &&
+		left.Venue == right.Venue && left.Version == right.Version && left.SHA256 == right.SHA256 &&
+		bytes.Equal(left.CanonicalBytes, right.CanonicalBytes)
+}
+
 type retryLookupPolicy struct {
 	DedupeKey        string
 	DuplicateResult  string

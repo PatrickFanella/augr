@@ -11,6 +11,7 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/accountingrecon"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution/lifecycle"
+	"github.com/PatrickFanella/get-rich-quick/internal/execution/venue"
 	"github.com/PatrickFanella/get-rich-quick/internal/instrument"
 	"github.com/PatrickFanella/get-rich-quick/internal/ledger"
 	"github.com/PatrickFanella/get-rich-quick/internal/marketdata"
@@ -82,6 +83,20 @@ type ExecutionLifecycleRepository interface {
 type SimulationPolicyRepository interface {
 	RegisterSimulationPolicy(context.Context, *simulation.PolicyArtifact) (*simulation.PolicyArtifact, error)
 	GetSimulationPolicyByVersion(context.Context, string) (*simulation.PolicyArtifact, error)
+}
+
+// VenuePolicyRepository registers only reviewed immutable venue-adapter
+// artifacts and reloads the exact version pinned on a routed order.
+type VenuePolicyRepository interface {
+	RegisterVenuePolicy(context.Context, *venue.PolicyArtifact) (*venue.PolicyArtifact, error)
+	GetVenuePolicyByVersion(context.Context, string) (*venue.PolicyArtifact, error)
+}
+
+// VenueObservationRepository journals exact provider evidence before any
+// lifecycle or economic interpretation is applied.
+type VenueObservationRepository interface {
+	RecordVenueObservation(context.Context, *venue.Observation) (*venue.Observation, error)
+	GetVenueObservationByID(context.Context, uuid.UUID) (*venue.Observation, error)
 }
 
 // ProjectionRepository persists canonical marks and immutable rebuild
