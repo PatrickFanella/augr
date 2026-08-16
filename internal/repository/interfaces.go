@@ -14,6 +14,7 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/instrument"
 	"github.com/PatrickFanella/get-rich-quick/internal/ledger"
 	"github.com/PatrickFanella/get-rich-quick/internal/marketdata"
+	"github.com/PatrickFanella/get-rich-quick/internal/simulation"
 )
 
 var (
@@ -74,6 +75,13 @@ type ExecutionLifecycleRepository interface {
 	GetExecutionLifecycle(context.Context, uuid.UUID, uuid.UUID) (*lifecycle.Aggregate, error)
 	FindExecutionLifecycleByIdempotencyKey(context.Context, uuid.UUID, string) (*lifecycle.Aggregate, error)
 	ListExecutionRecoveryCandidates(context.Context, uuid.UUID, int) ([]*lifecycle.Aggregate, error)
+}
+
+// SimulationPolicyRepository registers immutable content-addressed policy
+// artifacts and reloads the exact routed version for deterministic recovery.
+type SimulationPolicyRepository interface {
+	RegisterSimulationPolicy(context.Context, *simulation.PolicyArtifact) (*simulation.PolicyArtifact, error)
+	GetSimulationPolicyByVersion(context.Context, string) (*simulation.PolicyArtifact, error)
 }
 
 // ProjectionRepository persists canonical marks and immutable rebuild
