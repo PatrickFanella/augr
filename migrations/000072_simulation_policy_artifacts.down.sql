@@ -19,3 +19,4 @@ DROP FUNCTION IF EXISTS validate_simulation_order_policy_artifact();
 DROP TRIGGER IF EXISTS trg_simulation_policy_artifacts_immutable ON simulation_policy_artifacts;
 DROP FUNCTION IF EXISTS reject_simulation_policy_artifact_mutation();
 DROP TABLE simulation_policy_artifacts;
+DROP FUNCTION IF EXISTS simulation_policy_v1_canonical_bytes(JSONB);

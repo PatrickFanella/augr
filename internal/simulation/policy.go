@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -28,6 +29,11 @@ const (
 
 	policyArtifactIDDomain = "simulation-policy-artifact"
 	policyTimestampLayout  = "2006-01-02T15:04:05.000000Z"
+)
+
+var (
+	policyStatusTokenPattern  = regexp.MustCompile(`^[a-z0-9][a-z0-9_.:-]{0,63}$`)
+	policySessionLabelPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}$`)
 )
 
 // CalendarKind distinguishes finite exchange-session evidence from venues
@@ -536,6 +542,9 @@ func normalizeStatuses(values []string, label string) ([]string, error) {
 		if normalized == "" {
 			return nil, fmt.Errorf("allowed %s status cannot be empty", label)
 		}
+		if !policyStatusTokenPattern.MatchString(normalized) {
+			return nil, fmt.Errorf("allowed %s status %q is not a canonical token", label, normalized)
+		}
 		if _, duplicate := seen[normalized]; duplicate {
 			continue
 		}
@@ -572,6 +581,9 @@ func normalizeCalendar(input CalendarPolicy, timeInForce []lifecycle.TimeInForce
 		sessions[index].Label = strings.TrimSpace(sessions[index].Label)
 		if sessions[index].Label == "" {
 			return CalendarPolicy{}, fmt.Errorf("session label is required")
+		}
+		if !policySessionLabelPattern.MatchString(sessions[index].Label) {
+			return CalendarPolicy{}, fmt.Errorf("session label %q is not a canonical token", sessions[index].Label)
 		}
 		if _, duplicate := labels[sessions[index].Label]; duplicate {
 			return CalendarPolicy{}, fmt.Errorf("session label %q is duplicated", sessions[index].Label)

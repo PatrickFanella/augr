@@ -135,6 +135,78 @@ func TestSimulationPolicyRepoRecoversRoutedVersionAfterCurrentPolicyChanges(t *t
 	}
 }
 
+func TestSimulationPolicyRepoDatabaseValidatorAcceptsEverySupportedAssetAndCalendar(t *testing.T) {
+	ctx, pool := newSimulationPolicyIntegrationPool(t)
+	base := time.Date(2026, 8, 17, 12, 0, 0, 123456000, time.UTC)
+	requirements := marketdata.QuoteRequirements{
+		RequireSource: true, RequireVenueContract: true, RequireBid: true, RequireAsk: true,
+		RequireBidDepth: true, RequireAskDepth: true, RequireMarketStatus: true,
+		RequireSessionStatus: true, AllowedMarketStatuses: []string{"continuous", "open"},
+		AllowedSessionStatuses: []string{"extended", "regular"}, MaxAge: 2 * time.Second,
+	}
+	assetClasses := []instrument.AssetClass{
+		instrument.AssetClassEquity,
+		instrument.AssetClassETF,
+		instrument.AssetClassOption,
+		instrument.AssetClassCryptoSpot,
+		instrument.AssetClassPredictionContract,
+	}
+	assets := make([]simulation.AssetPolicy, 0, len(assetClasses))
+	for index, assetClass := range assetClasses {
+		timeInForce := []lifecycle.TimeInForce{
+			lifecycle.TimeInForceDay, lifecycle.TimeInForceGTC,
+			lifecycle.TimeInForceIOC, lifecycle.TimeInForceFOK,
+		}
+		calendar := simulation.CalendarPolicy{
+			Kind: simulation.CalendarExplicitSessions,
+			Sessions: []simulation.SessionWindow{{
+				Label:   "session-" + string(assetClass),
+				OpenAt:  base.Add(time.Duration(index) * 24 * time.Hour),
+				CloseAt: base.Add(time.Duration(index)*24*time.Hour + 6*time.Hour),
+			}},
+		}
+		if assetClass == instrument.AssetClassCryptoSpot {
+			timeInForce = []lifecycle.TimeInForce{
+				lifecycle.TimeInForceGTC, lifecycle.TimeInForceIOC, lifecycle.TimeInForceFOK,
+			}
+			calendar = simulation.CalendarPolicy{Kind: simulation.CalendarContinuous24x7}
+		}
+		assets = append(assets, simulation.AssetPolicy{
+			AssetClass:            assetClass,
+			OrderTypes:            []lifecycle.OrderType{lifecycle.OrderMarket, lifecycle.OrderLimit},
+			TimeInForce:           timeInForce,
+			QuoteRequirements:     requirements,
+			MaxDepthParticipation: decimal.RequireFromString("0.125"),
+			FixedLatency:          time.Duration(index) * time.Microsecond,
+			Calendar:              calendar,
+			Fees: simulation.FeePolicy{
+				PerOrder:    decimal.RequireFromString("1.25"),
+				PerUnit:     decimal.RequireFromString("0.000000000001"),
+				NotionalBPS: decimal.RequireFromString("2.5"), Scale: 12,
+			},
+		})
+	}
+	policy, err := simulation.NewPolicy(simulation.PolicyInput{Schema: simulation.PolicySchemaV1, Assets: assets})
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifact, err := policy.NewArtifact(base.Add(-time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	persisted, err := NewSimulationPolicyRepo(pool).RegisterSimulationPolicy(ctx, artifact)
+	if err != nil {
+		t.Fatalf("RegisterSimulationPolicy(all supported assets) error = %v", err)
+	}
+	restored, err := simulation.PolicyFromArtifact(*persisted)
+	if err != nil {
+		t.Fatalf("PolicyFromArtifact(all supported assets) error = %v", err)
+	}
+	if restored.Version() != policy.Version() || string(restored.CanonicalBytes()) != string(policy.CanonicalBytes()) {
+		t.Fatalf("restored all-asset policy differs from canonical source")
+	}
+}
+
 func newSimulationPolicyIntegrationPool(t *testing.T) (context.Context, *pgxpool.Pool) {
 	t.Helper()
 	ctx := context.Background()

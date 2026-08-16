@@ -10,8 +10,13 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/shopspring/decimal"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/economicid"
+	"github.com/PatrickFanella/get-rich-quick/internal/execution/lifecycle"
+	"github.com/PatrickFanella/get-rich-quick/internal/instrument"
+	"github.com/PatrickFanella/get-rich-quick/internal/marketdata"
+	"github.com/PatrickFanella/get-rich-quick/internal/simulation"
 )
 
 func TestSimulationPolicyMigrationDefinesImmutableContentAddressedArtifacts(t *testing.T) {
@@ -19,6 +24,7 @@ func TestSimulationPolicyMigrationDefinesImmutableContentAddressedArtifacts(t *t
 	for _, fragment := range []string{
 		"lock table execution_orders in share row exclusive mode",
 		"migration 72 cannot attach pre-existing simulation orders without canonical policy artifacts",
+		"create function simulation_policy_v1_canonical_bytes",
 		"create table simulation_policy_artifacts",
 		"policy_version text not null unique",
 		"canonical_bytes bytea not null",
@@ -27,6 +33,7 @@ func TestSimulationPolicyMigrationDefinesImmutableContentAddressedArtifacts(t *t
 		"policy_version = schema_name || '@sha256:' || sha256",
 		"canonical_json = convert_from(canonical_bytes, 'utf8')::jsonb",
 		"canonical_json ->> 'schema' = schema_name",
+		"canonical_bytes = simulation_policy_v1_canonical_bytes(canonical_json)",
 		"economic_deterministic_uuid( 'simulation-policy-artifact', policy_version",
 		"create function reject_simulation_policy_artifact_mutation",
 		"create trigger trg_simulation_policy_artifacts_immutable",
@@ -60,6 +67,7 @@ func TestSimulationPolicyMigrationDefinesEmptyOnlyRollback(t *testing.T) {
 		"drop trigger if exists trg_execution_orders_simulation_policy on execution_orders",
 		"drop trigger if exists trg_simulation_policy_artifacts_immutable on simulation_policy_artifacts",
 		"drop table simulation_policy_artifacts",
+		"drop function if exists simulation_policy_v1_canonical_bytes(jsonb)",
 	} {
 		if !strings.Contains(downSQL, fragment) {
 			t.Errorf("migration 72 rollback is missing %q", fragment)
@@ -97,7 +105,7 @@ func TestSimulationPolicyMigrationAppliesAndEmptyRollbackPreservesSchema71(t *te
 
 func TestSimulationPolicyMigrationMatchesIdentityAndRejectsForgeryOrMutation(t *testing.T) {
 	ctx, pool, _ := newSimulationPolicyMigrationPool(t)
-	id, schema, version, digest, canonical := simulationMigrationArtifact()
+	id, schema, version, digest, canonical := simulationMigrationArtifact(t)
 
 	if _, err := pool.Exec(ctx, `INSERT INTO simulation_policy_artifacts (
 		id, schema_name, policy_version, sha256, canonical_bytes, canonical_json, created_at
@@ -146,10 +154,40 @@ func TestSimulationPolicyMigrationMatchesIdentityAndRejectsForgeryOrMutation(t *
 	}
 }
 
+func TestSimulationPolicyMigrationRejectsUnrecoverableArtifactsBeforeOrderRoute(t *testing.T) {
+	_, _, _, _, canonical := simulationMigrationArtifact(t)
+	for name, forgedBytes := range map[string][]byte{
+		"empty assets":        []byte(`{"schema":"simulation-policy-v1","assets":[]}`),
+		"trailing whitespace": append(append([]byte(nil), canonical...), ' '),
+		"incomplete asset":    []byte(`{"schema":"simulation-policy-v1","assets":[{"asset_class":"equity"}]}`),
+		"nonnormalized enums": []byte(strings.Replace(string(canonical), `"order_types":["limit","market"]`, `"order_types":["market","limit"]`, 1)),
+	} {
+		t.Run(name, func(t *testing.T) {
+			ctx, pool, fixture := newSimulationPolicyMigrationPool(t)
+			id, schema, version, digest := simulationMigrationIdentity(forgedBytes)
+			if _, err := pool.Exec(ctx, `INSERT INTO simulation_policy_artifacts (
+				id, schema_name, policy_version, sha256, canonical_bytes, canonical_json, created_at
+			) VALUES ($1,$2,$3,$4,$5,convert_from($5,'UTF8')::JSONB,$6)`,
+				id, schema, version, digest, forgedBytes, simulationMigrationTime(),
+			); err == nil || (!strings.Contains(err.Error(), "canonical simulation policy") &&
+				!strings.Contains(err.Error(), "violates check constraint")) {
+				t.Errorf("forged artifact insert error = %v, want canonical-policy/check rejection", err)
+			}
+
+			intentID := persistRiskApprovedMigrationLifecycle(t, ctx, pool, fixture, "forged-"+strings.ReplaceAll(name, " ", "-"))
+			if err := insertMigrationLifecycleOrder(
+				t, ctx, pool, fixture, intentID, "forged-"+strings.ReplaceAll(name, " ", "-"), "simulation", version,
+			); err == nil || !strings.Contains(err.Error(), "registered simulation policy artifact") {
+				t.Errorf("order using forged artifact error = %v, want missing registered artifact", err)
+			}
+		})
+	}
+}
+
 func TestSimulationPolicyMigrationRequiresArtifactForSimulationOrder(t *testing.T) {
 	ctx, pool, fixture := newSimulationPolicyMigrationPool(t)
 	intentID := persistRiskApprovedMigrationLifecycle(t, ctx, pool, fixture, "missing-artifact")
-	_, _, version, _, _ := simulationMigrationArtifact()
+	_, _, version, _, _ := simulationMigrationArtifact(t)
 	if err := insertMigrationLifecycleOrder(t, ctx, pool, fixture, intentID, "missing-artifact", "simulation", version); err == nil ||
 		!strings.Contains(err.Error(), "registered simulation policy artifact") {
 		t.Fatalf("simulation order without artifact error = %v", err)
@@ -183,7 +221,7 @@ func TestSimulationPolicyMigrationPreconditionRejectsExistingSimulationOrderButA
 
 func TestSimulationPolicyMigrationNonemptyRollbackRefuses(t *testing.T) {
 	ctx, pool, _ := newSimulationPolicyMigrationPool(t)
-	id, schema, version, digest, canonical := simulationMigrationArtifact()
+	id, schema, version, digest, canonical := simulationMigrationArtifact(t)
 	if _, err := pool.Exec(ctx, `INSERT INTO simulation_policy_artifacts (
 		id, schema_name, policy_version, sha256, canonical_bytes, canonical_json, created_at
 	) VALUES ($1,$2,$3,$4,$5,convert_from($5,'UTF8')::JSONB,$6)`,
@@ -213,13 +251,56 @@ func newSimulationPolicyMigrationPool(t *testing.T) (context.Context, *pgxpool.P
 	return ctx, pool, fixture
 }
 
-func simulationMigrationArtifact() (uuid.UUID, string, string, string, []byte) {
-	canonical := []byte(`{"schema":"simulation-policy-v1","assets":[]}`)
+func simulationMigrationArtifact(t *testing.T) (uuid.UUID, string, string, string, []byte) {
+	t.Helper()
+	base := time.Date(2026, 8, 17, 12, 0, 0, 123456000, time.UTC)
+	policy, err := simulation.NewPolicy(simulation.PolicyInput{
+		Schema: simulation.PolicySchemaV1,
+		Assets: []simulation.AssetPolicy{{
+			AssetClass: instrument.AssetClassEquity,
+			OrderTypes: []lifecycle.OrderType{lifecycle.OrderMarket, lifecycle.OrderLimit},
+			TimeInForce: []lifecycle.TimeInForce{
+				lifecycle.TimeInForceDay,
+				lifecycle.TimeInForceGTC,
+				lifecycle.TimeInForceIOC,
+				lifecycle.TimeInForceFOK,
+			},
+			QuoteRequirements: marketdata.QuoteRequirements{
+				RequireSource: true, RequireVenueContract: true, RequireBid: true, RequireAsk: true,
+				RequireBidDepth: true, RequireAskDepth: true, RequireMarketStatus: true,
+				RequireSessionStatus: true, AllowedMarketStatuses: []string{"open"},
+				AllowedSessionStatuses: []string{"regular"}, MaxAge: 2 * time.Second,
+			},
+			MaxDepthParticipation: decimal.RequireFromString("0.25"),
+			FixedLatency:          40 * time.Millisecond,
+			Calendar: simulation.CalendarPolicy{
+				Kind: simulation.CalendarExplicitSessions,
+				Sessions: []simulation.SessionWindow{{
+					Label: "regular-2026-08-17", OpenAt: base, CloseAt: base.Add(6 * time.Hour),
+				}},
+			},
+			Fees: simulation.FeePolicy{
+				PerOrder: decimal.RequireFromString("1.25"), PerUnit: decimal.RequireFromString("0.01"),
+				NotionalBPS: decimal.RequireFromString("2"), Scale: 4,
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifact, err := policy.NewArtifact(simulationMigrationTime())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return artifact.ID, artifact.Schema, artifact.Version, artifact.SHA256, artifact.CanonicalBytes
+}
+
+func simulationMigrationIdentity(canonical []byte) (uuid.UUID, string, string, string) {
 	digestBytes := sha256.Sum256(canonical)
 	digest := hex.EncodeToString(digestBytes[:])
-	schema := "simulation-policy-v1"
+	schema := simulation.PolicySchemaV1
 	version := schema + "@sha256:" + digest
-	return economicid.DeterministicUUID("simulation-policy-artifact", version), schema, version, digest, canonical
+	return economicid.DeterministicUUID("simulation-policy-artifact", version), schema, version, digest
 }
 
 func simulationMigrationTime() time.Time {

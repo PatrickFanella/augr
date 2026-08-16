@@ -398,7 +398,7 @@ multi-leg options, or prediction-market recording/settlement.
 - Create `internal/simulation/policy.go`
 - Create `internal/simulation/policy_test.go`
 
-- [ ] Write RED tests first:
+- [x] Write RED tests first:
 
   ```go
   func TestPolicyVersionIsCanonicalAndContentAddressed(t *testing.T)
@@ -413,18 +413,18 @@ multi-leg options, or prediction-market recording/settlement.
   func TestPolicyRoundTripsFromCanonicalArtifactBytes(t *testing.T)
   ```
 
-- [ ] Implement normalized enums and exact asset/fee policy values with no
+- [x] Implement normalized enums and exact asset/fee policy values with no
   silent defaults.
-- [ ] Marshal a private fixed-schema canonical form and expose cloned bytes plus
+- [x] Marshal a private fixed-schema canonical form and expose cloned bytes plus
   the `<schema>@sha256:<digest>` version and deterministic artifact UUID.
-- [ ] Prove input slice ordering and duplicate allowed-status entries normalize
+- [x] Prove input slice ordering and duplicate allowed-status entries normalize
   deterministically while every material capability/economic change changes
   the version.
-- [ ] Validate sorted nonoverlapping explicit UTC session windows, holiday gaps,
+- [x] Validate sorted nonoverlapping explicit UTC session windows, holiday gaps,
   half-day closes, route-session lookup, and continuous 24/7 restrictions.
-- [ ] Parse a venue only from revalidated canonical artifact bytes; reject any
+- [x] Parse a venue only from revalidated canonical artifact bytes; reject any
   schema/version/digest/ID disagreement.
-- [ ] Prove exact fee arithmetic, scale, first-fill behavior, multiplier use,
+- [x] Prove exact fee arithmetic, scale, first-fill behavior, multiplier use,
   zero omission, and overflow/shape rejection.
 
 Run after every RED/GREEN slice:
@@ -445,7 +445,7 @@ go test -count=1 ./internal/simulation
 - Create `migrations/000072_simulation_policy_artifacts_test.go`
 - Modify `internal/repository/postgres/schema_version.go`
 
-- [ ] Write migration source-shape and Go repository RED tests first:
+- [x] Write migration source-shape and Go repository RED tests first:
 
   ```go
   func TestSimulationPolicyMigrationDefinesImmutableContentAddressedArtifacts(t *testing.T)
@@ -455,27 +455,27 @@ go test -count=1 ./internal/simulation
   func TestSimulationPolicyRepoConcurrentRegistrationConverges(t *testing.T)
   ```
 
-- [ ] Create the minimal artifact table with deterministic ID, full version,
+- [x] Create the minimal artifact table with deterministic ID, full version,
   schema, SHA-256, exact canonical `BYTEA`, parsed JSONB copy, UTC creation
   evidence, append-only mutation trigger, and indexes. PostgreSQL independently
   recomputes digest, ID, version, JSON validity/object shape, and byte/JSON
   equivalence.
-- [ ] Add a simulation-order insert constraint trigger requiring an exact
+- [x] Add a simulation-order insert constraint trigger requiring an exact
   artifact for `policy_kind='simulation'` while leaving venue policies
   independent. Direct SQL cannot insert an unknown or digest-mismatched policy
   version.
-- [ ] Refuse migration when any preexisting schema-71 simulation order exists;
+- [x] Refuse migration when any preexisting schema-71 simulation order exists;
   do not infer its policy bytes. Prove a venue-policy order does not block.
-- [ ] Implement insert-or-load exact replay and `GetByVersion`; changed reuse
+- [x] Implement insert-or-load exact replay and `GetByVersion`; changed reuse
   wraps `repository.ErrIdempotencyConflict`. Run eight concurrent registrations
   and assert one row.
-- [ ] Prove recovery after the caller's configured current policy changes or is
+- [x] Prove recovery after the caller's configured current policy changes or is
   removed: load the routed version's bytes by order policy version and rebuild
   the original policy exactly.
-- [ ] Prove direct forged bytes/digest/version/UUID/JSON, update/delete, and
+- [x] Prove direct forged bytes/digest/version/UUID/JSON, update/delete, and
   simulation order without an artifact fail. Prove nonempty rollback refuses;
   isolated empty `72 -> 71 -> 72` preserves all schema-71 objects.
-- [ ] Bump `RequiredSchemaVersion` only after real PostgreSQL migration and
+- [x] Bump `RequiredSchemaVersion` only after real PostgreSQL migration and
   repository tests pass.
 
 Run:
@@ -498,9 +498,9 @@ DB_URL="$AUGR_PHASE2_DB_URL" go test -race -count=1 \
 - Create `internal/simulation/outcome.go`
 - Create `internal/simulation/outcome_test.go`
 
-- [ ] Add routed-aggregate fixture builders using real OVR-201/202/203
+- [x] Add routed-aggregate fixture builders using real OVR-201/202/203
   constructors rather than hand-forged child structs.
-- [ ] Add RED eligibility tests:
+- [x] Add RED eligibility tests:
 
   ```go
   func TestVenueRequiresSimulationPolicyDigestMatch(t *testing.T)
@@ -513,7 +513,7 @@ DB_URL="$AUGR_PHASE2_DB_URL" go test -race -count=1 \
   func TestContinuous24x7VenueHasNoImplicitClose(t *testing.T)
   ```
 
-- [ ] Add RED fill-mechanics tests:
+- [x] Add RED fill-mechanics tests:
 
   ```go
   func TestMarketBuyConsumesAskDepthAsExactLevelFills(t *testing.T)
@@ -530,9 +530,9 @@ DB_URL="$AUGR_PHASE2_DB_URL" go test -race -count=1 \
   func TestSameSnapshotLevelCannotFillTwice(t *testing.T)
   ```
 
-- [ ] Build one transition per depth level, applying each through the OVR-203
+- [x] Build one transition per depth level, applying each through the OVR-203
   aggregate before constructing the next.
-- [ ] Add raw-event/normalization tests:
+- [x] Add raw-event/normalization tests:
 
   ```go
   func TestSimulationFillCreatesExactRawNormalizationLifecycleGraph(t *testing.T)
@@ -543,7 +543,7 @@ DB_URL="$AUGR_PHASE2_DB_URL" go test -race -count=1 \
   func TestSimulationFillIDsConvergeAndChangedObservationConflicts(t *testing.T)
   ```
 
-- [ ] Add canonical outcome projection/hash tests covering ordered fills,
+- [x] Add canonical outcome projection/hash tests covering ordered fills,
   quantity, gross cash, fee, policy version, final state, environment, evidence
   class, and storage namespace. Local creation timestamps and opaque source IDs
   are not economic hash inputs; ADR-018 classification always is.
@@ -563,28 +563,28 @@ go test -race -count=1 ./internal/simulation ./internal/execution/lifecycle \
 - Create `internal/simulation/persist_test.go`
 - Create `internal/repository/postgres/simulation_venue_test.go`
 
-- [ ] Define the narrow local persistence interface from the existing economic
+- [x] Define the narrow local persistence interface from the existing economic
   event and execution lifecycle methods; do not introduce a repository cycle.
-- [ ] Add unit tests with a recording/fault-injecting repository proving raw
+- [x] Add unit tests with a recording/fault-injecting repository proving raw
   source evidence is always attempted before an economic fill, non-fill
   transitions never write raw economic evidence, and a stopped sequence can be
   retried without reordering.
-- [ ] On isolated schema 72, register policy A, persist a complete routed
+- [x] On isolated schema 72, register policy A, persist a complete routed
   lifecycle, change the caller's current policy to B, reload A by the order's
   recorded version through a fresh repository, and prove the original venue is
   reconstructed from durable bytes.
-- [ ] Evaluate a multi-level partial fill, interrupt after the first committed
+- [x] Evaluate a multi-level partial fill, interrupt after the first committed
   level, reload through a fresh repository, and reevaluate the same snapshot.
   Assert the already-recorded source identity is skipped and only the remaining
   level commits.
-- [ ] Restart one DAY order immediately before and after a normal close and a
+- [x] Restart one DAY order immediately before and after a normal close and a
   half-day close; assert exactly one expiry identity, no later fill, and no
   economic row. A holiday/out-of-session route must reject deterministically.
-- [ ] Retry the full observation concurrently through eight workers. Assert one
+- [x] Retry the full observation concurrently through eight workers. Assert one
   binding, one fill per eligible level, one normalization and ledger
   transaction per fill, one per-order fee, exact cumulative quantity, and no
   orphaned or duplicate economic effect.
-- [ ] Add FOK/no-liquidity and stale-quote persistence cases proving they create
+- [x] Add FOK/no-liquidity and stale-quote persistence cases proving they create
   no raw fill or ledger row.
 
 Run:
@@ -604,26 +604,26 @@ DB_URL="$AUGR_PHASE2_DB_URL" go test -race -count=1 \
 - Create `internal/execution/paper/common_simulation_test.go`
 - Create `internal/simulation/golden_replay_test.go`
 
-- [ ] Add thin adapter tests proving each constructor validates the same policy,
+- [x] Add thin adapter tests proving each constructor validates the same policy,
   exposes the same digest, delegates the same request, and does not alter
   evidence or transitions.
-- [ ] Add paper-adapter tests proving only `paper_scored` and `paper_stress`
+- [x] Add paper-adapter tests proving only `paper_scored` and `paper_stress`
   account/aggregate pairs are accepted; environment, evidence class, and
   storage namespace are preserved; mismatches plus shadow/live accounts fail;
   stress results can never report promotion evidence.
-- [ ] Build one timestamped fixture with route-time and later depth snapshots,
+- [x] Build one timestamped fixture with route-time and later depth snapshots,
   a partial first fill, and an exact final fill. Feed independent cloned routed
   aggregates to the backtest and internal-paper adapters.
-- [ ] Compare policy version, normalized intent/order semantics, every ordered
+- [x] Compare policy version, normalized intent/order semantics, every ordered
   `(quantity, price, fee)` tuple, final state, total quantity, gross cash,
   total fee, environment, evidence class, storage namespace, and canonical
   outcome hash within one scored fixture and one separate stress fixture.
-- [ ] Prove otherwise identical scored and stress outcomes hash differently and
+- [x] Prove otherwise identical scored and stress outcomes hash differently and
   cannot be merged into one comparison population.
-- [ ] Add negative parity cases for stale data, insufficient FOK depth,
+- [x] Add negative parity cases for stale data, insufficient FOK depth,
   nonmarketable GTC limits, unsupported stop orders, and missing asset policy;
   both paths must return the same typed result/error and no economic effect.
-- [ ] Run the golden replay repeatedly and concurrently to prove that adapter
+- [x] Run the golden replay repeatedly and concurrently to prove that adapter
   call ordering cannot change outputs.
 
 Run:
@@ -649,17 +649,17 @@ go test -race -count=20 ./internal/simulation ./internal/backtest \
 - Modify `internal/execution/paper/options.go`
 - Modify `internal/execution/paper/options_test.go`
 
-- [ ] Move one implementation at a time under `internal/simulation`; after each
+- [x] Move one implementation at a time under `internal/simulation`; after each
   move, make the backtest public name an alias/wrapper and run its focused tests
   before proceeding.
-- [ ] Preserve legacy float behavior and error identity exactly except for the
+- [x] Preserve legacy float behavior and error identity exactly except for the
   explicitly reviewed paper missing-price change.
-- [ ] Add a RED paper test proving a market order without an executable
+- [x] Add a RED paper test proving a market order without an executable
   reference is rejected and leaves cash, positions, and fills unchanged; remove
   `defaultReferencePrice`.
-- [ ] Delegate the paper single-leg option compatibility calculation to the
+- [x] Delegate the paper single-leg option compatibility calculation to the
   moved simulation primitive and retain explicit-price fail-closed behavior.
-- [ ] Prove all current direct callers still compile and legacy backtest
+- [x] Prove all current direct callers still compile and legacy backtest
   reports retain `backtest-input-v1` rather than being relabelled as canonical.
 
 Run:
@@ -679,15 +679,15 @@ go test -race -count=1 ./internal/backtest ./internal/execution/paper \
 - Modify `docs/superpowers/plans/2026-08-14-total-overhaul-plan.md`
 - Modify this plan with final evidence
 
-- [ ] Document policy construction/hash inspection, durable artifact
+- [x] Document policy construction/hash inspection, durable artifact
   registration/lookup, explicit/continuous calendars, supported capabilities,
   quote/depth requirements, raw-first persistence, restart replay, ADR-018
   classification, outcome hash, adapter use, legacy compatibility labels,
   inspection commands, and empty-only schema rollback.
-- [ ] Record explicitly that OVR-204 is local, schema 72 is not deployed, no
+- [x] Record explicitly that OVR-204 is local, schema 72 is not deployed, no
   runtime writer or scheduler is activated, no shared data is migrated, and no
   legacy or stress result becomes promotion evidence.
-- [ ] Run focused race suites and the repository-wide gates:
+- [x] Run focused race suites and the repository-wide gates:
 
   ```bash
   go test -race -count=1 ./internal/simulation ./internal/backtest \
@@ -700,22 +700,22 @@ go test -race -count=1 ./internal/backtest ./internal/execution/paper \
   govulncheck ./...
   ```
 
-- [ ] Run the frontend Node 22 test/lint/build gates even though OVR-204 should
+- [x] Run the frontend Node 22 test/lint/build gates even though OVR-204 should
   not change frontend source. Preserve inherited failures separately from new
   regressions.
-- [ ] Build a new loopback-only database from migrations `1 -> 72` for the
+- [x] Build a new loopback-only database from migrations `1 -> 72` for the
   persistent golden replay because the retained OVR-203 rehearsal intentionally
   contains simulation orders whose old policy bytes cannot be guessed. Retain
   the OVR-203 database unchanged as provenance. Verify the new database reports
   `72|false` and record exact artifact, lifecycle, normalization,
   ledger-transaction, posting, and fill counts.
-- [ ] On a disposable empty database prove `72 -> 71 -> 72`; on the retained
+- [x] On a disposable empty database prove `72 -> 71 -> 72`; on the retained
   nonempty OVR-204 rehearsal prove downgrade refusal preserves every row.
-- [ ] Start the rebuilt binary only with the global kill switch active,
+- [x] Start the rebuilt binary only with the global kill switch active,
   scheduler disabled, no venue credentials, isolated schema-72 PostgreSQL, and
   isolated Redis. Check `/health`, `/healthz`, and `/api/v1/health`, then stop
   cleanly. This remains local runtime evidence, not deployment proof.
-- [ ] Obtain independent post-implementation diff approval with no unresolved
+- [x] Obtain independent post-implementation diff approval with no unresolved
   P0/P1 findings.
 - [ ] Commit the reviewed OVR-204 implementation, push
   `codex/augr-overhaul`, fetch, verify local/remote equality and `0 0`
@@ -723,35 +723,141 @@ go test -race -count=1 ./internal/backtest ./internal/execution/paper \
 
 ## Acceptance evidence to record after implementation
 
-- [ ] Policy bytes and digest are canonical, exact, immutable, durably
+- [x] Policy bytes and digest are canonical, exact, immutable, durably
   recoverable by version, and referenced by every simulation order/later
   lifecycle event.
-- [ ] Changed current configuration, concurrent artifact replay, digest/byte
+- [x] Changed current configuration, concurrent artifact replay, digest/byte
   mismatch, and missing simulation-order artifacts behave fail-closed.
-- [ ] Missing/stale/future quote, source, bid, ask, depth, status, contract,
+- [x] Missing/stale/future quote, source, bid, ask, depth, status, contract,
   policy, currency, tick, or lot facts fail closed.
-- [ ] Fixed latency prevents early fill; exact depth participation and one-fill-
+- [x] Fixed latency prevents early fill; exact depth participation and one-fill-
   per-level mechanics cannot exceed available capacity or order quantity.
-- [ ] Market, marketable/nonmarketable limit, DAY/GTC, IOC, and FOK semantics
+- [x] Market, marketable/nonmarketable limit, DAY/GTC, IOC, and FOK semantics
   match their documented deterministic v1 behavior; explicit normal/half-day/
   holiday windows and continuous 24/7 rules cannot retain a DAY order past its
   close.
-- [ ] Every simulated fill owns byte-stable evidence, one raw event, one exact
+- [x] Every simulated fill owns byte-stable evidence, one raw event, one exact
   OVR-103 normalization/ledger transaction, and one OVR-203 fill transition.
-- [ ] Per-order fee occurs once; per-unit/notional fees, multiplier, rounding,
+- [x] Per-order fee occurs once; per-unit/notional fees, multiplier, rounding,
   and zero-fee omission are exact.
-- [ ] Same-snapshot and concurrent retries converge; interrupted multi-level
+- [x] Same-snapshot and concurrent retries converge; interrupted multi-level
   replay resumes without a duplicate fill, fee, binding, or economic effect.
-- [ ] Canonical backtest and internal-paper adapters produce identical golden
+- [x] Canonical backtest and internal-paper adapters produce identical golden
   replay policy versions and economic outcome hashes within the same ADR-018
   mode; scored/stress namespaces and hashes remain distinct.
-- [ ] Reusable legacy models live under `internal/simulation`, compatibility
+- [x] Reusable legacy models live under `internal/simulation`, compatibility
   APIs/tests still pass, and missing-price paper execution no longer invents
   `$1.00`.
-- [ ] Schema 72 is additive, immutable, concurrency-safe, refuses ambiguous
+- [x] Schema 72 is additive, immutable, concurrency-safe, refuses ambiguous
   schema-71 simulation history, and rolls back only while empty. No shared,
   runtime, or deployment boundary changed, and legacy compatibility output
   remains visibly noncanonical.
-- [ ] Focused/database race tests, whole-repository gates, frontend gates,
+- [x] Focused/database race tests, whole-repository gates, frontend gates,
   kill-switched smoke, independent review, commit, and push evidence are
   recorded honestly.
+
+## Implementation evidence — 2026-08-15
+
+OVR-204 is implemented locally on `codex/augr-overhaul`. It has not been
+deployed, no shared database has been migrated, no provider or simulator writer
+has been activated, and no legacy broker, order, trade, position, scheduler,
+backtest, paper, promotion, or live route has been cut over. Migration 72 grants
+no writer. It stores immutable full canonical policy bytes, matching parsed
+JSON, SHA-256, full content-addressed version, and deterministic UUID, and it
+refuses to guess artifacts for any pre-existing schema-71 simulation order.
+Its database-side fixed-v1 validator independently checks the complete policy
+shape and values, reconstructs the exact Go byte order, and refuses
+self-consistent but empty, incomplete, reordered, duplicated, or
+whitespace-variant JSON before it can authorize an order.
+
+The pure canonical venue accepts only explicit per-asset capability, calendar,
+quote/depth, latency, participation, fee, scale, and rounding policy. It obtains
+all executable facts from one OVR-202 snapshot plus the dated OVR-201 venue
+contract and routed OVR-203 aggregate. Missing, stale, future, mismatched,
+off-tick, off-lot, closed-session, unsupported-order, or insufficient-depth
+facts fail closed. Deterministic tests cover market and limit behavior, DAY,
+GTC, IOC, FOK, normal and half-day close, holiday gaps, 24/7 policy, fixed
+latency, multi-level capacity, exact first-fill/per-unit/notional fees, option
+multiplier, rounding, and zero-fee omission.
+
+Every fill carries byte-stable simulator evidence. `PersistResult` records the
+raw simulation source event first and then delegates the normalization, ledger
+transaction/postings, optional binding, fill, and lifecycle transition to the
+OVR-203 atomic writer. Interrupted replay, restart under the order's durable
+policy bytes, same-snapshot replay, and eight concurrent retries converge
+without a duplicate fill, fee, binding, normalization, transaction, posting,
+or lifecycle effect. Canonical backtest and internal-paper adapters generate
+the same policy version, ordered economics, and outcome hash within one ADR-018
+mode. `paper_scored` and `paper_stress` retain different evidence classes,
+storage namespaces, and hashes; shadow, live, account-mismatched, and
+aggregate-mismatched paper inputs fail closed.
+
+Reusable legacy bar/depth/latency/queue/adverse-selection/options calculations
+now live in `internal/simulation/legacy_*.go`; backtest aliases and wrappers
+retain the old APIs, implementation bodies, error identities, float behavior,
+and `backtest-input-v1` label. The compatibility paper option path delegates to
+the moved primitive but still requires an explicit executable price. A market
+order without one is rejected without changing balance, positions, or fill
+fields; the old `$1.00` fallback is gone.
+
+The final retained loopback database
+`augr_ovr204_final_20260815` was rebuilt from the reviewed migrations `1 -> 72`
+and
+reports `72|false`. Its persistent golden replay retains one account, one
+capital flow, one policy artifact, one intent, one order, one binding, two raw
+simulation events, two fills, six lifecycle events, two fill normalizations,
+three ledger transactions, and fourteen postings. The artifact version is
+`simulation-policy-v1@sha256:e12cfbdf1f0b073e322ce21ef44450813fb1c3992b07a83f3737501dcc3ef20b`;
+its recomputed digest and deterministic UUID both match. There are zero
+orphaned fill graphs. A persistent restart reloads the same artifact and
+aggregate. Nonempty downgrade refuses and preserves every count. A distinct
+empty disposable database proves `72 -> 71 -> 72` and finishes at `72|false`.
+The earlier retained OVR-203 database was not modified.
+
+Passing gates:
+
+- focused simulation/backtest/internal-paper and policy/repository/migration
+  suites under the race detector, including repeated and concurrent golden
+  replay plus direct-SQL rejection of rehashed empty, incomplete,
+  nonnormalized, and whitespace-variant policy artifacts before order route;
+- the exact legacy-compatibility package gate, repository-wide
+  `task test:race`, backend build, vet, and lint;
+- all 162 frontend tests, frontend lint, and production build of 2,166 modules
+  under Node `v22.23.2` and npm `10.9.8` from the committed npm lock;
+- touched-file `gofumpt`, zero lint issues, and `git diff --check`;
+- a compiled local smoke with the global kill switch active,
+  `ENABLE_LIVE_TRADING=false`, `ENABLE_SCHEDULER=false`, no venue credentials,
+  the retained schema-72 database, and a disposable isolated Redis. `/health`,
+  `/healthz`, and `/api/v1/health` each returned HTTP 200 with database and
+  Redis `ok`, and the evidence graph was byte/count unchanged afterward.
+
+The smoke also made an existing runtime distinction visible: even with the
+scheduler feature flag false, startup constructs the automation orchestrator
+and stale-run reconciler. The process ran for about one second, made no observed
+change to the disposable evidence graph, and was stopped cleanly. This result
+does not authorize a shared runtime boot and is not scheduler-cutover evidence.
+
+Independent implementation review first found a P1: the original migration
+checked artifact hash/identity consistency but could accept rehashed JSON that
+Go would reject during recovery. The final revision adds the full PostgreSQL
+fixed-v1 validator and exact-byte reconstructor, bounded Go token grammar,
+direct-SQL artifact-plus-order adversarial tests, and all-supported-asset/
+calendar parity coverage. Fresh reviewed-source migration/replay/rollback gates
+passed, and final review approved the complete slice with no unresolved P0/P1.
+
+Inherited gates remain explicit. The exact database-enabled package command
+passes every new OVR-204 package but still exposes the existing overnight
+backtest empty-attempt JSON expectation plus shared migration harness enum,
+vector-extension teardown, pipeline-column-count, and report-artifact
+nullability assumptions. `task fmt:check` reports only the same nine untouched
+files. `govulncheck` reports the same five reachable advisories in existing
+gRPC, x/text, x/net, and pgx versions. The clean npm install reports the
+repository's existing eight dependency advisories. None was suppressed,
+auto-fixed, or attributed to OVR-204.
+
+`VERIFIED_LOCAL` covers the finalized source, isolated PostgreSQL behavior,
+retained local replay, empty and guarded rollback, compatibility checks,
+frontend/backend gates, and kill-switched startup only. `BLOCKED_EXTERNAL`
+still covers shared/protected migration, writer grants, real venue inputs,
+external-paper fidelity, scheduler/runtime activation, deployment, promotion,
+and live routing.

@@ -820,6 +820,88 @@ count, and report-artifact-nullability assumptions are unchanged. The nine
 untouched formatter drifts and five reachable dependency advisories are also
 unchanged and unsuppressed.
 
+#### OVR-204 local implementation addendum — 2026-08-15
+
+OVR-204 is complete as an additive local simulation boundary on
+`codex/augr-overhaul`; it has not been deployed, no shared database has been
+migrated, no writer grant or current-policy pointer was created, and no
+simulator, provider, scheduler, legacy backtest, paper broker, promotion, or
+live path was activated or cut over. Migration 72 stores the full immutable
+canonical simulation-policy bytes with matching parsed JSON, SHA-256,
+content-addressed version, and deterministic UUID. Every simulation order must
+reference an existing exact artifact. PostgreSQL independently validates the
+complete fixed-v1 shape and values, reconstructs the exact Go encoding, and
+rejects correctly rehashed empty, incomplete, reordered, duplicated, or
+whitespace-variant JSON before it can authorize an order. The migration refuses
+any pre-existing schema-71 simulation order because its historical policy bytes
+cannot be guessed, and its down path locks first and permits rollback only
+while both artifacts and simulation orders are empty.
+
+The new pure `internal/simulation` venue consumes one routed OVR-203 aggregate,
+one eligible OVR-202 quote/depth snapshot, one dated OVR-201 venue contract,
+one active account, and one explicit UTC evaluation time. Per-asset policy
+declares supported order types and time-in-force values, explicit-session or
+continuous-24/7 calendar, source/book/status/freshness requirements, fixed
+latency, depth participation, exact fee terms, scale, and rounding. Missing,
+stale, future, mismatched, off-tick, off-lot, out-of-session, unsupported, or
+insufficient-depth facts fail closed. DAY expiry is tied to the route session's
+half-open close; 24/7 policy cannot support DAY. Exact price-time depth
+consumption emits at most one immutable fill per eligible level without
+exceeding participation, venue lot, or remaining-order capacity.
+
+The persistence coordinator records byte-stable raw simulator evidence before
+delegating each fill to OVR-203's atomic normalization, ledger, binding, fill,
+and lifecycle writer. Restart recovers the policy by the order's recorded
+version. Interrupted multi-level replay, same-snapshot retries, and eight
+concurrent writers converge without duplicated economic effects. Thin
+backtest and internal-paper adapters share that venue and policy. Within one
+ADR-018 mode their ordered fills and outcome hashes match; scored and stress
+paper retain distinct evidence classes, storage namespaces, and hashes, while
+shadow/live or mismatched account inputs fail closed. Legacy stochastic and
+bar-based models were relocated without semantic relabelling under
+`internal/simulation/legacy_*.go`; compatibility reports remain
+`backtest-input-v1`. The old paper-market `$1.00` fallback was removed, so a
+missing executable price now rejects without mutating portfolio state.
+
+The final retained loopback-only qualification database was rebuilt from the
+reviewed migrations `1 -> 72` and contains one account, one capital flow, one
+exact policy artifact, one
+intent, one order, one binding, two raw source events, two fills, six lifecycle
+events, two normalizations, three ledger transactions, and fourteen postings,
+with no orphaned graph. Artifact digest and deterministic identity recompute
+exactly. A fresh repository reloads the policy and lifecycle; nonempty rollback
+refuses without changing any count. A separate empty database proves `72 -> 71
+-> 72`. The earlier OVR-203 database remains unchanged.
+
+Focused race/replay/migration tests, the legacy-compatibility gate,
+repository-wide short race tests, build, vet, lint, all 162 frontend tests,
+frontend lint, and the 2,166-module production build passed under pinned Node
+22. Touched Go files are `gofumpt`-clean and `git diff --check` passes. A
+compiled local process with the kill switch active, live trading and scheduler
+flags false, no venue credentials, schema 72, and isolated Redis returned
+database/Redis `ok` from all three health routes and left the retained graph
+unchanged. Startup still constructs the existing automation orchestrator and
+stale-run reconciler even when the scheduler flag is false; this observed
+runtime distinction is not treated as scheduler-cutover evidence.
+
+Independent review initially found that self-consistent but semantically
+invalid JSON could register under the first migration revision and authorize an
+order that Go could not recover. The finalized database reconstructor, Go token
+grammar, direct-SQL artifact/order attacks, and all-asset/calendar parity test
+close that P1. Fresh migration and persistent replay evidence was rebuilt from
+the reviewed source, after which the reviewer approved with no remaining P0/P1.
+
+The inherited evidence gates remain separate: the database-enabled package
+run still exposes the overnight empty-attempt JSON expectation and shared
+migration enum/vector/column/nullability assumptions; repository formatting
+still reports only nine untouched files; Go vulnerability scanning still
+reports the same five reachable dependency advisories; and npm reports eight
+existing dependency advisories. None was suppressed or auto-fixed. OVR-205 and
+OVR-206 are now both dependency-ready; dependency-order execution proceeds to
+OVR-205 before OVR-206, leaving shared/protected migration, real venue inputs,
+external-paper fidelity, deployment, promotion, and live routing explicitly
+blocked.
+
 ### Milestone 3 — Strategy and research system
 
 | ID | Depends on | Work | Acceptance |

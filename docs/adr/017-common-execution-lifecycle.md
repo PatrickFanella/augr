@@ -56,8 +56,19 @@ payload evidence. Cumulative fill quantity exists only on fill events in both
 the domain and database contracts. See the
 [common execution lifecycle runbook](../runbooks/common-execution-lifecycle.md).
 
-This implementation does not adapt a broker or simulator, activate a writer,
-or cut over legacy runtime paths. Those remain separate OVR-204/205 decisions.
+OVR-204 now supplies the first common-lifecycle simulator locally. One immutable
+content-addressed policy governs quote/depth eligibility, latency, sessions,
+depth participation, exact fees, and each deterministic level fill. Every fill
+creates raw source evidence first and then uses the OVR-203 atomic fill writer;
+restart reloads the policy bytes by the order's recorded version and skips an
+already-recorded source identity. Canonical backtest and internal-paper
+adapters therefore share the same request, transitions, policy version, and
+economic outcome hash within one ADR-018 mode. See the
+[common simulation venue runbook](../runbooks/common-simulation-venue.md).
+
+This local implementation does not activate a writer, scheduler, or external
+venue adapter and does not cut over legacy runtime paths. Those remain separate
+activation and OVR-205 decisions.
 
 ## Consequences
 

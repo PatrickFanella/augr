@@ -100,9 +100,10 @@ func newVenueFixture(t *testing.T, modify func(*venueFixtureConfig)) venueFixtur
 		t.Fatal(err)
 	}
 	settlement := instrument.SettlementPhysical
-	if config.assetClass == instrument.AssetClassCryptoSpot {
+	switch config.assetClass {
+	case instrument.AssetClassCryptoSpot:
 		settlement = instrument.SettlementCrypto
-	} else if config.assetClass == instrument.AssetClassPredictionContract {
+	case instrument.AssetClassPredictionContract:
 		settlement = instrument.SettlementBinary
 	}
 	reference, err := instrument.NewInstrument(instrument.InstrumentInput{

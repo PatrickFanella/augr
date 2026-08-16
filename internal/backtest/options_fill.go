@@ -11,8 +11,10 @@ var (
 	ErrOptionsInvalidBarClose = simulation.ErrOptionsInvalidBarClose
 )
 
-type OptionsFillConfig = simulation.OptionsFillConfig
-type OptionsFillResult = simulation.OptionsFillResult
+type (
+	OptionsFillConfig = simulation.OptionsFillConfig
+	OptionsFillResult = simulation.OptionsFillResult
+)
 
 func DefaultOptionsFillConfig() OptionsFillConfig {
 	return simulation.DefaultOptionsFillConfig()

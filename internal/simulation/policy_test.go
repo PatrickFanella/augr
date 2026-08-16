@@ -230,6 +230,29 @@ func TestPolicyRequiresExplicitQuoteDepthStatusAndAgeRules(t *testing.T) {
 	}
 }
 
+func TestPolicyRejectsTokensThatCannotBeDatabaseCanonicalized(t *testing.T) {
+	tests := map[string]func(*PolicyInput){
+		"market status with space": func(input *PolicyInput) {
+			input.Assets[0].QuoteRequirements.AllowedMarketStatuses = []string{"not open"}
+		},
+		"session status with json punctuation": func(input *PolicyInput) {
+			input.Assets[0].QuoteRequirements.AllowedSessionStatuses = []string{`regular"unsafe`}
+		},
+		"session label with space": func(input *PolicyInput) {
+			input.Assets[0].Calendar.Sessions[0].Label = "regular session"
+		},
+	}
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			input := validPolicyInput()
+			mutate(&input)
+			if _, err := NewPolicy(input); err == nil {
+				t.Fatal("NewPolicy() unexpectedly accepted a noncanonical token")
+			}
+		})
+	}
+}
+
 func TestPolicyRejectsImplicitOrInexactFeeAndParticipationValues(t *testing.T) {
 	tests := map[string]func(*AssetPolicy){
 		"zero participation": func(value *AssetPolicy) { value.MaxDepthParticipation = decimal.Zero },

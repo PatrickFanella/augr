@@ -22,15 +22,17 @@ var (
 	ErrInvalidSide          = simulation.ErrInvalidSide
 )
 
-type SlippageModel = simulation.SlippageModel
-type FixedSlippage = simulation.FixedSlippage
-type ProportionalSlippage = simulation.ProportionalSlippage
-type VolatilityScaledSlippage = simulation.VolatilityScaledSlippage
-type SpreadModel = simulation.SpreadModel
-type FixedSpread = simulation.FixedSpread
-type TransactionCosts = simulation.TransactionCosts
-type FillResult = simulation.FillResult
-type FillConfig = simulation.FillConfig
+type (
+	SlippageModel            = simulation.SlippageModel
+	FixedSlippage            = simulation.FixedSlippage
+	ProportionalSlippage     = simulation.ProportionalSlippage
+	VolatilityScaledSlippage = simulation.VolatilityScaledSlippage
+	SpreadModel              = simulation.SpreadModel
+	FixedSpread              = simulation.FixedSpread
+	TransactionCosts         = simulation.TransactionCosts
+	FillResult               = simulation.FillResult
+	FillConfig               = simulation.FillConfig
+)
 
 // FillEngine retains the legacy backtest package surface while delegating all
 // fill behavior to the common simulation implementation.

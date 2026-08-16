@@ -34,6 +34,22 @@ Define exactly two paper evaluation identities:
 - Margin enforcement, deposits, and tiered capital profiles are implemented with the account and ledger work. Until then, the profile records the requested policy and the current broker applies declared starting capital and execution costs.
 - Venue-specific quote, fee, borrow, assignment, settlement, and market-impact policies replace ADR-006's fixed market table as the common simulator is built.
 
+## Local implementation
+
+OVR-204's canonical internal-paper adapter accepts only a valid matching
+`paper_scored` or `paper_stress` account/lifecycle pair. The simulator retains
+the account environment, evidence class, and storage namespace in every fill's
+source namespace and evidence. The canonical outcome hash also includes those
+three fields. Backtest and paper hashes therefore match only inside the same
+mode; otherwise identical scored and stress fills intentionally produce
+different canonical bytes and hashes.
+
+This does not promote legacy paper output. The in-memory compatibility broker
+and relocated float/bar models remain labeled `backtest-input-v1`; an unpriced
+market order now fails closed instead of inventing `$1.00`. No runtime writer,
+scheduler, or shared database has been activated. See the
+[common simulation venue runbook](../runbooks/common-simulation-venue.md).
+
 ## Consequences
 
 ### Positive

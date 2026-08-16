@@ -2,8 +2,10 @@ package backtest
 
 import "github.com/PatrickFanella/get-rich-quick/internal/simulation"
 
-type AdverseSelectionConfig = simulation.AdverseSelectionConfig
-type AdverseModel = simulation.AdverseModel
+type (
+	AdverseSelectionConfig = simulation.AdverseSelectionConfig
+	AdverseModel           = simulation.AdverseModel
+)
 
 func DefaultAdverseSelectionConfig() AdverseSelectionConfig {
 	return simulation.DefaultAdverseSelectionConfig()

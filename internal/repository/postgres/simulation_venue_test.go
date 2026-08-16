@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -240,6 +242,60 @@ func TestSimulationVenueFOKAndStaleQuoteCreateNoEconomicRows(t *testing.T) {
 	assertSimulationVenueGraphCounts(t, staleFixture, 0, 0, 0, 0, 0)
 }
 
+func TestSimulationVenuePersistentRehearsal(t *testing.T) {
+	databaseURL := os.Getenv("AUGR_SIMULATION_VENUE_REHEARSAL_DB_URL")
+	if databaseURL == "" {
+		t.Skip("set AUGR_SIMULATION_VENUE_REHEARSAL_DB_URL only for an explicitly disposable schema-72 database")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+
+	fixture := newPostgresSimulationVenueFixtureWithPool(t, ctx, pool, lifecycle.TimeInForceDay, 6*time.Hour)
+	snapshot := fixture.snapshot(t, "persistent-golden-"+uuid.NewString(), fixture.routed.Order.RoutedAt.Add(time.Second),
+		[]marketdata.DepthLevelInput{{Price: decimal.RequireFromString("10.18"), Size: decimal.NewFromInt(8)}},
+		[]marketdata.DepthLevelInput{
+			{Price: decimal.RequireFromString("10.20"), Size: decimal.NewFromInt(3)},
+			{Price: decimal.RequireFromString("10.22"), Size: decimal.NewFromInt(5)},
+		},
+	)
+	result, err := fixture.venue.Evaluate(fixture.request(fixture.routed, snapshot, *snapshot.AvailableAt))
+	if err != nil {
+		t.Fatal(err)
+	}
+	persisted, err := simulation.PersistResult(ctx, fixture.persistence(), fixture.accountID(), result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if persisted.State != lifecycle.StateFilled || len(persisted.Fills) != 2 {
+		t.Fatalf("persistent golden state = %s fills:%d", persisted.State, len(persisted.Fills))
+	}
+	reloaded, err := NewExecutionLifecycleRepo(pool).GetExecutionLifecycle(ctx, fixture.accountID(), persisted.Intent.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifact, err := NewSimulationPolicyRepo(pool).GetSimulationPolicyByVersion(ctx, reloaded.Order.PolicyVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recovered, err := simulation.PolicyFromArtifact(*artifact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.State != lifecycle.StateFilled || len(reloaded.Fills) != 2 || recovered.Version() != fixture.policy.Version() {
+		t.Fatalf("persistent replay = state:%s fills:%d policy:%q", reloaded.State, len(reloaded.Fills), recovered.Version())
+	}
+	assertSimulationVenueGraphCounts(t, fixture, 2, 2, 1, 2, 2)
+
+	if _, err := pool.Exec(ctx, repositoryMigrationSQL(t, "000072_simulation_policy_artifacts.down.sql")); err == nil ||
+		!strings.Contains(err.Error(), "cannot roll back migration 72") {
+		t.Fatalf("nonempty simulation rehearsal rollback error = %v", err)
+	}
+}
+
 type postgresSimulationVenueFixture struct {
 	ctx          context.Context
 	pool         *pgxpool.Pool
@@ -261,6 +317,17 @@ func newPostgresSimulationVenueFixture(
 	if _, err := pool.Exec(ctx, repositoryMigrationSQL(t, "000072_simulation_policy_artifacts.up.sql")); err != nil {
 		t.Fatalf("apply migration 72: %v", err)
 	}
+	return newPostgresSimulationVenueFixtureWithPool(t, ctx, pool, timeInForce, closeOffset)
+}
+
+func newPostgresSimulationVenueFixtureWithPool(
+	t *testing.T,
+	ctx context.Context,
+	pool *pgxpool.Pool,
+	timeInForce lifecycle.TimeInForce,
+	closeOffset time.Duration,
+) postgresSimulationVenueFixture {
+	t.Helper()
 	execution := newExecutionLifecycleFixtureWithPool(t, ctx, pool)
 	sessionOpen := execution.baseTime.Add(-time.Hour)
 	sessionClose := execution.baseTime.Add(closeOffset)
