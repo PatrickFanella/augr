@@ -176,6 +176,7 @@ type FillActivity struct {
 	ID                 string `json:"id"`
 	ActivityType       string `json:"activity_type"`
 	OrderID            string `json:"order_id"`
+	ClientOrderID      string `json:"client_order_id"`
 	Quantity           string `json:"qty"`
 	Price              string `json:"price"`
 	Side               string `json:"side"`
@@ -219,6 +220,31 @@ func (client *CommonLifecycleClient) Submit(ctx context.Context, request CommonO
 		return nil, classifyCommonTransportError("submit order", err)
 	}
 	return decodeCommonOrder(body, "submit order")
+}
+
+// SubmitOrLookup uses the stable client_order_id as the sole recovery key. A
+// duplicate conflict or ambiguous transport/server failure is resolved by an
+// exact lookup; definitive request/auth failures are returned without another
+// provider call.
+func (client *CommonLifecycleClient) SubmitOrLookup(
+	ctx context.Context,
+	request CommonOrderRequest,
+) (*CommonOrderFact, error) {
+	submitted, err := client.Submit(ctx, request)
+	if err == nil {
+		return submitted, nil
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || definitiveSubmitFailure(err) {
+		return nil, err
+	}
+	recovered, lookupErr := client.GetByClientOrderID(ctx, request.ClientOrderID)
+	if lookupErr != nil {
+		return nil, fmt.Errorf("alpaca common lifecycle: unresolved submit (%v): %w", err, lookupErr)
+	}
+	if recovered.Order.ClientOrderID != request.ClientOrderID {
+		return nil, fmt.Errorf("alpaca common lifecycle: recovered order client identity differs")
+	}
+	return recovered, nil
 }
 
 func (client *CommonLifecycleClient) GetByClientOrderID(ctx context.Context, clientOrderID string) (*CommonOrderFact, error) {
@@ -410,4 +436,21 @@ func classifyCommonTransportError(operation string, err error) error {
 		}
 	}
 	return fmt.Errorf("alpaca common lifecycle: %s: %w", operation, err)
+}
+
+func definitiveSubmitFailure(err error) bool {
+	if errors.Is(err, ErrDuplicateOrder) {
+		return false
+	}
+	var response *ErrorResponse
+	if !errors.As(err, &response) {
+		return false
+	}
+	switch response.StatusCode() {
+	case http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden,
+		http.StatusNotFound, http.StatusUnprocessableEntity:
+		return true
+	default:
+		return false
+	}
 }

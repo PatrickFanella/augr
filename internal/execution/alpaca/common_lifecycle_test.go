@@ -303,6 +303,37 @@ func TestCommonLifecycleClientFailsClosed(t *testing.T) {
 	})
 }
 
+func TestCommonLifecycleClientRecoversAmbiguousOrDuplicateSubmitByExactClientID(t *testing.T) {
+	for _, submitStatus := range []int{http.StatusConflict, http.StatusInternalServerError} {
+		t.Run(http.StatusText(submitStatus), func(t *testing.T) {
+			var calls []string
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls = append(calls, r.Method+" "+r.URL.RequestURI())
+				if r.Method == http.MethodPost {
+					w.WriteHeader(submitStatus)
+					_, _ = w.Write([]byte(`{"code":409,"message":"client_order_id already exists"}`))
+					return
+				}
+				_, _ = w.Write([]byte(`{"id":"alpaca-1","client_order_id":"client-1","symbol":"AAPL","side":"buy","type":"market","time_in_force":"day","qty":"1","filled_qty":"0","status":"new","updated_at":"2026-08-15T12:00:00Z"}`))
+			}))
+			defer server.Close()
+
+			result, err := newLoopbackCommonLifecycleClient(t, server.URL).SubmitOrLookup(
+				context.Background(), CommonOrderRequest{
+					Symbol: "AAPL", Quantity: "1", Side: "buy", Type: "market",
+					TimeInForce: "day", ClientOrderID: "client-1",
+				},
+			)
+			if err != nil || result.Order.ID != "alpaca-1" {
+				t.Fatalf("SubmitOrLookup() = %#v, %v", result, err)
+			}
+			if len(calls) != 2 || calls[1] != "GET /v2/orders:by_client_order_id?client_order_id=client-1" {
+				t.Fatalf("recovery calls = %v", calls)
+			}
+		})
+	}
+}
+
 func commonLifecycleOrderFixture(capability venue.Capability) (*lifecycle.Order, *instrument.Instrument, *instrument.VenueContract) {
 	now := time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC)
 	policy, err := venue.ReviewedPolicy(venue.ProviderAlpaca)
