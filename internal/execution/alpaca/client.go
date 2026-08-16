@@ -217,7 +217,9 @@ func (c *Client) do(ctx context.Context, method, requestPath string, params url.
 	)
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return nil, parseErrorResponse(resp.StatusCode, responseBody)
+		providerErr := parseErrorResponse(resp.StatusCode, responseBody)
+		providerErr.Message = redactCredentialValues(providerErr.Message, c.apiKey, c.apiSecret)
+		return nil, providerErr
 	}
 
 	return responseBody, nil
@@ -250,6 +252,16 @@ func parseErrorResponse(statusCode int, body []byte) *ErrorResponse {
 	}
 
 	return errResp
+}
+
+func redactCredentialValues(message string, credentials ...string) string {
+	redacted := message
+	for _, credential := range credentials {
+		if credential = strings.TrimSpace(credential); credential != "" {
+			redacted = strings.ReplaceAll(redacted, credential, "[REDACTED]")
+		}
+	}
+	return redacted
 }
 
 func (c *Client) buildURL(requestPath string, params url.Values) (string, error) {
