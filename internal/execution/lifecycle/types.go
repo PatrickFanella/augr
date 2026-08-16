@@ -243,10 +243,17 @@ func newEvent(intent Intent, kind EventKind, prior, next State, input EventInput
 		string(event.ObservationClass),
 		event.Source,
 		event.SourceNamespace,
-		event.SourceEventID,
+		eventIdentitySourceEventID(event.ObservationClass, event.SourceEventID, event.OriginalSourceEventID),
 		event.ObservationDiscriminator,
 	)
 	return event, nil
+}
+
+func eventIdentitySourceEventID(observationClass ObservationClass, sourceEventID, originalSourceEventID string) string {
+	if observationClass == ObservationOrdinary {
+		return sourceEventID
+	}
+	return originalSourceEventID
 }
 
 func validOrigin(value ledger.ExecutionOriginType) bool {

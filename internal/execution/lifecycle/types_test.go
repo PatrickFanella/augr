@@ -32,6 +32,47 @@ func TestOrdinaryLifecycleEventIdentityExcludesSourceRevision(t *testing.T) {
 	}
 }
 
+func TestCorrectionLifecycleEventIdentityUsesOriginalSourceEvent(t *testing.T) {
+	routed, fixture, routeInput := routedAggregateWithRoute(t)
+	fillInput := validFillInput(t, routed, fixture, routeInput, "fill-identity", "8", "100", "sim-order-identity")
+	fillTransition, err := RecordFill(routed, fillInput)
+	if err != nil {
+		t.Fatalf("RecordFill() error = %v", err)
+	}
+	filled, err := ApplyTransition(routed, fillTransition)
+	if err != nil {
+		t.Fatalf("ApplyTransition(fill) error = %v", err)
+	}
+
+	correctionInput := nextEventInput(filled, "correction-observation-1")
+	correctionInput.Source = fillTransition.Fill.Source
+	correctionInput.SourceNamespace = fillTransition.Fill.SourceNamespace
+	correctionInput.SourceRevision = "2"
+	correctionInput.ObservationClass = ObservationCorrection
+	correctionInput.ObservationDiscriminator = "revision:2"
+	correctionInput.OriginalFillID = &fillTransition.Fill.ID
+	correctionInput.OriginalSourceEventID = fillTransition.Fill.SourceEventID
+	correctionInput.Actor = "simulation-venue"
+	correctionInput.ReasonCode = "fill_corrected"
+	correctionInput.Evidence = []byte(`{"revision":"2","status":"corrected"}`)
+	first, err := FailReconciliation(filled, EventFillCorrectionObserved, correctionInput, correctionInput.ReceivedAt)
+	if err != nil {
+		t.Fatalf("FailReconciliation(first) error = %v", err)
+	}
+
+	correctionInput.SourceEventID = "correction-observation-2"
+	second, err := FailReconciliation(filled, EventFillCorrectionObserved, correctionInput, correctionInput.ReceivedAt)
+	if err != nil {
+		t.Fatalf("FailReconciliation(second) error = %v", err)
+	}
+	if first.Event.ID != second.Event.ID {
+		t.Fatalf("correction event IDs = %s and %s, want equal original-fill identity", first.Event.ID, second.Event.ID)
+	}
+	if SameEventPayload(&first.Event, &second.Event) {
+		t.Fatal("different correction observation IDs were accepted as an exact replay")
+	}
+}
+
 func TestLifecycleEventReplayRequiresExactEvidenceBytes(t *testing.T) {
 	aggregate, err := Propose(validProposeInput(t))
 	if err != nil {

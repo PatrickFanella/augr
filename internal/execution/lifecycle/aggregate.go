@@ -115,6 +115,9 @@ func ApplyTransition(aggregate *Aggregate, transition *Transition) (*Aggregate, 
 	next := cloneAggregate(aggregate)
 	switch event.Kind {
 	case EventIntentAllocated:
+		if transition.Order != nil || transition.Binding != nil || transition.Fill != nil || transition.Normalization != nil {
+			return nil, fmt.Errorf("apply execution transition: allocation cannot carry child facts")
+		}
 		if event.QuantityDelta == nil || !validExactDecimal(*event.QuantityDelta, false) ||
 			event.QuantityDelta.Sign() != next.Intent.DesiredQuantityDelta.Sign() ||
 			event.QuantityDelta.Abs().GreaterThan(next.Intent.DesiredQuantityDelta.Abs()) {
@@ -122,11 +125,15 @@ func ApplyTransition(aggregate *Aggregate, transition *Transition) (*Aggregate, 
 		}
 		next.AllocatedQuantity = cloneDecimal(event.QuantityDelta)
 	case EventRiskApproved, EventRiskRejected:
+		if transition.Order != nil || transition.Binding != nil || transition.Fill != nil || transition.Normalization != nil {
+			return nil, fmt.Errorf("apply execution transition: risk decision cannot carry child facts")
+		}
 		if next.AllocatedQuantity == nil || event.QuantityDelta == nil || !event.QuantityDelta.Equal(*next.AllocatedQuantity) {
 			return nil, fmt.Errorf("apply execution transition: risk quantity does not match allocation")
 		}
 	case EventOrderRouted:
 		if transition.Order == nil || aggregate.Order != nil || event.OrderID == nil || *event.OrderID != transition.Order.ID ||
+			transition.Binding != nil || transition.Fill != nil || transition.Normalization != nil ||
 			transition.Order.IntentID != aggregate.Intent.ID || transition.Order.AccountID != aggregate.Intent.AccountID ||
 			transition.Order.InstrumentID != aggregate.Intent.InstrumentID || next.AllocatedQuantity == nil ||
 			!transition.Order.Quantity.Equal(next.AllocatedQuantity.Abs()) ||
@@ -141,6 +148,7 @@ func ApplyTransition(aggregate *Aggregate, transition *Transition) (*Aggregate, 
 		next.Order = cloneOrder(transition.Order)
 	case EventOrderWorking:
 		if aggregate.Order == nil || aggregate.Binding != nil || transition.Binding == nil || event.BindingID == nil ||
+			transition.Order != nil || transition.Fill != nil || transition.Normalization != nil ||
 			*event.BindingID != transition.Binding.ID || transition.Binding.OrderID != aggregate.Order.ID ||
 			transition.Binding.AccountID != aggregate.Intent.AccountID || transition.Binding.Venue != aggregate.Order.Venue {
 			return nil, fmt.Errorf("apply execution transition: order binding does not match lifecycle")
@@ -167,6 +175,7 @@ func ApplyTransition(aggregate *Aggregate, transition *Transition) (*Aggregate, 
 		}
 	case EventFillAcknowledged, EventFillRecorded:
 		if aggregate.Order == nil || transition.Fill == nil || transition.Normalization == nil || event.FillID == nil ||
+			transition.Order != nil ||
 			*event.FillID != transition.Fill.ID || transition.Fill.IntentID != aggregate.Intent.ID ||
 			transition.Fill.OrderID != aggregate.Order.ID || transition.Fill.AccountID != aggregate.Intent.AccountID ||
 			transition.Fill.InstrumentID != aggregate.Intent.InstrumentID || transition.Fill.VenueContractID != aggregate.Order.VenueContractID {
@@ -209,6 +218,10 @@ func ApplyTransition(aggregate *Aggregate, transition *Transition) (*Aggregate, 
 		if transition.Order != nil || transition.Binding != nil || transition.Fill != nil || transition.Normalization != nil ||
 			event.OriginalFillID == nil || !aggregate.hasFill(*event.OriginalFillID, event.OriginalSourceEventID) {
 			return nil, fmt.Errorf("apply execution transition: correction or bust does not identify an existing fill")
+		}
+	case EventUnknownVenueState, EventContradictoryVenueState:
+		if transition.Order != nil || transition.Binding != nil || transition.Fill != nil || transition.Normalization != nil {
+			return nil, fmt.Errorf("apply execution transition: reconciliation failure cannot carry child facts")
 		}
 	}
 	next.State = event.NextState
@@ -292,11 +305,12 @@ func (event Event) Validate() error {
 	if event.EvidenceSHA256 != hex.EncodeToString(evidenceHash[:]) {
 		return fmt.Errorf("lifecycle event evidence hash mismatch")
 	}
-	if event.ObservationClass == ObservationOrdinary {
+	switch event.ObservationClass {
+	case ObservationOrdinary:
 		if event.ObservationDiscriminator != "" || event.OriginalFillID != nil || event.OriginalSourceEventID != "" {
 			return fmt.Errorf("ordinary lifecycle event carries correction identity")
 		}
-	} else if event.ObservationClass == ObservationCorrection || event.ObservationClass == ObservationBust {
+	case ObservationCorrection, ObservationBust:
 		if event.ObservationDiscriminator == "" || event.ObservationDiscriminator != strings.TrimSpace(event.ObservationDiscriminator) ||
 			event.OriginalFillID == nil || *event.OriginalFillID == uuid.Nil || event.OriginalSourceEventID == "" ||
 			event.OriginalSourceEventID != strings.TrimSpace(event.OriginalSourceEventID) {
@@ -310,8 +324,12 @@ func (event Event) Validate() error {
 			(event.ObservationClass == ObservationBust) != (event.Kind == EventFillBustObserved) {
 			return fmt.Errorf("correction or bust observation class does not match event kind")
 		}
-	} else {
+	default:
 		return fmt.Errorf("lifecycle event observation class is invalid")
+	}
+	isFillEvent := event.Kind == EventFillAcknowledged || event.Kind == EventFillRecorded
+	if isFillEvent != (event.CumulativeFillQuantity != nil) {
+		return fmt.Errorf("lifecycle event cumulative fill quantity must exist exactly on fill events")
 	}
 	expectedID := economicid.DeterministicUUID(
 		eventIDDomain,
@@ -319,7 +337,7 @@ func (event Event) Validate() error {
 		string(event.ObservationClass),
 		event.Source,
 		event.SourceNamespace,
-		event.SourceEventID,
+		eventIdentitySourceEventID(event.ObservationClass, event.SourceEventID, event.OriginalSourceEventID),
 		event.ObservationDiscriminator,
 	)
 	if event.ID != expectedID {

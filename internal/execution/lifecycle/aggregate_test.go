@@ -148,6 +148,44 @@ func TestLifecycleRejectsEventContextMismatch(t *testing.T) {
 	}
 }
 
+func TestLifecycleRejectsExtraneousChildFacts(t *testing.T) {
+	proposed, err := Propose(validProposeInput(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	allocationInput := nextEventInput(proposed, "allocation-child")
+	allocation, err := Allocate(proposed, decimal.NewFromInt(8), allocationInput, allocationInput.ReceivedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	allocation.Order = &Order{}
+	if _, err := ApplyTransition(proposed, allocation); err == nil {
+		t.Fatal("ApplyTransition() accepted an order child on allocation")
+	}
+	allocation.Order = nil
+	forgedCumulative := decimal.NewFromInt(1)
+	allocation.Event.CumulativeFillQuantity = &forgedCumulative
+	if _, err := ApplyTransition(proposed, allocation); err == nil {
+		t.Fatal("ApplyTransition() accepted cumulative fill quantity on allocation")
+	}
+
+	working, _, _ := workingAggregate(t)
+	failureInput := nextEventInput(working, "unknown-child")
+	failureInput.Source = "simulation"
+	failureInput.SourceNamespace = "simulation-policy-v1"
+	failureInput.Actor = "reconciler"
+	failureInput.ReasonCode = "unknown_venue_state"
+	failureInput.Evidence = json.RawMessage(`{"status":"mystery"}`)
+	failure, err := FailReconciliation(working, EventUnknownVenueState, failureInput, failureInput.ReceivedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	failure.Fill = &Fill{}
+	if _, err := ApplyTransition(working, failure); err == nil {
+		t.Fatal("ApplyTransition() accepted a fill child on reconciliation failure")
+	}
+}
+
 func TestUnknownVenueStateFailsClosed(t *testing.T) {
 	working, _, _ := workingAggregate(t)
 	eventInput := nextEventInput(working, "unknown-1")

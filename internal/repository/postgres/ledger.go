@@ -208,27 +208,66 @@ func (repo *LedgerRepo) ApplyEconomicNormalization(ctx context.Context, normaliz
 	}
 	defer func() { _ = databaseTransaction.Rollback(ctx) }()
 
+	_, err = insertEconomicNormalizationAggregate(ctx, databaseTransaction, normalization)
+	if errors.Is(err, pgx.ErrNoRows) {
+		if rollbackErr := databaseTransaction.Rollback(ctx); rollbackErr != nil && !errors.Is(rollbackErr, pgx.ErrTxClosed) {
+			return nil, fmt.Errorf("postgres: roll back replayed economic normalization: %w", rollbackErr)
+		}
+		existing, loadErr := repo.GetEconomicNormalizationBySourceEventID(ctx, normalization.SourceEvent.ID)
+		if loadErr != nil {
+			return nil, fmt.Errorf("postgres: load replayed economic normalization: %w", loadErr)
+		}
+		if !ledger.SameEconomicNormalizationPayload(existing, normalization) {
+			return nil, fmt.Errorf("postgres: economic source event already has a different normalization: %w", repository.ErrIdempotencyConflict)
+		}
+		return existing, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err := databaseTransaction.Commit(ctx); err != nil {
+		return nil, economicEventWriteError("commit economic normalization", err)
+	}
+	return repo.GetEconomicNormalizationBySourceEventID(ctx, normalization.SourceEvent.ID)
+}
+
+// insertEconomicNormalizationAggregate writes one validated normalization and
+// its exact ledger aggregate into the caller's transaction. The raw source
+// event must already exist. Callers retain commit authority so a lifecycle fill
+// can add its binding, fill, and event before any economic effect becomes
+// visible.
+func insertEconomicNormalizationAggregate(
+	ctx context.Context,
+	databaseTransaction pgx.Tx,
+	normalization *ledger.EconomicNormalization,
+) (uuid.UUID, error) {
+	if normalization == nil {
+		return uuid.Nil, fmt.Errorf("postgres: insert economic normalization: normalization is required")
+	}
+	if err := normalization.Validate(); err != nil {
+		return uuid.Nil, fmt.Errorf("postgres: insert economic normalization: %w", err)
+	}
 	persistedSource, err := scanEconomicSourceEvent(databaseTransaction.QueryRow(
 		ctx,
 		economicSourceEventSelectSQL+` WHERE id = $1`,
 		normalization.SourceEvent.ID,
 	))
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, fmt.Errorf("postgres: apply economic normalization: source event %s: %w", normalization.SourceEvent.ID, repository.ErrNotFound)
+		return uuid.Nil, fmt.Errorf("postgres: apply economic normalization: source event %s: %w", normalization.SourceEvent.ID, repository.ErrNotFound)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("postgres: load economic normalization source event: %w", err)
+		return uuid.Nil, fmt.Errorf("postgres: load economic normalization source event: %w", err)
 	}
 	if !ledger.SameEconomicSourceEventPayload(persistedSource, normalization.SourceEvent) {
-		return nil, fmt.Errorf("postgres: economic normalization source evidence differs from persisted raw event: %w", repository.ErrIdempotencyConflict)
+		return uuid.Nil, fmt.Errorf("postgres: economic normalization source evidence differs from persisted raw event: %w", repository.ErrIdempotencyConflict)
 	}
 	if normalization.EventType == ledger.EconomicEventOptionExercise ||
 		normalization.EventType == ledger.EconomicEventOptionAssignment {
 		if normalization.Instrument == nil {
-			return nil, fmt.Errorf("postgres: physical economic normalization requires an option instrument")
+			return uuid.Nil, fmt.Errorf("postgres: physical economic normalization requires an option instrument")
 		}
 		if err := acquireEconomicOptionTermsLock(ctx, databaseTransaction, normalization.Instrument.ID); err != nil {
-			return nil, fmt.Errorf("postgres: lock physical option terms history: %w", err)
+			return uuid.Nil, fmt.Errorf("postgres: lock physical option terms history: %w", err)
 		}
 	}
 
@@ -271,29 +310,13 @@ func (repo *LedgerRepo) ApplyEconomicNormalization(ctx context.Context, normaliz
 		normalization.Transaction.ID,
 		normalization.CreatedAt,
 	).Scan(&persistedID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		if rollbackErr := databaseTransaction.Rollback(ctx); rollbackErr != nil && !errors.Is(rollbackErr, pgx.ErrTxClosed) {
-			return nil, fmt.Errorf("postgres: roll back replayed economic normalization: %w", rollbackErr)
-		}
-		existing, loadErr := repo.GetEconomicNormalizationBySourceEventID(ctx, normalization.SourceEvent.ID)
-		if loadErr != nil {
-			return nil, fmt.Errorf("postgres: load replayed economic normalization: %w", loadErr)
-		}
-		if !ledger.SameEconomicNormalizationPayload(existing, normalization) {
-			return nil, fmt.Errorf("postgres: economic source event already has a different normalization: %w", repository.ErrIdempotencyConflict)
-		}
-		return existing, nil
-	}
 	if err != nil {
-		return nil, economicEventWriteError("insert economic normalization", err)
+		return uuid.Nil, economicEventWriteError("insert economic normalization", err)
 	}
 	if err := insertLedgerAggregateStrict(ctx, databaseTransaction, normalization.Transaction); err != nil {
-		return nil, err
+		return uuid.Nil, err
 	}
-	if err := databaseTransaction.Commit(ctx); err != nil {
-		return nil, economicEventWriteError("commit economic normalization", err)
-	}
-	return repo.GetEconomicNormalizationBySourceEventID(ctx, normalization.SourceEvent.ID)
+	return persistedID, nil
 }
 
 func insertLedgerAggregateStrict(ctx context.Context, databaseTransaction pgx.Tx, transaction *ledger.Transaction) error {

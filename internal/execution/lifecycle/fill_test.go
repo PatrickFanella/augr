@@ -157,7 +157,7 @@ func TestCorrectionAfterFilledAppendsOneTerminalFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ApplyTransition(fill) error = %v", err)
 	}
-	correctionInput := nextEventInput(filled, "fill-1")
+	correctionInput := nextEventInput(filled, "correction-observation-1")
 	correctionInput.Source = fillTransition.Fill.Source
 	correctionInput.SourceNamespace = fillTransition.Fill.SourceNamespace
 	correctionInput.SourceRevision = "2"
@@ -199,6 +199,50 @@ func TestCorrectionAfterFilledAppendsOneTerminalFailure(t *testing.T) {
 	}
 	if _, err := ApplyTransition(failed, correction); err == nil {
 		t.Fatal("ApplyTransition() appended after failed reconciliation")
+	}
+}
+
+func TestCorrectionAndBustRejectForgedCumulativeFillQuantity(t *testing.T) {
+	routed, fixture, routeInput := routedAggregateWithRoute(t)
+	fillInput := validFillInput(t, routed, fixture, routeInput, "fill-revision", "8", "100", "sim-order-revision")
+	fillTransition, err := RecordFill(routed, fillInput)
+	if err != nil {
+		t.Fatalf("RecordFill() error = %v", err)
+	}
+	filled, err := ApplyTransition(routed, fillTransition)
+	if err != nil {
+		t.Fatalf("ApplyTransition(fill) error = %v", err)
+	}
+
+	for _, testCase := range []struct {
+		name             string
+		kind             EventKind
+		observationClass ObservationClass
+	}{
+		{name: "correction", kind: EventFillCorrectionObserved, observationClass: ObservationCorrection},
+		{name: "bust", kind: EventFillBustObserved, observationClass: ObservationBust},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			eventInput := nextEventInput(filled, testCase.name+"-observation")
+			eventInput.Source = fillTransition.Fill.Source
+			eventInput.SourceNamespace = fillTransition.Fill.SourceNamespace
+			eventInput.ObservationClass = testCase.observationClass
+			eventInput.ObservationDiscriminator = "observation:" + testCase.name
+			eventInput.OriginalFillID = &fillTransition.Fill.ID
+			eventInput.OriginalSourceEventID = fillTransition.Fill.SourceEventID
+			eventInput.Actor = "simulation-reconciler"
+			eventInput.ReasonCode = "fill_" + testCase.name
+			eventInput.Evidence = json.RawMessage(`{"status":"revised"}`)
+			transition, err := FailReconciliation(filled, testCase.kind, eventInput, eventInput.ReceivedAt)
+			if err != nil {
+				t.Fatalf("FailReconciliation() error = %v", err)
+			}
+			forgedCumulative := decimal.NewFromInt(8)
+			transition.Event.CumulativeFillQuantity = &forgedCumulative
+			if _, err := ApplyTransition(filled, transition); err == nil {
+				t.Fatal("ApplyTransition() accepted cumulative fill quantity on revision event")
+			}
+		})
 	}
 }
 

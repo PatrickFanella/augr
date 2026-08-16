@@ -2,7 +2,7 @@
 title: "ADR-017: Common intent and execution lifecycle"
 description: "Use one idempotent state machine for backtest, paper, shadow, and future live execution."
 status: "accepted"
-updated: "2026-08-14"
+updated: "2026-08-15"
 tags: [adr, execution, lifecycle, simulation]
 ---
 
@@ -24,8 +24,9 @@ Adopt a single append-only lifecycle for every execution environment. An intent 
 ```text
 proposed -> allocated -> risk_approved -> routed -> working
                                       \-> risk_rejected
-working -> partially_filled -> filled
-working -> cancelled | expired | rejected
+routed | working -> partially_filled -> filled
+routed | working -> filled
+routed | working | partially_filled -> cancelled | expired | rejected
 any nonterminal state -> failed_reconciliation
 ```
 
@@ -35,6 +36,28 @@ any nonterminal state -> failed_reconciliation
 - Simulation consumes executable bid/ask, depth, latency, calendar, tick, lot, fee, and settlement policies. Missing required data fails closed; a missing spread is never zero.
 - Reconciliation compares local state with the venue or simulation event log and emits classified drift events rather than silently correcting history.
 - Restart at any transition must neither lose nor duplicate an order or economic event.
+
+## Local implementation
+
+OVR-203 implements this decision additively in `internal/execution/lifecycle`
+and migration 71. One account-scoped deterministic intent permits one immutable
+order command and one immutable external binding. State is replayed only from
+append-only events serialized by the intent row; `routed`, `working`, and
+`partially_filled` are the only restart-recovery states.
+
+A first provider observation may establish the binding and report a partial or
+complete fill in one `fill_acknowledged` transition. Every accepted fill is
+committed atomically with its raw-evidence normalization, ledger transaction,
+optional first binding, and lifecycle event. Ordinary revisions conflict;
+explicit correction and bust identities append `failed_reconciliation` without
+altering economics. Revision identity is anchored to the original provider
+execution ID and discriminator while the later observation ID remains exact
+payload evidence. Cumulative fill quantity exists only on fill events in both
+the domain and database contracts. See the
+[common execution lifecycle runbook](../runbooks/common-execution-lifecycle.md).
+
+This implementation does not adapt a broker or simulator, activate a writer,
+or cut over legacy runtime paths. Those remain separate OVR-204/205 decisions.
 
 ## Consequences
 

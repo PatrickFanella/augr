@@ -751,6 +751,75 @@ Local qualification applied schema 67 to the isolated loopback-only database and
 
 The inherited evidence gates remain unchanged and separate from OVR-202: `task fmt:check` reports drift only in nine untouched files; the database-enabled all-package run still exposes the existing `trades.exit_reason`, overnight-evidence formatting, shared migration-schema, vector-extension, pipeline-column-count, and report-artifact-nullability assumptions; and `govulncheck` still reports five reachable advisories in existing pgx, gRPC, x/net, and x/text versions. Every OVR-202 Go file is `gofumpt`-clean, `git diff --check` passes, and all focused database suites pass under the race detector. The dependency-ordered next item returns to OVR-103 so fill, fee, settlement, option, and prediction-market effects have a ledger adapter before OVR-203 introduces the common execution lifecycle.
 
+#### OVR-203 local implementation addendum — 2026-08-15
+
+OVR-203 is implemented as an additive local boundary on
+`codex/augr-overhaul`. It has not been deployed, no shared database has been
+migrated, no provider or simulator writer has been activated, and no legacy
+broker, order, trade, position, scheduler, risk, backtest, or paper path has
+been cut over. The pure `internal/execution/lifecycle` package defines one
+account-scoped deterministic intent, at most one immutable order command and
+external binding, exact partial and complete fills, append-only transition
+evidence, explicit recovery eligibility, and terminal unknown,
+contradictory, correction, and bust observations. Intent, order, binding, fill,
+and ordinary or revision-event identities use the same length-prefixed SHA-256
+UUID contract as OVR-103. Exact zero fill price remains present and valid while
+missing price fails.
+
+Migration 71 creates five append-only tables and no grant or legacy backfill.
+The intent row serializes transitions; PostgreSQL independently enforces the
+state graph, immutable account/environment/origin/policy context, allocation
+direction and magnitude, route quote availability, dated venue mechanics,
+stable binding, exact cumulative fills, raw event bytes and SHA-256, and
+separate correction/bust identity. Deferred completeness checks reject an
+intent without its proposal, an order without its route, a binding without its
+establishment event, and either side of an orphaned `execution_fill`
+normalization/fill relationship. The down migration locks the normalization
+and lifecycle graph first and refuses any nonempty rollback.
+
+`ExecutionLifecycleRepo` reloads and replays the immutable aggregate, locks the
+intent before applying a transition, detects a stream that advanced before the
+lock, and retries from current state. The OVR-103 normalization writer is now a
+transaction-scoped primitive: one fill operation commits the normalization,
+ledger parent and postings, optional first binding, lifecycle fill, and event
+together. Identical proposal, route, acknowledgement, immediate partial fill,
+and immediate complete fill retries converge under eight writers;
+multiple partial fills finish at the exact order quantity; an injected child
+failure rolls back the whole economic graph; and eight copies of one correction
+or bust produce one reconciliation-failure event and no second economic effect.
+Revision identity uses the original fill source ID rather than the later
+observation ID, and cumulative fill quantity exists exactly on fill events in
+both Go and PostgreSQL.
+
+Focused domain, repository, and schema-71 migration suites pass under the race
+detector against loopback PostgreSQL. The earlier retained phase database was
+preserved after its first schema-71 rehearsal rather than being rewritten after
+final review changes. A separate final-qualification database applied
+migrations `1 -> 71` from the finalized source and retained one immediate
+zero-price fill plus a two-part exact fill path: one account, one capital flow,
+two intents, two orders, two bindings, three fills, eleven lifecycle events,
+three normalizations, four ledger transactions, and twelve postings. Its
+revision index uses `original_source_event_id`, its cumulative-quantity check is
+fill-kind exact, a fresh repository reconstructed both aggregates, and the
+nonempty down migration refused without deleting evidence. Disposable isolated
+schemas also prove empty `71 -> 70 -> 71`. Operational details and read-only
+recovery queries are in
+`docs/runbooks/common-execution-lifecycle.md`.
+
+Repository-wide short race tests, build, vet, lint, all 162 frontend tests,
+frontend lint/build, touched-file `gofumpt`, and `git diff --check` pass. A
+compiled runtime with live trading and scheduler flags disabled, the global kill
+switch active, no venue credentials, no automation embedding provider, and the
+final schema-71 database returned database/Redis `ok` on `/health`, `/healthz`,
+and `/api/v1/health`, then stopped with zero in-flight runs. Independent review
+approved the final identity/cumulative corrections with no remaining P0/P1.
+Existing database-enabled all-package failures remain separate: the legacy
+`trades.exit_reason` mismatch, overnight evidence JSON assertion, shared
+migration schema/type collisions, vector-extension teardown, pipeline-column
+count, and report-artifact-nullability assumptions are unchanged. The nine
+untouched formatter drifts and five reachable dependency advisories are also
+unchanged and unsuppressed.
+
 ### Milestone 3 — Strategy and research system
 
 | ID | Depends on | Work | Acceptance |

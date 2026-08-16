@@ -10,6 +10,7 @@ import (
 
 	"github.com/PatrickFanella/get-rich-quick/internal/accountingrecon"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
+	"github.com/PatrickFanella/get-rich-quick/internal/execution/lifecycle"
 	"github.com/PatrickFanella/get-rich-quick/internal/instrument"
 	"github.com/PatrickFanella/get-rich-quick/internal/ledger"
 	"github.com/PatrickFanella/get-rich-quick/internal/marketdata"
@@ -61,6 +62,18 @@ type EconomicEventRepository interface {
 	GetEconomicSourceEventByID(context.Context, uuid.UUID) (*ledger.EconomicSourceEvent, error)
 	ApplyEconomicNormalization(context.Context, *ledger.EconomicNormalization) (*ledger.EconomicNormalization, error)
 	GetEconomicNormalizationBySourceEventID(context.Context, uuid.UUID) (*ledger.EconomicNormalization, error)
+}
+
+// ExecutionLifecycleRepository persists one append-only intent/order/fill
+// aggregate. Fill application includes its economic normalization and ledger
+// postings in the same database transaction.
+type ExecutionLifecycleRepository interface {
+	ProposeExecutionIntent(context.Context, *lifecycle.Aggregate) (*lifecycle.Aggregate, error)
+	ApplyExecutionTransition(context.Context, uuid.UUID, *lifecycle.Transition) (*lifecycle.Aggregate, error)
+	ApplyExecutionFill(context.Context, uuid.UUID, *lifecycle.Transition) (*lifecycle.Aggregate, error)
+	GetExecutionLifecycle(context.Context, uuid.UUID, uuid.UUID) (*lifecycle.Aggregate, error)
+	FindExecutionLifecycleByIdempotencyKey(context.Context, uuid.UUID, string) (*lifecycle.Aggregate, error)
+	ListExecutionRecoveryCandidates(context.Context, uuid.UUID, int) ([]*lifecycle.Aggregate, error)
 }
 
 // ProjectionRepository persists canonical marks and immutable rebuild

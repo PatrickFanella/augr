@@ -269,6 +269,10 @@ Out of scope:
     reversal contract exists, observing either records exact evidence and
     terminal `failed_reconciliation`. No prior fill, normalization, ledger
     transaction, order quantity, or projected state is edited.
+    The deterministic revision-event UUID uses the original fill source-event
+    ID plus the discriminator, not the later correction observation ID. That
+    later ID remains exact payload evidence, so changing it under the same
+    revision identity conflicts.
     OVR-205 adapters must preserve the provider's original execution ID and map
     a distinct correction ID/sequence into `ObservationDiscriminator`; when the
     provider only increments an in-place revision, they must use the explicit
@@ -339,7 +343,7 @@ Out of scope:
 - Create `internal/execution/lifecycle/intent.go`
 - Create `internal/execution/lifecycle/intent_test.go`
 
-- [ ] Write deterministic identity and replay tests first:
+- [x] Write deterministic identity and replay tests first:
 
   ```go
   func TestIntentIdentityUsesAccountAndIdempotencyKey(t *testing.T)
@@ -350,10 +354,10 @@ Out of scope:
   func TestCorrectionRevisionIsDistinctFromOrdinaryFillIdentity(t *testing.T)
   ```
 
-- [ ] Add normalized enums, exact-byte evidence hashing, deterministic UUID
+- [x] Add normalized enums, exact-byte evidence hashing, deterministic UUID
   constructors, and semantic replay comparators. Verify each RED test turns
   GREEN with the smallest contract implementation.
-- [ ] Add intent invariants test-first:
+- [x] Add intent invariants test-first:
 
   ```go
   func TestIntentRequiresAccountEnvironmentAndCanonicalInstrument(t *testing.T)
@@ -366,7 +370,7 @@ Out of scope:
   func TestIntentRejectsNonObjectMetadata(t *testing.T)
   ```
 
-- [ ] Add the initial proposed event and verify it snapshots the exact intent
+- [x] Add the initial proposed event and verify it snapshots the exact intent
   context with no execution policy.
 
 Run after every RED/GREEN slice:
@@ -384,9 +388,9 @@ go test -count=1 ./internal/execution/lifecycle
 - Create `internal/execution/lifecycle/aggregate.go`
 - Create `internal/execution/lifecycle/aggregate_test.go`
 
-- [ ] Define the state graph as data and test every allowed and forbidden edge,
+- [x] Define the state graph as data and test every allowed and forbidden edge,
   including the two intentional same-state event kinds.
-- [ ] Add test-first transition and aggregate replay coverage:
+- [x] Add test-first transition and aggregate replay coverage:
 
   ```go
   func TestLifecycleFoldsAcceptedADRTransitions(t *testing.T)
@@ -398,19 +402,19 @@ go test -count=1 ./internal/execution/lifecycle
   func TestCorrectionAfterFilledAppendsOneTerminalFailure(t *testing.T)
   ```
 
-- [ ] Construct a routed order only from a risk-approved lifecycle, canonical
+- [x] Construct a routed order only from a risk-approved lifecycle, canonical
   instrument/contract, matching route snapshot/assessment, exact mechanics,
   and a versioned simulation or venue policy.
-- [ ] Test market/limit/stop field combinations, tick/lot checks, route
+- [x] Test market/limit/stop field combinations, tick/lot checks, route
   no-lookahead, contract window, stable order/client identity, and changed-key
   replay conflicts.
-- [ ] Add the immutable external binding and require it for working and later
+- [x] Add the immutable external binding and require it for working and later
   venue/simulator events, except that a first `fill_acknowledged` observation
   creates binding and fill in one event.
-- [ ] Prove one raw first-fill observation can transition directly from routed
+- [x] Prove one raw first-fill observation can transition directly from routed
   to partial or filled without a fabricated working event, and that concurrent
   replay creates exactly one binding/fill/event graph.
-- [ ] Add `RecoveryEligible` for routed, working, and partial lifecycles; prove
+- [x] Add `RecoveryEligible` for routed, working, and partial lifecycles; prove
   terminal and pre-route intents are excluded.
 
 Run:
@@ -428,9 +432,9 @@ go test -race -count=1 ./internal/execution/lifecycle
 - Modify `internal/execution/lifecycle/aggregate.go`
 - Modify `internal/execution/lifecycle/aggregate_test.go`
 
-- [ ] Derive fill UUID before normalization so OVR-103 can use
+- [x] Derive fill UUID before normalization so OVR-103 can use
   `execution_fill/<fill UUID>` as its immutable reference.
-- [ ] Add RED tests for every required normalization match:
+- [x] Add RED tests for every required normalization match:
 
   ```go
   func TestFillGraphAppliesMatchingNormalizationAtomically(t *testing.T)
@@ -444,16 +448,16 @@ go test -race -count=1 ./internal/execution/lifecycle
   func TestImmediateCompleteFillEstablishesBindingAtomically(t *testing.T)
   ```
 
-- [ ] Add multi-fill fold tests proving first partial, repeated partial, exact
+- [x] Add multi-fill fold tests proving first partial, repeated partial, exact
   final fill, duplicate retry convergence, and overfill rejection.
-- [ ] Extract the OVR-103 normalization write into a transaction-scoped helper;
+- [x] Extract the OVR-103 normalization write into a transaction-scoped helper;
   prove standalone `ApplyEconomicNormalization` behavior is unchanged for all
   non-`execution_fill` references.
-- [ ] Prove normalization/ledger/fill/binding/event rollback together on every
+- [x] Prove normalization/ledger/fill/binding/event rollback together on every
   injected failure and appear together after retry from retained raw evidence.
-- [ ] Prove correction/bust event kinds cannot carry a `Fill` or change any
+- [x] Prove correction/bust event kinds cannot carry a `Fill` or change any
   prior exact quantity/price/economic link.
-- [ ] Prove an in-place revision of the original provider execution ID uses the
+- [x] Prove an in-place revision of the original provider execution ID uses the
   separate correction/bust discriminator, converges under duplicate replay,
   conflicts under changed same-discriminator payload, and leaves exactly one
   terminal failure with no additional normalization, ledger, or fill.
@@ -473,17 +477,17 @@ go test -race -count=1 ./internal/execution/lifecycle ./internal/ledger
 - Create `migrations/000071_common_execution_lifecycle_test.go`
 - Modify `internal/repository/postgres/schema_version.go`
 
-- [ ] Write source-shape tests before SQL implementation for every table,
+- [x] Write source-shape tests before SQL implementation for every table,
   append-only trigger, deterministic identity, legal-state function, deferred
   completeness/semantic constraint, index, empty-only rollback, and absence of
   legacy inserts/grants.
-- [ ] Implement the smallest migration that passes source-shape tests, then run:
+- [x] Implement the smallest migration that passes source-shape tests, then run:
 
   ```bash
   go test -count=1 -run '^TestCommonExecutionLifecycleMigrationDefines' ./migrations
   ```
 
-- [ ] Add isolated database tests that build canonical account, instrument,
+- [x] Add isolated database tests that build canonical account, instrument,
   venue-contract, quote, raw economic event, fill normalization, and ledger
   fixtures, then prove:
 
@@ -506,7 +510,7 @@ go test -race -count=1 ./internal/execution/lifecycle ./internal/ledger
   - no legacy order/trade row is inserted or changed;
   - nonempty downgrade refuses and empty `71 -> 70 -> 71` preserves schema 70.
 
-- [ ] Bump `RequiredSchemaVersion` only after migration tests pass.
+- [x] Bump `RequiredSchemaVersion` only after migration tests pass.
 
 Run:
 
@@ -524,26 +528,26 @@ go test -count=1 ./cmd/tradingagent ./internal/repository/postgres
 - Create `internal/repository/postgres/execution_lifecycle.go`
 - Create `internal/repository/postgres/execution_lifecycle_test.go`
 
-- [ ] Add a narrow repository interface for proposing an intent, applying one
+- [x] Add a narrow repository interface for proposing an intent, applying one
   validated transition atomically, loading the full replayed lifecycle, finding
   an intent by account/idempotency key, applying one normalized fill graph, and
   listing recovery candidates.
-- [ ] Implement proposal replay as insert-or-load-and-compare. A mismatched key
+- [x] Implement proposal replay as insert-or-load-and-compare. A mismatched key
   wraps `repository.ErrIdempotencyConflict`.
-- [ ] In `ApplyExecutionTransition`, begin a transaction, lock the intent row,
+- [x] In `ApplyExecutionTransition`, begin a transaction, lock the intent row,
   reload/replay the aggregate, validate exact expected state and optional
   order/binding fact, insert the fact plus event, commit, and reload.
-- [ ] In `ApplyExecutionFill`, use the same locked replay and the private
+- [x] In `ApplyExecutionFill`, use the same locked replay and the private
   transaction-scoped OVR-103 helper to atomically write or replay the
   normalization/ledger, optional first binding, fill, and one lifecycle event.
-- [ ] Add repository RED/GREEN tests for identical replay, changed replay,
+- [x] Add repository RED/GREEN tests for identical replay, changed replay,
   competing events, partial/final fills, recovery after constructing a fresh
   repository instance, and atomic rollback when any child insert fails.
-- [ ] Run eight-writer race tests for proposal, route, acknowledgement, and fill
+- [x] Run eight-writer race tests for proposal, route, acknowledgement, and fill
   retries, including immediate partial and immediate complete first fills.
   Assert one intent, one order, one binding, one fill, one lifecycle event per
   source identity, one normalization, and one ledger transaction.
-- [ ] Run an eight-writer correction/bust retry against the same original fill
+- [x] Run an eight-writer correction/bust retry against the same original fill
   and discriminator; assert one failure event, no changed economic rows, exact
   duplicate convergence, and changed-payload conflict.
 
@@ -563,17 +567,17 @@ DB_URL="$AUGR_PHASE2_DB_URL" go test -race -count=1 \
 - Modify `docs/superpowers/plans/2026-08-14-total-overhaul-plan.md`
 - Modify this plan with implementation evidence
 
-- [ ] Document the raw-event -> atomic normalization/ledger/lifecycle-fill
+- [x] Document the raw-event -> atomic normalization/ledger/lifecycle-fill
   crash boundary, source/idempotency requirements, recovery candidate handling,
   failure-state policy, read-only inspection queries, and empty-only rollback.
-- [ ] Rehearse migration `70 -> 71`, create complete intents through immediate
+- [x] Rehearse migration `70 -> 71`, create complete intents through immediate
   fill and multiple-partial-fill paths, retry every identity, construct a fresh
   repository, verify the same aggregates and one economic effect per fill, then
   prove a nonempty rollback refuses without deleting evidence.
-- [ ] On a disposable empty schema, prove `71 -> 70 -> 71`; on the persistent
+- [x] On a disposable empty schema, prove `71 -> 70 -> 71`; on the persistent
   phase database, retain all prior schema-64..70 facts and the new schema-71
   lifecycle facts.
-- [ ] Run focused and repository race suites, then whole-repository gates:
+- [x] Run focused and repository race suites, then whole-repository gates:
 
   ```bash
   go test -race -count=1 ./internal/execution/lifecycle \
@@ -586,43 +590,99 @@ DB_URL="$AUGR_PHASE2_DB_URL" go test -race -count=1 \
   govulncheck ./...
   ```
 
-- [ ] Re-run the established frontend Node 22 test/lint/build gates even though
+- [x] Re-run the established frontend Node 22 test/lint/build gates even though
   OVR-203 changes no frontend source. Preserve inherited failures separately
   from regressions introduced by this slice.
-- [ ] Start the rebuilt binary only with the global kill switch active,
+- [x] Start the rebuilt binary only with the global kill switch active,
   scheduler disabled, no venue credentials, isolated schema-71 PostgreSQL, and
   isolated Redis. Check `/health`, `/healthz`, and `/api/v1/health`, then stop it
   cleanly. This is local runtime evidence, not deployment proof.
-- [ ] Obtain independent diff approval with no unresolved P0/P1 findings.
+- [x] Obtain independent diff approval with no unresolved P0/P1 findings.
 - [ ] Commit only the reviewed OVR-203 slice, push
   `codex/augr-overhaul`, verify local/remote hash equality and `0 0`
   divergence, then continue with the next dependency-ready backlog item.
 
 ## Acceptance evidence to record after implementation
 
-- [ ] Domain and PostgreSQL enforce the same deterministic identity and state
+- [x] Domain and PostgreSQL enforce the same deterministic identity and state
   transition contract.
-- [ ] Identical proposal/event/order/binding/fill retries converge; mismatched
+- [x] Identical proposal/event/order/binding/fill retries converge; mismatched
   identity reuse fails closed.
-- [ ] A fresh repository reconstructs the same state and lists only genuinely
+- [x] A fresh repository reconstructs the same state and lists only genuinely
   recoverable lifecycles.
-- [ ] Multiple exact partial fills end at exactly the order quantity; zero and
+- [x] Multiple exact partial fills end at exactly the order quantity; zero and
   overfill fail. A present zero fill price remains exact; a missing price fails.
-- [ ] A first venue observation that is already partial or filled atomically
+- [x] A first venue observation that is already partial or filled atomically
   establishes the binding and fill with one source event and no invented
   working acknowledgement.
-- [ ] Every fill maps one-to-one to raw source evidence, applied normalization,
+- [x] Every fill maps one-to-one to raw source evidence, applied normalization,
   and ledger transaction in one commit; retries cannot duplicate or orphan
   economic effects.
-- [ ] Unknown, contradictory, correction, and bust observations are visibly
+- [x] Unknown, contradictory, correction, and bust observations are visibly
   distinct terminal reconciliation failures.
-- [ ] A provider revision of an existing fill identity is retained through the
+- [x] A provider revision of an existing fill identity is retained through the
   explicit correction/bust discriminator without weakening ordinary replay or
   creating another fill, normalization, or ledger transaction.
-- [ ] Migration 71 is additive, immutable, concurrency-safe, starts empty, and
+- [x] Migration 71 is additive, immutable, concurrency-safe, starts empty, and
   rolls back only while empty without touching schema 70.
-- [ ] Legacy runtime behavior and all venue/scheduler/live boundaries remain
+- [x] Legacy runtime behavior and all venue/scheduler/live boundaries remain
   unchanged and disabled.
-- [ ] Focused race tests, repository-wide gates, isolated migration rehearsal,
+- [x] Focused race tests, repository-wide gates, isolated migration rehearsal,
   kill-switched runtime smoke, and independent review results are recorded
   honestly.
+
+## Implementation evidence — 2026-08-15
+
+OVR-203 is implemented locally on `codex/augr-overhaul` without adapting or
+activating a broker, simulator, scheduler, legacy order writer, or live route.
+The final review revision makes correction/bust identity depend on the original
+fill source event plus discriminator while retaining the later correction
+observation ID in exact replay payload. Go and PostgreSQL also require
+`cumulative_fill_quantity` exactly on `fill_acknowledged` and `fill_recorded`,
+and forbid it on every other event. Adversarial domain, repository, trigger,
+index, and direct-SQL tests cover both invariants.
+
+Eight concurrent writers converge for proposal, route, acknowledgement,
+immediate-partial fill, immediate-complete fill, correction, and bust retries.
+Changed identity reuse fails closed; a raw changed correction/bust insert reaches
+the database idempotency trigger. Multiple exact partial fills reach the order
+quantity, present zero price round-trips, a missing price and overfill fail, a
+fresh repository reconstructs state, recovery candidates exclude terminal
+streams, and an injected child failure rolls back normalization, ledger,
+binding, fill, and lifecycle event together.
+
+The finalized migration source was applied from `1 -> 71` to the dedicated
+loopback-only database `tradingagent_ovr203_final_20260815`. Its retained
+rehearsal contains one account, one capital flow, two intents, two orders, two
+bindings, three fills, eleven events, three execution-fill normalizations, four
+ledger transactions, and twelve postings. The database exposes the finalized
+original-source revision index and fill-kind cumulative check. The retained
+rehearsal reloads both aggregates and proves nonempty rollback refusal; isolated
+test schemas prove empty `71 -> 70 -> 71`.
+
+Passing gates:
+
+- focused domain, repository, and migration suites under `-race` against real
+  loopback PostgreSQL;
+- repository-wide `task test:race`, backend build, vet, and lint;
+- all 162 frontend tests, frontend lint, and production build under Node
+  `v22.23.2`;
+- touched-file `gofumpt`, `git diff --check`, and a compiled kill-switched
+  health smoke returning database/Redis `ok` on all three health routes before
+  clean shutdown with zero in-flight runs;
+- independent final diff approval with no unresolved P0/P1 findings.
+
+Inherited gates remain explicit. Repository-wide `task fmt:check` reports only
+nine untouched files. `govulncheck` reports the same five reachable advisories
+in existing gRPC, x/text, x/net, and pgx versions. The database-enabled
+all-package run still exposes the legacy `trades.exit_reason` mismatch,
+overnight evidence JSON formatting, shared migration schema/type collisions,
+vector-extension teardown, pipeline-column-count, and report-artifact
+nullability assumptions. None is caused, suppressed, or reclassified by
+OVR-203.
+
+`VERIFIED_LOCAL` covers the finalized source, isolated PostgreSQL behavior,
+retained local rehearsal, gates, and kill-switched startup only.
+`BLOCKED_EXTERNAL` still covers shared/protected migration, writer grants,
+provider/simulator adapters, real correction evidence, scheduler/runtime
+cutover, deployment, and live routing.
