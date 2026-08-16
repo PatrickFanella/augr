@@ -227,12 +227,6 @@ func planOrderLikeResult(
 	if mapped == venue.OutcomeAcknowledge && current.State != lifecycle.StateRouted {
 		mapped = venue.OutcomeContradiction
 	}
-	if mapped == venue.OutcomeFillNotice &&
-		current.State != lifecycle.StateRouted && current.State != lifecycle.StateWorking &&
-		current.State != lifecycle.StatePartiallyFilled {
-		mapped = venue.OutcomeContradiction
-	}
-
 	bindingID := currentBindingID(current)
 	action := providerOrder.Side
 	if action != string(lifecycle.SideBuy) && action != string(lifecycle.SideSell) {
