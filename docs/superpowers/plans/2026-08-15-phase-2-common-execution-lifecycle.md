@@ -598,7 +598,7 @@ DB_URL="$AUGR_PHASE2_DB_URL" go test -race -count=1 \
   isolated Redis. Check `/health`, `/healthz`, and `/api/v1/health`, then stop it
   cleanly. This is local runtime evidence, not deployment proof.
 - [x] Obtain independent diff approval with no unresolved P0/P1 findings.
-- [ ] Commit only the reviewed OVR-203 slice, push
+- [x] Commit only the reviewed OVR-203 slice, push
   `codex/augr-overhaul`, verify local/remote hash equality and `0 0`
   divergence, then continue with the next dependency-ready backlog item.
 
@@ -686,3 +686,7 @@ retained local rehearsal, gates, and kill-switched startup only.
 `BLOCKED_EXTERNAL` still covers shared/protected migration, writer grants,
 provider/simulator adapters, real correction evidence, scheduler/runtime
 cutover, deployment, and live routing.
+
+Shipping commit `7543876b0af1995c128bfd593771f1c402d77646` was pushed to
+`origin/codex/augr-overhaul`; a post-push fetch confirmed identical local and
+remote hashes and `0 0` divergence before work advanced to OVR-204.
