@@ -260,7 +260,7 @@ func (venue *Venue) validateRequest(request EvaluationRequest) (AssetPolicy, *Se
 		aggregate.Intent.InstrumentID != request.Instrument.ID || order.AccountID != request.Account.ID ||
 		order.InstrumentID != request.Instrument.ID || order.VenueContractID != request.VenueContract.ID ||
 		order.Venue != request.VenueContract.Venue || request.VenueContract.InstrumentID != request.Instrument.ID ||
-		request.Account.Venue != request.VenueContract.Venue || request.Instrument.PrimaryVenue != request.VenueContract.Venue ||
+		request.Instrument.PrimaryVenue != request.VenueContract.Venue ||
 		request.Account.BaseCurrency != request.Instrument.Currency || request.Account.BaseCurrency != request.VenueContract.Currency ||
 		!request.Instrument.TickSize.Equal(request.VenueContract.TickSize) ||
 		!request.Instrument.LotSize.Equal(request.VenueContract.LotSize) ||

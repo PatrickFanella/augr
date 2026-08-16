@@ -90,7 +90,7 @@ func newVenueFixture(t *testing.T, modify func(*venueFixtureConfig)) venueFixtur
 	}
 
 	account, err := domain.NewAccount(domain.AccountInput{
-		Name: "simulation fixture", Environment: config.accountEnvironment, Venue: "test-venue",
+		Name: "simulation fixture", Environment: config.accountEnvironment, Venue: "internal",
 		BaseCurrency: "USD", StorageNamespace: config.accountStorage,
 		StartingCapital: decimal.NewFromInt(100000), BuyingPowerMultiplier: decimal.NewFromInt(1),
 		MarginProfile: domain.MarginProfileCash, CreatedBy: "simulation-test",
