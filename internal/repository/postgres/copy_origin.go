@@ -15,7 +15,10 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 )
 
-type CopyOriginRepo struct{ pool *pgxpool.Pool }
+type CopyOriginRepo struct {
+	pool       *pgxpool.Pool
+	afterStage func(string) error
+}
 
 var _ copyorigin.Store = (*CopyOriginRepo)(nil)
 
@@ -55,6 +58,11 @@ func (r *CopyOriginRepo) RegisterRun(ctx context.Context, run *copyorigin.Run) (
 	if err != nil {
 		return nil, fmt.Errorf("postgres: insert copy origin run: %w", err)
 	}
+	if r.afterStage != nil {
+		if err = r.afterStage("run"); err != nil {
+			return nil, err
+		}
+	}
 	for sequence, raw := range envelope.Intents {
 		var intent copyOriginIntentEnvelope
 		if err = json.Unmarshal(raw, &intent); err != nil {
@@ -63,6 +71,11 @@ func (r *CopyOriginRepo) RegisterRun(ctx context.Context, run *copyorigin.Run) (
 		_, err = tx.Exec(ctx, `INSERT INTO copy_origin_rebalance_intents(run_id,sequence,intent_id,instrument_key,source_observation_id,canonical_intent) VALUES($1,$2,$3,$4,$5,$6::jsonb) ON CONFLICT(run_id,sequence) DO NOTHING`, run.ID(), sequence, intent.ID, intent.InstrumentKey, intent.SourceObservationID, string(raw))
 		if err != nil {
 			return nil, fmt.Errorf("postgres: insert copy origin run intent: %w", err)
+		}
+		if r.afterStage != nil {
+			if err = r.afterStage("intent"); err != nil {
+				return nil, err
+			}
 		}
 	}
 	if err = tx.Commit(ctx); err != nil {

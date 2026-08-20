@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"strings"
 	"sync"
@@ -69,6 +70,22 @@ func TestCopyOriginRetainedQualification(t *testing.T) {
 		t.Fatal(err)
 	}
 	repo := NewCopyOriginRepo(pool)
+	for _, stage := range []string{"run", "intent"} {
+		repo.afterStage = func(current string) error {
+			if current == stage {
+				return errors.New("injected")
+			}
+			return nil
+		}
+		if _, stageErr := repo.RegisterRun(ctx, run); stageErr == nil {
+			t.Fatalf("stage %s accepted", stage)
+		}
+		var partial int
+		if countErr := pool.QueryRow(ctx, `SELECT count(*) FROM copy_origin_rebalance_runs`).Scan(&partial); countErr != nil || partial != 0 {
+			t.Fatalf("stage %s partial=%d/%v", stage, partial, countErr)
+		}
+	}
+	repo.afterStage = nil
 	errs := make(chan error, 8)
 	var wait sync.WaitGroup
 	for range 8 {
