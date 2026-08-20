@@ -73,6 +73,63 @@ A real run additionally needs separately authorized candidate selection,
 scheduling, provider access, retained daily data, and deployment. None was
 started by local qualification.
 
+### Local shadow evidence command
+
+`augr-evidence` is the narrow schema-102 operator path. It refuses a database
+whose migration version is not exactly the runtime requirement, resolves the
+benchmark and strategy-version digests from PostgreSQL instead of trusting
+caller-supplied hashes, and emits the canonical artifact identity and bytes as
+JSON. It has no provider, scheduler, deployment, account, risk, order, or
+execution authority.
+
+Start a campaign from a JSON file:
+
+```bash
+go run ./cmd/augr-evidence shadow-start --input shadow-start.json
+```
+
+The input contract is:
+
+```json
+{
+  "key": "operator-shadow-1",
+  "started_at": "2026-08-21T00:00:00Z",
+  "benchmark_report_id": "00000000-0000-0000-0000-000000000000",
+  "candidates": [
+    {
+      "key": "alpha",
+      "strategy_version_id": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "key": "beta",
+      "strategy_version_id": "00000000-0000-0000-0000-000000000000"
+    }
+  ]
+}
+```
+
+Append one exact daily observation:
+
+```bash
+go run ./cmd/augr-evidence shadow-record-day --input shadow-day.json
+```
+
+The day file must contain the returned `campaign_id`, its exact UTC
+`observed_at` for `sequence` 0 through 29, every admitted candidate, and one
+source evidence reference. Unknown JSON fields and incomplete or mismatched
+candidate sets fail closed.
+
+Recompute the current assessment from retained days:
+
+```bash
+go run ./cmd/augr-evidence shadow-assess \
+  --campaign-id 00000000-0000-0000-0000-000000000000
+```
+
+`DB_URL` or `DATABASE_URL` supplies the connection by default; `--db-url` is
+available for an explicitly scoped local database. Do not put credentials in a
+committed command file or campaign artifact.
+
 ## OVR-703 scored-paper assessment
 
 `AssessPaper` binds the exact qualified shadow assessment and accepts only
@@ -119,6 +176,7 @@ live-activation decision after real shadow/scored-paper evidence exists.
 ```bash
 go test -race -count=2 ./internal/evidenceprogram
 go test -race -count=1 ./internal/repository/postgres -run '^TestShadowCampaignRepository'
+go test -race -count=1 ./cmd/augr-evidence
 go vet ./internal/evidenceprogram
 ./scripts/golden-replay-campaign.sh
 ./scripts/release-gate.sh
