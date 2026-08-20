@@ -128,21 +128,21 @@ Out of scope:
   and call-away scenarios with exact IDs/hashes and row counts.
 - [x] Prove eight-writer convergence, restart, every-stage rollback, normalized
   forgery rejection, nonempty rollback refusal, and empty `83 -> 82 -> 83`.
-- [ ] Run focused/database races, all backend and pinned frontend gates, diff
+- [x] Run focused/database races, all backend and pinned frontend gates, diff
   review, and isolated kill-switched schema-83 health/API/rollback/reapply.
-- [ ] Commit/push verified slices, fetch, and prove `0 0` divergence before
+- [x] Commit/push verified slices, fetch, and prove `0 0` divergence before
   OVR-403.
 
 ## Acceptance evidence to record
 
-- [ ] Quality, delta/DTE/liquidity selection, collateral, share coverage,
+- [x] Quality, delta/DTE/liquidity selection, collateral, share coverage,
   assignment, dividends, capped upside, costs, marks, and total return are exact
   and reproducible from immutable evidence.
-- [ ] Missing/stale/partial/forged evidence and naked short-option states fail.
-- [ ] The adapter is deterministic and remains inside OVR-303 simulation,
+- [x] Missing/stale/partial/forged evidence and naked short-option states fail.
+- [x] The adapter is deterministic and remains inside OVR-303 simulation,
   capital, ledger, and execution-lifecycle boundaries.
-- [ ] Reports are append-only and cannot select/promote/allocate/schedule/deploy.
-- [ ] Local qualification is `VERIFIED_LOCAL`; licensed real inputs,
+- [x] Reports are append-only and cannot select/promote/allocate/schedule/deploy.
+- [x] Local qualification is `VERIFIED_LOCAL`; licensed real inputs,
   independent review, shared migration, promotion, runtime adoption, and
   production activation remain `BLOCKED_EXTERNAL`.
 
@@ -164,3 +164,13 @@ Focused races cover deterministic domain replay, scored/stress OVR303 runner
 execution, common capital rejection, PostgreSQL eight-writer convergence,
 restart, all write-stage interruption, append-only enforcement, normalized
 forgery reload refusal, nonempty rollback refusal, and empty `83 -> 82 -> 83`.
+Repository-wide qualification passed 4,536 race-tested Go cases, build, vet,
+golangci-lint, gofumpt, and govulncheck with zero reachable vulnerabilities.
+Pinned Node 22.23.2 passed install, high-severity audit, 162 frontend tests,
+lint, and build; npm reports one low-severity Windows-only esbuild development
+server advisory. The isolated production-image verifier built commit `3631967`,
+migrated fresh `1 -> 83`, passed authenticated read-only API health, rolled
+back to 60, backed up/restored, reapplied 83, restarted healthy, and cleaned
+its stack. Its first attempt stopped only because the local external
+`monitoring` network was absent; a temporary network enabled the passing rerun
+and was removed afterward.

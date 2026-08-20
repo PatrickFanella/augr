@@ -1154,6 +1154,24 @@ only; real benchmark data/review, shared migration, runtime adoption,
 allocation, scheduling, deployment, and production activation remain
 **BLOCKED_EXTERNAL**. Dependency-order execution proceeds to OVR-402.
 
+**OVR-402 local completion addendum (2026-08-20):** Migration 83 and the
+`internal/strategy/wheel` boundary now implement a deterministic,
+point-in-time quality-filtered cash-secured put / covered-call lifecycle with
+explicit executable pricing, collateral, assignments, dividends, share
+coverage, fees, option liability, capped upside, and after-cost return. The
+exact OVR-303 adapter binds ordered manifest evidence and declares engine-
+derived option capital notional for common capital assessment. Retained schema
+`augr_ovr402_qual_20260820` contains five scenarios and reports spanning put
+expiry, put assignment, dividend entitlement, covered-call expiry, and
+call-away (`1/5/22/5/22/32/14` normalized rows). Eight-writer convergence,
+restart, all-stage recovery, forgery, append-only, nonempty rollback, empty
+`83 -> 82 -> 83`, all backend and pinned-frontend gates, and isolated
+production-image fresh-83 health/API/rollback-60/backup-restore/reapply smoke
+passed. These results are **VERIFIED_LOCAL** only. Licensed real inputs,
+independent review, shared migration, promotion, runtime adoption, allocation,
+scheduling, deployment, and production activation remain **BLOCKED_EXTERNAL**.
+Dependency-order execution proceeds to OVR-403.
+
 ### Milestone 5 — Copy and event-market repair
 
 | ID | Depends on | Work | Acceptance |
