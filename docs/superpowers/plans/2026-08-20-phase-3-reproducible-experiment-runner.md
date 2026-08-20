@@ -144,29 +144,29 @@ Out of scope:
 
 ## Task 4: PostgreSQL repository and recovery
 
-- [ ] Add a narrow repository for atomic program/plan registration, attempt
+- [x] Add a narrow repository for atomic program/plan registration, attempt
   events, completed/failed result graphs, exact reload, and experiment result
   listing without best/current selection.
-- [ ] Revalidate every cross-aggregate pin in one transaction and reconstruct
+- [x] Revalidate every cross-aggregate pin in one transaction and reconstruct
   normalized children rather than trusting canonical JSON alone.
-- [ ] Prove identical/eight-writer convergence, changed retry conflict, injected
+- [x] Prove identical/eight-writer convergence, changed retry conflict, injected
   rollback at every child stage, interruption then retry, and restart reload.
-- [ ] Prove clean rerun in a fresh database reproduces plan, decision, intent,
+- [x] Prove clean rerun in a fresh database reproduces plan, decision, intent,
   order, transition, fill, metric, outcome, and final-result hashes.
-- [ ] Commit and push the repository/recovery slice after database races.
+- [x] Commit and push the repository/recovery slice after database races.
 
 ## Task 5: Golden runner qualification
 
-- [ ] Add one explicit fixture program adapter for qualification only; bind it
+- [x] Add one explicit fixture program adapter for qualification only; bind it
   to the retained OVR-302 golden version without exposing a general compiler.
-- [ ] Run scored and stress golden plans through common simulation and lifecycle
+- [x] Run scored and stress golden plans through common simulation and lifecycle
   persistence; prove mode isolation and exact within-mode replay.
-- [ ] Cover no-op, rejection, stale/missing manifest evidence, partial fill,
+- [x] Cover no-op, rejection, stale/missing manifest evidence, partial fill,
   multiple fills, fee, latency, cancellation, failed persistence, cancellation,
   and restart paths without invented economic effects.
-- [ ] Retain two clean runs/retries and one injected failed attempt with complete
+- [x] Retain two clean runs/retries and one injected failed attempt with complete
   lineage and reproducibility evidence.
-- [ ] Commit and push the golden runner slice after focused races.
+- [x] Commit and push the golden runner slice after focused races.
 
 ## Task 6: Documentation, qualification, review, and synchronization
 

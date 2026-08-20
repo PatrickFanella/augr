@@ -22,9 +22,10 @@ import (
 // result evidence. Execution and economic writes are delegated to the common
 // append-only repositories so experiment runs cannot create a parallel ledger.
 type ExperimentRunRepo struct {
-	pool      *pgxpool.Pool
-	lifecycle *ExecutionLifecycleRepo
-	ledger    *LedgerRepo
+	pool       *pgxpool.Pool
+	lifecycle  *ExecutionLifecycleRepo
+	ledger     *LedgerRepo
+	afterStage func(string) error
 }
 
 var _ repository.ExperimentRunRepository = (*ExperimentRunRepo)(nil)
@@ -109,6 +110,9 @@ func (repo *ExperimentRunRepo) RecordPlan(ctx context.Context, value *experiment
 	if err != nil {
 		return nil, experimentRunWriteError("insert experiment replay plan", err)
 	}
+	if err := repo.stage("plan_parent"); err != nil {
+		return nil, err
+	}
 	for sequence, step := range value.Steps() {
 		var instrumentID, contractID any
 		var side, orderType, tif, quantity, limitPrice, stopPrice any
@@ -131,6 +135,9 @@ func (repo *ExperimentRunRepo) RecordPlan(ctx context.Context, value *experiment
 			instrumentID, contractID, side, orderType, tif, quantity, limitPrice, stopPrice, decisionAt, routeAt, intentKey, orderKey, intentID, orderID)
 		if err != nil {
 			return nil, experimentRunWriteError("insert experiment replay plan step", err)
+		}
+		if err := repo.stage("plan_step"); err != nil {
+			return nil, err
 		}
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -266,7 +273,22 @@ func (repo *ExperimentRunRepo) RecordCompletedResult(ctx context.Context, experi
 	if !errors.Is(loadErr, repository.ErrNotFound) {
 		return nil, nil, loadErr
 	}
-	if err = insertResultGraph(ctx, tx, value, event.OccurredAt()); err != nil {
+	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1::text,0))`, value.ID()); err != nil {
+		return nil, nil, fmt.Errorf("postgres: lock completed experiment result identity: %w", err)
+	}
+	existingResult, resultLoadErr := getResultTx(ctx, tx, value.ID())
+	if resultLoadErr == nil {
+		if !sameResult(existingResult, value) {
+			return nil, nil, experimentRunConflict("completed experiment result identity differs from accepted evidence")
+		}
+	} else if errors.Is(resultLoadErr, repository.ErrNotFound) {
+		if err = repo.insertResultGraph(ctx, tx, value, event.OccurredAt()); err != nil {
+			return nil, nil, err
+		}
+	} else {
+		return nil, nil, resultLoadErr
+	}
+	if err := repo.stage("result_graph"); err != nil {
 		return nil, nil, err
 	}
 	if err = insertAttemptEvent(ctx, tx, experimentID, event); err != nil {
@@ -289,7 +311,7 @@ func (repo *ExperimentRunRepo) RecordCompletedResult(ctx context.Context, experi
 	return persistedResult, persistedEvent, nil
 }
 
-func insertResultGraph(ctx context.Context, tx pgx.Tx, value *experimentrun.Result, createdAt time.Time) error {
+func (repo *ExperimentRunRepo) insertResultGraph(ctx context.Context, tx pgx.Tx, value *experimentrun.Result, createdAt time.Time) error {
 	metrics := value.Metrics()
 	_, err := tx.Exec(ctx, `INSERT INTO experiment_run_results(
 		id,schema_name,state,experiment_id,program_id,plan_id,account_id,manifest_id,quality_result_id,simulation_policy_version,
@@ -302,6 +324,9 @@ func insertResultGraph(ctx context.Context, tx pgx.Tx, value *experimentrun.Resu
 		metrics.FilledQuantity, metrics.FeeTotal, value.Digest(), value.CanonicalBytes(), createdAt)
 	if err != nil {
 		return experimentRunWriteError("insert completed experiment result", err)
+	}
+	if err := repo.stage("result_parent"); err != nil {
+		return err
 	}
 	for sequence, outcome := range value.Outcomes() {
 		var intentID, orderID any
@@ -319,16 +344,25 @@ func insertResultGraph(ctx context.Context, tx pgx.Tx, value *experimentrun.Resu
 		if err != nil {
 			return experimentRunWriteError("insert experiment result outcome", err)
 		}
+		if err := repo.stage("result_outcome"); err != nil {
+			return err
+		}
 		for index, transitionID := range outcome.TransitionIDs {
 			if _, err = tx.Exec(ctx, `INSERT INTO experiment_run_transition_ids(result_id,step_sequence,sequence,transition_id) VALUES($1,$2,$3,$4)`,
 				value.ID(), sequence, index, transitionID); err != nil {
 				return experimentRunWriteError("insert experiment result transition", err)
+			}
+			if err := repo.stage("result_transition"); err != nil {
+				return err
 			}
 		}
 		for index, fillID := range outcome.FillIDs {
 			if _, err = tx.Exec(ctx, `INSERT INTO experiment_run_fill_ids(result_id,step_sequence,sequence,fill_id) VALUES($1,$2,$3,$4)`,
 				value.ID(), sequence, index, fillID); err != nil {
 				return experimentRunWriteError("insert experiment result fill", err)
+			}
+			if err := repo.stage("result_fill"); err != nil {
+				return err
 			}
 		}
 	}
@@ -441,6 +475,23 @@ func (repo *ExperimentRunRepo) GetResult(ctx context.Context, id uuid.UUID) (*ex
 	}
 	if err := repo.verifyResultRows(ctx, value); err != nil {
 		return nil, err
+	}
+	return value, nil
+}
+
+func getResultTx(ctx context.Context, tx pgx.Tx, id uuid.UUID) (*experimentrun.Result, error) {
+	var digest string
+	var raw []byte
+	err := tx.QueryRow(ctx, `SELECT sha256,canonical_bytes FROM experiment_run_results WHERE id=$1`, id).Scan(&digest, &raw)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, repository.ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("postgres: get experiment result in transaction: %w", err)
+	}
+	value, err := experimentrun.ResultFromCanonical(id, digest, raw)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: reconstruct experiment result in transaction: %w", err)
 	}
 	return value, nil
 }
@@ -689,6 +740,16 @@ func sameUUIDSlice(left, right []uuid.UUID) bool {
 func (repo *ExperimentRunRepo) ready(operation string) error {
 	if repo == nil || repo.pool == nil {
 		return fmt.Errorf("postgres: %s: repository pool is required", operation)
+	}
+	return nil
+}
+
+func (repo *ExperimentRunRepo) stage(name string) error {
+	if repo.afterStage == nil {
+		return nil
+	}
+	if err := repo.afterStage(name); err != nil {
+		return fmt.Errorf("postgres: injected experiment run failure after %s: %w", name, err)
 	}
 	return nil
 }
