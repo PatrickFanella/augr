@@ -189,6 +189,7 @@ func TestNewAPIServerSchemaMatchSucceeds(t *testing.T) {
 	var proceeded atomic.Bool
 	var closed atomic.Bool
 	var serverBuilt atomic.Bool
+	var automationWired atomic.Bool
 	runtimeNewDB = func(context.Context, string) (*pgrepo.DB, error) {
 		return &pgrepo.DB{Pool: pool}, nil
 	}
@@ -198,8 +199,9 @@ func TestNewAPIServerSchemaMatchSucceeds(t *testing.T) {
 	runtimeNewPaperAccountRepo = func(*pgrepo.DB) repository.PaperAccountRepository { return stubPaperAccountRepo{} }
 	runtimeAfterSchemaGate = func() { proceeded.Store(true) }
 	runtimeCloseDB = func(*pgrepo.DB) { closed.Store(true) }
-	runtimeNewServer = func(api.ServerConfig, api.Deps, *slog.Logger) (*api.Server, error) {
+	runtimeNewServer = func(_ api.ServerConfig, deps api.Deps, _ *slog.Logger) (*api.Server, error) {
 		serverBuilt.Store(true)
+		automationWired.Store(deps.Automation != nil)
 		return &api.Server{}, nil
 	}
 
@@ -221,6 +223,9 @@ func TestNewAPIServerSchemaMatchSucceeds(t *testing.T) {
 	}
 	if !serverBuilt.Load() {
 		t.Fatal("runtime did not continue to server construction on matching schema")
+	}
+	if automationWired.Load() {
+		t.Fatal("runtime wired automation while scheduler was disabled")
 	}
 	if closed.Load() {
 		t.Fatal("runtime closed db before cleanup on matching schema")

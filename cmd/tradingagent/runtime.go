@@ -719,10 +719,10 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 			)
 		}
 
-		// Create the automation orchestrator when scheduler support is enabled. Jobs
-		// self-register only when their own dependencies are present, so Kalshi
+		// Create the automation orchestrator only when scheduler support is enabled.
+		// Jobs self-register only when their own dependencies are present, so Kalshi
 		// discovery does not depend on stock ticker discovery being enabled.
-		{
+		if cfg.Features.EnableScheduler {
 			var polygonClientForAuto *polygon.Client
 			if strings.TrimSpace(cfg.DataProviders.Polygon.APIKey) != "" {
 				polygonClientForAuto = polygon.NewClient(cfg.DataProviders.Polygon.APIKey, logger, polygonLimiter)
