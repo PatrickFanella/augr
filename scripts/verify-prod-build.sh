@@ -39,7 +39,8 @@ ROLLBACK_IMAGE_OVERRIDE_FILE="${VERIFY_DIR}/rollback-image-override.yml"
 # caller-overridable subnets so the smoke stack does not depend on that allocator.
 VERIFY_PUBLIC_SUBNET="${VERIFY_PUBLIC_SUBNET:-10.252.0.0/28}"
 VERIFY_BACKEND_SUBNET="${VERIFY_BACKEND_SUBNET:-10.252.0.16/28}"
-export VERIFY_BACKEND_SUBNET VERIFY_PUBLIC_SUBNET
+VERIFY_MONITORING_SUBNET="${VERIFY_MONITORING_SUBNET:-10.252.0.32/28}"
+export PROJECT_NAME VERIFY_BACKEND_SUBNET VERIFY_MONITORING_SUBNET VERIFY_PUBLIC_SUBNET
 
 cat >"$NETWORK_OVERRIDE_FILE" <<'EOF'
 networks:
@@ -51,6 +52,12 @@ networks:
     ipam:
       config:
         - subnet: ${VERIFY_BACKEND_SUBNET}
+  monitoring:
+    external: false
+    name: ${PROJECT_NAME}_monitoring
+    ipam:
+      config:
+        - subnet: ${VERIFY_MONITORING_SUBNET}
 EOF
 
 VERIFY_APP_PORT="${VERIFY_APP_PORT:-$(python3 - <<'PY'
