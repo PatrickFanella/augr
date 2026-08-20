@@ -107,26 +107,58 @@ Out of scope:
   expose a deterministic state projection but no best/current candidate query.
 - [x] Prove eight-writer convergence, serialized competing writers, restart,
   every-child interruption rollback, changed retry conflict, and clean replay.
-- [ ] Retain approved, held, and retired local decisions with cross-mode and AI/
+- [x] Retain approved, held, and retired local decisions with cross-mode and AI/
   UI/scheduler authority separation.
 - [x] Add a runbook for policy review, gate inspection, transition projection,
   failure preservation, rollback, and explicit non-activation boundaries.
-- [ ] Apply fresh `1 -> 81`, retain a complete decision chain, prove nonempty
+- [x] Apply fresh `1 -> 81`, retain a complete decision chain, prove nonempty
   rollback refusal, and separately rehearse empty `81 -> 80 -> 81`.
-- [ ] Run focused/database races, backend and pinned frontend gates, diff review,
+- [x] Run focused/database races, backend and pinned frontend gates, diff review,
   and isolated kill-switched schema-81 health/API/rollback/reapply smoke.
-- [ ] Commit/push verified slices, fetch, and prove `0 0` divergence before
+- [x] Commit/push verified slices, fetch, and prove `0 0` divergence before
   milestone 4.
 
 ## Acceptance evidence to record
 
-- [ ] A deployment state change is reproducible from exact policy and immutable
+- [x] A deployment state change is reproducible from exact policy and immutable
   evidence links; no caller supplies the pass boolean or next state.
-- [ ] Failed, missing, partial-family, cross-version, and cross-mode evidence
+- [x] Failed, missing, partial-family, cross-version, and cross-mode evidence
   cannot approve a transition.
-- [ ] Decision history is append-only, serialized, restart-safe, and does not
+- [x] Decision history is append-only, serialized, restart-safe, and does not
   activate scheduling, allocation, deployment, or execution.
-- [ ] AI/UI/operator recommendations cannot bypass the deterministic evaluator.
-- [ ] Local qualification is `VERIFIED_LOCAL`; real strategy evidence,
+- [x] AI/UI/operator recommendations cannot bypass the deterministic evaluator.
+- [x] Local qualification is `VERIFIED_LOCAL`; real strategy evidence,
   independent review, lifecycle cutover, scheduling, deployment, and production
   activation remain `BLOCKED_EXTERNAL`.
+
+## Qualification record — 2026-08-20
+
+- `VERIFIED_LOCAL`: retained isolated schema `augr_ovr306_qual_20260820`
+  contains approved decision `42770ff3-e06e-d7f1-e581-f893903e655d`
+  (`df6f0ae3e19d697111d74631cbab5f165ad7db16b8cbb31495f806cdc2aa7783`),
+  held child `91f14fcc-c097-17b8-2ec7-2511cf9b4238`
+  (`0a5b359f1e6a1dea61235d3f21dba02591f7988aade1860855809609be0320da`),
+  and retired decision `514c4e55-c541-2de6-756b-fc33a05f68b4`
+  (`169a57f34141a3674ca0e182941235b8e54644401979bcaaa9b0d87983790620`).
+- The approved/held chain projects `proposed -> shadow -> shadow` for deployment
+  `67013d70-d862-e412-1130-4697b970ad55`. The separate failed assessment
+  `672ef184-0685-a71c-755e-a2d48187462f` deterministically projects deployment
+  `27f6ac23-e51e-59b9-83a5-ba2b20c8b873` from `proposed -> retired`.
+- Retained normalized counts are `2/3/3/5/3` policy/required-gate/decision/
+  observed-gate/lifecycle-event rows. Eight-writer convergence, competing
+  initial-head rejection, restart reload, normalized forgery rejection,
+  every-child interruption rollback, append-only refusal, and nonempty
+  migration refusal passed.
+- Empty real-PostgreSQL rehearsal passed `80 -> 81 -> 80 -> 81`. The isolated
+  production image passed fresh `1 -> 81`, schema verification, authenticated
+  read-only API health, rollback to 60, backup/restore, reapply through 81, and
+  restarted health with scheduler/live/provider authority absent.
+- All Go package races without external database dependencies passed. Focused
+  OVR-305/306 real-PostgreSQL races passed. Build, vet, golangci-lint, gofumpt,
+  and govulncheck passed with zero reachable vulnerabilities.
+- Pinned Node `22.23.2` frozen install, high-severity audit, 162 tests, lint,
+  and production build passed. The audit retains one low-severity Windows-only
+  esbuild development-server advisory.
+- `BLOCKED_EXTERNAL`: real candidate data, independent statistical/lifecycle
+  review, scheduler adoption, allocation, shadow/paper/live runtime activation,
+  shared migration, deployment, and production cutover.

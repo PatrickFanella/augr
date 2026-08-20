@@ -1106,6 +1106,28 @@ data, independent statistical review, promotion, deployment, shared migration,
 and production cutover remain **BLOCKED_EXTERNAL**. Dependency-order execution
 proceeds to OVR-305.
 
+OVR-305 and OVR-306 are complete locally as additive schemas 80 and 81.
+OVR-305 binds exact OVR-304 reports into deterministic purged/embargoed
+walk-forward folds, named perturbations, bootstrap intervals, positive-return
+concentration, and family-wide Holm-Bonferroni gates. OVR-306 reloads one exact
+proposed deployment and complete robustness family, derives approved/held/
+retired results without a caller verdict, and serializes immutable deployment
+lifecycle evidence. No scheduler, allocator, provider, UI, AI workflow, or
+runtime consumes these decisions.
+
+Retained loopback schemas preserve a complete OVR-305 assessment and OVR-306
+`proposed -> shadow -> shadow` approval/hold chain plus a separate
+`proposed -> retired` failed-assessment decision. Empty rollback/reapply passed
+through schema 81; nonempty rollback refused. Focused PostgreSQL races, all Go
+package races without external dependencies, backend build/vet/lint/format/
+vulnerability gates, pinned Node 22 install/audit/162 tests/lint/build, and the
+isolated production-image fresh-81 health/API/rollback-60/backup-restore/reapply
+smoke passed. These results are **VERIFIED_LOCAL** only. Real evidence,
+independent review, shared migration, lifecycle cutover, scheduling,
+allocation, deployment, and production activation remain **BLOCKED_EXTERNAL**.
+Milestone 3 is locally code-complete; dependency-order execution proceeds to
+Milestone 4 OVR-401.
+
 ### Milestone 4 — Deterministic strategy program
 
 | ID | Depends on | Work | Acceptance |
