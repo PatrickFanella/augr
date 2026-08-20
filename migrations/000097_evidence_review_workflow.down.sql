@@ -1,0 +1,4 @@
+LOCK TABLE evidence_review_cases,evidence_reviews,evidence_review_summaries IN ACCESS EXCLUSIVE MODE;
+DO $$BEGIN IF EXISTS(SELECT 1 FROM evidence_review_cases) OR EXISTS(SELECT 1 FROM evidence_reviews) OR EXISTS(SELECT 1 FROM evidence_review_summaries) THEN RAISE EXCEPTION 'cannot roll back evidence review workflow with retained evidence';END IF;END$$;
+DROP FUNCTION reject_evidence_review_mutation() CASCADE;DROP FUNCTION validate_evidence_review_summary() CASCADE;DROP FUNCTION validate_evidence_review() CASCADE;DROP FUNCTION validate_evidence_review_case() CASCADE;
+DROP TABLE evidence_review_summary_checks,evidence_review_summary_heads,evidence_review_summaries,evidence_review_check_references,evidence_review_checks,evidence_reviews,evidence_review_case_references,evidence_review_cases;
