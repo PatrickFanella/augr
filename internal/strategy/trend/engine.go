@@ -306,6 +306,20 @@ func (r *Report) Rebalances() []Rebalance {
 	return append([]Rebalance(nil), r.canonical.Rebalances...)
 }
 
+func (r *Report) PolicyID() uuid.UUID {
+	if r == nil {
+		return uuid.Nil
+	}
+	return uuid.MustParse(r.canonical.PolicyID)
+}
+
+func (r *Report) ScenarioID() uuid.UUID {
+	if r == nil {
+		return uuid.Nil
+	}
+	return uuid.MustParse(r.canonical.ScenarioID)
+}
+
 func (r *Report) AfterCostTotalReturn() string {
 	if r == nil {
 		return ""

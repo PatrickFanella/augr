@@ -87,16 +87,16 @@ Out of scope:
 
 ## Task 3: Migration 85 and append-only evidence
 
-- [ ] Add policy, scenario, source/member/horizon, report, rebalance, signal,
+- [x] Add policy, scenario, source/member/horizon, report, rebalance, signal,
   target, trade, and holding tables.
-- [ ] Reconstruct canonical identities, parents, chronology, signals, scaling,
+- [x] Reconstruct canonical identities, parents, chronology, signals, scaling,
   continuity, turnover, costs, holdings, cash, and return.
-- [ ] Reject mutation/deletion, gaps/forks, changed retry, forgery, partial
+- [x] Reject mutation/deletion, gaps/forks, changed retry, forgery, partial
   evidence, unknown references, negative cash/weights, and cap violations.
-- [ ] Keep provider/runtime/promotion/allocation/UI authority absent.
-- [ ] Add empty-only rollback and bump `RequiredSchemaVersion` to 85 only after
+- [x] Keep provider/runtime/promotion/allocation/UI authority absent.
+- [x] Add empty-only rollback and bump `RequiredSchemaVersion` to 85 only after
   real PostgreSQL migration races pass.
-- [ ] Commit and push the persistence slice.
+- [x] Commit and push the persistence slice.
 
 ## Task 4: Operations and qualification
 

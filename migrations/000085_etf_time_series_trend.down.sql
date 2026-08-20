@@ -1,0 +1,4 @@
+LOCK TABLE trend_v1_holdings,trend_v1_trades,trend_v1_signals,trend_v1_rebalances,trend_v1_reports,trend_v1_horizon_prices,trend_v1_universe_members,trend_v1_source_rebalances,trend_v1_scenarios,trend_v1_policies IN ACCESS EXCLUSIVE MODE;
+DO $$ BEGIN IF EXISTS(SELECT 1 FROM trend_v1_reports) OR EXISTS(SELECT 1 FROM trend_v1_scenarios) OR EXISTS(SELECT 1 FROM trend_v1_policies) THEN RAISE EXCEPTION 'cannot roll back migration 85 while trend v1 evidence exists'; END IF; END $$;
+DROP TABLE trend_v1_holdings,trend_v1_trades,trend_v1_signals,trend_v1_rebalances,trend_v1_reports,trend_v1_horizon_prices,trend_v1_universe_members,trend_v1_source_rebalances,trend_v1_scenarios,trend_v1_policies;
+DROP FUNCTION reject_trend_v1_mutation(); DROP FUNCTION validate_trend_v1_report(); DROP FUNCTION validate_trend_v1_scenario();
