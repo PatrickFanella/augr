@@ -174,7 +174,7 @@ Out of scope:
   relational, and serialized output.
 - [x] Prove legacy `backtest.Metrics.WinRate` remains unchanged but is never
   imported or relabeled as OVR-304 trade evidence.
-- [ ] Commit and push the golden slice after focused races.
+- [x] Commit and push the golden slice after focused races.
 
 ## Task 6: Documentation, qualification, review, and synchronization
 
@@ -184,24 +184,24 @@ Out of scope:
 - [x] Apply migrations `1 -> 79` to fresh loopback databases, retain a complete
   report, prove clean-database reproduction, nonempty rollback refusal, and
   separate empty `79 -> 78 -> 79`.
-- [ ] Run focused/database races, backend build/race/vet/lint/format/
+- [x] Run focused/database races, backend build/race/vet/lint/format/
   vulnerability gates, pinned Node 22 frozen install/audit/tests/lint/build,
   `git diff --check`, and an isolated kill-switched schema-79 health smoke.
-- [ ] Complete final diff review, commit/push verified slices, fetch, and prove
+- [x] Complete final diff review, commit/push verified slices, fetch, and prove
   `0 0` divergence before OVR-305.
 
 ## Acceptance evidence to record after implementation
 
-- [ ] Every evaluation is an exact immutable child of one completed OVR-303
+- [x] Every evaluation is an exact immutable child of one completed OVR-303
   result and replays identically from retained evidence.
-- [ ] Primary after-cost trade/portfolio metrics state assumptions, sample size,
+- [x] Primary after-cost trade/portfolio metrics state assumptions, sample size,
   and availability without invented observations or silent zero substitution.
-- [ ] Trade win rate/expectancy/profit factor cannot be populated from bar
+- [x] Trade win rate/expectancy/profit factor cannot be populated from bar
   returns; bar-positive frequency remains visibly descriptor-only.
-- [ ] Scored/stress evidence remains isolated and no report grants promotion or
+- [x] Scored/stress evidence remains isolated and no report grants promotion or
   deployment authority.
-- [ ] Migration 79 is additive, append-only, empty-only reversible, and leaves
+- [x] Migration 79 is additive, append-only, empty-only reversible, and leaves
   legacy backtests and runtimes untouched.
-- [ ] Local qualification is `VERIFIED_LOCAL`; real candidate evidence,
+- [x] Local qualification is `VERIFIED_LOCAL`; real candidate evidence,
   licensed data, independent statistical review, promotion, deployment, and
   production cutover remain `BLOCKED_EXTERNAL`.

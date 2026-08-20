@@ -62,8 +62,11 @@ func TestOvernightBacktestRunRepoIntegration_CRUD(t *testing.T) {
 	if got.Candidates[0].Ticker != "MSFT" {
 		t.Fatalf("candidate ticker = %q, want MSFT", got.Candidates[0].Ticker)
 	}
-	if string(got.Generated[0].Evidence) != `{"attempts":[]}` {
-		t.Fatalf("generated evidence = %s", got.Generated[0].Evidence)
+	var evidence struct {
+		Attempts []json.RawMessage `json:"attempts"`
+	}
+	if err := json.Unmarshal(got.Generated[0].Evidence, &evidence); err != nil || evidence.Attempts == nil || len(evidence.Attempts) != 0 {
+		t.Fatalf("generated evidence = %s, err=%v", got.Generated[0].Evidence, err)
 	}
 	active, err := repo.GetActive(ctx)
 	if err != nil {

@@ -1072,6 +1072,40 @@ runner infrastructure, independent review, shared migration, statistical
 evaluation, promotion, deployment, and production cutover remain
 **BLOCKED_EXTERNAL**. Dependency-order execution proceeds to OVR-304.
 
+OVR-304 is complete locally as schema 79 and an immutable evaluation boundary.
+Evaluation policies pin frequency, annualization, cash return, FIFO matching,
+recovery, and rounding assumptions. Each report reloads one exact completed
+OVR-303 result, persists ordered observations and FIFO fill-backed trades, and
+recalculates normalized metrics on reload. Undefined metrics carry explicit
+availability reasons; mathematical positive infinity is a state, not a float
+sentinel. `trade.win_rate` is closed-trade after-cost evidence, while
+`curve_diagnostics.bar_positive_return_rate` is visibly descriptor-only. No
+best/current pointer, promotion state, scheduler, provider writer, deployment
+authority, or legacy backtest cutover was added.
+
+Fresh loopback schemas passed `1 -> 79`, deterministic clean-database replay,
+eight-writer convergence, restart reload, every parent/observation/trade/fill/
+metric rollback injection, forged normalized-metric rejection, scored/stress
+isolation, winning/losing/breakeven/open-lot cases, recovered and unrecovered
+drawdown, explicit missing observed slippage, and empty `79 -> 78 -> 79`.
+The retained scored evaluation is
+`220b2de1-f5d7-bbdf-5f54-0d98d0c773eb` with SHA-256
+`0160aebd9ebd15020a6cf12077326a1a36b49a840627a2eff40eeb4099f5ae08`,
+bound to result `c91ed230-b32d-e08d-566f-bb5afd44035b`; nonempty rollback
+refused and preserved it.
+
+Focused and complete database races, the full short race suite, backend build/
+vet/lint/format and symbol-level vulnerability checks, pinned Node 22 frozen
+install/tests/lint/production build and high-severity audit, and the isolated
+production-image schema-79 health/API/rollback-60/backup-restore/reapply smoke
+passed. A brittle legacy JSONB whitespace assertion was corrected to validate
+the same JSON semantics. The frontend audit retains one low-severity Windows
+development-server esbuild advisory outside the Linux production/high-severity
+gate. OVR-304 is **VERIFIED_LOCAL** only. Real candidate evidence, licensed
+data, independent statistical review, promotion, deployment, shared migration,
+and production cutover remain **BLOCKED_EXTERNAL**. Dependency-order execution
+proceeds to OVR-305.
+
 ### Milestone 4 — Deterministic strategy program
 
 | ID | Depends on | Work | Acceptance |
