@@ -46,17 +46,19 @@ type LegInput struct {
 }
 
 type ScenarioInput struct {
-	Policy                 *Policy
-	Strategy               Strategy
-	InitialCapital         string
-	RequestedContracts     int
-	DecisionAt, ExpiryAt   time.Time
-	TerminalUnderlying     string
-	TerminalAvailableAt    time.Time
-	TerminalEvidenceID     uuid.UUID
-	TerminalEvidenceSHA256 string
-	Mode                   strategycatalog.ExperimentMode
-	Legs                   []LegInput
+	Policy                         *Policy
+	Strategy                       Strategy
+	InitialCapital                 string
+	RequestedContracts             int
+	DecisionAt, ExpiryAt           time.Time
+	TerminalUnderlying             string
+	TerminalAvailableAt            time.Time
+	TerminalEvidenceID             uuid.UUID
+	TerminalEvidenceSHA256         string
+	TerminalPartitionContentSHA256 string
+	TerminalSourceKey              string
+	Mode                           strategycatalog.ExperimentMode
+	Legs                           []LegInput
 }
 
 type quoteCanonical struct {
@@ -85,21 +87,23 @@ type legCanonical struct {
 	Unwind          *quoteCanonical `json:"unwind"`
 }
 type scenarioCanonical struct {
-	Schema                 string                         `json:"schema"`
-	State                  string                         `json:"state"`
-	PolicyID               string                         `json:"policy_id"`
-	PolicySHA256           string                         `json:"policy_sha256"`
-	Strategy               Strategy                       `json:"strategy"`
-	InitialCapital         string                         `json:"initial_capital"`
-	RequestedContracts     int                            `json:"requested_contracts"`
-	DecisionAt             string                         `json:"decision_at"`
-	ExpiryAt               string                         `json:"expiry_at"`
-	TerminalUnderlying     string                         `json:"terminal_underlying"`
-	TerminalAvailableAt    string                         `json:"terminal_available_at"`
-	TerminalEvidenceID     string                         `json:"terminal_evidence_id"`
-	TerminalEvidenceSHA256 string                         `json:"terminal_evidence_sha256"`
-	Mode                   strategycatalog.ExperimentMode `json:"mode"`
-	Legs                   []legCanonical                 `json:"legs"`
+	Schema                         string                         `json:"schema"`
+	State                          string                         `json:"state"`
+	PolicyID                       string                         `json:"policy_id"`
+	PolicySHA256                   string                         `json:"policy_sha256"`
+	Strategy                       Strategy                       `json:"strategy"`
+	InitialCapital                 string                         `json:"initial_capital"`
+	RequestedContracts             int                            `json:"requested_contracts"`
+	DecisionAt                     string                         `json:"decision_at"`
+	ExpiryAt                       string                         `json:"expiry_at"`
+	TerminalUnderlying             string                         `json:"terminal_underlying"`
+	TerminalAvailableAt            string                         `json:"terminal_available_at"`
+	TerminalEvidenceID             string                         `json:"terminal_evidence_id"`
+	TerminalEvidenceSHA256         string                         `json:"terminal_evidence_sha256"`
+	TerminalPartitionContentSHA256 string                         `json:"terminal_partition_content_sha256"`
+	TerminalSourceKey              string                         `json:"terminal_source_key"`
+	Mode                           strategycatalog.ExperimentMode `json:"mode"`
+	Legs                           []legCanonical                 `json:"legs"`
 }
 
 type Scenario struct {
@@ -110,7 +114,7 @@ type Scenario struct {
 }
 
 func NewScenario(input ScenarioInput) (*Scenario, error) {
-	if input.Policy == nil || !supported(input.Strategy) || !positive(input.InitialCapital) || input.RequestedContracts < 1 || input.RequestedContracts > input.Policy.canonical.MaximumContracts || !canonicalTime(input.DecisionAt) || !canonicalTime(input.ExpiryAt) || !input.DecisionAt.Before(input.ExpiryAt) || !positive(input.TerminalUnderlying) || !canonicalTime(input.TerminalAvailableAt) || input.TerminalAvailableAt.After(input.ExpiryAt) || input.ExpiryAt.Sub(input.TerminalAvailableAt) > time.Duration(input.Policy.canonical.MaximumEvidenceAgeSeconds)*time.Second || input.TerminalEvidenceID == uuid.Nil || !digestPattern.MatchString(input.TerminalEvidenceSHA256) || input.Mode != strategycatalog.ExperimentPaperScored && input.Mode != strategycatalog.ExperimentPaperStress || len(input.Legs) != 2 {
+	if input.Policy == nil || !supported(input.Strategy) || !positive(input.InitialCapital) || input.RequestedContracts < 1 || input.RequestedContracts > input.Policy.canonical.MaximumContracts || !canonicalTime(input.DecisionAt) || !canonicalTime(input.ExpiryAt) || !input.DecisionAt.Before(input.ExpiryAt) || !positive(input.TerminalUnderlying) || !canonicalTime(input.TerminalAvailableAt) || input.TerminalAvailableAt.After(input.ExpiryAt) || input.ExpiryAt.Sub(input.TerminalAvailableAt) > time.Duration(input.Policy.canonical.MaximumEvidenceAgeSeconds)*time.Second || input.TerminalEvidenceID == uuid.Nil || !digestPattern.MatchString(input.TerminalEvidenceSHA256) || !digestPattern.MatchString(input.TerminalPartitionContentSHA256) || input.TerminalSourceKey == "" || input.Mode != strategycatalog.ExperimentPaperScored && input.Mode != strategycatalog.ExperimentPaperStress || len(input.Legs) != 2 {
 		return nil, fmt.Errorf("defined-risk scenario is invalid")
 	}
 	legs := append([]LegInput(nil), input.Legs...)
@@ -133,7 +137,14 @@ func NewScenario(input ScenarioInput) (*Scenario, error) {
 	if err := validateStructure(input.Strategy, canonicalLegs, input.ExpiryAt); err != nil {
 		return nil, err
 	}
-	canonical := scenarioCanonical{Schema: ScenarioSchemaV1, State: "declared", PolicyID: input.Policy.ID().String(), PolicySHA256: input.Policy.Digest(), Strategy: input.Strategy, InitialCapital: input.InitialCapital, RequestedContracts: input.RequestedContracts, DecisionAt: formatTime(input.DecisionAt), ExpiryAt: formatTime(input.ExpiryAt), TerminalUnderlying: input.TerminalUnderlying, TerminalAvailableAt: formatTime(input.TerminalAvailableAt), TerminalEvidenceID: input.TerminalEvidenceID.String(), TerminalEvidenceSHA256: input.TerminalEvidenceSHA256, Mode: input.Mode, Legs: canonicalLegs}
+	protective, short := canonicalLegs[0], canonicalLegs[1]
+	if protective.Position == "short" {
+		protective, short = short, protective
+	}
+	if input.Policy.canonical.ExecutionMode == ExecutionSequential && (protective.Unwind == nil || short.Unwind != nil) || input.Policy.canonical.ExecutionMode == ExecutionAtomic && (protective.Unwind != nil || short.Unwind != nil) {
+		return nil, fmt.Errorf("defined-risk unwind evidence does not match execution mode")
+	}
+	canonical := scenarioCanonical{Schema: ScenarioSchemaV1, State: "declared", PolicyID: input.Policy.ID().String(), PolicySHA256: input.Policy.Digest(), Strategy: input.Strategy, InitialCapital: input.InitialCapital, RequestedContracts: input.RequestedContracts, DecisionAt: formatTime(input.DecisionAt), ExpiryAt: formatTime(input.ExpiryAt), TerminalUnderlying: input.TerminalUnderlying, TerminalAvailableAt: formatTime(input.TerminalAvailableAt), TerminalEvidenceID: input.TerminalEvidenceID.String(), TerminalEvidenceSHA256: input.TerminalEvidenceSHA256, TerminalPartitionContentSHA256: input.TerminalPartitionContentSHA256, TerminalSourceKey: input.TerminalSourceKey, Mode: input.Mode, Legs: canonicalLegs}
 	encoded, _ := json.Marshal(canonical)
 	digest := hash(encoded)
 	return &Scenario{canonical: canonical, bytes: encoded, digest: digest, id: economicid.DeterministicUUID("defined-risk-options-scenario", ScenarioSchemaV1+"@sha256:"+digest)}, nil
@@ -186,7 +197,7 @@ func ScenarioFromCanonical(id uuid.UUID, digest string, raw []byte, policy *Poli
 	for i, leg := range c.Legs {
 		legs[i] = legInput(leg)
 	}
-	value, err := NewScenario(ScenarioInput{policy, c.Strategy, c.InitialCapital, c.RequestedContracts, parseTime(c.DecisionAt), parseTime(c.ExpiryAt), c.TerminalUnderlying, parseTime(c.TerminalAvailableAt), uuid.MustParse(c.TerminalEvidenceID), c.TerminalEvidenceSHA256, c.Mode, legs})
+	value, err := NewScenario(ScenarioInput{policy, c.Strategy, c.InitialCapital, c.RequestedContracts, parseTime(c.DecisionAt), parseTime(c.ExpiryAt), c.TerminalUnderlying, parseTime(c.TerminalAvailableAt), uuid.MustParse(c.TerminalEvidenceID), c.TerminalEvidenceSHA256, c.TerminalPartitionContentSHA256, c.TerminalSourceKey, c.Mode, legs})
 	if err != nil || c.Schema != ScenarioSchemaV1 || c.State != "declared" || value.ID() != id || value.Digest() != digest || !bytes.Equal(value.bytes, raw) {
 		return nil, fmt.Errorf("defined-risk scenario identity does not reconstruct")
 	}

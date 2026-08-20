@@ -110,10 +110,14 @@ func scenarioInput(policy *Policy, strategy Strategy, optionType, lowPosition, h
 	leg := func(salt, strike, position, bid, ask, bidSize, askSize string) LegInput {
 		id := uuid.NewSHA1(uuid.NameSpaceOID, []byte("defined-risk/"+salt))
 		entry := quote(salt+"/entry", decision, bid, ask, bidSize, askSize)
-		unwind := quote(salt+"/unwind", decision, "1.8", "2.2", "10", "10")
-		return LegInput{id, uuid.NewSHA1(uuid.NameSpaceOID, []byte("defined-risk/contract/"+salt)), "TEST" + salt, "TEST", optionType, strike, expiry, "100", "european", position, entry, &unwind}
+		var unwind *QuoteInput
+		if policy.canonical.ExecutionMode == ExecutionSequential && position == "long" {
+			value := quote(salt+"/unwind", decision, "1.8", "2.2", "10", "10")
+			unwind = &value
+		}
+		return LegInput{id, uuid.NewSHA1(uuid.NameSpaceOID, []byte("defined-risk/contract/"+salt)), "TEST" + salt, "TEST", optionType, strike, expiry, "100", "european", position, entry, unwind}
 	}
-	return ScenarioInput{policy, strategy, "10000", 2, decision, expiry, terminal, expiry, uuid.NewSHA1(uuid.NameSpaceOID, []byte("terminal")), strings.Repeat("9", 64), strategycatalog.ExperimentPaperScored, []LegInput{leg("low", "100", lowPosition, "1.8", "2", "10", "10"), leg("high", "110", highPosition, "0.8", "1", shortDepth, "10")}}
+	return ScenarioInput{policy, strategy, "10000", 2, decision, expiry, terminal, expiry, uuid.NewSHA1(uuid.NameSpaceOID, []byte("terminal")), strings.Repeat("9", 64), strings.Repeat("8", 64), "defined-risk/terminal", strategycatalog.ExperimentPaperScored, []LegInput{leg("low", "100", lowPosition, "1.8", "2", "10", "10"), leg("high", "110", highPosition, "0.8", "1", shortDepth, "10")}}
 }
 
 func quote(salt string, at time.Time, bid, ask, bidSize, askSize string) QuoteInput {
