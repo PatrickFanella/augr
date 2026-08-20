@@ -60,12 +60,12 @@ func newEvaluationFixture(t *testing.T) evaluationFixture {
 	observed := "0.2"
 	report, err := evaluation.NewReport(evaluation.ReportInput{
 		Result: fixture.result, Policy: policy, EvaluationStart: fixture.plan.EvaluationStart(),
-		EvaluationEnd: fixture.plan.EvaluationEnd(), OpenLotCount: 2,
+		EvaluationEnd: fixture.plan.EvaluationStart().Add(2 * time.Minute), OpenLotCount: 2,
 		Execution: evaluation.ExecutionInput{AttemptedOrders: "0", FilledOrders: "0", AttemptedQuantity: "0", FilledQuantity: "0"},
 		Observations: []evaluation.ObservationInput{
 			{ObservedAt: fixture.plan.EvaluationStart(), Equity: "100", BenchmarkValue: "100", CashReturn: "0", GrossExposure: "0", NetExposure: "0", LargestPositionWeight: "0", CumulativeOwnershipCost: "0", CumulativeTurnover: "0", CumulativeModeledSlippage: "0", CumulativeObservedSlippage: textPointer("0"), EvidenceID: uuid.MustParse("30410000-0000-4000-8000-000000000001"), EvidenceSHA256: strings.Repeat("1", 64)},
 			{ObservedAt: fixture.plan.EvaluationStart().Add(time.Minute), Equity: "101", BenchmarkValue: "100.5", CashReturn: "0.000001", GrossExposure: "20", NetExposure: "20", LargestPositionWeight: "0.2", CumulativeOwnershipCost: "0.1", CumulativeTurnover: "0.1", CumulativeModeledSlippage: "0.1", CumulativeObservedSlippage: textPointer("0.1"), EvidenceID: uuid.MustParse("30410000-0000-4000-8000-000000000002"), EvidenceSHA256: strings.Repeat("2", 64)},
-			{ObservedAt: fixture.plan.EvaluationEnd(), Equity: "100.5", BenchmarkValue: "100.25", CashReturn: "0.000001", GrossExposure: "10", NetExposure: "10", LargestPositionWeight: "0.1", CumulativeOwnershipCost: "0.2", CumulativeTurnover: "0.2", CumulativeModeledSlippage: "0.2", CumulativeObservedSlippage: &observed, EvidenceID: uuid.MustParse("30410000-0000-4000-8000-000000000003"), EvidenceSHA256: strings.Repeat("3", 64)},
+			{ObservedAt: fixture.plan.EvaluationStart().Add(2 * time.Minute), Equity: "100.5", BenchmarkValue: "100.25", CashReturn: "0.000001", GrossExposure: "10", NetExposure: "10", LargestPositionWeight: "0.1", CumulativeOwnershipCost: "0.2", CumulativeTurnover: "0.2", CumulativeModeledSlippage: "0.2", CumulativeObservedSlippage: &observed, EvidenceID: uuid.MustParse("30410000-0000-4000-8000-000000000003"), EvidenceSHA256: strings.Repeat("3", 64)},
 		},
 	})
 	if err != nil {

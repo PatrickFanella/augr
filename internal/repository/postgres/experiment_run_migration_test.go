@@ -48,7 +48,7 @@ func newExperimentRunMigrationFixture(t *testing.T) experimentMigrationFixture {
 		VersionID: strategy.version.ID(), AccountID: strategy.account.ID, CapitalBindingID: strategy.binding.ID,
 		ManifestID: strategy.manifest.ID(), QualityResultID: strategy.clean.ID(), SimulationPolicyVersion: strategy.simulation,
 		CapitalPolicyVersion: strategy.capital, Mode: strategycatalog.ExperimentPaperScored,
-		EvaluationStart: start, EvaluationEnd: available.Add(time.Minute), Seed: 303, DatasetQuarantined: false,
+		EvaluationStart: start, EvaluationEnd: start.Add(5 * time.Minute), Seed: 303, DatasetQuarantined: false,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -92,7 +92,7 @@ func newExperimentRunMigrationFixture(t *testing.T) experimentMigrationFixture {
 		CapitalStateID: economicid.DeterministicUUID("capital-state", migrationSHA(capitalStateBytes)), CapitalStateSHA256: migrationSHA(capitalStateBytes),
 		CapitalProjectionCheckpointID: capitalCheckpointID,
 		CapitalStateBytes:             capitalStateBytes,
-		ManifestSHA256:                strategy.manifest.Digest(), EvaluationStart: start, EvaluationEnd: available.Add(time.Minute), Seed: 303,
+		ManifestSHA256:                strategy.manifest.Digest(), EvaluationStart: start, EvaluationEnd: start.Add(5 * time.Minute), Seed: 303,
 		Mode: strategycatalog.ExperimentPaperScored, Steps: []experimentrun.StepInput{{
 			PartitionContentSHA256: partition.ContentSHA256, ObservationSourceKey: observation.SourceKey,
 			ObservationContentSHA256: observation.ContentSHA256, AvailableAt: available,

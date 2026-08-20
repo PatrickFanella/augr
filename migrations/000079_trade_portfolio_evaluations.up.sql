@@ -170,7 +170,7 @@ BEGIN
     JOIN experiment_replay_plans p ON p.id=e.plan_id JOIN evaluation_policy_artifacts policy ON policy.id=e.policy_id
     WHERE e.id=target AND e.result_sha256=r.sha256 AND e.experiment_id=r.experiment_id AND e.program_id=r.program_id AND e.plan_id=r.plan_id AND
       e.account_id=r.account_id AND e.manifest_id=r.manifest_id AND e.quality_result_id=r.quality_result_id AND e.mode=r.mode AND
-      e.policy_sha256=policy.sha256 AND e.evaluation_start=p.evaluation_start AND e.evaluation_end=p.evaluation_end AND
+      e.policy_sha256=policy.sha256 AND e.evaluation_start>=p.evaluation_start AND e.evaluation_end<=p.evaluation_end AND
       e.observation_count=(SELECT count(*) FROM evaluation_observations WHERE evaluation_id=e.id) AND
       (SELECT min(sequence)=0 AND max(sequence)=e.observation_count-1 FROM evaluation_observations WHERE evaluation_id=e.id) AND
       e.closed_trade_count=(SELECT count(*) FROM evaluation_closed_trades WHERE evaluation_id=e.id) AND
