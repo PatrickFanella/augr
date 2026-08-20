@@ -185,6 +185,24 @@ type Recorder struct {
 	id        uuid.UUID
 }
 
+// ReplayResult is an immutable copy of one canonical research replay outcome.
+// Numeric values remain exact canonical decimal strings.
+type ReplayResult struct {
+	Sequence         int
+	DecisionAt       time.Time
+	MarketID         string
+	OutcomeID        uuid.UUID
+	Side             Side
+	Role             LiquidityRole
+	Status           string
+	Quantity         string
+	FilledQuantity   string
+	ResidualQuantity string
+	GrossCash        string
+	Fee              string
+	NetCash          string
+}
+
 type manifestObservation struct {
 	kind       dataset.Kind
 	partition  string
@@ -674,4 +692,27 @@ func (r *Recorder) ReplayCount() int {
 		return 0
 	}
 	return len(r.canonical.Replays)
+}
+
+// ReplayResults returns detached typed summaries for downstream research
+// boundaries. Callers cannot mutate recorder identity through the returned data.
+func (r *Recorder) ReplayResults() ([]ReplayResult, error) {
+	if r == nil {
+		return nil, fmt.Errorf("prediction recorder is required")
+	}
+	result := make([]ReplayResult, 0, len(r.canonical.Replays))
+	for _, row := range r.canonical.Replays {
+		decisionAt, timeErr := time.Parse(timeLayout, row.DecisionAt)
+		outcomeID, idErr := uuid.Parse(row.OutcomeID)
+		if timeErr != nil || idErr != nil {
+			return nil, fmt.Errorf("prediction recorder replay result is invalid")
+		}
+		result = append(result, ReplayResult{
+			Sequence: row.Sequence, DecisionAt: decisionAt, MarketID: row.MarketID,
+			OutcomeID: outcomeID, Side: Side(row.Side), Role: LiquidityRole(row.Role), Status: row.Status,
+			Quantity: row.Quantity, FilledQuantity: row.FilledQuantity, ResidualQuantity: row.ResidualQuantity,
+			GrossCash: row.GrossCash, Fee: row.Fee, NetCash: row.NetCash,
+		})
+	}
+	return result, nil
 }
