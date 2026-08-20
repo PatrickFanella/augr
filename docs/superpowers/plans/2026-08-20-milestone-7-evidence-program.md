@@ -19,8 +19,8 @@ capital movement, broker route, production state change, or live trading.
   reconstruction, reconciliation restart, settlement idempotency, and brake
   restart.
 - [x] Run the campaign repeatedly and prove stable results on a clean commit.
-- [ ] Run repository-wide backend/static and pinned frontend gates.
-- [ ] Record exact command, commit, results, and limitations; commit and sync.
+- [x] Run repository-wide backend/static and pinned frontend gates.
+- [x] Record exact command, commit, results, and limitations; commit and sync.
 
 ## OVR-702 — 30-day shadow campaign
 
@@ -60,7 +60,7 @@ capital movement, broker route, production state change, or live trading.
   exact retained evidence.
 - [x] Return `ready`, `not_ready`, or `blocked`; never infer readiness from unit
   tests, synthetic duration, a container health check, or source inspection.
-- [ ] Re-run the full release gate and produce a final local/external boundary.
+- [x] Re-run the full release gate and produce a final local/external boundary.
 
 ## Completion rule
 

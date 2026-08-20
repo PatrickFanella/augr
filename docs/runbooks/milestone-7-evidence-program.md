@@ -7,6 +7,14 @@ OVR-702 through OVR-705 do not yet have real elapsed campaign evidence and are
 `BLOCKED_EXTERNAL`; the code in `internal/evidenceprogram` qualifies only their
 fail-closed assessment machinery.
 
+The complete local gate passed on commit
+`36bd23e07173ceb22f202a41f5f7111b239ca418`. It included the focused campaign
+twice, repository backend tests/vet/static analysis, 162 pinned frontend tests
+plus lint/typecheck/build, Compose and Dockerfile checks, isolated production
+health/authenticated read-only API, schema `101 -> 60 -> 101` with schema-60
+backup/restore, seven Prometheus rules, secret-history review across 1,292
+commits, and final clean-tree/commit identity.
+
 Do not turn a synthetic test interval into a 30-, 60-, or 90-day claim. Do not
 infer profitability or readiness from source inspection, a passing unit test,
 a healthy container, or an unscored paper account.
