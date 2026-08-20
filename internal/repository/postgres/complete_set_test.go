@@ -111,6 +111,13 @@ func TestCompleteSetRetainedQualification(t *testing.T) {
 	if _, err = repo.RegisterCandidate(ctx, rejected); err != nil {
 		t.Fatal(err)
 	}
+	boundary, err := completeset.NewCandidate(fixture.CandidateInput(recorder, "strict-boundary", "10", "0.8"))
+	if err != nil || boundary.Reason() != "orphan_guard_failure" {
+		t.Fatalf("boundary=%v/%v", boundary, err)
+	}
+	if _, err = repo.RegisterCandidate(ctx, boundary); err != nil {
+		t.Fatal(err)
+	}
 	if _, err = pool.Exec(ctx, `UPDATE complete_set_candidates SET reason='orphan_guard_failure' WHERE id=$1`, qualified.ID()); err == nil || !strings.Contains(err.Error(), "append-only") {
 		t.Fatalf("append-only=%v", err)
 	}
@@ -118,8 +125,8 @@ func TestCompleteSetRetainedQualification(t *testing.T) {
 		t.Fatalf("forgery=%v", err)
 	}
 	var candidates, bindings, legs, scenarios, scenarioLegs int
-	if err = pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM complete_set_candidates),(SELECT count(*) FROM complete_set_bindings),(SELECT count(*) FROM complete_set_legs),(SELECT count(*) FROM complete_set_orphan_scenarios),(SELECT count(*) FROM complete_set_orphan_scenario_legs)`).Scan(&candidates, &bindings, &legs, &scenarios, &scenarioLegs); err != nil || candidates != 2 || bindings != 6 || legs != 6 || scenarios != 12 || scenarioLegs != 18 {
+	if err = pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM complete_set_candidates),(SELECT count(*) FROM complete_set_bindings),(SELECT count(*) FROM complete_set_legs),(SELECT count(*) FROM complete_set_orphan_scenarios),(SELECT count(*) FROM complete_set_orphan_scenario_legs)`).Scan(&candidates, &bindings, &legs, &scenarios, &scenarioLegs); err != nil || candidates != 3 || bindings != 9 || legs != 9 || scenarios != 18 || scenarioLegs != 27 {
 		t.Fatalf("counts=%d/%d/%d/%d/%d err=%v", candidates, bindings, legs, scenarios, scenarioLegs, err)
 	}
-	t.Logf("recorder=%s qualified=%s sha=%s rejected=%s books=3 candidates=%d bindings=%d legs=%d scenarios=%d scenario_legs=%d", recorder.ID(), qualified.ID(), qualified.Digest(), rejected.ID(), candidates, bindings, legs, scenarios, scenarioLegs)
+	t.Logf("recorder=%s qualified=%s sha=%s rejected=%s boundary=%s books=3 candidates=%d bindings=%d legs=%d scenarios=%d scenario_legs=%d", recorder.ID(), qualified.ID(), qualified.Digest(), rejected.ID(), boundary.ID(), candidates, bindings, legs, scenarios, scenarioLegs)
 }
