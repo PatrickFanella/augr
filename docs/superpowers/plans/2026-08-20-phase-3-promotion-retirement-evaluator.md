@@ -76,14 +76,14 @@ Out of scope:
 
 ## Task 1: Policy and deterministic decision domain
 
-- [ ] Add immutable policy identity, required-gate set, pass/failure action,
+- [x] Add immutable policy identity, required-gate set, pass/failure action,
   bounded reason codes, and canonical restoration.
-- [ ] Add decision inputs bound to exact deployment and robustness parents.
-- [ ] Derive candidate membership, observed gates, outcome, prior/next state,
+- [x] Add decision inputs bound to exact deployment and robustness parents.
+- [x] Derive candidate membership, observed gates, outcome, prior/next state,
   and transition kind without caller-supplied verdicts.
-- [ ] Prove approved, held, retired, missing/duplicate gate, version/mode cross,
+- [x] Prove approved, held, retired, missing/duplicate gate, version/mode cross,
   partial family, tamper, clone, ordering, and stable-identity cases.
-- [ ] Commit and push the domain/calculator slice after focused races.
+- [x] Commit and push the domain/calculator slice after focused races.
 
 ## Task 2: Migration 81 append-only lifecycle evidence
 
