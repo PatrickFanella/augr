@@ -28,16 +28,17 @@ type CommonRouteFacts struct {
 // CommonOrderRequest is the reviewed Kalshi V2 single-book wire request.
 // Outcome and Action are canonical validation facts and never appear on wire.
 type CommonOrderRequest struct {
-	Ticker        string `json:"ticker"`
-	ClientOrderID string `json:"client_order_id"`
-	Side          string `json:"side"`
-	Count         string `json:"count"`
-	Price         string `json:"price"`
-	TimeInForce   string `json:"time_in_force"`
-	Subaccount    int    `json:"subaccount"`
-	ExchangeIndex int    `json:"exchange_index"`
-	Outcome       string `json:"-"`
-	Action        string `json:"-"`
+	Ticker                  string `json:"ticker"`
+	ClientOrderID           string `json:"client_order_id"`
+	Side                    string `json:"side"`
+	Count                   string `json:"count"`
+	Price                   string `json:"price"`
+	TimeInForce             string `json:"time_in_force"`
+	SelfTradePreventionType string `json:"self_trade_prevention_type"`
+	Subaccount              int    `json:"subaccount"`
+	ExchangeIndex           int    `json:"exchange_index"`
+	Outcome                 string `json:"-"`
+	Action                  string `json:"-"`
 }
 
 func MapCommonOrderRequest(policy *venue.Policy, primary *instrument.Instrument, contract *instrument.VenueContract, order *lifecycle.Order, route CommonRouteFacts) (CommonOrderRequest, error) {
@@ -106,7 +107,7 @@ func MapCommonOrderRequest(policy *venue.Policy, primary *instrument.Instrument,
 	return CommonOrderRequest{
 		Ticker: contract.ContractID, ClientOrderID: order.ClientOrderID, Side: bookSide,
 		Count: order.Quantity.StringFixedBank(int32(-contract.LotSize.Exponent())),
-		Price: providerPrice.String(), TimeInForce: tif, Subaccount: route.Subaccount,
+		Price: providerPrice.String(), TimeInForce: tif, SelfTradePreventionType: "taker_at_cross", Subaccount: route.Subaccount,
 		ExchangeIndex: route.ExchangeIndex, Outcome: outcome, Action: string(order.Side),
 	}, nil
 }
@@ -164,6 +165,42 @@ type CommonOrderFact struct {
 	RawPayload json.RawMessage
 }
 
+// CommonSubmitResponse is the exact compact Create Order V2 response. It is
+// deliberately not inflated into a portfolio Order snapshot.
+type CommonSubmitResponse struct {
+	OrderID          string `json:"order_id"`
+	ClientOrderID    string `json:"client_order_id"`
+	FillCount        string `json:"fill_count"`
+	RemainingCount   string `json:"remaining_count"`
+	AverageFillPrice string `json:"average_fill_price,omitempty"`
+	AverageFeePaid   string `json:"average_fee_paid,omitempty"`
+	TimestampMS      int64  `json:"ts_ms"`
+}
+
+type CommonSubmitFact struct {
+	Response   CommonSubmitResponse
+	RawPayload json.RawMessage
+}
+
+// CommonSubmitResolution keeps a successful compact submit response distinct
+// from a portfolio-order recovery after an ambiguous or duplicate result.
+type CommonSubmitResolution struct {
+	Submitted *CommonSubmitFact
+	Recovered *CommonOrderFact
+}
+
+type CommonCancelResponse struct {
+	OrderID       string `json:"order_id"`
+	ClientOrderID string `json:"client_order_id"`
+	ReducedBy     string `json:"reduced_by"`
+	TimestampMS   int64  `json:"ts_ms"`
+}
+
+type CommonCancelFact struct {
+	Response   CommonCancelResponse
+	RawPayload json.RawMessage
+}
+
 type CommonFill struct {
 	ID               string `json:"fill_id"`
 	TradeID          string `json:"trade_id"`
@@ -196,7 +233,7 @@ func NewCommonLifecycleClient(client signedClient) (*CommonLifecycleClient, erro
 	return &CommonLifecycleClient{client: client}, nil
 }
 
-func (c *CommonLifecycleClient) Submit(ctx context.Context, request CommonOrderRequest) (*CommonOrderFact, error) {
+func (c *CommonLifecycleClient) Submit(ctx context.Context, request CommonOrderRequest) (*CommonSubmitFact, error) {
 	if err := validateCommonRequest(request); err != nil {
 		return nil, err
 	}
@@ -204,25 +241,23 @@ func (c *CommonLifecycleClient) Submit(ctx context.Context, request CommonOrderR
 	if err != nil {
 		return nil, fmt.Errorf("kalshi common lifecycle: submit: %w", err)
 	}
-	var envelope struct {
-		Order CommonOrder `json:"order"`
-	}
-	if err := decodeOneJSON(body, &envelope); err != nil {
+	var response CommonSubmitResponse
+	if err := decodeOneJSON(body, &response); err != nil {
 		return nil, fmt.Errorf("kalshi common lifecycle: decode submit: %w", err)
 	}
-	if strings.TrimSpace(envelope.Order.ID) == "" {
-		return nil, fmt.Errorf("kalshi common lifecycle: submit response missing order id")
+	if err := validateSubmitResponse(request, response); err != nil {
+		return nil, err
 	}
-	return &CommonOrderFact{Order: envelope.Order, RawPayload: append(json.RawMessage(nil), body...)}, nil
+	return &CommonSubmitFact{Response: response, RawPayload: append(json.RawMessage(nil), body...)}, nil
 }
 
 // SubmitOrLookup resolves duplicate and ambiguous submit outcomes using only
 // the stable client_order_id. Rate limits and definitive request/auth failures
 // remain visible to the caller and are never disguised as an absence.
-func (c *CommonLifecycleClient) SubmitOrLookup(ctx context.Context, request CommonOrderRequest) (*CommonOrderFact, error) {
+func (c *CommonLifecycleClient) SubmitOrLookup(ctx context.Context, request CommonOrderRequest) (*CommonSubmitResolution, error) {
 	submitted, err := c.Submit(ctx, request)
 	if err == nil {
-		return submitted, nil
+		return &CommonSubmitResolution{Submitted: submitted}, nil
 	}
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || definitiveKalshiSubmitFailure(err) {
 		return nil, err
@@ -234,7 +269,7 @@ func (c *CommonLifecycleClient) SubmitOrLookup(ctx context.Context, request Comm
 	if err := validateRecoveredOrder(request, recovered.Order); err != nil {
 		return nil, err
 	}
-	return recovered, nil
+	return &CommonSubmitResolution{Recovered: recovered}, nil
 }
 
 func (c *CommonLifecycleClient) FindByClientOrderID(ctx context.Context, clientOrderID string, subaccount int) (*CommonOrderFact, error) {
@@ -343,16 +378,25 @@ func (c *CommonLifecycleClient) ListFills(ctx context.Context, orderID, ticker s
 	return facts, nil
 }
 
-func (c *CommonLifecycleClient) Cancel(ctx context.Context, orderID string, subaccount, exchangeIndex int) error {
-	orderID = strings.TrimSpace(orderID)
-	if orderID == "" || subaccount < 0 || subaccount > 32 || exchangeIndex != 0 {
-		return fmt.Errorf("kalshi common lifecycle: valid cancel identity is required")
+func (c *CommonLifecycleClient) Cancel(ctx context.Context, orderID, clientOrderID string, subaccount, exchangeIndex int) (*CommonCancelFact, error) {
+	orderID, clientOrderID = strings.TrimSpace(orderID), strings.TrimSpace(clientOrderID)
+	if orderID == "" || clientOrderID == "" || subaccount < 0 || subaccount > 32 || exchangeIndex != 0 {
+		return nil, fmt.Errorf("kalshi common lifecycle: valid cancel identity is required")
 	}
 	query := url.Values{"subaccount": {fmt.Sprint(subaccount)}, "exchange_index": {fmt.Sprint(exchangeIndex)}}
-	if _, err := c.client.Delete(ctx, "/portfolio/events/orders/"+url.PathEscape(orderID), query); err != nil {
-		return fmt.Errorf("kalshi common lifecycle: cancel: %w", err)
+	body, err := c.client.Delete(ctx, "/portfolio/events/orders/"+url.PathEscape(orderID), query)
+	if err != nil {
+		return nil, fmt.Errorf("kalshi common lifecycle: cancel: %w", err)
 	}
-	return nil
+	var response CommonCancelResponse
+	if err := decodeOneJSON(body, &response); err != nil {
+		return nil, fmt.Errorf("kalshi common lifecycle: decode cancel: %w", err)
+	}
+	reduced, reducedErr := decimal.NewFromString(response.ReducedBy)
+	if response.OrderID != orderID || response.ClientOrderID != clientOrderID || response.TimestampMS <= 0 || reducedErr != nil || reduced.IsNegative() {
+		return nil, fmt.Errorf("kalshi common lifecycle: cancel response differs from request or is malformed")
+	}
+	return &CommonCancelFact{Response: response, RawPayload: append(json.RawMessage(nil), body...)}, nil
 }
 
 func validateCommonRequest(request CommonOrderRequest) error {
@@ -369,6 +413,34 @@ func validateCommonRequest(request CommonOrderRequest) error {
 	}
 	if request.TimeInForce != "good_till_canceled" && request.TimeInForce != "immediate_or_cancel" && request.TimeInForce != "fill_or_kill" {
 		return fmt.Errorf("kalshi common lifecycle: invalid time in force")
+	}
+	if request.SelfTradePreventionType != "taker_at_cross" {
+		return fmt.Errorf("kalshi common lifecycle: reviewed self-trade prevention is required")
+	}
+	return nil
+}
+
+func validateSubmitResponse(request CommonOrderRequest, response CommonSubmitResponse) error {
+	fill, fillErr := decimal.NewFromString(response.FillCount)
+	remaining, remainingErr := decimal.NewFromString(response.RemainingCount)
+	wanted, wantedErr := decimal.NewFromString(request.Count)
+	if response.OrderID == "" || response.OrderID != strings.TrimSpace(response.OrderID) ||
+		response.ClientOrderID != request.ClientOrderID || response.TimestampMS <= 0 ||
+		fillErr != nil || remainingErr != nil || wantedErr != nil || fill.IsNegative() || remaining.IsNegative() ||
+		!fill.Add(remaining).Equal(wanted) {
+		return fmt.Errorf("kalshi common lifecycle: submit response differs from request or is malformed")
+	}
+	for _, value := range []string{response.AverageFillPrice, response.AverageFeePaid} {
+		if value == "" {
+			continue
+		}
+		parsed, err := decimal.NewFromString(value)
+		if err != nil || parsed.IsNegative() {
+			return fmt.Errorf("kalshi common lifecycle: submit response averages are malformed")
+		}
+	}
+	if fill.IsZero() && (response.AverageFillPrice != "" || response.AverageFeePaid != "") {
+		return fmt.Errorf("kalshi common lifecycle: zero-fill submit response carries fill averages")
 	}
 	return nil
 }

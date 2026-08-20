@@ -578,6 +578,8 @@ func kalshiPolicyDefinition() policyDefinition {
 			{MappingOrderStatus, "resting", OutcomeAcknowledge},
 			{MappingOrderStatus, "canceled", OutcomeCancelled},
 			{MappingOrderStatus, "executed", OutcomeFillNotice},
+			{MappingOrderStatus, "v2_cancel", OutcomeNoChange},
+			{MappingOrderStatus, "v2_submit", OutcomeFillNotice},
 			{MappingFillRecord, "fill", OutcomeFill},
 		},
 		FillIdentityFields: []string{

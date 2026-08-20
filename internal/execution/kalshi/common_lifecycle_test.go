@@ -39,6 +39,7 @@ func TestMapKalshiCommonOrderRequestProjectsExactV2Facts(t *testing.T) {
 					wantTIF := map[lifecycle.TimeInForce]string{lifecycle.TimeInForceGTC: "good_till_canceled", lifecycle.TimeInForceIOC: "immediate_or_cancel", lifecycle.TimeInForceFOK: "fill_or_kill"}[tif]
 					if request.Ticker != "KX-TEST" || request.ClientOrderID != order.ID.String() || request.Side != wantBook ||
 						request.Count != "12.50" || request.Price != wantPrice || request.TimeInForce != wantTIF ||
+						request.SelfTradePreventionType != "taker_at_cross" ||
 						request.Subaccount != 7 || request.ExchangeIndex != 0 || request.Outcome != outcome || request.Action != string(side) {
 						t.Fatalf("request = %#v", request)
 					}
@@ -113,7 +114,8 @@ func TestMapKalshiCommonOrderRequestRejectsBeforeTransport(t *testing.T) {
 
 func TestKalshiCommonLifecycleClientUsesV2EndpointsAndPaginatesRecovery(t *testing.T) {
 	transport := &scriptedSignedClient{}
-	transport.post = []scriptedResponse{{body: []byte(`{"order":{"order_id":"external-1","client_order_id":"client-1","ticker":"KX-TEST","side":"bid","action":"buy","outcome_side":"yes","book_side":"bid","type":"limit","status":"resting","yes_price_dollars":"0.37","no_price_dollars":"0.63","fill_count_fp":"0.00","remaining_count_fp":"12.50","initial_count_fp":"12.50","subaccount_number":7,"exchange_index":0}}`)}}
+	transport.post = []scriptedResponse{{body: []byte(`{"order_id":"external-1","client_order_id":"client-1","fill_count":"0.00","remaining_count":"12.50","ts_ms":1787227200000}`)}}
+	transport.delete = []scriptedResponse{{body: []byte(`{"order_id":"external-1","client_order_id":"client-1","reduced_by":"12.50","ts_ms":1787227201000}`)}}
 	transport.get = []scriptedResponse{
 		{body: []byte(`{"orders":[{"order_id":"other","client_order_id":"other"}],"cursor":"next"}`)},
 		{body: []byte(`{"orders":[],"cursor":""}`)},
@@ -126,8 +128,9 @@ func TestKalshiCommonLifecycleClientUsesV2EndpointsAndPaginatesRecovery(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := CommonOrderRequest{Ticker: "KX-TEST", ClientOrderID: "client-1", Side: "bid", Count: "12.50", Price: "0.37", TimeInForce: "good_till_canceled", Subaccount: 7, ExchangeIndex: 0, Outcome: "yes", Action: "buy"}
-	if _, err := client.Submit(context.Background(), request); err != nil {
+	request := CommonOrderRequest{Ticker: "KX-TEST", ClientOrderID: "client-1", Side: "bid", Count: "12.50", Price: "0.37", TimeInForce: "good_till_canceled", SelfTradePreventionType: "taker_at_cross", Subaccount: 7, ExchangeIndex: 0, Outcome: "yes", Action: "buy"}
+	submit, err := client.Submit(context.Background(), request)
+	if err != nil || submit.Response.OrderID != "external-1" || submit.Response.FillCount != "0.00" {
 		t.Fatal(err)
 	}
 	fact, err := client.FindByClientOrderID(context.Background(), "client-1", 7)
@@ -138,8 +141,9 @@ func TestKalshiCommonLifecycleClientUsesV2EndpointsAndPaginatesRecovery(t *testi
 	if err != nil || len(fills) != 2 || fills[0].Fill.ID != "fill-1" || fills[1].Fill.ID != "fill-2" {
 		t.Fatalf("fills = %#v, %v", fills, err)
 	}
-	if err := client.Cancel(context.Background(), "external-1", 7, 0); err != nil {
-		t.Fatal(err)
+	cancel, err := client.Cancel(context.Background(), "external-1", "client-1", 7, 0)
+	if err != nil || cancel.Response.ReducedBy != "12.50" {
+		t.Fatalf("cancel = %#v, %v", cancel, err)
 	}
 	want := []string{
 		"POST /portfolio/events/orders", "GET /portfolio/orders?limit=1000&subaccount=7", "GET /portfolio/orders?cursor=next&limit=1000&subaccount=7",
@@ -153,14 +157,36 @@ func TestKalshiCommonLifecycleClientUsesV2EndpointsAndPaginatesRecovery(t *testi
 }
 
 func TestKalshiCommonLifecycleClientFailsClosedAndRecoversAmbiguousSubmit(t *testing.T) {
-	request := CommonOrderRequest{Ticker: "KX-TEST", ClientOrderID: "client-1", Side: "bid", Count: "12.50", Price: "0.37", TimeInForce: "good_till_canceled", Subaccount: 7, ExchangeIndex: 0, Outcome: "yes", Action: "buy"}
+	request := CommonOrderRequest{Ticker: "KX-TEST", ClientOrderID: "client-1", Side: "bid", Count: "12.50", Price: "0.37", TimeInForce: "good_till_canceled", SelfTradePreventionType: "taker_at_cross", Subaccount: 7, ExchangeIndex: 0, Outcome: "yes", Action: "buy"}
 	recoveredBody := []byte(`{"orders":[{"order_id":"external-1","client_order_id":"client-1","ticker":"KX-TEST","side":"yes","action":"buy","outcome_side":"yes","book_side":"bid","type":"limit","status":"resting","yes_price_dollars":"0.37","no_price_dollars":"0.63","fill_count_fp":"0.00","remaining_count_fp":"12.50","initial_count_fp":"12.50","subaccount_number":7,"exchange_index":0}],"cursor":""}`)
 	t.Run("ambiguous submit", func(t *testing.T) {
 		transport := &scriptedSignedClient{post: []scriptedResponse{{err: errors.New("connection reset after write")}}, get: []scriptedResponse{{body: recoveredBody}}}
 		client, _ := NewCommonLifecycleClient(transport)
-		fact, err := client.SubmitOrLookup(context.Background(), request)
-		if err != nil || fact.Order.ID != "external-1" || len(transport.calls) != 2 {
-			t.Fatalf("recovery = %#v, %v, calls=%v", fact, err, transport.calls)
+		resolution, err := client.SubmitOrLookup(context.Background(), request)
+		if err != nil || resolution.Recovered == nil || resolution.Submitted != nil ||
+			resolution.Recovered.Order.ID != "external-1" || len(transport.calls) != 2 {
+			t.Fatalf("recovery = %#v, %v, calls=%v", resolution, err, transport.calls)
+		}
+	})
+	t.Run("successful compact submit remains distinct", func(t *testing.T) {
+		body := []byte(`{"order_id":"external-1","client_order_id":"client-1","fill_count":"5.00","remaining_count":"7.50","average_fill_price":"0.37","average_fee_paid":"0.016","ts_ms":1787227200000}`)
+		transport := &scriptedSignedClient{post: []scriptedResponse{{body: body}}}
+		client, _ := NewCommonLifecycleClient(transport)
+		resolution, err := client.SubmitOrLookup(context.Background(), request)
+		if err != nil || resolution.Submitted == nil || resolution.Recovered != nil ||
+			resolution.Submitted.Response.FillCount != "5.00" || string(resolution.Submitted.RawPayload) != string(body) {
+			t.Fatalf("submit = %#v, %v", resolution, err)
+		}
+	})
+	t.Run("NO-side recovery compares the single-book YES quote", func(t *testing.T) {
+		noRequest := request
+		noRequest.Side, noRequest.Price, noRequest.Outcome = "ask", "0.63", "no"
+		body := []byte(`{"orders":[{"order_id":"external-no","client_order_id":"client-1","ticker":"KX-TEST","side":"no","action":"buy","outcome_side":"no","book_side":"ask","type":"limit","status":"resting","yes_price_dollars":"0.63","no_price_dollars":"0.37","fill_count_fp":"0.00","remaining_count_fp":"12.50","initial_count_fp":"12.50","subaccount_number":7,"exchange_index":0}],"cursor":""}`)
+		transport := &scriptedSignedClient{post: []scriptedResponse{{err: errors.New("status=409 duplicate")}}, get: []scriptedResponse{{body: body}}}
+		client, _ := NewCommonLifecycleClient(transport)
+		resolution, err := client.SubmitOrLookup(context.Background(), noRequest)
+		if err != nil || resolution.Recovered == nil || resolution.Recovered.Order.ID != "external-no" {
+			t.Fatalf("NO recovery = %#v, %v", resolution, err)
 		}
 	})
 	t.Run("rate limit propagates", func(t *testing.T) {
@@ -202,11 +228,105 @@ func TestKalshiCommonLifecycleClientFailsClosedAndRecoversAmbiguousSubmit(t *tes
 	})
 }
 
+func TestPlanKalshiCompactSubmitResponseIsRawNonEconomicEvidence(t *testing.T) {
+	for _, outcome := range []string{"yes", "no"} {
+		t.Run(outcome, func(t *testing.T) {
+			fixture := newKalshiResultFixture(t, outcome, "12.50")
+			raw := json.RawMessage(fmt.Sprintf(
+				`{"order_id":"external-1","client_order_id":%q,"fill_count":"5.00","remaining_count":"7.50","average_fill_price":"0.37","average_fee_paid":"0.016","ts_ms":%d}`,
+				fixture.context.Aggregate.Order.ClientOrderID, fixture.now.UnixMilli(),
+			))
+			var response CommonSubmitResponse
+			if err := decodeOneJSON(raw, &response); err != nil {
+				t.Fatal(err)
+			}
+			result, err := PlanSubmitResult(fixture.context, &CommonSubmitFact{Response: response, RawPayload: raw})
+			if err != nil {
+				t.Fatal(err)
+			}
+			step := result.Steps[0]
+			wantBook := "bid"
+			if outcome == "no" {
+				wantBook = "ask"
+			}
+			if result.Aggregate.State != lifecycle.StateRouted || step.Transition != nil || step.EconomicSourceEvent != nil ||
+				step.Observation.MappedOutcome != venue.OutcomeFillNotice || step.Observation.ProviderState != "v2_submit" ||
+				step.Observation.ProviderBookSide != wantBook || step.Observation.ProviderPrice != nil ||
+				string(step.Observation.RawPayload) != string(raw) {
+				t.Fatalf("compact submit result = %#v", result)
+			}
+		})
+	}
+
+	t.Run("impossible totals fail reconciliation", func(t *testing.T) {
+		fixture := newKalshiResultFixture(t, "yes", "12.50")
+		raw := json.RawMessage(fmt.Sprintf(
+			`{"order_id":"external-1","client_order_id":%q,"fill_count":"6.00","remaining_count":"7.50","ts_ms":%d}`,
+			fixture.context.Aggregate.Order.ClientOrderID, fixture.now.UnixMilli(),
+		))
+		var response CommonSubmitResponse
+		if err := decodeOneJSON(raw, &response); err != nil {
+			t.Fatal(err)
+		}
+		result, err := PlanSubmitResult(fixture.context, &CommonSubmitFact{Response: response, RawPayload: raw})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.Aggregate.State != lifecycle.StateFailedReconciliation || result.Steps[0].Transition == nil ||
+			result.Steps[0].EconomicSourceEvent != nil || result.Steps[0].Observation.MappedOutcome != venue.OutcomeContradiction {
+			t.Fatalf("impossible submit result = %#v", result)
+		}
+	})
+}
+
+func TestPlanKalshiCompactCancelResponseNeverClaimsCancellation(t *testing.T) {
+	fixture := newKalshiResultFixture(t, "yes", "12.50")
+	ack, err := PlanOrderResult(
+		fixture.context, venue.ObservationOrderSnapshot, fixture.orderFact(t, "resting", "0.00", "12.50"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture.context.Aggregate = ack.Aggregate
+	response := CommonCancelResponse{
+		OrderID: "external-1", ClientOrderID: fixture.context.Aggregate.Order.ClientOrderID,
+		ReducedBy: "12.50", TimestampMS: fixture.now.Add(6 * time.Second).UnixMilli(),
+	}
+	raw, err := json.Marshal(response)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := PlanCancelResult(fixture.context, &CommonCancelFact{Response: response, RawPayload: raw})
+	if err != nil {
+		t.Fatal(err)
+	}
+	step := result.Steps[0]
+	if result.Aggregate.State != lifecycle.StateWorking || step.Transition != nil || step.EconomicSourceEvent != nil ||
+		step.Observation.MappedOutcome != venue.OutcomeNoChange || step.Observation.ProviderState != "v2_cancel" ||
+		string(step.Observation.RawPayload) != string(raw) {
+		t.Fatalf("compact cancel result = %#v", result)
+	}
+
+	response.ReducedBy = "1.00"
+	raw, err = json.Marshal(response)
+	if err != nil {
+		t.Fatal(err)
+	}
+	failed, err := PlanCancelResult(fixture.context, &CommonCancelFact{Response: response, RawPayload: raw})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if failed.Aggregate.State != lifecycle.StateFailedReconciliation || failed.Steps[0].Transition == nil ||
+		failed.Steps[0].Observation.MappedOutcome != venue.OutcomeContradiction {
+		t.Fatalf("contradictory cancel result = %#v", failed)
+	}
+}
+
 func TestPlanKalshiFillResultsCreateExactEconomicsAndConverge(t *testing.T) {
 	fixture := newKalshiResultFixture(t, "no", "12.50")
 	facts := []CommonFillFact{
-		fixture.fillFact(t, "fill-1", "5.00", "0.63", "0.37", "0.08", 1),
-		fixture.fillFact(t, "fill-2", "7.50", "0.62", "0.38", "0.12", 2),
+		fixture.fillFact(t, "fill-1", "5.00", "0.37", "0.63", "0.08", 1),
+		fixture.fillFact(t, "fill-2", "7.50", "0.38", "0.62", "0.12", 2),
 	}
 	result, err := PlanFillResults(fixture.context, facts)
 	if err != nil {
@@ -215,7 +335,9 @@ func TestPlanKalshiFillResultsCreateExactEconomicsAndConverge(t *testing.T) {
 	if result.Aggregate.State != lifecycle.StateFilled || len(result.Steps) != 2 || len(result.Aggregate.Fills) != 2 {
 		t.Fatalf("result = %#v", result)
 	}
-	if !result.Aggregate.Fills[0].Price.Equal(decimal.RequireFromString("0.63")) {
+	if !result.Aggregate.Fills[0].Price.Equal(decimal.RequireFromString("0.37")) ||
+		result.Steps[0].Observation.ProviderPrice == nil ||
+		!result.Steps[0].Observation.ProviderPrice.Equal(decimal.RequireFromString("0.63")) {
 		t.Fatalf("NO economic price = %s", result.Aggregate.Fills[0].Price)
 	}
 	for index, step := range result.Steps {

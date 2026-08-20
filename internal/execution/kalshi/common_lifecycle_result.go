@@ -36,6 +36,176 @@ type CommonLifecycleContext struct {
 	ReceivedAt    time.Time
 }
 
+// PlanSubmitResult journals the exact compact Create Order V2 response. Its
+// aggregate counts and averages are notices only; authoritative fill records
+// remain the sole source of economics, and a portfolio-order snapshot remains
+// the source of ordinary working or cancelled state.
+func PlanSubmitResult(context CommonLifecycleContext, fact *CommonSubmitFact) (*venue.Result, error) {
+	if err := validateCommonLifecycleContext(context); err != nil {
+		return nil, err
+	}
+	if fact == nil || len(fact.RawPayload) == 0 {
+		return nil, fmt.Errorf("kalshi common lifecycle: submit fact and raw payload are required")
+	}
+	var wire CommonSubmitResponse
+	if err := decodeOneJSON(fact.RawPayload, &wire); err != nil {
+		return nil, fmt.Errorf("kalshi common lifecycle: submit response is not journalable JSON: %w", err)
+	}
+	request, err := MapCommonOrderRequest(
+		context.Policy, context.Instrument, context.VenueContract, context.Aggregate.Order, context.Route,
+	)
+	if err != nil {
+		return nil, err
+	}
+	malformed := wire.OrderID == "" || wire.ClientOrderID == "" || wire.FillCount == "" ||
+		wire.RemainingCount == "" || wire.TimestampMS <= 0
+	contradiction := !reflect.DeepEqual(wire, fact.Response) || validateSubmitResponse(request, wire) != nil
+	sourceAt := context.ReceivedAt
+	if wire.TimestampMS > 0 {
+		sourceAt = time.UnixMilli(wire.TimestampMS).UTC().Truncate(time.Microsecond)
+		if sourceAt.After(context.ReceivedAt) {
+			contradiction = true
+			sourceAt = context.ReceivedAt
+		}
+	}
+	mapped := venue.OutcomeFillNotice
+	kind := venue.ObservationSubmitResponse
+	providerState := "v2_submit"
+	if malformed {
+		mapped = venue.OutcomeMalformedObservation
+		kind = venue.ObservationMalformedResponse
+		providerState = "malformed_submit"
+	} else if contradiction {
+		mapped = venue.OutcomeContradiction
+	}
+	outcome, _ := exactKalshiOutcome(context.VenueContract.Metadata)
+	clientOrderID := wire.ClientOrderID
+	if clientOrderID == "" {
+		clientOrderID = context.Aggregate.Order.ClientOrderID
+	}
+	digest := sha256.Sum256(fact.RawPayload)
+	observation, err := venue.NewObservation(venue.ObservationInput{
+		AccountID: context.Account.ID, IntentID: context.Aggregate.Intent.ID, OrderID: context.Aggregate.Order.ID,
+		BindingID: currentBindingID(context.Aggregate), VenueContractID: context.VenueContract.ID,
+		Provider: venue.ProviderKalshi, Venue: "kalshi", PolicyVersion: context.Policy.Version(),
+		Kind: kind, ProviderState: providerState, MappedOutcome: mapped,
+		ExternalOrderID: wire.OrderID, ClientOrderID: clientOrderID,
+		ProviderContractID: context.VenueContract.ContractID, CanonicalOutcome: outcome,
+		ProviderBookSide: expectedKalshiBookSide(outcome, context.Aggregate.Order.Side),
+		ProviderAction:   string(context.Aggregate.Order.Side), IdentityKind: venue.SourceIdentityLocalResponse,
+		SourceNamespace: "kalshi/portfolio/events/orders/submit",
+		SourceEventID:   "local-response/kalshi/v2-submit/" + hex.EncodeToString(digest[:]),
+		SourceRevision:  fmt.Sprint(wire.TimestampMS), SourceAt: sourceAt, ReceivedAt: context.ReceivedAt,
+		RawPayload: fact.RawPayload, CreatedAt: context.ReceivedAt,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("kalshi common lifecycle: construct submit observation: %w", err)
+	}
+	result := &venue.Result{Initial: context.Aggregate, Aggregate: context.Aggregate, Steps: []venue.ResultStep{{Observation: observation}}}
+	if mapped == venue.OutcomeFillNotice {
+		return result, nil
+	}
+	reason := "contradictory_submit_response"
+	if mapped == venue.OutcomeMalformedObservation {
+		reason = "malformed_submit_response"
+	}
+	transition, err := lifecycle.FailReconciliation(
+		context.Aggregate, lifecycle.EventContradictoryVenueState, kalshiEventInput(observation, reason), observation.CreatedAt,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("kalshi common lifecycle: plan submit failure: %w", err)
+	}
+	result.Aggregate, err = lifecycle.ApplyTransition(context.Aggregate, transition)
+	if err != nil {
+		return nil, fmt.Errorf("kalshi common lifecycle: apply submit failure: %w", err)
+	}
+	result.Steps[0].Transition = transition
+	return result, nil
+}
+
+// PlanCancelResult journals the compact V2 DELETE response without claiming
+// terminal cancellation. A later portfolio-order observation is the only
+// source that may transition the common lifecycle to cancelled.
+func PlanCancelResult(context CommonLifecycleContext, fact *CommonCancelFact) (*venue.Result, error) {
+	if err := validateCommonLifecycleContext(context); err != nil {
+		return nil, err
+	}
+	if fact == nil || len(fact.RawPayload) == 0 || context.Aggregate.Binding == nil {
+		return nil, fmt.Errorf("kalshi common lifecycle: bound cancel fact and raw payload are required")
+	}
+	var wire CommonCancelResponse
+	if err := decodeOneJSON(fact.RawPayload, &wire); err != nil {
+		return nil, fmt.Errorf("kalshi common lifecycle: cancel response is not journalable JSON: %w", err)
+	}
+	reduced, reducedErr := decimal.NewFromString(wire.ReducedBy)
+	remaining := context.Aggregate.Order.Quantity.Sub(sumKalshiFills(context.Aggregate))
+	malformed := wire.OrderID == "" || wire.ClientOrderID == "" || wire.ReducedBy == "" ||
+		wire.TimestampMS <= 0 || reducedErr != nil || reduced.IsNegative()
+	contradiction := !reflect.DeepEqual(wire, fact.Response) || wire.OrderID != context.Aggregate.Binding.ExternalOrderID ||
+		wire.ClientOrderID != context.Aggregate.Order.ClientOrderID || reducedErr == nil && !reduced.Equal(remaining)
+	sourceAt := context.ReceivedAt
+	if wire.TimestampMS > 0 {
+		sourceAt = time.UnixMilli(wire.TimestampMS).UTC().Truncate(time.Microsecond)
+		if sourceAt.After(context.ReceivedAt) {
+			contradiction = true
+			sourceAt = context.ReceivedAt
+		}
+	}
+	mapped := venue.OutcomeNoChange
+	kind := venue.ObservationCancelResponse
+	providerState := "v2_cancel"
+	if malformed {
+		mapped = venue.OutcomeMalformedObservation
+		kind = venue.ObservationMalformedResponse
+		providerState = "malformed_cancel"
+	} else if contradiction {
+		mapped = venue.OutcomeContradiction
+	}
+	outcome, _ := exactKalshiOutcome(context.VenueContract.Metadata)
+	clientOrderID := wire.ClientOrderID
+	if clientOrderID == "" {
+		clientOrderID = context.Aggregate.Order.ClientOrderID
+	}
+	digest := sha256.Sum256(fact.RawPayload)
+	observation, err := venue.NewObservation(venue.ObservationInput{
+		AccountID: context.Account.ID, IntentID: context.Aggregate.Intent.ID, OrderID: context.Aggregate.Order.ID,
+		BindingID: currentBindingID(context.Aggregate), VenueContractID: context.VenueContract.ID,
+		Provider: venue.ProviderKalshi, Venue: "kalshi", PolicyVersion: context.Policy.Version(),
+		Kind: kind, ProviderState: providerState, MappedOutcome: mapped,
+		ExternalOrderID: wire.OrderID, ClientOrderID: clientOrderID,
+		ProviderContractID: context.VenueContract.ContractID, CanonicalOutcome: outcome,
+		ProviderBookSide: expectedKalshiBookSide(outcome, context.Aggregate.Order.Side),
+		ProviderAction:   string(context.Aggregate.Order.Side), IdentityKind: venue.SourceIdentityLocalResponse,
+		SourceNamespace: "kalshi/portfolio/events/orders/cancel",
+		SourceEventID:   "local-response/kalshi/v2-cancel/" + hex.EncodeToString(digest[:]),
+		SourceRevision:  fmt.Sprint(wire.TimestampMS), SourceAt: sourceAt, ReceivedAt: context.ReceivedAt,
+		RawPayload: fact.RawPayload, CreatedAt: context.ReceivedAt,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("kalshi common lifecycle: construct cancel observation: %w", err)
+	}
+	result := &venue.Result{Initial: context.Aggregate, Aggregate: context.Aggregate, Steps: []venue.ResultStep{{Observation: observation}}}
+	if mapped == venue.OutcomeNoChange {
+		return result, nil
+	}
+	reason := "contradictory_cancel_response"
+	if mapped == venue.OutcomeMalformedObservation {
+		reason = "malformed_cancel_response"
+	}
+	transition, err := lifecycle.FailReconciliation(
+		context.Aggregate, lifecycle.EventContradictoryVenueState, kalshiEventInput(observation, reason), observation.CreatedAt,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("kalshi common lifecycle: plan cancel failure: %w", err)
+	}
+	result.Aggregate, err = lifecycle.ApplyTransition(context.Aggregate, transition)
+	if err != nil {
+		return nil, fmt.Errorf("kalshi common lifecycle: apply cancel failure: %w", err)
+	}
+	result.Steps[0].Transition = transition
+	return result, nil
+}
+
 // PlanOrderResult journals one exact Kalshi order response. Executed is only
 // accepted after authoritative fills have already brought the local aggregate
 // to the full initial quantity; the order snapshot itself never invents a
@@ -255,8 +425,9 @@ func planFill(context CommonLifecycleContext, current *lifecycle.Aggregate, fact
 		mapped = venue.OutcomeContradiction
 	}
 	providerPrice := yesPrice
+	economicPrice := yesPrice
 	if outcome == "no" {
-		providerPrice = noPrice
+		economicPrice = noPrice
 	}
 	bookSide := validBookSide(wire.BookSide)
 	action := validAction(wire.Action)
@@ -283,7 +454,7 @@ func planFill(context CommonLifecycleContext, current *lifecycle.Aggregate, fact
 	if mapped != venue.OutcomeFill {
 		return planFillFailure(current, observation)
 	}
-	return planEconomicFill(context, current, wire, quantity, providerPrice, fee, observation)
+	return planEconomicFill(context, current, wire, quantity, economicPrice, fee, observation)
 }
 
 func planEconomicFill(context CommonLifecycleContext, current *lifecycle.Aggregate, fill CommonFill, quantity, price, fee decimal.Decimal, observation *venue.Observation) (venue.ResultStep, *lifecycle.Aggregate, error) {

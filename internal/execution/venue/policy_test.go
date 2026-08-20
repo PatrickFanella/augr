@@ -217,8 +217,12 @@ func TestReviewedPolicyMappingsAreCompleteDistinctAndSorted(t *testing.T) {
 		{
 			provider: ProviderKalshi,
 			want: map[MappingNamespace]map[string]MappedOutcome{
-				MappingOrderStatus: {"resting": OutcomeAcknowledge, "canceled": OutcomeCancelled, "executed": OutcomeFillNotice},
-				MappingFillRecord:  {"fill": OutcomeFill},
+				MappingOrderStatus: {
+					"resting": OutcomeAcknowledge, "canceled": OutcomeCancelled,
+					"executed": OutcomeFillNotice, "v2_cancel": OutcomeNoChange,
+					"v2_submit": OutcomeFillNotice,
+				},
+				MappingFillRecord: {"fill": OutcomeFill},
 			},
 			legacy: []string{"open", "filled", "partial", "cancelled", "rejected"},
 		},

@@ -598,9 +598,16 @@ type venueAdapterRepositoryFixture struct {
 }
 
 func newVenueAdapterRepositoryFixture(t *testing.T, key string) venueAdapterRepositoryFixture {
+	return newVenueAdapterRepositoryFixtureForOutcome(t, key, "yes")
+}
+
+func newVenueAdapterRepositoryFixtureForOutcome(t *testing.T, key, outcome string) venueAdapterRepositoryFixture {
 	t.Helper()
+	if outcome != "yes" && outcome != "no" {
+		t.Fatalf("unsupported fixture outcome %q", outcome)
+	}
 	ctx, pool := newVenueAdapterIntegrationPool(t)
-	return newVenueAdapterRepositoryFixtureWithPool(t, ctx, pool, key)
+	return newVenueAdapterRepositoryFixtureWithPoolAndOutcome(t, ctx, pool, key, outcome)
 }
 
 func newVenueAdapterRepositoryFixtureWithPool(
@@ -608,6 +615,15 @@ func newVenueAdapterRepositoryFixtureWithPool(
 	ctx context.Context,
 	pool *pgxpool.Pool,
 	key string,
+) venueAdapterRepositoryFixture {
+	return newVenueAdapterRepositoryFixtureWithPoolAndOutcome(t, ctx, pool, key, "yes")
+}
+
+func newVenueAdapterRepositoryFixtureWithPoolAndOutcome(
+	t *testing.T,
+	ctx context.Context,
+	pool *pgxpool.Pool,
+	key, outcome string,
 ) venueAdapterRepositoryFixture {
 	t.Helper()
 	baseTime := time.Date(2026, 8, 15, 23, 0, 0, 123456000, time.UTC)
@@ -646,7 +662,7 @@ func newVenueAdapterRepositoryFixtureWithPool(
 		Currency: "USD", TickSize: decimal.RequireFromString("0.01"), LotSize: decimal.NewFromInt(1),
 		Multiplier: decimal.NewFromInt(1), SettlementMethod: instrument.SettlementBinary,
 		ValidFrom: baseTime.Add(-24 * time.Hour), ValidTo: &validTo,
-		Metadata: json.RawMessage(`{"kalshi_v2":{"outcome":"yes"}}`), CreatedAt: baseTime.Add(-time.Hour),
+		Metadata: json.RawMessage(`{"kalshi_v2":{"outcome":"` + outcome + `"}}`), CreatedAt: baseTime.Add(-time.Hour),
 	})
 	if err != nil {
 		t.Fatal(err)
