@@ -103,6 +103,11 @@ CREATE TABLE venue_provider_snapshots (
 
 CREATE TABLE venue_provider_snapshot_pages (
     snapshot_id UUID NOT NULL REFERENCES venue_provider_snapshots(id) ON DELETE RESTRICT,
+    account_external_id TEXT NOT NULL,
+    provider TEXT NOT NULL CHECK (provider IN ('alpaca','kalshi')),
+    namespace TEXT NOT NULL CHECK (namespace <> ''),
+    horizon_start TIMESTAMPTZ NOT NULL,
+    horizon_end TIMESTAMPTZ NOT NULL CHECK (horizon_end > horizon_start),
     sequence INTEGER NOT NULL CHECK (sequence >= 0),
     cursor TEXT NOT NULL,
     next_cursor TEXT NOT NULL,
@@ -116,6 +121,11 @@ CREATE TABLE venue_provider_snapshot_pages (
 
 CREATE TABLE venue_provider_snapshot_positions (
     snapshot_id UUID NOT NULL REFERENCES venue_provider_snapshots(id) ON DELETE RESTRICT,
+    account_external_id TEXT NOT NULL,
+    provider TEXT NOT NULL CHECK (provider IN ('alpaca','kalshi')),
+    namespace TEXT NOT NULL CHECK (namespace <> ''),
+    horizon_start TIMESTAMPTZ NOT NULL,
+    horizon_end TIMESTAMPTZ NOT NULL CHECK (horizon_end > horizon_start),
     instrument_id UUID NOT NULL,
     venue_contract_id UUID NOT NULL,
     contract_id TEXT NOT NULL CHECK (contract_id <> ''),
@@ -128,6 +138,11 @@ CREATE TABLE venue_provider_snapshot_positions (
 
 CREATE TABLE venue_provider_snapshot_fills (
     snapshot_id UUID NOT NULL REFERENCES venue_provider_snapshots(id) ON DELETE RESTRICT,
+    account_external_id TEXT NOT NULL,
+    provider TEXT NOT NULL CHECK (provider IN ('alpaca','kalshi')),
+    namespace TEXT NOT NULL CHECK (namespace <> ''),
+    horizon_start TIMESTAMPTZ NOT NULL,
+    horizon_end TIMESTAMPTZ NOT NULL CHECK (horizon_end > horizon_start),
     sequence INTEGER NOT NULL CHECK (sequence >= 0),
     comparison_key TEXT NOT NULL CHECK (comparison_key <> ''),
     source_id TEXT NOT NULL CHECK (source_id <> ''),
@@ -146,6 +161,8 @@ CREATE TABLE venue_local_snapshots (
     account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE RESTRICT,
     provider TEXT NOT NULL CHECK (provider IN ('alpaca','kalshi')),
     namespace TEXT NOT NULL CHECK (namespace <> ''),
+    horizon_start TIMESTAMPTZ NOT NULL,
+    horizon_end TIMESTAMPTZ NOT NULL CHECK (horizon_end > horizon_start),
     checkpoint_id UUID NOT NULL REFERENCES projection_checkpoints(id) ON DELETE RESTRICT,
     sha256 TEXT NOT NULL CHECK (sha256 ~ '^[0-9a-f]{64}$'),
     canonical_bytes BYTEA NOT NULL,
@@ -161,23 +178,40 @@ CREATE TABLE venue_local_snapshots (
     CHECK (canonical_json ->> 'account_id' = account_id::TEXT),
     CHECK (canonical_json ->> 'provider' = provider),
     CHECK (canonical_json ->> 'namespace' = namespace),
+    CHECK (canonical_json ->> 'horizon_start' = to_char(horizon_start AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"')),
+    CHECK (canonical_json ->> 'horizon_end' = to_char(horizon_end AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"')),
     CHECK (canonical_json ->> 'checkpoint_id' = checkpoint_id::TEXT),
     CHECK (id = economic_deterministic_uuid('venue-reconciliation-local-snapshot', schema_name || '@sha256:' || sha256))
 );
 
 CREATE TABLE venue_local_snapshot_transactions (
     snapshot_id UUID NOT NULL REFERENCES venue_local_snapshots(id) ON DELETE RESTRICT,
+    account_id UUID NOT NULL,
+    provider TEXT NOT NULL CHECK (provider IN ('alpaca','kalshi')),
+    namespace TEXT NOT NULL CHECK (namespace <> ''),
+    horizon_start TIMESTAMPTZ NOT NULL,
+    horizon_end TIMESTAMPTZ NOT NULL CHECK (horizon_end > horizon_start),
     transaction_id UUID NOT NULL REFERENCES ledger_transactions(id) ON DELETE RESTRICT,
     PRIMARY KEY (snapshot_id, transaction_id)
 );
 CREATE TABLE venue_local_snapshot_positions (
     snapshot_id UUID NOT NULL REFERENCES venue_local_snapshots(id) ON DELETE RESTRICT,
+    account_id UUID NOT NULL,
+    provider TEXT NOT NULL CHECK (provider IN ('alpaca','kalshi')),
+    namespace TEXT NOT NULL CHECK (namespace <> ''),
+    horizon_start TIMESTAMPTZ NOT NULL,
+    horizon_end TIMESTAMPTZ NOT NULL CHECK (horizon_end > horizon_start),
     instrument_id UUID NOT NULL,
     quantity NUMERIC(38,12) NOT NULL CHECK (quantity <> 0),
     PRIMARY KEY (snapshot_id, instrument_id)
 );
 CREATE TABLE venue_local_snapshot_fills (
     snapshot_id UUID NOT NULL REFERENCES venue_local_snapshots(id) ON DELETE RESTRICT,
+    account_id UUID NOT NULL,
+    provider TEXT NOT NULL CHECK (provider IN ('alpaca','kalshi')),
+    namespace TEXT NOT NULL CHECK (namespace <> ''),
+    horizon_start TIMESTAMPTZ NOT NULL,
+    horizon_end TIMESTAMPTZ NOT NULL CHECK (horizon_end > horizon_start),
     sequence INTEGER NOT NULL CHECK (sequence >= 0),
     comparison_key TEXT NOT NULL CHECK (comparison_key <> ''),
     fill_id UUID NOT NULL REFERENCES execution_fills(id) ON DELETE RESTRICT,
@@ -189,6 +223,11 @@ CREATE TABLE venue_local_snapshot_fills (
 );
 CREATE TABLE venue_local_snapshot_issues (
     snapshot_id UUID NOT NULL REFERENCES venue_local_snapshots(id) ON DELETE RESTRICT,
+    account_id UUID NOT NULL,
+    provider TEXT NOT NULL CHECK (provider IN ('alpaca','kalshi')),
+    namespace TEXT NOT NULL CHECK (namespace <> ''),
+    horizon_start TIMESTAMPTZ NOT NULL,
+    horizon_end TIMESTAMPTZ NOT NULL CHECK (horizon_end > horizon_start),
     issue_key TEXT NOT NULL CHECK (issue_key <> ''),
     reason TEXT NOT NULL CHECK (reason IN ('local_fill_incomplete','local_fill_after_frontier')),
     evidence JSONB NOT NULL CHECK (jsonb_typeof(evidence) = 'object'),
@@ -220,6 +259,9 @@ CREATE TABLE venue_reconciliation_runs (
 
 CREATE TABLE venue_reconciliation_results (
     run_id UUID NOT NULL REFERENCES venue_reconciliation_runs(id) ON DELETE RESTRICT,
+    policy_version TEXT NOT NULL,
+    provider_snapshot_id UUID,
+    local_snapshot_id UUID NOT NULL,
     id UUID NOT NULL,
     result_key TEXT NOT NULL CHECK (result_key <> ''),
     kind TEXT NOT NULL CHECK (kind IN ('cash','fill','position','snapshot')),
@@ -235,6 +277,9 @@ CREATE TABLE venue_reconciliation_results (
 );
 CREATE TABLE venue_reconciliation_incidents (
     run_id UUID NOT NULL,
+    policy_version TEXT NOT NULL,
+    provider_snapshot_id UUID,
+    local_snapshot_id UUID NOT NULL,
     id UUID NOT NULL,
     result_id UUID NOT NULL,
     incident_key TEXT NOT NULL CHECK (incident_key <> ''),
@@ -262,6 +307,15 @@ BEGIN
             s.page_count = (SELECT count(*) FROM venue_provider_snapshot_pages WHERE snapshot_id=s.id) AND
             s.position_count = (SELECT count(*) FROM venue_provider_snapshot_positions WHERE snapshot_id=s.id) AND
             s.fill_count = (SELECT count(*) FROM venue_provider_snapshot_fills WHERE snapshot_id=s.id) AND
+            NOT EXISTS (SELECT 1 FROM venue_provider_snapshot_pages child WHERE child.snapshot_id=s.id AND
+                (child.account_external_id,child.provider,child.namespace,child.horizon_start,child.horizon_end) IS DISTINCT FROM
+                (s.account_external_id,s.provider,s.namespace,s.horizon_start,s.horizon_end)) AND
+            NOT EXISTS (SELECT 1 FROM venue_provider_snapshot_positions child WHERE child.snapshot_id=s.id AND
+                (child.account_external_id,child.provider,child.namespace,child.horizon_start,child.horizon_end) IS DISTINCT FROM
+                (s.account_external_id,s.provider,s.namespace,s.horizon_start,s.horizon_end)) AND
+            NOT EXISTS (SELECT 1 FROM venue_provider_snapshot_fills child WHERE child.snapshot_id=s.id AND
+                (child.account_external_id,child.provider,child.namespace,child.horizon_start,child.horizon_end) IS DISTINCT FROM
+                (s.account_external_id,s.provider,s.namespace,s.horizon_start,s.horizon_end)) AND
             s.state_json -> 'pages' = (SELECT COALESCE(jsonb_agg(jsonb_build_object(
                 'sequence', sequence, 'cursor', cursor, 'next_cursor', next_cursor, 'terminal', terminal,
                 'sha256', sha256, 'raw', convert_from(raw_bytes,'UTF8')::JSONB) ORDER BY sequence), '[]'::JSONB)
@@ -279,6 +333,18 @@ BEGIN
             s.position_count = (SELECT count(*) FROM venue_local_snapshot_positions WHERE snapshot_id=s.id) AND
             s.fill_count = (SELECT count(*) FROM venue_local_snapshot_fills WHERE snapshot_id=s.id) AND
             s.issue_count = (SELECT count(*) FROM venue_local_snapshot_issues WHERE snapshot_id=s.id) AND
+            NOT EXISTS (SELECT 1 FROM venue_local_snapshot_transactions child WHERE child.snapshot_id=s.id AND
+                (child.account_id,child.provider,child.namespace,child.horizon_start,child.horizon_end) IS DISTINCT FROM
+                (s.account_id,s.provider,s.namespace,s.horizon_start,s.horizon_end)) AND
+            NOT EXISTS (SELECT 1 FROM venue_local_snapshot_positions child WHERE child.snapshot_id=s.id AND
+                (child.account_id,child.provider,child.namespace,child.horizon_start,child.horizon_end) IS DISTINCT FROM
+                (s.account_id,s.provider,s.namespace,s.horizon_start,s.horizon_end)) AND
+            NOT EXISTS (SELECT 1 FROM venue_local_snapshot_fills child WHERE child.snapshot_id=s.id AND
+                (child.account_id,child.provider,child.namespace,child.horizon_start,child.horizon_end) IS DISTINCT FROM
+                (s.account_id,s.provider,s.namespace,s.horizon_start,s.horizon_end)) AND
+            NOT EXISTS (SELECT 1 FROM venue_local_snapshot_issues child WHERE child.snapshot_id=s.id AND
+                (child.account_id,child.provider,child.namespace,child.horizon_start,child.horizon_end) IS DISTINCT FROM
+                (s.account_id,s.provider,s.namespace,s.horizon_start,s.horizon_end)) AND
             s.canonical_json -> 'transaction_ids' = (SELECT COALESCE(jsonb_agg(transaction_id::TEXT ORDER BY transaction_id::TEXT), '[]'::JSONB)
                 FROM venue_local_snapshot_transactions WHERE snapshot_id=s.id) AND
             s.canonical_json -> 'positions' = (SELECT COALESCE(jsonb_agg(jsonb_build_object(
@@ -293,6 +359,12 @@ BEGIN
             r.result_count = (SELECT count(*) FROM venue_reconciliation_results WHERE run_id=r.id) AND
             r.incident_count = (SELECT count(*) FROM venue_reconciliation_incidents WHERE run_id=r.id) AND
             r.clean = NOT EXISTS (SELECT 1 FROM venue_reconciliation_incidents WHERE run_id=r.id) AND
+            NOT EXISTS (SELECT 1 FROM venue_reconciliation_results child WHERE child.run_id=r.id AND
+                (child.policy_version,child.provider_snapshot_id,child.local_snapshot_id) IS DISTINCT FROM
+                (r.policy_version,r.provider_snapshot_id,r.local_snapshot_id)) AND
+            NOT EXISTS (SELECT 1 FROM venue_reconciliation_incidents child WHERE child.run_id=r.id AND
+                (child.policy_version,child.provider_snapshot_id,child.local_snapshot_id) IS DISTINCT FROM
+                (r.policy_version,r.provider_snapshot_id,r.local_snapshot_id)) AND
             NOT EXISTS (SELECT 1 FROM venue_reconciliation_results result WHERE result.run_id=r.id AND
                 result.id <> economic_deterministic_uuid('venue-reconciliation-result', venue_reconciliation_result_identity(
                     r.policy_version, COALESCE(r.provider_snapshot_id::TEXT,''), r.local_snapshot_id::TEXT,

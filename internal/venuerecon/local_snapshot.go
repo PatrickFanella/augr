@@ -377,14 +377,16 @@ func normalizeLocalIssues(input LocalSnapshotInput, values []LocalSnapshotIssue,
 			issue.AccountID != input.AccountID || issue.Provider != input.Provider || issue.Namespace != input.Namespace ||
 			!canonicalNonempty(issue.SourceID) || !validEvidenceTime(issue.SourceAt) ||
 			issue.SourceAt.Before(input.HorizonStart) || issue.SourceAt.After(input.HorizonEnd) || issue.VenueContractID == uuid.Nil ||
-			issue.LedgerTransactionID == uuid.Nil || issue.EvidenceID == uuid.Nil {
+			issue.EvidenceID == uuid.Nil || issue.Reason == ReasonLocalFillAfterFrontier && issue.LedgerTransactionID == uuid.Nil {
 			return nil, fmt.Errorf("local snapshot issue is invalid")
 		}
 		_, member := membership[issue.LedgerTransactionID]
-		if issue.Reason == ReasonLocalFillAfterFrontier && member || issue.Reason == ReasonLocalFillIncomplete && !member {
+		if issue.Reason == ReasonLocalFillAfterFrontier && member ||
+			issue.Reason == ReasonLocalFillIncomplete && issue.LedgerTransactionID != uuid.Nil && !member {
 			return nil, fmt.Errorf("local snapshot issue contradicts checkpoint membership")
 		}
-		key := string(issue.Reason) + "\x00" + issue.SourceID + "\x00" + issue.LedgerTransactionID.String()
+		transactionID := projectionUUIDString(issue.LedgerTransactionID)
+		key := string(issue.Reason) + "\x00" + issue.SourceID + "\x00" + transactionID
 		if _, ok := seen[key]; ok {
 			return nil, fmt.Errorf("local snapshot issue is duplicated")
 		}
@@ -392,7 +394,7 @@ func normalizeLocalIssues(input LocalSnapshotInput, values []LocalSnapshotIssue,
 		result = append(result, LocalIssueEvidence{
 			Reason: issue.Reason, AccountID: issue.AccountID.String(), Provider: issue.Provider, Namespace: issue.Namespace,
 			SourceID: issue.SourceID, SourceAt: canonicalTime(issue.SourceAt), VenueContractID: issue.VenueContractID.String(),
-			LedgerTransactionID: issue.LedgerTransactionID.String(), EvidenceID: issue.EvidenceID.String(),
+			LedgerTransactionID: transactionID, EvidenceID: issue.EvidenceID.String(),
 		})
 	}
 	sort.Slice(result, func(i, j int) bool {
@@ -495,6 +497,22 @@ func (snapshot *LocalSnapshot) Namespace() string {
 		return ""
 	}
 	return snapshot.canonical.Namespace
+}
+
+func (snapshot *LocalSnapshot) HorizonStart() time.Time {
+	if snapshot == nil {
+		return time.Time{}
+	}
+	value, _ := time.Parse("2006-01-02T15:04:05.000000Z", snapshot.canonical.HorizonStart)
+	return value
+}
+
+func (snapshot *LocalSnapshot) HorizonEnd() time.Time {
+	if snapshot == nil {
+		return time.Time{}
+	}
+	value, _ := time.Parse("2006-01-02T15:04:05.000000Z", snapshot.canonical.HorizonEnd)
+	return value
 }
 
 func (snapshot *LocalSnapshot) CheckpointID() uuid.UUID {

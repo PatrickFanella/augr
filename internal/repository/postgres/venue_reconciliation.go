@@ -105,22 +105,22 @@ func (repo *VenueReconciliationRepo) RecordVenueProviderSnapshot(ctx context.Con
 		return repo.verifyStoredBytes(ctx, "venue_provider_snapshots", snapshot.ID(), snapshot.Digest(), snapshot.CanonicalBytes())
 	}
 	for index, page := range capture.Pages() {
-		if _, err := tx.Exec(ctx, `INSERT INTO venue_provider_snapshot_pages(snapshot_id,sequence,cursor,next_cursor,terminal,sha256,raw_bytes)
-			VALUES($1,$2,$3,$4,$5,$6,$7)`, snapshot.ID(), index, page.Cursor, page.NextCursor, page.Terminal, reconSHA256(page.Raw), []byte(page.Raw)); err != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO venue_provider_snapshot_pages(snapshot_id,account_external_id,provider,namespace,horizon_start,horizon_end,sequence,cursor,next_cursor,terminal,sha256,raw_bytes)
+			VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`, snapshot.ID(), capture.AccountID(), capture.Provider(), capture.Namespace(), capture.HorizonStart(), capture.HorizonEnd(), index, page.Cursor, page.NextCursor, page.Terminal, reconSHA256(page.Raw), []byte(page.Raw)); err != nil {
 			return fmt.Errorf("postgres: insert provider snapshot page: %w", err)
 		}
 	}
 	for _, position := range capture.Positions() {
-		if _, err := tx.Exec(ctx, `INSERT INTO venue_provider_snapshot_positions(snapshot_id,instrument_id,venue_contract_id,contract_id,quantity,currency,source_at)
-			VALUES($1,$2,$3,$4,$5,$6,$7)`, snapshot.ID(), position.InstrumentID, position.VenueContract, position.ContractID,
+		if _, err := tx.Exec(ctx, `INSERT INTO venue_provider_snapshot_positions(snapshot_id,account_external_id,provider,namespace,horizon_start,horizon_end,instrument_id,venue_contract_id,contract_id,quantity,currency,source_at)
+			VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`, snapshot.ID(), capture.AccountID(), capture.Provider(), capture.Namespace(), capture.HorizonStart(), capture.HorizonEnd(), position.InstrumentID, position.VenueContract, position.ContractID,
 			position.Quantity, position.Currency, position.SourceAt); err != nil {
 			return fmt.Errorf("postgres: insert provider position: %w", err)
 		}
 	}
 	for sequence, fill := range capture.Fills() {
 		evidence, _ := json.Marshal(fill)
-		if _, err := tx.Exec(ctx, `INSERT INTO venue_provider_snapshot_fills(snapshot_id,sequence,comparison_key,source_id,original_source_id,observation_class,observation_discriminator,evidence)
-			VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, snapshot.ID(), sequence, providerFillKey(fill), fill.SourceID, fill.OriginalSourceID,
+		if _, err := tx.Exec(ctx, `INSERT INTO venue_provider_snapshot_fills(snapshot_id,account_external_id,provider,namespace,horizon_start,horizon_end,sequence,comparison_key,source_id,original_source_id,observation_class,observation_discriminator,evidence)
+			VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`, snapshot.ID(), capture.AccountID(), capture.Provider(), capture.Namespace(), capture.HorizonStart(), capture.HorizonEnd(), sequence, providerFillKey(fill), fill.SourceID, fill.OriginalSourceID,
 			fill.ObservationClass, fill.ObservationDiscriminator, string(evidence)); err != nil {
 			return fmt.Errorf("postgres: insert provider fill: %w", err)
 		}
@@ -143,10 +143,10 @@ func (repo *VenueReconciliationRepo) RecordVenueLocalSnapshot(ctx context.Contex
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	command, err := tx.Exec(ctx, `INSERT INTO venue_local_snapshots(id,schema_name,account_id,provider,namespace,checkpoint_id,sha256,
+	command, err := tx.Exec(ctx, `INSERT INTO venue_local_snapshots(id,schema_name,account_id,provider,namespace,horizon_start,horizon_end,checkpoint_id,sha256,
 		canonical_bytes,canonical_json,transaction_count,position_count,fill_count,issue_count,created_at)
-		VALUES($1,'venue-local-snapshot-v1',$2,$3,$4,$5,$6,$7,convert_from($7,'UTF8')::JSONB,$8,$9,$10,$11,$12) ON CONFLICT(id) DO NOTHING`,
-		snapshot.ID(), snapshot.AccountID(), snapshot.Provider(), snapshot.Namespace(), snapshot.CheckpointID(), snapshot.Digest(),
+		VALUES($1,'venue-local-snapshot-v1',$2,$3,$4,$5,$6,$7,$8,$9,convert_from($9,'UTF8')::JSONB,$10,$11,$12,$13,$14) ON CONFLICT(id) DO NOTHING`,
+		snapshot.ID(), snapshot.AccountID(), snapshot.Provider(), snapshot.Namespace(), snapshot.HorizonStart(), snapshot.HorizonEnd(), snapshot.CheckpointID(), snapshot.Digest(),
 		[]byte(snapshot.CanonicalBytes()), len(snapshot.TransactionIDs()), len(snapshot.Positions()), len(snapshot.Fills()), len(snapshot.Issues()), createdAt)
 	if err != nil {
 		return fmt.Errorf("postgres: insert local snapshot: %w", err)
@@ -155,25 +155,25 @@ func (repo *VenueReconciliationRepo) RecordVenueLocalSnapshot(ctx context.Contex
 		return repo.verifyStoredBytes(ctx, "venue_local_snapshots", snapshot.ID(), snapshot.Digest(), snapshot.CanonicalBytes())
 	}
 	for _, id := range snapshot.TransactionIDs() {
-		if _, err := tx.Exec(ctx, `INSERT INTO venue_local_snapshot_transactions VALUES($1,$2)`, snapshot.ID(), id); err != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO venue_local_snapshot_transactions VALUES($1,$2,$3,$4,$5,$6,$7)`, snapshot.ID(), snapshot.AccountID(), snapshot.Provider(), snapshot.Namespace(), snapshot.HorizonStart(), snapshot.HorizonEnd(), id); err != nil {
 			return err
 		}
 	}
 	for _, position := range snapshot.Positions() {
-		if _, err := tx.Exec(ctx, `INSERT INTO venue_local_snapshot_positions VALUES($1,$2,$3)`, snapshot.ID(), position.InstrumentID, position.Quantity); err != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO venue_local_snapshot_positions VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, snapshot.ID(), snapshot.AccountID(), snapshot.Provider(), snapshot.Namespace(), snapshot.HorizonStart(), snapshot.HorizonEnd(), position.InstrumentID, position.Quantity); err != nil {
 			return err
 		}
 	}
 	for sequence, fill := range snapshot.Fills() {
 		evidence, _ := json.Marshal(fill)
-		if _, err := tx.Exec(ctx, `INSERT INTO venue_local_snapshot_fills(snapshot_id,sequence,comparison_key,fill_id,ledger_transaction_id,evidence) VALUES($1,$2,$3,$4,$5,$6)`, snapshot.ID(), sequence, localFillKey(fill), fill.FillID, fill.LedgerTransactionID, string(evidence)); err != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO venue_local_snapshot_fills(snapshot_id,account_id,provider,namespace,horizon_start,horizon_end,sequence,comparison_key,fill_id,ledger_transaction_id,evidence) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`, snapshot.ID(), snapshot.AccountID(), snapshot.Provider(), snapshot.Namespace(), snapshot.HorizonStart(), snapshot.HorizonEnd(), sequence, localFillKey(fill), fill.FillID, fill.LedgerTransactionID, string(evidence)); err != nil {
 			return err
 		}
 	}
 	for _, issue := range snapshot.Issues() {
 		evidence, _ := json.Marshal(issue)
 		key := reconSHA256([]byte(string(issue.Reason) + "\x00" + issue.SourceID + "\x00" + issue.LedgerTransactionID))
-		if _, err := tx.Exec(ctx, `INSERT INTO venue_local_snapshot_issues VALUES($1,$2,$3,$4)`, snapshot.ID(), key, issue.Reason, string(evidence)); err != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO venue_local_snapshot_issues VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`, snapshot.ID(), snapshot.AccountID(), snapshot.Provider(), snapshot.Namespace(), snapshot.HorizonStart(), snapshot.HorizonEnd(), key, issue.Reason, string(evidence)); err != nil {
 			return err
 		}
 	}
@@ -207,15 +207,15 @@ func (repo *VenueReconciliationRepo) RecordVenueReconciliationRun(ctx context.Co
 		return repo.GetVenueReconciliationRun(ctx, run.ID)
 	}
 	for _, result := range run.Results {
-		if _, err := tx.Exec(ctx, `INSERT INTO venue_reconciliation_results(run_id,id,result_key,kind,status,reason,severity,provider_value,local_value,delta)
-			VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, run.ID, result.ID, result.Key, result.Kind, result.Status, result.Reason,
+		if _, err := tx.Exec(ctx, `INSERT INTO venue_reconciliation_results(run_id,policy_version,provider_snapshot_id,local_snapshot_id,id,result_key,kind,status,reason,severity,provider_value,local_value,delta)
+			VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`, run.ID, run.PolicyVersion, nullableUUID(run.ProviderSnapshotID), run.LocalSnapshotID, result.ID, result.Key, result.Kind, result.Status, result.Reason,
 			result.Severity, result.ProviderValue, result.LocalValue, result.Delta); err != nil {
 			return nil, err
 		}
 	}
 	for _, incident := range run.Incidents {
-		if _, err := tx.Exec(ctx, `INSERT INTO venue_reconciliation_incidents(run_id,id,result_id,incident_key,reason,severity)
-			VALUES($1,$2,$3,$4,$5,$6)`, run.ID, incident.ID, incident.ResultID, incident.Key, incident.Reason, incident.Severity); err != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO venue_reconciliation_incidents(run_id,policy_version,provider_snapshot_id,local_snapshot_id,id,result_id,incident_key,reason,severity)
+			VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`, run.ID, run.PolicyVersion, nullableUUID(run.ProviderSnapshotID), run.LocalSnapshotID, incident.ID, incident.ResultID, incident.Key, incident.Reason, incident.Severity); err != nil {
 			return nil, err
 		}
 	}

@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -174,6 +175,45 @@ type CaptureReader interface {
 	Capture(context.Context) (*ProviderCapture, error)
 }
 
+// CaptureFailure preserves why a read-only provider capture could not produce
+// comparable evidence without exposing transport-specific error types.
+type CaptureFailure struct {
+	Reason ReasonCode
+	Err    error
+}
+
+func (failure *CaptureFailure) Error() string {
+	if failure == nil || failure.Err == nil {
+		return "provider capture failed"
+	}
+	return failure.Err.Error()
+}
+
+func (failure *CaptureFailure) Unwrap() error {
+	if failure == nil {
+		return nil
+	}
+	return failure.Err
+}
+
+func NewCaptureFailure(reason ReasonCode, err error) error {
+	if reason != ReasonProviderUnavailable && reason != ReasonSnapshotIncomplete && reason != ReasonSnapshotMappingFailure {
+		return fmt.Errorf("provider capture failure reason is invalid")
+	}
+	if err == nil {
+		err = fmt.Errorf("provider capture failed")
+	}
+	return &CaptureFailure{Reason: reason, Err: err}
+}
+
+func captureFailureReason(err error) ReasonCode {
+	var failure *CaptureFailure
+	if errors.As(err, &failure) {
+		return failure.Reason
+	}
+	return ReasonProviderUnavailable
+}
+
 // CaptureTwice performs the policy-mandated two reads and admits only equality.
 func CaptureTwice(ctx context.Context, reader CaptureReader) (*SnapshotAdmission, error) {
 	if reader == nil {
@@ -181,14 +221,19 @@ func CaptureTwice(ctx context.Context, reader CaptureReader) (*SnapshotAdmission
 	}
 	first, err := reader.Capture(ctx)
 	if err != nil {
-		return &SnapshotAdmission{Reason: ReasonProviderUnavailable}, nil
+		return &SnapshotAdmission{Reason: captureFailureReason(err)}, nil
 	}
 	second, err := reader.Capture(ctx)
 	if err != nil {
-		return &SnapshotAdmission{Reason: ReasonProviderUnavailable, First: first}, nil
+		return &SnapshotAdmission{Reason: captureFailureReason(err), First: first}, nil
 	}
 	return AdmitStableProviderSnapshot(first, second)
 }
+
+type contractResolutionError struct{ err error }
+
+func (value *contractResolutionError) Error() string { return value.err.Error() }
+func (value *contractResolutionError) Unwrap() error { return value.err }
 
 // NewProviderCapture validates, resolves, sorts, and content-addresses a capture.
 func newProviderCapture(ctx context.Context, input CaptureInput, resolver ContractResolver) (*ProviderCapture, error) {
@@ -322,7 +367,7 @@ func normalizePositions(ctx context.Context, provider venue.Provider, currency s
 		contract, err := resolver.ResolveVenueContract(ctx, provider, value.ContractID, value.SourceAt)
 		if err != nil || contract.ID == uuid.Nil || contract.InstrumentID == uuid.Nil || contract.ContractID != value.ContractID ||
 			contract.Currency != currency || contract.Venue != string(provider) {
-			return nil, fmt.Errorf("position %s canonical contract resolution failed", value.ContractID)
+			return nil, &contractResolutionError{err: fmt.Errorf("position %s canonical contract resolution failed", value.ContractID)}
 		}
 		if _, ok := seenInstruments[contract.InstrumentID]; ok {
 			return nil, fmt.Errorf("duplicate canonical position instrument %s", contract.InstrumentID)
@@ -395,7 +440,7 @@ func normalizeFills(ctx context.Context, provider venue.Provider, currency strin
 		contract, err := resolver.ResolveVenueContract(ctx, provider, value.ContractID, value.SourceAt)
 		if err != nil || contract.ID == uuid.Nil || contract.InstrumentID == uuid.Nil || contract.ContractID != value.ContractID ||
 			contract.Currency != currency || contract.Venue != string(provider) {
-			return nil, fmt.Errorf("fill %s canonical contract resolution failed", value.SourceID)
+			return nil, &contractResolutionError{err: fmt.Errorf("fill %s canonical contract resolution failed", value.SourceID)}
 		}
 		result = append(result, ProviderFill{
 			SourceID: value.SourceID, OriginalSourceID: value.OriginalSourceID,

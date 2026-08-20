@@ -268,6 +268,12 @@ type sequenceReader struct {
 	index  int
 }
 
+type failingCaptureReader struct{ err error }
+
+func (reader failingCaptureReader) Capture(context.Context) (*ProviderCapture, error) {
+	return nil, reader.err
+}
+
 func (reader *sequenceReader) Capture(context.Context) (*ProviderCapture, error) {
 	value := reader.values[reader.index]
 	reader.index++
@@ -282,5 +288,26 @@ func TestCaptureTwiceHasReadOnlySurface(t *testing.T) {
 	result, err := CaptureTwice(context.Background(), &sequenceReader{values: []*ProviderCapture{first, second}})
 	if err != nil || result.Snapshot == nil {
 		t.Fatalf("CaptureTwice() = %+v, %v", result, err)
+	}
+}
+
+func TestCaptureTwicePreservesIncompleteAndMappingFailureReasons(t *testing.T) {
+	t.Parallel()
+	for _, reason := range []ReasonCode{ReasonSnapshotIncomplete, ReasonSnapshotMappingFailure} {
+		admission, err := CaptureTwice(context.Background(), failingCaptureReader{
+			err: NewCaptureFailure(reason, errors.New("captured evidence failed")),
+		})
+		if err != nil || admission.Snapshot != nil || admission.Reason != reason {
+			t.Fatalf("reason %s admission = %+v, %v", reason, admission, err)
+		}
+	}
+	input := validCaptureInput(venue.ProviderAlpaca)
+	input.Pages[0].Raw = []byte(`not-json`)
+	if _, err := NormalizeAlpacaCapture(context.Background(), input, fixedResolver{}); captureFailureReason(err) != ReasonSnapshotIncomplete {
+		t.Fatalf("malformed page reason = %v", err)
+	}
+	input = validCaptureInput(venue.ProviderAlpaca)
+	if _, err := NormalizeAlpacaCapture(context.Background(), input, fixedResolver{err: errors.New("ambiguous")}); captureFailureReason(err) != ReasonSnapshotMappingFailure {
+		t.Fatalf("mapping reason = %v", err)
 	}
 }

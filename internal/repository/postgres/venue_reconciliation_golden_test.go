@@ -73,6 +73,79 @@ func TestVenueReconciliationGoldenAlpacaAndKalshi(t *testing.T) {
 	}
 }
 
+func TestVenueReconciliationGoldenOrphanObservationRemainsNonClean(t *testing.T) {
+	fixture := newVenueReconciliationGoldenFixture(t, venue.ProviderAlpaca)
+	var existingID uuid.UUID
+	if err := fixture.pool.QueryRow(fixture.ctx, `SELECT id FROM venue_observations
+		WHERE account_id=$1 AND kind='fill' ORDER BY source_at,id LIMIT 1`, fixture.account.ID).Scan(&existingID); err != nil {
+		t.Fatal(err)
+	}
+	existing, err := NewVenueAdapterRepo(fixture.pool).GetVenueObservationByID(fixture.ctx, existingID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	orphan, err := venue.NewObservation(venue.ObservationInput{
+		AccountID: existing.AccountID, IntentID: existing.IntentID, OrderID: existing.OrderID,
+		BindingID: existing.BindingID, VenueContractID: existing.VenueContractID,
+		Provider: existing.Provider, Venue: existing.Venue, PolicyVersion: existing.PolicyVersion,
+		Kind: existing.Kind, ProviderState: existing.ProviderState, MappedOutcome: existing.MappedOutcome,
+		ExternalOrderID: existing.ExternalOrderID, ClientOrderID: existing.ClientOrderID,
+		ProviderContractID: existing.ProviderContractID, CanonicalOutcome: existing.CanonicalOutcome,
+		ProviderBookSide: existing.ProviderBookSide, ProviderAction: existing.ProviderAction,
+		ProviderPrice: existing.ProviderPrice, IdentityKind: existing.IdentityKind,
+		SourceNamespace: existing.SourceNamespace, SourceEventID: existing.SourceEventID + "-orphan",
+		SourceRevision: existing.SourceRevision, SourceAt: existing.SourceAt.Add(time.Second),
+		ReceivedAt: existing.ReceivedAt.Add(time.Second), RawPayload: existing.RawPayload,
+		CreatedAt: existing.CreatedAt.Add(time.Second),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewVenueAdapterRepo(fixture.pool).RecordVenueObservation(fixture.ctx, orphan); err != nil {
+		t.Fatal(err)
+	}
+
+	local, err := venuerecon.NewLocalSource(NewVenueReconciliationLocalReader(fixture.pool)).Capture(fixture.ctx, fixture.request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if issues := local.Issues(); len(issues) != 1 || issues[0].Reason != venuerecon.ReasonLocalFillIncomplete ||
+		issues[0].EvidenceID != orphan.ID.String() || issues[0].LedgerTransactionID != "" {
+		t.Fatalf("orphan local issues = %+v", issues)
+	}
+	run, err := venuerecon.Compare(venuerecon.CompareInput{
+		Policy: fixture.policy, Provider: &venuerecon.SnapshotAdmission{Snapshot: fixture.stable},
+		Local: local, EquityBasisEquivalent: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.Clean || len(run.Incidents) != 1 || run.Incidents[0].Reason != venuerecon.ReasonLocalFillIncomplete {
+		t.Fatalf("orphan reconciliation run = clean:%v incidents:%+v", run.Clean, run.Incidents)
+	}
+}
+
+func TestVenueReconciliationRejectsForgedChildScope(t *testing.T) {
+	fixture := newVenueReconciliationGoldenFixture(t, venue.ProviderAlpaca)
+	persistVenueReconciliationGolden(t, fixture, NewVenueReconciliationRepo(fixture.pool))
+	tx, err := fixture.pool.Begin(fixture.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(fixture.ctx) }()
+	if _, err := tx.Exec(fixture.ctx, `INSERT INTO venue_provider_snapshot_pages(
+		snapshot_id,account_external_id,provider,namespace,horizon_start,horizon_end,
+		sequence,cursor,next_cursor,terminal,sha256,raw_bytes
+	) SELECT id,account_external_id || '-forged',provider,namespace,horizon_start,horizon_end,
+		99,'forged','',true,encode(digest('{}'::BYTEA,'sha256'),'hex'),'{}'::BYTEA
+		FROM venue_provider_snapshots WHERE id=$1`, fixture.stable.ID()); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(fixture.ctx); err == nil || !strings.Contains(err.Error(), "graph counts do not reconstruct") {
+		t.Fatalf("forged child scope commit error = %v", err)
+	}
+}
+
 func TestVenueReconciliationGoldenIndependentPerturbations(t *testing.T) {
 	fixture := newVenueReconciliationGoldenFixture(t, venue.ProviderAlpaca)
 	var baselineTransactions int
