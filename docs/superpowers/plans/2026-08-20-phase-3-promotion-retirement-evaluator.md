@@ -87,17 +87,17 @@ Out of scope:
 
 ## Task 2: Migration 81 append-only lifecycle evidence
 
-- [ ] Add policy, required-gate, decision, observed-gate, and serialized
+- [x] Add policy, required-gate, decision, observed-gate, and serialized
   deployment-lifecycle-event tables.
-- [ ] Independently reconstruct canonical bytes, IDs/hashes, exact parent
+- [x] Independently reconstruct canonical bytes, IDs/hashes, exact parent
   hashes, candidate population, observed gates, policy result, and state chain.
-- [ ] Reject mutation/deletion, omission/reordering, forged results, stale
+- [x] Reject mutation/deletion, omission/reordering, forged results, stale
   state heads, forks, changed retries, and incomplete graphs.
-- [ ] Add no mutable current pointer, scheduler/runtime trigger, activation
+- [x] Add no mutable current pointer, scheduler/runtime trigger, activation
   worker, provider writer, risk mutation, execution grant, or legacy backfill.
-- [ ] Add empty-only rollback and bump `RequiredSchemaVersion` to 81 after real
+- [x] Add empty-only rollback and bump `RequiredSchemaVersion` to 81 after real
   PostgreSQL migration tests pass.
-- [ ] Commit and push the migration slice after focused database races.
+- [x] Commit and push the migration slice after focused database races.
 
 ## Task 3: Repository, service, recovery, and qualification
 

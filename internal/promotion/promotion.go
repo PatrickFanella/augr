@@ -139,7 +139,7 @@ type DecisionInput struct {
 	PriorDecision *Decision
 }
 
-type observedGate struct {
+type ObservedGate struct {
 	Name        string `json:"name"`
 	State       string `json:"state"`
 	Threshold   string `json:"threshold"`
@@ -166,7 +166,7 @@ type decisionCanonical struct {
 	NextState           string                         `json:"next_state"`
 	Outcome             string                         `json:"outcome"`
 	Reason              string                         `json:"reason"`
-	ObservedGates       []observedGate                 `json:"observed_gates"`
+	ObservedGates       []ObservedGate                 `json:"observed_gates"`
 }
 
 type Decision struct {
@@ -200,14 +200,14 @@ func NewDecision(input DecisionInput) (*Decision, error) {
 		}
 		gateByName[gate.Name] = gate
 	}
-	observed := make([]observedGate, len(input.Policy.canonical.RequiredGates))
+	observed := make([]ObservedGate, len(input.Policy.canonical.RequiredGates))
 	allPass := true
 	for index, name := range input.Policy.canonical.RequiredGates {
 		gate, ok := gateByName[name]
 		if !ok {
 			return nil, fmt.Errorf("promotion required gate %s is missing", name)
 		}
-		observed[index] = observedGate{Name: gate.Name, State: gate.State, Threshold: gate.Threshold, Observed: gate.Observed, Reason: gate.Reason, Description: gate.Description}
+		observed[index] = ObservedGate{Name: gate.Name, State: gate.State, Threshold: gate.Threshold, Observed: gate.Observed, Reason: gate.Reason, Description: gate.Description}
 		allPass = allPass && gate.State == robustness.GatePass
 	}
 	priorState := input.Deployment.State()
@@ -275,6 +275,13 @@ func (d *Decision) DeploymentID() uuid.UUID {
 	return uuid.MustParse(d.canonical.DeploymentID)
 }
 
+func (d *Decision) DeploymentDigest() string {
+	if d == nil {
+		return ""
+	}
+	return d.canonical.DeploymentSHA256
+}
+
 func (d *Decision) AssessmentID() uuid.UUID {
 	if d == nil {
 		return uuid.Nil
@@ -282,11 +289,46 @@ func (d *Decision) AssessmentID() uuid.UUID {
 	return uuid.MustParse(d.canonical.AssessmentID)
 }
 
+func (d *Decision) AssessmentDigest() string {
+	if d == nil {
+		return ""
+	}
+	return d.canonical.AssessmentSHA256
+}
+
+func (d *Decision) FamilyID() uuid.UUID {
+	if d == nil {
+		return uuid.Nil
+	}
+	return uuid.MustParse(d.canonical.FamilyID)
+}
+
+func (d *Decision) RobustnessPolicyID() uuid.UUID {
+	if d == nil {
+		return uuid.Nil
+	}
+	return uuid.MustParse(d.canonical.RobustnessPolicyID)
+}
+
 func (d *Decision) PolicyID() uuid.UUID {
 	if d == nil {
 		return uuid.Nil
 	}
 	return uuid.MustParse(d.canonical.PolicyID)
+}
+
+func (d *Decision) PolicyDigest() string {
+	if d == nil {
+		return ""
+	}
+	return d.canonical.PolicySHA256
+}
+
+func (d *Decision) Mode() strategycatalog.ExperimentMode {
+	if d == nil {
+		return ""
+	}
+	return d.canonical.Mode
 }
 
 func (d *Decision) VersionID() uuid.UUID {
@@ -301,6 +343,13 @@ func (d *Decision) PriorDecisionID() uuid.UUID {
 		return uuid.Nil
 	}
 	return uuid.MustParse(d.canonical.PriorDecisionID)
+}
+
+func (d *Decision) PriorDecisionDigest() string {
+	if d == nil {
+		return ""
+	}
+	return d.canonical.PriorDecisionSHA256
 }
 
 func (d *Decision) PriorState() string {
@@ -329,6 +378,13 @@ func (d *Decision) Reason() string {
 		return ""
 	}
 	return d.canonical.Reason
+}
+
+func (d *Decision) ObservedGates() []ObservedGate {
+	if d == nil {
+		return nil
+	}
+	return append([]ObservedGate(nil), d.canonical.ObservedGates...)
 }
 
 func hash(value []byte) string { digest := sha256.Sum256(value); return hex.EncodeToString(digest[:]) }
