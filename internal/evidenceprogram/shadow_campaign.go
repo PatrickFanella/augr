@@ -1,6 +1,7 @@
 package evidenceprogram
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -116,6 +117,9 @@ func NewShadowCampaign(input ShadowCampaignInput) (*ShadowCampaign, error) {
 	if !validKey(input.Key) || !canonicalUTC(input.StartedAt) || input.StartedAt.Hour() != 0 || input.StartedAt.Minute() != 0 || input.StartedAt.Second() != 0 {
 		return nil, fmt.Errorf("invalid shadow campaign identity or start")
 	}
+	if input.Benchmark.Kind != "benchmark_opportunity_cost_report" {
+		return nil, fmt.Errorf("shadow campaign requires an OVR-401 benchmark report")
+	}
 	if err := validateRef(input.Benchmark); err != nil {
 		return nil, fmt.Errorf("invalid shadow benchmark: %w", err)
 	}
@@ -124,6 +128,7 @@ func NewShadowCampaign(input ShadowCampaignInput) (*ShadowCampaign, error) {
 	if len(candidates) < 2 || len(candidates) > 16 {
 		return nil, fmt.Errorf("shadow campaign requires two to sixteen candidates")
 	}
+	versions := map[uuid.UUID]bool{}
 	for index, candidate := range candidates {
 		if !validKey(candidate.Key) || candidate.VersionID == uuid.Nil || len(candidate.SHA256) != 64 {
 			return nil, fmt.Errorf("invalid shadow candidate")
@@ -134,6 +139,10 @@ func NewShadowCampaign(input ShadowCampaignInput) (*ShadowCampaign, error) {
 		if index > 0 && candidate.Key == candidates[index-1].Key {
 			return nil, fmt.Errorf("duplicate shadow candidate")
 		}
+		if versions[candidate.VersionID] {
+			return nil, fmt.Errorf("shadow candidates must use distinct versions")
+		}
+		versions[candidate.VersionID] = true
 	}
 	c := shadowCampaignCanonical{ShadowCampaignSchemaV1, input.Key, formatTime(input.StartedAt), ShadowTargetDays, input.Benchmark, candidates}
 	raw, err := json.Marshal(c)
@@ -182,6 +191,34 @@ func NewShadowDay(input ShadowDayInput) (*ShadowDay, error) {
 	}
 	digest := hash(raw)
 	return &ShadowDay{id: economicid.DeterministicUUID("shadow-campaign-day", ShadowDaySchemaV1+"@sha256:"+digest), digest: digest, raw: raw, canonical: c}, nil
+}
+
+func ShadowCampaignFromCanonical(id uuid.UUID, digest string, raw json.RawMessage) (*ShadowCampaign, error) {
+	var value shadowCampaignCanonical
+	if id == uuid.Nil || hash(raw) != digest || json.Unmarshal(raw, &value) != nil || value.Schema != ShadowCampaignSchemaV1 || value.TargetDays != ShadowTargetDays {
+		return nil, fmt.Errorf("invalid canonical shadow campaign")
+	}
+	rebuilt, err := NewShadowCampaign(ShadowCampaignInput{Key: value.Key, StartedAt: mustUTC(value.StartedAt), Benchmark: value.Benchmark, Candidates: value.Candidates})
+	if err != nil || rebuilt.ID() != id || rebuilt.Digest() != digest || !bytes.Equal(rebuilt.CanonicalBytes(), raw) {
+		return nil, fmt.Errorf("canonical shadow campaign does not reconstruct")
+	}
+	return rebuilt, nil
+}
+
+func ShadowDayFromCanonical(id uuid.UUID, digest string, raw json.RawMessage, campaign *ShadowCampaign) (*ShadowDay, error) {
+	var value shadowDayCanonical
+	if campaign == nil || id == uuid.Nil || hash(raw) != digest || json.Unmarshal(raw, &value) != nil || value.Schema != ShadowDaySchemaV1 || value.CampaignID != campaign.ID() || value.CampaignSHA256 != campaign.Digest() {
+		return nil, fmt.Errorf("invalid canonical shadow day")
+	}
+	inputs := make([]ShadowCandidateDayInput, len(value.Candidates))
+	for index, candidate := range value.Candidates {
+		inputs[index] = ShadowCandidateDayInput(candidate)
+	}
+	rebuilt, err := NewShadowDay(ShadowDayInput{Campaign: campaign, Sequence: value.Sequence, ObservedAt: mustUTC(value.ObservedAt), Candidates: inputs, Source: value.Source})
+	if err != nil || rebuilt.ID() != id || rebuilt.Digest() != digest || !bytes.Equal(rebuilt.CanonicalBytes(), raw) {
+		return nil, fmt.Errorf("canonical shadow day does not reconstruct")
+	}
+	return rebuilt, nil
 }
 
 func BuildShadowAssessment(campaign *ShadowCampaign, days []*ShadowDay) (*Assessment, error) {

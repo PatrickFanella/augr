@@ -14,7 +14,7 @@ func shadowCampaignFixture(t *testing.T) *ShadowCampaign {
 	campaign, err := NewShadowCampaign(ShadowCampaignInput{
 		Key:       "ovr702-local-shadow",
 		StartedAt: time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC),
-		Benchmark: ref("passive_benchmark", 8),
+		Benchmark: ref("benchmark_opportunity_cost_report", 8),
 		Candidates: []ShadowCandidate{
 			{Key: "momentum_quality", VersionID: uuid.MustParse("70200000-0000-4000-8000-000000000001"), SHA256: fmt.Sprintf("%064x", 11)},
 			{Key: "etf_trend", VersionID: uuid.MustParse("70200000-0000-4000-8000-000000000002"), SHA256: fmt.Sprintf("%064x", 12)},
@@ -58,6 +58,14 @@ func TestShadowCampaignAndDaysAreDeterministic(t *testing.T) {
 	secondDay := shadowDays(t, second, 1)[0]
 	if firstDay.ID() != secondDay.ID() || firstDay.Digest() != secondDay.Digest() {
 		t.Fatal("day identity diverged")
+	}
+	reloaded, err := ShadowCampaignFromCanonical(first.ID(), first.Digest(), first.CanonicalBytes())
+	if err != nil || reloaded.ID() != first.ID() {
+		t.Fatalf("campaign reload=%v/%v", reloaded, err)
+	}
+	reloadedDay, err := ShadowDayFromCanonical(firstDay.ID(), firstDay.Digest(), firstDay.CanonicalBytes(), reloaded)
+	if err != nil || reloadedDay.ID() != firstDay.ID() {
+		t.Fatalf("day reload=%v/%v", reloadedDay, err)
 	}
 }
 
