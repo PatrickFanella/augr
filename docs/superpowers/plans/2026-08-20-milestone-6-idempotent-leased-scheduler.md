@@ -69,17 +69,17 @@ settlement of a real position, or live trade is authorized.
 - [x] Implement OVR-203 intent/order and settlement effect-key bridges; prove
   permutation convergence, changed-payload conflicts, timezone/DST stability,
   manual request idempotency, and no random retry identity.
-- [ ] Commit and push the domain slice after focused race tests.
+- [x] Commit and push the domain slice after focused race tests.
 
 ## Task 2: Schema 98 and fenced PostgreSQL repository
 
-- [ ] Persist immutable definitions, occurrences, attempts, renewals, terminal
+- [x] Persist immutable definitions, occurrences, attempts, renewals, terminal
   outcomes, and effect claims with database-clock lease semantics.
-- [ ] Prove two-instance acquisition, active-owner exclusion, expiry takeover,
+- [x] Prove two-instance acquisition, active-owner exclusion, expiry takeover,
   monotonic fencing, stale-owner rejection, exact effect replay, changed-effect
   conflict, terminal non-reacquisition, restart reconstruction, and append-only
   enforcement in real PostgreSQL.
-- [ ] Prove injected rollback at every graph stage, eight-writer convergence,
+- [x] Prove injected rollback at every graph stage, eight-writer convergence,
   direct-SQL forgery rejection, nonempty rollback refusal, and empty
   `98 -> 97 -> 98`.
 - [ ] Commit and push the persistence slice after focused/database races.

@@ -150,6 +150,21 @@ type Effect struct {
 	SHA256        string
 }
 
+type Lease struct {
+	OccurrenceID uuid.UUID
+	OwnerID      uuid.UUID
+	FenceToken   int64
+	Sequence     int64
+	AcquiredAt   time.Time
+	ExpiresAt    time.Time
+}
+
+type Acquisition struct {
+	Lease    Lease
+	Acquired bool
+	Terminal bool
+}
+
 type effectCanonical struct {
 	Schema        string `json:"schema"`
 	OccurrenceID  string `json:"occurrence_id"`
@@ -196,8 +211,17 @@ func (e Effect) SettlementIdempotencyKey() string {
 }
 
 type JobDefinition struct {
-	Key       string
-	Mutations []MutationClass
+	ID            uuid.UUID
+	Key           string
+	Mutations     []MutationClass
+	CanonicalJSON json.RawMessage
+	SHA256        string
+}
+
+type definitionCanonical struct {
+	Schema    string          `json:"schema"`
+	Key       string          `json:"key"`
+	Mutations []MutationClass `json:"mutations"`
 }
 
 func NewJobDefinition(key string, mutations ...MutationClass) (JobDefinition, error) {
@@ -220,7 +244,12 @@ func NewJobDefinition(key string, mutations ...MutationClass) (JobDefinition, er
 		normalized = append(normalized, mutation)
 	}
 	sort.Slice(normalized, func(i, j int) bool { return normalized[i] < normalized[j] })
-	return JobDefinition{Key: key, Mutations: normalized}, nil
+	raw, err := json.Marshal(definitionCanonical{"financial-job-definition-v1", key, normalized})
+	if err != nil {
+		return JobDefinition{}, fmt.Errorf("financial scheduler: encode job definition: %w", err)
+	}
+	digest := digestBytes(raw)
+	return JobDefinition{ID: economicid.DeterministicUUID("financial-job-definition", "financial-job-definition-v1@sha256:"+digest), Key: key, Mutations: normalized, CanonicalJSON: raw, SHA256: digest}, nil
 }
 
 func validMutationClass(value MutationClass) bool {
