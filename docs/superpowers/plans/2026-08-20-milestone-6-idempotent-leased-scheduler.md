@@ -96,7 +96,7 @@ settlement of a real position, or live trade is authorized.
   retained IDs/digests and explicit legacy/cutover limits.
 - [x] Run repository-wide backend/static and pinned frontend gates, diff review,
   and isolated kill-switched schema-98 health/API/rollback/backup/restore/reapply.
-- [ ] Commit/push verified slices, fetch, and prove `0 0` before OVR-605.
+- [x] Commit/push verified slices, fetch, and prove `0 0` before OVR-605.
 
 ## Acceptance evidence to record
 
