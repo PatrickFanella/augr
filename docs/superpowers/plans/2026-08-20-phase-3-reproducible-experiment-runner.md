@@ -97,17 +97,17 @@ Out of scope:
 
 ## Task 1: Canonical program, plan, and result domain
 
-- [ ] Add explicit program identity and a narrow deterministic `Program`
+- [x] Add explicit program identity and a narrow deterministic `Program`
   interface bound to one exact OVR-302 version and decision contract.
-- [ ] Add canonical replay-plan/step/decision/intent specifications with strict
+- [x] Add canonical replay-plan/step/decision/intent specifications with strict
   manifest observation references, ordering, bounds, exact decimals/times, and
   content-addressed identities.
-- [ ] Add immutable attempt-event, step-outcome, execution-metric, and run-result
+- [x] Add immutable attempt-event, step-outcome, execution-metric, and run-result
   domains with restore validation and clone-safe accessors.
-- [ ] Prove input reorder convergence where order is semantic-free, semantic
+- [x] Prove input reorder convergence where order is semantic-free, semantic
   reordering divergence where sequence matters, tamper rejection, scored/stress
   separation, and exact deterministic hashes.
-- [ ] Commit and push the pure domain slice after focused race tests.
+- [x] Commit and push the pure domain slice after focused race tests.
 
 ## Task 2: Deterministic runner and fail-closed orchestration
 

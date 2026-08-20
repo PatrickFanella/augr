@@ -310,6 +310,20 @@ func (p *Plan) StepCount() int {
 	return len(p.canonical.Steps)
 }
 
+func (p *Plan) StepAction(sequence int) StepAction {
+	if p == nil || sequence < 0 || sequence >= len(p.canonical.Steps) {
+		return ""
+	}
+	return p.canonical.Steps[sequence].Action
+}
+
+func (p *Plan) DecisionSHA256(sequence int) string {
+	if p == nil || sequence < 0 || sequence >= len(p.canonical.Steps) {
+		return ""
+	}
+	return hashBytes(p.canonical.Steps[sequence].Decision)
+}
+
 func (p *Plan) IntentID(sequence int) uuid.UUID {
 	if p == nil || sequence < 0 || sequence >= len(p.canonical.Steps) || p.canonical.Steps[sequence].Intent == nil {
 		return uuid.Nil
