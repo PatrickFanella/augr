@@ -57,6 +57,15 @@ func TestCopyOriginRetainedQualification(t *testing.T) {
 	if err = copyRepo.CreateSubscription(ctx, &subscription); err != nil {
 		t.Fatal(err)
 	}
+	secondSubscription := domain.DefaultCopySubscription()
+	secondSubscription.ID, secondSubscription.LeaderID, secondSubscription.SourceID = uuid.New(), leaderID, sourceID
+	secondSubscription.OriginType, secondSubscription.OriginID, secondSubscription.CreatedBy = "copy_subscription", secondSubscription.ID, "ovr501"
+	if err = secondSubscription.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if err = copyRepo.CreateSubscription(ctx, &secondSubscription); err != nil {
+		t.Fatal(err)
+	}
 	intents := make([]domain.CopyTradeIntent, 2)
 	for i, key := range []string{"AAPL", "MSFT"} {
 		id := economicid.DeterministicUUID("copy-trade-intent", subscription.ID.String(), observationID.String(), key, "1")
@@ -109,7 +118,7 @@ func TestCopyOriginRetainedQualification(t *testing.T) {
 	}
 	var subscriptions, runs, children, strategiesAfter int
 	err = pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM copy_subscriptions),(SELECT count(*) FROM copy_origin_rebalance_runs),(SELECT count(*) FROM copy_origin_rebalance_intents),(SELECT count(*) FROM strategies)`).Scan(&subscriptions, &runs, &children, &strategiesAfter)
-	if err != nil || subscriptions != 1 || runs != 1 || children != 2 || strategiesAfter != strategiesBefore {
+	if err != nil || subscriptions != 2 || runs != 1 || children != 2 || strategiesAfter != strategiesBefore {
 		t.Fatalf("counts=%d/%d/%d strategies=%d->%d err=%v", subscriptions, runs, children, strategiesBefore, strategiesAfter, err)
 	}
 	if _, err = pool.Exec(ctx, `UPDATE copy_origin_rebalance_runs SET state=state WHERE id=$1`, run.ID()); err == nil || !strings.Contains(err.Error(), "append-only") {
