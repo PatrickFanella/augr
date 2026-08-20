@@ -34,7 +34,8 @@ func Build(mode strategycatalog.ExperimentMode, execution definedrisk.ExecutionM
 	if mode != strategycatalog.ExperimentPaperScored && mode != strategycatalog.ExperimentPaperStress {
 		return nil, fmt.Errorf("defined-risk qualification mode is invalid")
 	}
-	underlying, err := instrument.NewInstrument(instrument.InstrumentInput{IdentityKey: "figi:DEFINED-RISK-V1", AssetClass: instrument.AssetClassEquity, PrimaryVenue: "test-venue", Currency: "USD", TickSize: decimal.RequireFromString("0.01"), LotSize: decimal.NewFromInt(1), Multiplier: decimal.NewFromInt(1), SettlementMethod: instrument.SettlementPhysical, Status: instrument.StatusActive, Metadata: json.RawMessage(`{"fixture":"defined-risk-v1"}`), CreatedAt: DecisionAt.Add(-time.Hour)})
+	identitySuffix := strings.ToUpper(string(strategy) + "-" + string(execution))
+	underlying, err := instrument.NewInstrument(instrument.InstrumentInput{IdentityKey: "figi:DEFINED-RISK-V1-" + identitySuffix, AssetClass: instrument.AssetClassEquity, PrimaryVenue: "test-venue", Currency: "USD", TickSize: decimal.RequireFromString("0.01"), LotSize: decimal.NewFromInt(1), Multiplier: decimal.NewFromInt(1), SettlementMethod: instrument.SettlementPhysical, Status: instrument.StatusActive, Metadata: json.RawMessage(`{"fixture":"defined-risk-v1"}`), CreatedAt: DecisionAt.Add(-time.Hour)})
 	if err != nil {
 		return nil, err
 	}
@@ -45,13 +46,13 @@ func Build(mode strategycatalog.ExperimentMode, execution definedrisk.ExecutionM
 	strikes := []string{"100", "110"}
 	for i := range options {
 		metadata, _ := json.Marshal(map[string]string{"contract_type": optionType, "strike": strikes[i]})
-		value, createErr := instrument.NewInstrument(instrument.InstrumentInput{IdentityKey: fmt.Sprintf("osi:DEFINED-RISK-%s-%s", optionType, strikes[i]), AssetClass: instrument.AssetClassOption, PrimaryVenue: "test-venue", Currency: "USD", TickSize: decimal.RequireFromString("0.01"), LotSize: decimal.NewFromInt(1), Multiplier: decimal.NewFromInt(100), Expiration: &ExpiryAt, ExerciseStyle: instrument.ExerciseEuropean, SettlementMethod: instrument.SettlementCash, UnderlyingID: &underlying.ID, Status: instrument.StatusActive, Metadata: metadata, CreatedAt: DecisionAt.Add(-time.Hour)})
+		value, createErr := instrument.NewInstrument(instrument.InstrumentInput{IdentityKey: fmt.Sprintf("osi:DEFINED-RISK-%s-%s-%s", identitySuffix, optionType, strikes[i]), AssetClass: instrument.AssetClassOption, PrimaryVenue: "test-venue", Currency: "USD", TickSize: decimal.RequireFromString("0.01"), LotSize: decimal.NewFromInt(1), Multiplier: decimal.NewFromInt(100), Expiration: &ExpiryAt, ExerciseStyle: instrument.ExerciseEuropean, SettlementMethod: instrument.SettlementCash, UnderlyingID: &underlying.ID, Status: instrument.StatusActive, Metadata: metadata, CreatedAt: DecisionAt.Add(-time.Hour)})
 		if createErr != nil {
 			return nil, createErr
 		}
 		value.ID = id(fmt.Sprintf("option-%d", i), mode, execution, strategy)
 		options[i] = value
-		contract, contractErr := instrument.NewVenueContract(instrument.VenueContractInput{InstrumentID: value.ID, Venue: "test-venue", ContractID: fmt.Sprintf("DEFINED-RISK-%s-%s", optionType, strikes[i]), Currency: "USD", TickSize: value.TickSize, LotSize: value.LotSize, Multiplier: value.Multiplier, SettlementMethod: value.SettlementMethod, ValidFrom: DecisionAt.Add(-time.Hour), ValidTo: &ExpiryAt, Metadata: json.RawMessage(`{"fixture":"defined-risk-v1"}`), CreatedAt: DecisionAt.Add(-time.Hour)})
+		contract, contractErr := instrument.NewVenueContract(instrument.VenueContractInput{InstrumentID: value.ID, Venue: "test-venue", ContractID: fmt.Sprintf("DEFINED-RISK-%s-%s-%s", identitySuffix, optionType, strikes[i]), Currency: "USD", TickSize: value.TickSize, LotSize: value.LotSize, Multiplier: value.Multiplier, SettlementMethod: value.SettlementMethod, ValidFrom: DecisionAt.Add(-time.Hour), ValidTo: &ExpiryAt, Metadata: json.RawMessage(`{"fixture":"defined-risk-v1"}`), CreatedAt: DecisionAt.Add(-time.Hour)})
 		if contractErr != nil {
 			return nil, contractErr
 		}
@@ -79,7 +80,8 @@ func Build(mode strategycatalog.ExperimentMode, execution definedrisk.ExecutionM
 		}
 		legs[i] = definedrisk.LegInput{InstrumentID: options[i].ID, VenueContractID: contracts[i].ID, OCCSymbol: contracts[i].ContractID, Underlying: "DEFINED-RISK-V1", OptionType: optionType, Strike: strikes[i], Expiry: ExpiryAt, Multiplier: "100", Style: "european", Position: positions[i], Entry: entry, Unwind: unwind}
 	}
-	scenario, err := definedrisk.NewScenario(definedrisk.ScenarioInput{Policy: policy, Strategy: strategy, InitialCapital: "10000", RequestedContracts: 2, DecisionAt: DecisionAt, ExpiryAt: ExpiryAt, TerminalUnderlying: terminal, TerminalAvailableAt: ExpiryAt, TerminalEvidenceID: id("terminal", mode, execution, strategy), TerminalEvidenceSHA256: strings.Repeat("9", 64), TerminalPartitionContentSHA256: strings.Repeat("8", 64), TerminalSourceKey: "defined-risk-terminal", Mode: mode, Legs: legs})
+	terminalIdentity := "terminal/" + terminal + "/" + shortDepth
+	scenario, err := definedrisk.NewScenario(definedrisk.ScenarioInput{Policy: policy, Strategy: strategy, InitialCapital: "10000", RequestedContracts: 2, DecisionAt: DecisionAt, ExpiryAt: ExpiryAt, TerminalUnderlying: terminal, TerminalAvailableAt: ExpiryAt, TerminalEvidenceID: id(terminalIdentity, mode, execution, strategy), TerminalEvidenceSHA256: qualificationHash([]byte("evidence/" + terminalIdentity)), TerminalPartitionContentSHA256: qualificationHash([]byte("partition/" + terminalIdentity)), TerminalSourceKey: "defined-risk-terminal-" + terminal, Mode: mode, Legs: legs})
 	if err != nil {
 		return nil, err
 	}
@@ -104,9 +106,37 @@ func structure(strategy definedrisk.Strategy) (optionType, low, high string) {
 }
 
 func quote(salt, bid, ask, bidSize, askSize string) definedrisk.QuoteInput {
-	return definedrisk.QuoteInput{Bid: bid, Ask: ask, BidSize: bidSize, AskSize: askSize, AvailableAt: DecisionAt, EvidenceID: uuid.NewSHA1(uuid.NameSpaceOID, []byte("defined-risk/"+salt)), EvidenceSHA256: strings.Repeat("a", 64), PartitionContentSHA256: strings.Repeat("b", 64), SourceKey: "defined-risk-" + salt}
+	identity := strings.Join([]string{salt, bid, ask, bidSize, askSize}, "/")
+	return definedrisk.QuoteInput{Bid: bid, Ask: ask, BidSize: bidSize, AskSize: askSize, AvailableAt: DecisionAt, EvidenceID: uuid.NewSHA1(uuid.NameSpaceOID, []byte("defined-risk/"+identity)), EvidenceSHA256: qualificationHash([]byte("evidence/" + identity)), PartitionContentSHA256: qualificationHash([]byte("partition/" + identity)), SourceKey: "defined-risk-" + salt}
 }
 
 func id(salt string, mode strategycatalog.ExperimentMode, execution definedrisk.ExecutionMode, strategy definedrisk.Strategy) uuid.UUID {
 	return uuid.NewSHA1(uuid.NameSpaceOID, []byte(fmt.Sprintf("defined-risk/%s/%s/%s/%s", mode, execution, strategy, salt)))
+}
+
+func BuildRetainedScenarios() (map[string]*Fixture, error) {
+	definitions := []struct {
+		name       string
+		execution  definedrisk.ExecutionMode
+		strategy   definedrisk.Strategy
+		shortDepth string
+		terminal   string
+	}{
+		{"atomic_bull_call_winner", definedrisk.ExecutionAtomic, definedrisk.BullCall, "10", "120"},
+		{"atomic_bear_put_winner", definedrisk.ExecutionAtomic, definedrisk.BearPut, "10", "90"},
+		{"atomic_bull_put_loser", definedrisk.ExecutionAtomic, definedrisk.BullPut, "10", "120"},
+		{"atomic_bear_call_exact_strike", definedrisk.ExecutionAtomic, definedrisk.BearCall, "10", "110"},
+		{"atomic_depth_rejected", definedrisk.ExecutionAtomic, definedrisk.BullCall, "0", "105"},
+		{"sequential_success", definedrisk.ExecutionSequential, definedrisk.BullCall, "10", "105"},
+		{"sequential_orphan_unwind", definedrisk.ExecutionSequential, definedrisk.BearPut, "0", "95"},
+	}
+	values := make(map[string]*Fixture, len(definitions))
+	for _, definition := range definitions {
+		value, err := Build(strategycatalog.ExperimentPaperScored, definition.execution, definition.strategy, definition.shortDepth, definition.terminal)
+		if err != nil {
+			return nil, fmt.Errorf("build %s: %w", definition.name, err)
+		}
+		values[definition.name] = value
+	}
+	return values, nil
 }

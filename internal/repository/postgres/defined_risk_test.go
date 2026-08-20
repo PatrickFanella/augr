@@ -4,9 +4,13 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/strategy/definedrisk"
 	definedriskqualification "github.com/PatrickFanella/get-rich-quick/internal/strategy/definedrisk/qualification"
@@ -199,5 +203,69 @@ func TestDefinedRiskMigrationEmptyRollbackAndReapply(t *testing.T) {
 		if _, err := pool.Exec(ctx, repositoryMigrationSQL(t, migration)); err != nil {
 			t.Fatalf("%s: %v", migration, err)
 		}
+	}
+}
+
+func TestDefinedRiskRetainedQualification(t *testing.T) {
+	databaseURL := os.Getenv("DEFINED_RISK_V1_QUALIFICATION_DB_URL")
+	if databaseURL == "" {
+		t.Skip("set DEFINED_RISK_V1_QUALIFICATION_DB_URL to a dedicated empty schema-86 database")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	var schema string
+	var version, existing int
+	if err = pool.QueryRow(ctx, `SELECT current_schema()`).Scan(&schema); err != nil || schema != "public" {
+		t.Fatalf("qualification schema=%q err=%v", schema, err)
+	}
+	if err = pool.QueryRow(ctx, `SELECT version FROM schema_migrations WHERE NOT dirty`).Scan(&version); err != nil || version != 86 {
+		t.Fatalf("qualification version=%d err=%v", version, err)
+	}
+	if err = pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM defined_risk_v1_policies)+(SELECT count(*) FROM defined_risk_v1_scenarios)+(SELECT count(*) FROM defined_risk_v1_reports)`).Scan(&existing); err != nil || existing != 0 {
+		t.Fatalf("qualification database is not defined-risk-empty count=%d err=%v", existing, err)
+	}
+	values, err := definedriskqualification.BuildRetainedScenarios()
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := make([]string, 0, len(values))
+	for name := range values {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	instruments := NewInstrumentRepo(pool)
+	repo := NewDefinedRiskRepo(pool)
+	for _, name := range names {
+		fixture := values[name]
+		if _, err = instruments.CreateInstrument(ctx, fixture.Underlying); err != nil {
+			t.Fatalf("%s underlying: %v", name, err)
+		}
+		for i := range fixture.Options {
+			if _, err = instruments.CreateInstrument(ctx, fixture.Options[i]); err != nil {
+				t.Fatalf("%s option: %v", name, err)
+			}
+			if _, err = instruments.RegisterVenueContract(ctx, fixture.Contracts[i]); err != nil {
+				t.Fatalf("%s contract: %v", name, err)
+			}
+		}
+		if _, err = repo.RegisterPolicy(ctx, fixture.Policy); err != nil {
+			t.Fatalf("%s policy: %v", name, err)
+		}
+		if _, err = repo.RegisterScenario(ctx, fixture.Scenario); err != nil {
+			t.Fatalf("%s scenario: %v", name, err)
+		}
+		if _, err = repo.RecordReport(ctx, fixture.Report); err != nil {
+			t.Fatalf("%s report: %v", name, err)
+		}
+		t.Logf("%s scenario=%s sha=%s report=%s sha=%s outcome=%s", name, fixture.Scenario.ID(), fixture.Scenario.Digest(), fixture.Report.ID(), fixture.Report.Digest(), fixture.Report.Outcome())
+	}
+	var policies, scenarios, legs, observations, reports, fills int
+	err = pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM defined_risk_v1_policies),(SELECT count(*) FROM defined_risk_v1_scenarios),(SELECT count(*) FROM defined_risk_v1_legs),(SELECT count(*) FROM defined_risk_v1_observations),(SELECT count(*) FROM defined_risk_v1_reports),(SELECT count(*) FROM defined_risk_v1_fills)`).Scan(&policies, &scenarios, &legs, &observations, &reports, &fills)
+	if err != nil || policies != 2 || scenarios != 7 || legs != 14 || observations != 16 || reports != 7 || fills != 12 {
+		t.Fatalf("retained counts=%d/%d/%d/%d/%d/%d err=%v", policies, scenarios, legs, observations, reports, fills, err)
 	}
 }
