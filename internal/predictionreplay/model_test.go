@@ -148,3 +148,31 @@ func TestRecorderRejectsUnmanifestedCrossedAndInvalidCorrection(t *testing.T) {
 		t.Fatal("same-time correction accepted")
 	}
 }
+
+func TestRecorderExposesDetachedPointInTimeSimulationView(t *testing.T) {
+	input := recorderFixture(t)
+	recorder, err := NewRecorder(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := recorder.BookAt(time.Date(2026, time.January, 2, 14, 0, 0, 0, time.UTC), "market-1", input.Books[0].OutcomeID)
+	if err != nil || before.SourceKey != "book-yes-original" || before.Bids[0].Price != "0.4" || before.Asks[0].Price != "0.42" {
+		t.Fatalf("before=%+v err=%v", before, err)
+	}
+	after, err := recorder.BookAt(time.Date(2026, time.January, 3, 14, 0, 0, 0, time.UTC), "market-1", input.Books[0].OutcomeID)
+	if err != nil || after.SourceKey != "book-yes-correction" || after.Bids[0].Price != "0.39" || after.Revision != 1 {
+		t.Fatalf("after=%+v err=%v", after, err)
+	}
+	before.Bids[0].Price = "0.01"
+	again, err := recorder.BookAt(time.Date(2026, time.January, 2, 14, 0, 0, 0, time.UTC), "market-1", input.Books[0].OutcomeID)
+	if err != nil || again.Bids[0].Price != "0.4" {
+		t.Fatalf("detached=%+v err=%v", again, err)
+	}
+	fee, err := recorder.MakerFeeAt(time.Date(2026, time.January, 3, 14, 0, 0, 0, time.UTC), input.Books[2].OutcomeID, "KALSHI", "0.56", "10")
+	if err != nil || fee.SourceKey != "fee-no-maker" || fee.Amount != "0.014" {
+		t.Fatalf("fee=%+v err=%v", fee, err)
+	}
+	if _, err = recorder.BookAt(time.Date(2026, time.January, 11, 0, 0, 0, 0, time.UTC), "market-1", input.Books[0].OutcomeID); err == nil {
+		t.Fatal("post-cutoff book query accepted")
+	}
+}

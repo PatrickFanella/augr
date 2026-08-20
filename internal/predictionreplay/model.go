@@ -203,6 +203,33 @@ type ReplayResult struct {
 	NetCash          string
 }
 
+// BookLevelResult is a detached exact level from a point-in-time book view.
+type BookLevelResult struct {
+	Price string
+	Size  string
+}
+
+// BookResult is the latest recorder book whose exchange and availability
+// timestamps are both eligible at At. Slices and values are detached copies.
+type BookResult struct {
+	MarketID    string
+	OutcomeID   uuid.UUID
+	Venue       string
+	SourceKey   string
+	ExchangeAt  time.Time
+	AvailableAt time.Time
+	Revision    int
+	Bids        []BookLevelResult
+	Asks        []BookLevelResult
+}
+
+// FeeResult identifies the exact maker policy and rounded fee used by a
+// downstream research simulation.
+type FeeResult struct {
+	SourceKey string
+	Amount    string
+}
+
 type manifestObservation struct {
 	kind       dataset.Kind
 	partition  string
@@ -715,4 +742,99 @@ func (r *Recorder) ReplayResults() ([]ReplayResult, error) {
 		})
 	}
 	return result, nil
+}
+
+// BookAt returns the latest point-in-time book for one market and outcome.
+func (r *Recorder) BookAt(at time.Time, marketID string, outcomeID uuid.UUID) (BookResult, error) {
+	if r == nil || !canonicalTime(at) || marketID == "" || outcomeID == uuid.Nil {
+		return BookResult{}, fmt.Errorf("prediction recorder book query is invalid")
+	}
+	cutoff, err := time.Parse(timeLayout, r.canonical.ManifestCutoff)
+	if err != nil || at.After(cutoff) {
+		return BookResult{}, fmt.Errorf("prediction recorder book query exceeds cutoff")
+	}
+	var selected *bookCanonical
+	for i := range r.canonical.Books {
+		row := &r.canonical.Books[i]
+		exchangeAt, exchangeErr := time.Parse(timeLayout, row.ExchangeAt)
+		availableAt, availableErr := time.Parse(timeLayout, row.AvailableAt)
+		if exchangeErr != nil || availableErr != nil || row.MarketID != marketID || row.OutcomeID != outcomeID.String() || exchangeAt.After(at) || availableAt.After(at) {
+			continue
+		}
+		if selected == nil {
+			selected = row
+			continue
+		}
+		selectedExchange, _ := time.Parse(timeLayout, selected.ExchangeAt)
+		if exchangeAt.After(selectedExchange) || exchangeAt.Equal(selectedExchange) && (row.Revision > selected.Revision || row.Revision == selected.Revision && row.SourceKey > selected.SourceKey) {
+			selected = row
+		}
+	}
+	if selected == nil {
+		return BookResult{}, fmt.Errorf("prediction recorder has no eligible book")
+	}
+	result := BookResult{MarketID: selected.MarketID, OutcomeID: outcomeID, Venue: selected.Venue, SourceKey: selected.SourceKey, Revision: selected.Revision}
+	result.ExchangeAt, _ = time.Parse(timeLayout, selected.ExchangeAt)
+	result.AvailableAt, _ = time.Parse(timeLayout, selected.AvailableAt)
+	for _, level := range selected.Levels {
+		value := BookLevelResult{Price: level.Price, Size: level.Size}
+		if level.Side == "bid" {
+			result.Bids = append(result.Bids, value)
+		} else {
+			result.Asks = append(result.Asks, value)
+		}
+	}
+	return result, nil
+}
+
+// MakerFeeAt applies the exact point-in-time OVR-505 maker fee formula and
+// rounding to one simulated single-price fill.
+func (r *Recorder) MakerFeeAt(at time.Time, outcomeID uuid.UUID, venue, priceValue, quantityValue string) (FeeResult, error) {
+	if r == nil || !canonicalTime(at) || outcomeID == uuid.Nil || venue == "" {
+		return FeeResult{}, fmt.Errorf("prediction recorder maker fee query is invalid")
+	}
+	cutoff, cutoffErr := time.Parse(timeLayout, r.canonical.ManifestCutoff)
+	price, priceErr := exactDecimal(priceValue)
+	quantity, quantityErr := exactDecimal(quantityValue)
+	if cutoffErr != nil || at.After(cutoff) || priceErr != nil || quantityErr != nil || !price.GreaterThan(decimal.Zero) || !price.LessThan(decimal.NewFromInt(1)) || !quantity.GreaterThan(decimal.Zero) {
+		return FeeResult{}, fmt.Errorf("prediction recorder maker fee values are invalid")
+	}
+	var selected *feeCanonical
+	for i := range r.canonical.Fees {
+		row := &r.canonical.Fees[i]
+		availableAt, availableErr := time.Parse(timeLayout, row.AvailableAt)
+		effectiveFrom, fromErr := time.Parse(timeLayout, row.EffectiveFrom)
+		var effectiveTo time.Time
+		if row.EffectiveTo != "" {
+			effectiveTo, _ = time.Parse(timeLayout, row.EffectiveTo)
+		}
+		if availableErr != nil || fromErr != nil || row.InstrumentID != outcomeID.String() || row.Venue != normalizeToken(venue) || row.Role != string(RoleMaker) || availableAt.After(at) || effectiveFrom.After(at) || row.EffectiveTo != "" && !at.Before(effectiveTo) {
+			continue
+		}
+		if selected == nil {
+			selected = row
+			continue
+		}
+		selectedFrom, _ := time.Parse(timeLayout, selected.EffectiveFrom)
+		selectedAvailable, _ := time.Parse(timeLayout, selected.AvailableAt)
+		if effectiveFrom.After(selectedFrom) || effectiveFrom.Equal(selectedFrom) && (availableAt.After(selectedAvailable) || availableAt.Equal(selectedAvailable) && row.SourceKey > selected.SourceKey) {
+			selected = row
+		}
+	}
+	if selected == nil {
+		return FeeResult{}, fmt.Errorf("prediction recorder has no eligible maker fee")
+	}
+	rate := decimal.RequireFromString(selected.Rate)
+	fee := price.Mul(quantity)
+	if selected.Formula == string(FeeNotionalBPS) {
+		fee = fee.Mul(rate).Div(decimal.NewFromInt(10000))
+	} else {
+		fee = fee.Mul(decimal.NewFromInt(1).Sub(price)).Mul(rate)
+	}
+	if selected.Rounding == string(RoundCeiling) {
+		fee = fee.Shift(selected.Scale).Ceil().Shift(-selected.Scale)
+	} else {
+		fee = fee.Round(selected.Scale)
+	}
+	return FeeResult{SourceKey: selected.SourceKey, Amount: fee.String()}, nil
 }
