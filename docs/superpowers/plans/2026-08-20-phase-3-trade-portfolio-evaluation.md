@@ -107,28 +107,28 @@ Out of scope:
 
 ## Task 1: Evaluation policy, samples, and canonical report domain
 
-- [ ] Add immutable policy identity and strict ordered portfolio-observation,
+- [x] Add immutable policy identity and strict ordered portfolio-observation,
   closed-trade, open-lot, and execution-summary inputs.
-- [ ] Add metric value states (`available`, `unavailable`,
+- [x] Add metric value states (`available`, `unavailable`,
   `positive_infinity`) with canonical decimal strings and bounded reasons.
-- [ ] Add canonical report sections and content identity covering every parent,
+- [x] Add canonical report sections and content identity covering every parent,
   policy assumption, input sample, metric value, and availability statement.
-- [ ] Prove canonical restoration, clone safety, semantic reorder divergence,
+- [x] Prove canonical restoration, clone safety, semantic reorder divergence,
   tamper rejection, mode separation, and stable hashes.
 - [ ] Commit and push the domain slice after focused races.
 
 ## Task 2: Deterministic trade and portfolio calculations
 
-- [ ] Validate exact time/order/window/evidence/cost/exposure inputs and reject
+- [x] Validate exact time/order/window/evidence/cost/exposure inputs and reject
   duplicate, future, missing, negative, noncanonical, or inconsistent samples.
-- [ ] Compute after-cost portfolio, benchmark, drawdown/recovery, risk-adjusted,
+- [x] Compute after-cost portfolio, benchmark, drawdown/recovery, risk-adjusted,
   turnover/cost, exposure/concentration, fill/slippage, and sample metrics with
   locked frequency/rounding assumptions.
-- [ ] Compute FIFO closed-trade expectancy/profit factor/win rate/holding
+- [x] Compute FIFO closed-trade expectancy/profit factor/win rate/holding
   evidence while retaining open-lot counts and exact source fill IDs.
-- [ ] Emit bar-positive return rate only under descriptor-only curve
+- [x] Emit bar-positive return rate only under descriptor-only curve
   diagnostics; add negative tests that prevent it from populating trade fields.
-- [ ] Cover empty/short series, zero denominators, all-win/all-loss/breakeven,
+- [x] Cover empty/short series, zero denominators, all-win/all-loss/breakeven,
   unrecovered drawdown, missing observed slippage, irregular time, and extreme
   but bounded decimals without NaN or silent zero substitution.
 - [ ] Commit and push the calculator slice after focused races.
