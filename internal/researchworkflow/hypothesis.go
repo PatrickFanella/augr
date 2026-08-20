@@ -468,6 +468,18 @@ func (h *Hypothesis) AssessmentID() uuid.UUID {
 }
 func (h *Hypothesis) SpecID() uuid.UUID    { return uuid.MustParse(h.canonical.Parents.SpecID) }
 func (h *Hypothesis) VersionID() uuid.UUID { return uuid.MustParse(h.canonical.Parents.VersionID) }
+func (h *Hypothesis) VersionDigest() string {
+	if h == nil {
+		return ""
+	}
+	return h.canonical.Parents.VersionSHA256
+}
+func (h *Hypothesis) AssessmentDigest() string {
+	if h == nil {
+		return ""
+	}
+	return h.canonical.Parents.AssessmentSHA256
+}
 
 func canonicalText(value string, maximum int) bool {
 	return value != "" && value == strings.TrimSpace(value) && len(value) <= maximum && !strings.ContainsRune(value, '\x00')

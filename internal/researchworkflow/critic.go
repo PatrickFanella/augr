@@ -256,6 +256,12 @@ func (c *Critic) HypothesisID() uuid.UUID {
 	}
 	return uuid.MustParse(c.canonical.HypothesisID)
 }
+func (c *Critic) HypothesisDigest() string {
+	if c == nil {
+		return ""
+	}
+	return c.canonical.HypothesisSHA256
+}
 func (c *Critic) CanonicalBytes() json.RawMessage {
 	if c == nil {
 		return nil
