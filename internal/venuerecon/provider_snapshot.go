@@ -571,6 +571,64 @@ func (capture *ProviderCapture) Fills() []ProviderFill {
 	return append([]ProviderFill(nil), capture.canonical.Fills...)
 }
 
+func (capture *ProviderCapture) Provider() venue.Provider {
+	if capture == nil {
+		return ""
+	}
+	return capture.canonical.Provider
+}
+
+func (capture *ProviderCapture) AccountID() string {
+	if capture == nil {
+		return ""
+	}
+	return capture.canonical.AccountID
+}
+
+func (capture *ProviderCapture) Namespace() string {
+	if capture == nil {
+		return ""
+	}
+	return capture.canonical.Namespace
+}
+
+func (capture *ProviderCapture) Currency() string {
+	if capture == nil {
+		return ""
+	}
+	return capture.canonical.Currency
+}
+
+func (capture *ProviderCapture) HorizonStart() time.Time {
+	if capture == nil {
+		return time.Time{}
+	}
+	value, _ := time.Parse("2006-01-02T15:04:05.000000Z", capture.canonical.HorizonStart)
+	return value
+}
+
+func (capture *ProviderCapture) HorizonEnd() time.Time {
+	if capture == nil {
+		return time.Time{}
+	}
+	value, _ := time.Parse("2006-01-02T15:04:05.000000Z", capture.canonical.HorizonEnd)
+	return value
+}
+
+func (capture *ProviderCapture) CaptureStart() time.Time {
+	if capture == nil {
+		return time.Time{}
+	}
+	return capture.start
+}
+
+func (capture *ProviderCapture) CaptureEnd() time.Time {
+	if capture == nil {
+		return time.Time{}
+	}
+	return capture.end
+}
+
 func (snapshot *StableProviderSnapshot) ID() uuid.UUID {
 	if snapshot == nil {
 		return uuid.Nil
@@ -597,6 +655,13 @@ func (snapshot *StableProviderSnapshot) Capture() *ProviderCapture {
 		return nil
 	}
 	return snapshot.first
+}
+
+func (snapshot *StableProviderSnapshot) Captures() (*ProviderCapture, *ProviderCapture) {
+	if snapshot == nil {
+		return nil, nil
+	}
+	return snapshot.first, snapshot.second
 }
 
 func sameCapturePayload(left, right *ProviderCapture) bool {

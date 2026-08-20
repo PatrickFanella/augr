@@ -302,6 +302,83 @@ func TestCompareChangedSourceIdentityProducesTwoMissingSideIncidents(t *testing.
 	}
 }
 
+func TestValidateRunRejectsForgedChildIdentityAndIncidentRelationship(t *testing.T) {
+	t.Parallel()
+	input := matchingComparisonInput(t)
+	input.Provider.Snapshot.first.canonical.Cash = "100.26"
+	input = resealComparisonEvidence(input)
+	run, err := Compare(input)
+	if err != nil || len(run.Incidents) == 0 {
+		t.Fatalf("drift run = %+v, %v", run, err)
+	}
+	forgedID := cloneAndResealRun(t, run)
+	forgedID.Results[0].ID = uuid.New()
+	resealRun(t, forgedID)
+	if err := ValidateRun(forgedID); err == nil || !strings.Contains(err.Error(), "result identity") {
+		t.Fatalf("forged result identity error = %v", err)
+	}
+	forgedIncident := cloneAndResealRun(t, run)
+	forgedIncident.Incidents[0].Reason = ReasonSnapshotUnstable
+	resealRun(t, forgedIncident)
+	if err := ValidateRun(forgedIncident); err == nil || !strings.Contains(err.Error(), "incidents do not match") {
+		t.Fatalf("forged incident relationship error = %v", err)
+	}
+}
+
+func TestValidatePersistableRunRequiresUnmodifiedComparerOutput(t *testing.T) {
+	t.Parallel()
+	run, err := Compare(matchingComparisonInput(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidatePersistableRun(run); err != nil {
+		t.Fatalf("comparer output rejected: %v", err)
+	}
+	reconstructed, err := RunFromCanonical(run.ID, run.SHA256, run.CanonicalBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidatePersistableRun(reconstructed); err == nil || !strings.Contains(err.Error(), "not emitted by the comparer") {
+		t.Fatalf("reconstructed run persistence error = %v", err)
+	}
+	modified := cloneAndResealRun(t, run)
+	modified.Clean = !modified.Clean
+	resealRun(t, modified)
+	if err := ValidatePersistableRun(modified); err == nil {
+		t.Fatal("modified comparer output retained generation authority")
+	}
+}
+
+func cloneAndResealRun(t *testing.T, source *Run) *Run {
+	t.Helper()
+	result := *source
+	result.Results = append([]Result(nil), source.Results...)
+	result.Incidents = append([]Incident(nil), source.Incidents...)
+	result.CanonicalBytes = append(json.RawMessage(nil), source.CanonicalBytes...)
+	return &result
+}
+
+func resealRun(t *testing.T, run *Run) {
+	t.Helper()
+	payload := struct {
+		Schema             string     `json:"schema"`
+		PolicyVersion      string     `json:"policy_version"`
+		ProviderSnapshotID string     `json:"provider_snapshot_id"`
+		LocalSnapshotID    string     `json:"local_snapshot_id"`
+		Clean              bool       `json:"clean"`
+		Results            []Result   `json:"results"`
+		Incidents          []Incident `json:"incidents"`
+	}{run.Schema, run.PolicyVersion, projectionUUIDString(run.ProviderSnapshotID), run.LocalSnapshotID.String(), run.Clean, run.Results, run.Incidents}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	run.CanonicalBytes = encoded
+	digest := sha256.Sum256(encoded)
+	run.SHA256 = hex.EncodeToString(digest[:])
+	run.ID = economicid.DeterministicUUID(runIDDomain, runSchemaV1+"@sha256:"+run.SHA256)
+}
+
 func TestRunnerUsesOnlyReadOnlyCaptureInterfaces(t *testing.T) {
 	t.Parallel()
 	input := matchingComparisonInput(t)

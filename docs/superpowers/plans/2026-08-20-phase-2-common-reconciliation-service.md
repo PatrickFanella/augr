@@ -337,19 +337,19 @@ go test -race -count=1 ./internal/venuerecon -run 'Compare|Incident|Runner|ReadO
 
 ## Task 5: Migration 75 and PostgreSQL repository
 
-- [ ] Add source-shape RED tests for complete tables/constraints/lock sets,
+- [x] Add source-shape RED tests for complete tables/constraints/lock sets,
   canonical reconstruction, parent/child agreement, append-only triggers, no
   grants or activation, and empty-only rollback.
-- [ ] Add direct PostgreSQL attacks for forged policy/snapshot/run/result/
+- [x] Add direct PostgreSQL attacks for forged policy/snapshot/run/result/
   incident bytes, JSON, hashes, IDs, counts, optional values, severity, copied
   facts, child omission/duplication, mutation, deletion, and orphan insertion.
-- [ ] Add repository tests for exact register/load/reconstruct/run reload,
+- [x] Add repository tests for exact register/load/reconstruct/run reload,
   identical retry, changed-payload conflicts, crash rollback, eight-writer
   convergence, and restart without duplicate incidents.
-- [ ] Race migration up with a snapshot/run attempt and migration down with an
+- [x] Race migration up with a snapshot/run attempt and migration down with an
   evidence insert; prove serialization and no orphan facts.
-- [ ] Prove nonempty downgrade refusal and empty `75 -> 74 -> 75` preservation.
-- [ ] Bump `RequiredSchemaVersion` only after isolated suites pass.
+- [x] Prove nonempty downgrade refusal and empty `75 -> 74 -> 75` preservation.
+- [x] Bump `RequiredSchemaVersion` only after isolated suites pass.
 
 Run:
 

@@ -17,6 +17,7 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/ledger"
 	"github.com/PatrickFanella/get-rich-quick/internal/marketdata"
 	"github.com/PatrickFanella/get-rich-quick/internal/simulation"
+	"github.com/PatrickFanella/get-rich-quick/internal/venuerecon"
 )
 
 var (
@@ -125,6 +126,16 @@ type AccountingReconciliationRepository interface {
 	RecordAccountingRun(context.Context, *accountingrecon.Run) (*accountingrecon.Run, error)
 	GetAccountingRunByID(context.Context, uuid.UUID) (*accountingrecon.Run, error)
 	ListAccountingRuns(context.Context, uuid.UUID, int, int) ([]*accountingrecon.Run, error)
+}
+
+// VenueReconciliationRepository appends exact read-only provider/local
+// evidence and deterministic discrepancy graphs. It exposes no mutation path.
+type VenueReconciliationRepository interface {
+	RegisterVenueReconciliationPolicy(context.Context, *venuerecon.PolicyArtifact) (*venuerecon.PolicyArtifact, error)
+	RecordVenueProviderSnapshot(context.Context, *venuerecon.StableProviderSnapshot, time.Time) error
+	RecordVenueLocalSnapshot(context.Context, *venuerecon.LocalSnapshot, time.Time) error
+	RecordVenueReconciliationRun(context.Context, *venuerecon.Run, time.Time) (*venuerecon.Run, error)
+	GetVenueReconciliationRun(context.Context, uuid.UUID) (*venuerecon.Run, error)
 }
 
 // QuoteSnapshotRepository persists immutable, exact market observations and

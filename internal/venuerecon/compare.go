@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 
@@ -55,6 +56,7 @@ type Run struct {
 	Incidents          []Incident      `json:"incidents"`
 	SHA256             string          `json:"sha256"`
 	CanonicalBytes     json.RawMessage `json:"-"`
+	generationSeal     string
 }
 
 type CompareInput struct {
@@ -324,28 +326,11 @@ func finishRun(policy *Policy, providerID, localID uuid.UUID, results []Result) 
 		return results[i].Key < results[j].Key
 	})
 	for index := range results {
-		identity := struct {
-			PolicyVersion      string         `json:"policy_version"`
-			ProviderSnapshotID string         `json:"provider_snapshot_id"`
-			LocalSnapshotID    string         `json:"local_snapshot_id"`
-			Key                string         `json:"key"`
-			Kind               ComparisonKind `json:"kind"`
-			Status             ResultStatus   `json:"status"`
-			Reason             ReasonCode     `json:"reason"`
-			Severity           Severity       `json:"severity"`
-			ProviderValue      *string        `json:"provider_value"`
-			LocalValue         *string        `json:"local_value"`
-			Delta              *string        `json:"delta"`
-		}{
-			policy.Version(), projectionUUIDString(providerID), localID.String(), results[index].Key, results[index].Kind,
-			results[index].Status, results[index].Reason, results[index].Severity, results[index].ProviderValue,
-			results[index].LocalValue, results[index].Delta,
-		}
-		encoded, err := json.Marshal(identity)
+		id, err := deterministicResultID(policy.Version(), providerID, localID, results[index])
 		if err != nil {
 			return nil, err
 		}
-		results[index].ID = economicid.DeterministicUUID(resultIDDomain, string(encoded))
+		results[index].ID = id
 	}
 	incidents := make([]Incident, 0)
 	for _, result := range results {
@@ -376,8 +361,8 @@ func finishRun(policy *Policy, providerID, localID uuid.UUID, results []Result) 
 	return &Run{
 		ID: economicid.DeterministicUUID(runIDDomain, runSchemaV1+"@sha256:"+digest), Schema: runSchemaV1,
 		PolicyVersion: policy.Version(), ProviderSnapshotID: providerID, LocalSnapshotID: localID, Clean: len(incidents) == 0,
-		Results: append([]Result(nil), results...), Incidents: append([]Incident(nil), incidents...), SHA256: digest,
-		CanonicalBytes: append(json.RawMessage(nil), encoded...),
+		Results: append(make([]Result, 0, len(results)), results...), Incidents: append(make([]Incident, 0, len(incidents)), incidents...), SHA256: digest,
+		CanonicalBytes: append(json.RawMessage(nil), encoded...), generationSeal: digest,
 	}, nil
 }
 
@@ -398,6 +383,10 @@ func validateStableProviderSnapshot(snapshot *StableProviderSnapshot) error {
 	return nil
 }
 
+func ValidateStableProviderSnapshot(snapshot *StableProviderSnapshot) error {
+	return validateStableProviderSnapshot(snapshot)
+}
+
 func validateLocalSnapshot(snapshot *LocalSnapshot) error {
 	if snapshot == nil {
 		return fmt.Errorf("local snapshot is required")
@@ -408,6 +397,134 @@ func validateLocalSnapshot(snapshot *LocalSnapshot) error {
 		return fmt.Errorf("local snapshot mutable fields differ from canonical evidence")
 	}
 	return nil
+}
+
+func ValidateLocalSnapshot(snapshot *LocalSnapshot) error { return validateLocalSnapshot(snapshot) }
+
+func ValidateRun(run *Run) error {
+	if run == nil || run.Schema != runSchemaV1 || run.ID == uuid.Nil || run.PolicyVersion == "" || run.LocalSnapshotID == uuid.Nil || len(run.Results) == 0 {
+		return fmt.Errorf("venue reconciliation run envelope is invalid")
+	}
+	digest := sha256Hex(run.CanonicalBytes)
+	if digest != run.SHA256 || run.ID != economicid.DeterministicUUID(runIDDomain, runSchemaV1+"@sha256:"+digest) ||
+		run.Clean != (len(run.Incidents) == 0) {
+		return fmt.Errorf("venue reconciliation run identity is invalid")
+	}
+	var payload struct {
+		Schema             string     `json:"schema"`
+		PolicyVersion      string     `json:"policy_version"`
+		ProviderSnapshotID string     `json:"provider_snapshot_id"`
+		LocalSnapshotID    string     `json:"local_snapshot_id"`
+		Clean              bool       `json:"clean"`
+		Results            []Result   `json:"results"`
+		Incidents          []Incident `json:"incidents"`
+	}
+	if err := json.Unmarshal(run.CanonicalBytes, &payload); err != nil || payload.Schema != run.Schema || payload.PolicyVersion != run.PolicyVersion ||
+		payload.ProviderSnapshotID != projectionUUIDString(run.ProviderSnapshotID) || payload.LocalSnapshotID != run.LocalSnapshotID.String() ||
+		payload.Clean != run.Clean || !reflect.DeepEqual(payload.Results, run.Results) || !reflect.DeepEqual(payload.Incidents, run.Incidents) {
+		return fmt.Errorf("venue reconciliation run bytes do not match envelope")
+	}
+	policy, err := NewPolicy(ReviewedPolicyV1Input())
+	if err != nil || run.PolicyVersion != policy.Version() {
+		return fmt.Errorf("venue reconciliation run policy is not the reviewed policy")
+	}
+	expectedIncidents := make([]Incident, 0, len(run.Incidents))
+	for index, result := range run.Results {
+		if result.Key == "" || (index > 0 && (run.Results[index-1].Key > result.Key ||
+			(run.Results[index-1].Key == result.Key && run.Results[index-1].Reason >= result.Reason))) {
+			return fmt.Errorf("venue reconciliation results are not uniquely ordered")
+		}
+		rule, ok := policy.Reason(result.Reason)
+		if !ok || result.Kind != rule.Kind || result.Status != rule.Status || result.Severity != rule.Severity {
+			return fmt.Errorf("venue reconciliation result policy fields are invalid")
+		}
+		expectedID, idErr := deterministicResultID(run.PolicyVersion, run.ProviderSnapshotID, run.LocalSnapshotID, result)
+		if idErr != nil || result.ID != expectedID {
+			return fmt.Errorf("venue reconciliation result identity is invalid")
+		}
+		if result.Status != StatusMatched {
+			expectedIncidents = append(expectedIncidents, Incident{
+				ID: economicid.DeterministicUUID(incidentIDDomain, result.ID.String()), ResultID: result.ID,
+				Key: result.Key, Reason: result.Reason, Severity: result.Severity,
+			})
+		}
+	}
+	if !reflect.DeepEqual(expectedIncidents, run.Incidents) {
+		return fmt.Errorf("venue reconciliation incidents do not match non-clean results")
+	}
+	return nil
+}
+
+// ValidatePersistableRun accepts only an unmodified run emitted by Compare.
+// Reconstructed database evidence is deliberately readable but not writable.
+func ValidatePersistableRun(run *Run) error {
+	if err := ValidateRun(run); err != nil {
+		return err
+	}
+	if run.generationSeal == "" || run.generationSeal != run.SHA256 {
+		return fmt.Errorf("venue reconciliation run was not emitted by the comparer or was modified")
+	}
+	return nil
+}
+
+func deterministicResultID(policyVersion string, providerID, localID uuid.UUID, result Result) (uuid.UUID, error) {
+	identity := struct {
+		PolicyVersion      string         `json:"policy_version"`
+		ProviderSnapshotID string         `json:"provider_snapshot_id"`
+		LocalSnapshotID    string         `json:"local_snapshot_id"`
+		Key                string         `json:"key"`
+		Kind               ComparisonKind `json:"kind"`
+		Status             ResultStatus   `json:"status"`
+		Reason             ReasonCode     `json:"reason"`
+		Severity           Severity       `json:"severity"`
+		ProviderValue      *string        `json:"provider_value"`
+		LocalValue         *string        `json:"local_value"`
+		Delta              *string        `json:"delta"`
+	}{
+		policyVersion, projectionUUIDString(providerID), localID.String(), result.Key, result.Kind,
+		result.Status, result.Reason, result.Severity, result.ProviderValue, result.LocalValue, result.Delta,
+	}
+	encoded, err := json.Marshal(identity)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	return economicid.DeterministicUUID(resultIDDomain, string(encoded)), nil
+}
+
+func RunFromCanonical(id uuid.UUID, digest string, canonical json.RawMessage) (*Run, error) {
+	var payload struct {
+		Schema             string     `json:"schema"`
+		PolicyVersion      string     `json:"policy_version"`
+		ProviderSnapshotID string     `json:"provider_snapshot_id"`
+		LocalSnapshotID    string     `json:"local_snapshot_id"`
+		Clean              bool       `json:"clean"`
+		Results            []Result   `json:"results"`
+		Incidents          []Incident `json:"incidents"`
+	}
+	if err := json.Unmarshal(canonical, &payload); err != nil {
+		return nil, fmt.Errorf("decode venue reconciliation run: %w", err)
+	}
+	providerID := uuid.Nil
+	var err error
+	if payload.ProviderSnapshotID != "" {
+		providerID, err = uuid.Parse(payload.ProviderSnapshotID)
+		if err != nil {
+			return nil, fmt.Errorf("decode provider snapshot ID: %w", err)
+		}
+	}
+	localID, err := uuid.Parse(payload.LocalSnapshotID)
+	if err != nil {
+		return nil, fmt.Errorf("decode local snapshot ID: %w", err)
+	}
+	run := &Run{
+		ID: id, Schema: payload.Schema, PolicyVersion: payload.PolicyVersion, ProviderSnapshotID: providerID,
+		LocalSnapshotID: localID, Clean: payload.Clean, Results: payload.Results, Incidents: payload.Incidents,
+		SHA256: digest, CanonicalBytes: append(json.RawMessage(nil), canonical...),
+	}
+	if err := ValidateRun(run); err != nil {
+		return nil, err
+	}
+	return run, nil
 }
 
 func allMatched(results []Result) bool {

@@ -467,6 +467,48 @@ func (snapshot *LocalSnapshot) Issues() []LocalIssueEvidence {
 	return append([]LocalIssueEvidence(nil), snapshot.canonical.Issues...)
 }
 
+func (snapshot *LocalSnapshot) AccountID() uuid.UUID {
+	if snapshot == nil {
+		return uuid.Nil
+	}
+	value, _ := uuid.Parse(snapshot.canonical.AccountID)
+	return value
+}
+
+func (snapshot *LocalSnapshot) Provider() venue.Provider {
+	if snapshot == nil {
+		return ""
+	}
+	return snapshot.canonical.Provider
+}
+
+func (snapshot *LocalSnapshot) Namespace() string {
+	if snapshot == nil {
+		return ""
+	}
+	return snapshot.canonical.Namespace
+}
+
+func (snapshot *LocalSnapshot) CheckpointID() uuid.UUID {
+	if snapshot == nil {
+		return uuid.Nil
+	}
+	value, _ := uuid.Parse(snapshot.canonical.CheckpointID)
+	return value
+}
+
+func (snapshot *LocalSnapshot) TransactionIDs() []uuid.UUID {
+	if snapshot == nil {
+		return nil
+	}
+	result := make([]uuid.UUID, 0, len(snapshot.canonical.TransactionIDs))
+	for _, raw := range snapshot.canonical.TransactionIDs {
+		value, _ := uuid.Parse(raw)
+		result = append(result, value)
+	}
+	return result
+}
+
 func sameLocalSnapshotPayload(left, right *LocalSnapshot) bool {
 	return left != nil && right != nil && left.id == right.id && left.digest == right.digest && bytes.Equal(left.bytes, right.bytes)
 }
