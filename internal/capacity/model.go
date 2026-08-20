@@ -44,6 +44,7 @@ const (
 
 type EvaluationEvidence interface {
 	ID() uuid.UUID
+	ProgramID() uuid.UUID
 	Digest() string
 	CanonicalBytes() json.RawMessage
 	Mode() strategycatalog.ExperimentMode
@@ -76,37 +77,41 @@ type Contract struct {
 }
 
 func FromBenchmark(e EvaluationEvidence, source *benchmark.Report) (*Contract, error) {
-	if source == nil {
+	if source == nil || e == nil || source.EvaluationID() != e.ID() {
 		return nil, fmt.Errorf("capacity benchmark source is required")
 	}
 	return unavailable(e, FamilyPassive, source.ID(), source.Digest(), source.StrategyTotalReturn(), "source_capacity_not_observed")
 }
 
-func FromWheel(e EvaluationEvidence, source *wheel.Report) (*Contract, error) {
-	if source == nil {
+func FromWheel(e EvaluationEvidence, program *wheel.Program) (*Contract, error) {
+	if program == nil || program.Identity() == nil || program.Report() == nil || e == nil || e.ProgramID() != program.Identity().ID() {
 		return nil, fmt.Errorf("capacity wheel source is required")
 	}
+	source := program.Report()
 	return unavailable(e, FamilyWheel, source.ID(), source.Digest(), source.AfterCostTotalReturn(), "source_capacity_not_observed")
 }
 
-func FromMomentum(e EvaluationEvidence, source *momentum.Report) (*Contract, error) {
-	if source == nil {
+func FromMomentum(e EvaluationEvidence, program *momentum.Program) (*Contract, error) {
+	if program == nil || program.Identity() == nil || program.Report() == nil || e == nil || e.ProgramID() != program.Identity().ID() {
 		return nil, fmt.Errorf("capacity momentum source is required")
 	}
+	source := program.Report()
 	return unavailable(e, FamilyMomentum, source.ID(), source.Digest(), source.AfterCostTotalReturn(), "source_capacity_not_observed")
 }
 
-func FromTrend(e EvaluationEvidence, source *trend.Report) (*Contract, error) {
-	if source == nil {
+func FromTrend(e EvaluationEvidence, program *trend.Program) (*Contract, error) {
+	if program == nil || program.Identity() == nil || program.Report() == nil || e == nil || e.ProgramID() != program.Identity().ID() {
 		return nil, fmt.Errorf("capacity trend source is required")
 	}
+	source := program.Report()
 	return unavailable(e, FamilyTrend, source.ID(), source.Digest(), source.AfterCostTotalReturn(), "source_capacity_not_observed")
 }
 
-func FromDefinedRisk(e EvaluationEvidence, scenario *definedrisk.Scenario, source *definedrisk.Report) (*Contract, error) {
-	if scenario == nil || source == nil || source.Outcome() != "settled" || source.Contracts() < 1 {
+func FromDefinedRisk(e EvaluationEvidence, scenario *definedrisk.Scenario, program *definedrisk.Program) (*Contract, error) {
+	if scenario == nil || program == nil || program.Identity() == nil || program.Report() == nil || e == nil || e.ProgramID() != program.Identity().ID() || program.Report().Outcome() != "settled" || program.Report().Contracts() < 1 {
 		return nil, fmt.Errorf("capacity defined-risk source is incomplete")
 	}
+	source := program.Report()
 	var report struct {
 		AfterCostReturn string `json:"after_cost_total_return"`
 	}

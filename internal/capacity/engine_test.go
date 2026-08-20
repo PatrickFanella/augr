@@ -11,24 +11,25 @@ import (
 
 	"github.com/PatrickFanella/get-rich-quick/internal/capital"
 	"github.com/PatrickFanella/get-rich-quick/internal/evaluation"
-	"github.com/PatrickFanella/get-rich-quick/internal/strategy/definedrisk"
 	definedriskqualification "github.com/PatrickFanella/get-rich-quick/internal/strategy/definedrisk/qualification"
 	"github.com/PatrickFanella/get-rich-quick/internal/strategycatalog"
 )
 
 type fakeEvaluation struct {
-	id     uuid.UUID
-	digest string
-	raw    json.RawMessage
-	value  string
+	id        uuid.UUID
+	programID uuid.UUID
+	digest    string
+	raw       json.RawMessage
+	value     string
 }
 
 func newFakeEvaluation(value string) *fakeEvaluation {
 	raw := json.RawMessage(`{"schema":"trade-portfolio-evaluation-v1","state":"completed"}`)
-	return &fakeEvaluation{uuid.NewSHA1(uuid.NameSpaceOID, []byte("capacity/evaluation/"+value)), hash(raw), raw, value}
+	return &fakeEvaluation{id: uuid.NewSHA1(uuid.NameSpaceOID, []byte("capacity/evaluation/"+value)), programID: uuid.NewSHA1(uuid.NameSpaceOID, []byte("capacity/program")), digest: hash(raw), raw: raw, value: value}
 }
-func (f *fakeEvaluation) ID() uuid.UUID  { return f.id }
-func (f *fakeEvaluation) Digest() string { return f.digest }
+func (f *fakeEvaluation) ID() uuid.UUID        { return f.id }
+func (f *fakeEvaluation) ProgramID() uuid.UUID { return f.programID }
+func (f *fakeEvaluation) Digest() string       { return f.digest }
 func (f *fakeEvaluation) CanonicalBytes() json.RawMessage {
 	return append(json.RawMessage(nil), f.raw...)
 }
@@ -89,10 +90,11 @@ func TestComparisonRetainsSixTiersUnavailableFamiliesAndSaturation(t *testing.T)
 }
 
 func TestDefinedRiskAdapterDerivesReservationAndTwoLegDepth(t *testing.T) {
-	fixture, err := definedriskqualification.Build(strategycatalog.ExperimentPaperScored, definedrisk.ExecutionAtomic, definedrisk.BullCall, "10", "120")
+	runnerFixture, err := definedriskqualification.BuildRunner(strategycatalog.ExperimentPaperScored)
 	if err != nil {
 		t.Fatal(err)
 	}
+	fixture := runnerFixture.Fixture
 	var source struct {
 		Return string `json:"after_cost_total_return"`
 	}
@@ -100,7 +102,8 @@ func TestDefinedRiskAdapterDerivesReservationAndTwoLegDepth(t *testing.T) {
 		t.Fatal("report")
 	}
 	evaluationEvidence := newFakeEvaluation(source.Return)
-	contract, err := FromDefinedRisk(evaluationEvidence, fixture.Scenario, fixture.Report)
+	evaluationEvidence.programID = runnerFixture.Program.Identity().ID()
+	contract, err := FromDefinedRisk(evaluationEvidence, fixture.Scenario, runnerFixture.Program)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +111,7 @@ func TestDefinedRiskAdapterDerivesReservationAndTwoLegDepth(t *testing.T) {
 		t.Fatalf("contract=%+v", contract.canonical)
 	}
 	evaluationEvidence.value = "0"
-	if _, err = FromDefinedRisk(evaluationEvidence, fixture.Scenario, fixture.Report); err == nil {
+	if _, err = FromDefinedRisk(evaluationEvidence, fixture.Scenario, runnerFixture.Program); err == nil {
 		t.Fatal("return mismatch accepted")
 	}
 }
