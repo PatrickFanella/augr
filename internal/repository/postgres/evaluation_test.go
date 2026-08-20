@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/evaluation"
 	"github.com/PatrickFanella/get-rich-quick/internal/experimentrun"
@@ -192,6 +194,30 @@ func TestEvaluationRepositoryRejectsMissingPolicyAndResult(t *testing.T) {
 	}
 }
 
+func TestEvaluationRepositoryRejectsForgedNormalizedMetricOnReload(t *testing.T) {
+	fixture := newEvaluationFixture(t)
+	ctx := fixture.experiment.strategy.ctx
+	if _, err := fixture.repo.RegisterPolicy(ctx, fixture.policy); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.repo.RecordEvaluation(ctx, fixture.report); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.experiment.strategy.pool.Exec(ctx, `ALTER TABLE evaluation_metrics DISABLE TRIGGER USER`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.experiment.strategy.pool.Exec(ctx, `UPDATE evaluation_metrics SET value='0.9'
+		WHERE evaluation_id=$1 AND section='portfolio' AND name='after_cost_total_return'`, fixture.report.ID()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.experiment.strategy.pool.Exec(ctx, `ALTER TABLE evaluation_metrics ENABLE TRIGGER USER`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.repo.GetEvaluation(ctx, fixture.report.ID()); err == nil || !strings.Contains(err.Error(), "does not reconstruct") {
+		t.Fatalf("forged normalized metric reload error=%v", err)
+	}
+}
+
 func TestEvaluationGoldenTradeEvidencePersistsRelationally(t *testing.T) {
 	pool := newExperimentRunnerGoldenPool(t)
 	if _, err := pool.Exec(context.Background(), repositoryMigrationSQL(t, "000079_trade_portfolio_evaluations.up.sql")); err != nil {
@@ -247,6 +273,268 @@ func TestEvaluationGoldenTradeEvidencePersistsRelationally(t *testing.T) {
 		(SELECT count(*) FROM evaluation_trade_fill_ids WHERE evaluation_id=$1)`, report.ID()).Scan(&trades, &fills); err != nil || trades != 1 || fills != 2 {
 		t.Fatalf("relational trade/fill counts=%d/%d err=%v", trades, fills, err)
 	}
+}
+
+func TestEvaluationGoldenScoredStressAndTradeOutcomeIsolation(t *testing.T) {
+	pool := newExperimentRunnerGoldenPool(t)
+	if _, err := pool.Exec(context.Background(), repositoryMigrationSQL(t, "000079_trade_portfolio_evaluations.up.sql")); err != nil {
+		t.Fatal(err)
+	}
+	scoredFixture := persistExperimentRunnerGolden(t, pool, strategycatalog.ExperimentPaperScored)
+	stressFixture := persistExperimentRunnerGolden(t, pool, strategycatalog.ExperimentPaperStress)
+	runRepo := NewExperimentRunRepo(pool)
+	scoredRunner, _ := experimentrun.NewRunner(qualification.Loader{Graph: scoredFixture.Graph}, runRepo)
+	stressRunner, _ := experimentrun.NewRunner(qualification.Loader{Graph: stressFixture.Graph}, runRepo)
+	scoredResult := runGoldenExperiment(t, scoredRunner, scoredFixture, uuid.MustParse("30430000-0000-4000-8000-000000000001"), 0)
+	stressResult := runGoldenExperiment(t, stressRunner, stressFixture, uuid.MustParse("30430000-0000-4000-8000-000000000002"), 0)
+	policy, err := goldenEvaluationPolicy()
+	if err != nil {
+		t.Fatal(err)
+	}
+	winning := buildGoldenEvaluationReport(t, scoredFixture, scoredResult, policy, "2", "0.99", []string{"25000", "25001", "25002"}, false)
+	breakeven := buildGoldenEvaluationReport(t, scoredFixture, scoredResult, policy, "1.01", "0", []string{"25000", "25001", "25002"}, true)
+	recovered := buildGoldenEvaluationReport(t, scoredFixture, scoredResult, policy, "3", "1.99", []string{"25000", "24900", "25000"}, false)
+	losing := buildGoldenEvaluationReport(t, stressFixture, stressResult, policy, "0.05", "-0.96", []string{"5000000", "5000100", "4999900"}, false)
+	repo := NewEvaluationRepo(pool)
+	if _, err := repo.RegisterPolicy(context.Background(), policy); err != nil {
+		t.Fatal(err)
+	}
+	for _, report := range []*evaluation.Report{winning, breakeven, recovered, losing} {
+		if _, err := repo.RecordEvaluation(context.Background(), report); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if winning.ID() == breakeven.ID() || winning.ID() == recovered.ID() || winning.ID() == losing.ID() || winning.AccountID() == losing.AccountID() ||
+		winning.Mode() != strategycatalog.ExperimentPaperScored || losing.Mode() != strategycatalog.ExperimentPaperStress {
+		t.Fatal("scored, stress, and trade-outcome identities were not isolated")
+	}
+	if got := evaluationMetric(winning, "trade", "win_rate").Value; got != "1" {
+		t.Fatalf("winning trade win rate=%s", got)
+	}
+	if got := evaluationMetric(breakeven, "trade", "win_rate").Value; got != "0" {
+		t.Fatalf("breakeven trade win rate=%s", got)
+	}
+	if left, right := evaluationMetric(winning, "curve_diagnostics", "bar_positive_return_rate"), evaluationMetric(breakeven, "curve_diagnostics", "bar_positive_return_rate"); left.Value != "1" || left.Value != right.Value || left.Description != "descriptor_only_not_trade_win_rate" {
+		t.Fatalf("identical curve descriptors diverged: %+v / %+v", left, right)
+	}
+	if metric := evaluationMetric(breakeven, "cost", "observed_slippage"); metric.State != evaluation.MetricUnavailable || metric.Reason != "observed_slippage_not_available" {
+		t.Fatalf("missing observed slippage=%+v", metric)
+	}
+	if metric := evaluationMetric(recovered, "portfolio", "maximum_drawdown_recovery_periods"); metric.State != evaluation.MetricAvailable || metric.Value != "1" {
+		t.Fatalf("recovered drawdown=%+v", metric)
+	}
+	if metric := evaluationMetric(losing, "portfolio", "maximum_drawdown_recovery_periods"); metric.State != evaluation.MetricUnavailable || metric.Reason != "drawdown_unrecovered" {
+		t.Fatalf("unrecovered stress drawdown=%+v", metric)
+	}
+	var scoredRows, stressRows, crossed int
+	if err := pool.QueryRow(context.Background(), `SELECT
+		(SELECT count(*) FROM trade_portfolio_evaluations WHERE experiment_id=$1 AND mode='paper_scored'),
+		(SELECT count(*) FROM trade_portfolio_evaluations WHERE experiment_id=$2 AND mode='paper_stress'),
+		(SELECT count(*) FROM trade_portfolio_evaluations WHERE experiment_id=$1 AND mode='paper_stress')`,
+		scoredResult.ExperimentID(), stressResult.ExperimentID()).Scan(&scoredRows, &stressRows, &crossed); err != nil || scoredRows != 3 || stressRows != 1 || crossed != 0 {
+		t.Fatalf("scored/stress rows=%d/%d crossed=%d err=%v", scoredRows, stressRows, crossed, err)
+	}
+}
+
+func TestEvaluationGoldenTradeAndFillStageRollback(t *testing.T) {
+	for _, stage := range []string{"evaluation_trade", "evaluation_fill"} {
+		t.Run(stage, func(t *testing.T) {
+			pool := newExperimentRunnerGoldenPool(t)
+			if _, err := pool.Exec(context.Background(), repositoryMigrationSQL(t, "000079_trade_portfolio_evaluations.up.sql")); err != nil {
+				t.Fatal(err)
+			}
+			fixture := persistExperimentRunnerGolden(t, pool, strategycatalog.ExperimentPaperScored)
+			runner, _ := experimentrun.NewRunner(qualification.Loader{Graph: fixture.Graph}, NewExperimentRunRepo(pool))
+			result := runGoldenExperiment(t, runner, fixture, uuid.New(), 0)
+			policy, _ := goldenEvaluationPolicy()
+			report := buildGoldenEvaluationReport(t, fixture, result, policy, "2", "0.99", []string{"25000", "24900", "25000"}, false)
+			repo := NewEvaluationRepo(pool)
+			if _, err := repo.RegisterPolicy(context.Background(), policy); err != nil {
+				t.Fatal(err)
+			}
+			injected := errors.New("stop")
+			repo.afterStage = func(candidate string) error {
+				if candidate == stage {
+					return injected
+				}
+				return nil
+			}
+			if _, err := repo.RecordEvaluation(context.Background(), report); !errors.Is(err, injected) {
+				t.Fatalf("injected %s error=%v", stage, err)
+			}
+			var count int
+			if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM trade_portfolio_evaluations`).Scan(&count); err != nil || count != 0 {
+				t.Fatalf("partial report count=%d err=%v", count, err)
+			}
+		})
+	}
+}
+
+func TestEvaluationRetainedQualification(t *testing.T) {
+	databaseURL := os.Getenv("EVALUATION_QUALIFICATION_DB_URL")
+	if databaseURL == "" {
+		t.Skip("set EVALUATION_QUALIFICATION_DB_URL to the retained OVR-303 schema-79 database")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	var schema string
+	var version, existing int
+	if err := pool.QueryRow(ctx, `SELECT current_schema()`).Scan(&schema); err != nil || schema != "public" {
+		t.Fatalf("qualification schema=%q err=%v", schema, err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT version FROM schema_migrations WHERE NOT dirty`).Scan(&version); err != nil || version != 79 {
+		t.Fatalf("qualification version=%d err=%v", version, err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM trade_portfolio_evaluations`).Scan(&existing); err != nil || existing != 0 {
+		t.Fatalf("qualification evaluation count=%d err=%v", existing, err)
+	}
+	var resultID uuid.UUID
+	if err := pool.QueryRow(ctx, `SELECT id FROM experiment_run_results ORDER BY created_at,id LIMIT 1`).Scan(&resultID); err != nil {
+		t.Fatal(err)
+	}
+	runRepo := NewExperimentRunRepo(pool)
+	result, err := runRepo.GetResult(ctx, resultID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := runRepo.GetPlan(ctx, result.PlanID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var instrumentID uuid.UUID
+	fillIDs := make([]uuid.UUID, 0, 2)
+	rows, err := pool.Query(ctx, `SELECT id,instrument_id FROM execution_fills WHERE account_id=$1 ORDER BY created_at,id LIMIT 2`, result.AccountID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var fillID, candidate uuid.UUID
+		if err := rows.Scan(&fillID, &candidate); err != nil {
+			t.Fatal(err)
+		}
+		if instrumentID == uuid.Nil {
+			instrumentID = candidate
+		} else if instrumentID != candidate {
+			t.Fatal("retained fills use different instruments")
+		}
+		fillIDs = append(fillIDs, fillID)
+	}
+	rows.Close()
+	if len(fillIDs) != 2 {
+		t.Fatalf("retained fill count=%d", len(fillIDs))
+	}
+	policy, err := evaluation.NewPolicy(evaluation.PolicyInput{
+		Version: "evaluation-policy-v1@retained", Frequency: "minute", PeriodsPerYear: 98280,
+		ReturnKind: "simple", CashConvention: "explicit_per_period", LotMethod: "fifo", RecoveryDefinition: "first_equity_at_or_above_prior_peak", DecimalScale: 12,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	report, err := evaluation.NewReport(evaluation.ReportInput{
+		Result: result, Policy: policy, EvaluationStart: plan.EvaluationStart(), EvaluationEnd: plan.EvaluationEnd(),
+		OpenLotCount: 1, Execution: evaluation.ExecutionInput{AttemptedOrders: "1", FilledOrders: "1", AttemptedQuantity: "10", FilledQuantity: "10"},
+		Observations: []evaluation.ObservationInput{
+			{ObservedAt: plan.EvaluationStart(), Equity: "25000", BenchmarkValue: "100", CashReturn: "0", GrossExposure: "0", NetExposure: "0", LargestPositionWeight: "0", CumulativeOwnershipCost: "0", CumulativeTurnover: "0", CumulativeModeledSlippage: "0", CumulativeObservedSlippage: textPointer("0"), EvidenceID: result.QualityResultID(), EvidenceSHA256: strings.Repeat("a", 64)},
+			{ObservedAt: plan.EvaluationStart().Add(time.Minute), Equity: "25000.04", BenchmarkValue: "100.01", CashReturn: "0.000001", GrossExposure: "102.05", NetExposure: "102.05", LargestPositionWeight: "0.004082", CumulativeOwnershipCost: "0.5", CumulativeTurnover: "0.004082", CumulativeModeledSlippage: "0.5", CumulativeObservedSlippage: textPointer("0.5"), EvidenceID: fillIDs[0], EvidenceSHA256: strings.Repeat("b", 64)},
+			{ObservedAt: plan.EvaluationEnd(), Equity: "24999.04", BenchmarkValue: "100.02", CashReturn: "0.000001", GrossExposure: "0", NetExposure: "0", LargestPositionWeight: "0", CumulativeOwnershipCost: "1.01", CumulativeTurnover: "0.008164", CumulativeModeledSlippage: "1.01", CumulativeObservedSlippage: nil, EvidenceID: fillIDs[1], EvidenceSHA256: strings.Repeat("c", 64)},
+		}, ClosedTrades: []evaluation.ClosedTradeInput{{
+			InstrumentID: instrumentID, Side: "long", Quantity: "5", EntryFillIDs: fillIDs[:1], ExitFillIDs: fillIDs[1:],
+			EntryAt: plan.EvaluationStart().Add(time.Minute), ExitAt: plan.EvaluationStart().Add(time.Minute), EntryPrice: "10.2", ExitPrice: "10.21",
+			EntryFees: "0.5", ExitFees: "0.51", OtherOwnershipCost: "0", GrossPnL: "0.05", AfterCostPnL: "-0.96",
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := NewEvaluationRepo(pool)
+	if _, err := repo.RegisterPolicy(ctx, policy); err != nil {
+		t.Fatal(err)
+	}
+	first, err := repo.RecordEvaluation(ctx, report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := repo.RecordEvaluation(ctx, report)
+	if err != nil || first.ID() != second.ID() || first.Digest() != second.Digest() {
+		t.Fatalf("retained replay=%v err=%v", second, err)
+	}
+	if _, err := pool.Exec(ctx, repositoryMigrationSQL(t, "000079_trade_portfolio_evaluations.down.sql")); err == nil || !strings.Contains(err.Error(), "cannot roll back migration 79") {
+		t.Fatalf("retained nonempty rollback error=%v", err)
+	}
+	t.Logf("VERIFIED_LOCAL evaluation=%s sha256=%s result=%s policy=%s trade_win_rate=%s bar_positive_rate=%s",
+		first.ID(), first.Digest(), first.ResultID(), first.PolicyID(), evaluationMetric(first, "trade", "win_rate").Value,
+		evaluationMetric(first, "curve_diagnostics", "bar_positive_return_rate").Value)
+}
+
+func TestEvaluationCleanDatabaseReproduction(t *testing.T) {
+	var reports [2]*evaluation.Report
+	for index := range reports {
+		pool := newExperimentRunnerGoldenPool(t)
+		if _, err := pool.Exec(context.Background(), repositoryMigrationSQL(t, "000079_trade_portfolio_evaluations.up.sql")); err != nil {
+			t.Fatal(err)
+		}
+		fixture := persistExperimentRunnerGolden(t, pool, strategycatalog.ExperimentPaperScored)
+		runner, _ := experimentrun.NewRunner(qualification.Loader{Graph: fixture.Graph}, NewExperimentRunRepo(pool))
+		result := runGoldenExperiment(t, runner, fixture, uuid.MustParse("30440000-0000-4000-8000-000000000001"), 0)
+		policy, _ := goldenEvaluationPolicy()
+		report := buildGoldenEvaluationReport(t, fixture, result, policy, "2", "0.99", []string{"25000", "24900", "25000"}, false)
+		repo := NewEvaluationRepo(pool)
+		if _, err := repo.RegisterPolicy(context.Background(), policy); err != nil {
+			t.Fatal(err)
+		}
+		persisted, err := repo.RecordEvaluation(context.Background(), report)
+		if err != nil {
+			t.Fatal(err)
+		}
+		reports[index] = persisted
+	}
+	if reports[0].ID() != reports[1].ID() || reports[0].Digest() != reports[1].Digest() ||
+		!bytes.Equal(reports[0].CanonicalBytes(), reports[1].CanonicalBytes()) {
+		t.Fatalf("clean database reports diverged: %s/%s", reports[0].ID(), reports[1].ID())
+	}
+}
+
+func goldenEvaluationPolicy() (*evaluation.Policy, error) {
+	return evaluation.NewPolicy(evaluation.PolicyInput{
+		Version: "evaluation-policy-v1@golden-isolation", Frequency: "minute", PeriodsPerYear: 98280,
+		ReturnKind: "simple", CashConvention: "explicit_per_period", LotMethod: "fifo",
+		RecoveryDefinition: "first_equity_at_or_above_prior_peak", DecimalScale: 12,
+	})
+}
+
+func buildGoldenEvaluationReport(t *testing.T, fixture *qualification.Fixture, result *experimentrun.Result, policy *evaluation.Policy,
+	grossPnL, afterCostPnL string, equity []string, missingObservedSlippage bool,
+) *evaluation.Report {
+	t.Helper()
+	fillIDs := result.Outcomes()[0].FillIDs
+	if len(fillIDs) != 2 || len(equity) != 3 {
+		t.Fatal("golden evaluation requires two fills and three equity values")
+	}
+	lastObserved := textPointer("1.01")
+	if missingObservedSlippage {
+		lastObserved = nil
+	}
+	report, err := evaluation.NewReport(evaluation.ReportInput{
+		Result: result, Policy: policy, EvaluationStart: qualification.Start, EvaluationEnd: qualification.End,
+		OpenLotCount: 1, Execution: evaluation.ExecutionInput{AttemptedOrders: "1", FilledOrders: "1", AttemptedQuantity: "10", FilledQuantity: "10"},
+		Observations: []evaluation.ObservationInput{
+			{ObservedAt: qualification.Start, Equity: equity[0], BenchmarkValue: "100", CashReturn: "0", GrossExposure: "0", NetExposure: "0", LargestPositionWeight: "0", CumulativeOwnershipCost: "0", CumulativeTurnover: "0", CumulativeModeledSlippage: "0", CumulativeObservedSlippage: textPointer("0"), EvidenceID: fixture.QuoteSnapshot.ID, EvidenceSHA256: strings.Repeat("7", 64)},
+			{ObservedAt: qualification.RouteAt, Equity: equity[1], BenchmarkValue: "100.01", CashReturn: "0.000001", GrossExposure: "102.05", NetExposure: "102.05", LargestPositionWeight: "0.004082", CumulativeOwnershipCost: "0.5", CumulativeTurnover: "0.004082", CumulativeModeledSlippage: "0.5", CumulativeObservedSlippage: textPointer("0.5"), EvidenceID: fillIDs[0], EvidenceSHA256: strings.Repeat("8", 64)},
+			{ObservedAt: qualification.End, Equity: equity[2], BenchmarkValue: "100.02", CashReturn: "0.000001", GrossExposure: "0", NetExposure: "0", LargestPositionWeight: "0", CumulativeOwnershipCost: "1.01", CumulativeTurnover: "0.008164", CumulativeModeledSlippage: "1.01", CumulativeObservedSlippage: lastObserved, EvidenceID: fillIDs[1], EvidenceSHA256: strings.Repeat("9", 64)},
+		}, ClosedTrades: []evaluation.ClosedTradeInput{{
+			InstrumentID: fixture.Instrument.ID, Side: "long", Quantity: "5", EntryFillIDs: fillIDs[:1], ExitFillIDs: fillIDs[1:],
+			EntryAt: qualification.RouteAt, ExitAt: qualification.RouteAt, EntryPrice: "10.2", ExitPrice: "10.21", EntryFees: "0.5", ExitFees: "0.51",
+			OtherOwnershipCost: "0", GrossPnL: grossPnL, AfterCostPnL: afterCostPnL,
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return report
 }
 
 func evaluationMetric(report *evaluation.Report, section, name string) evaluation.Metric {

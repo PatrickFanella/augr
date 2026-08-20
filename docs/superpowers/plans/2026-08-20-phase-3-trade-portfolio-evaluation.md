@@ -148,7 +148,7 @@ Out of scope:
   scheduler, writer grant, legacy backfill, or runtime trigger.
 - [x] Add lock-first empty-only rollback and bump `RequiredSchemaVersion` to 79
   only after isolated real-PostgreSQL tests pass.
-- [ ] Commit and push the migration slice after focused database races.
+- [x] Commit and push the migration slice after focused database races.
 
 ## Task 4: PostgreSQL repository, service, and recovery
 
@@ -160,28 +160,28 @@ Out of scope:
   interruption, injected rollback at every child stage, and restart reload.
 - [x] Prove a fresh-database calculation reproduces every input, metric,
   availability state, report ID, and SHA-256.
-- [ ] Commit and push the repository/recovery slice after database races.
+- [x] Commit and push the repository/recovery slice after database races.
 
 ## Task 5: Golden qualification and legacy separation
 
-- [ ] Retain scored and stress golden reports with exact within-mode replay and
+- [x] Retain scored and stress golden reports with exact within-mode replay and
   physical/semantic mode isolation.
-- [ ] Retain winning, losing, breakeven, open-lot, ownership-cost, drawdown/
+- [x] Retain winning, losing, breakeven, open-lot, ownership-cost, drawdown/
   recovery, turnover, exposure, fill, modeled/observed-slippage, and unavailable
   metric evidence.
-- [ ] Prove the same equity curve can have a high bar-positive rate and a
+- [x] Prove the same equity curve can have a high bar-positive rate and a
   different trade win rate; labels/sections remain unambiguous in canonical,
   relational, and serialized output.
-- [ ] Prove legacy `backtest.Metrics.WinRate` remains unchanged but is never
+- [x] Prove legacy `backtest.Metrics.WinRate` remains unchanged but is never
   imported or relabeled as OVR-304 trade evidence.
 - [ ] Commit and push the golden slice after focused races.
 
 ## Task 6: Documentation, qualification, review, and synchronization
 
-- [ ] Add a runbook covering evidence preparation, policy assumptions, report
+- [x] Add a runbook covering evidence preparation, policy assumptions, report
   inspection, metric availability, trade/curve distinction, replay comparison,
   preservation, no-promotion response, and rollback.
-- [ ] Apply migrations `1 -> 79` to fresh loopback databases, retain a complete
+- [x] Apply migrations `1 -> 79` to fresh loopback databases, retain a complete
   report, prove clean-database reproduction, nonempty rollback refusal, and
   separate empty `79 -> 78 -> 79`.
 - [ ] Run focused/database races, backend build/race/vet/lint/format/

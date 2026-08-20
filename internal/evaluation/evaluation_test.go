@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/PatrickFanella/get-rich-quick/internal/backtest"
 	"github.com/PatrickFanella/get-rich-quick/internal/economicid"
 	"github.com/PatrickFanella/get-rich-quick/internal/experimentrun"
 	"github.com/PatrickFanella/get-rich-quick/internal/strategycatalog"
@@ -266,6 +267,18 @@ func TestServiceReloadsResultAndPersistsExactReport(t *testing.T) {
 	}
 	if store.loaded != resultID || store.policy == nil || store.report == nil || report.ID() != store.report.ID() {
 		t.Fatalf("service calls loaded=%s policy=%v report=%v", store.loaded, store.policy, store.report)
+	}
+}
+
+func TestLegacyBarWinRateIsNotImportedAsTradeEvidence(t *testing.T) {
+	legacy := backtest.Metrics{WinRate: 0.875}
+	report, err := NewReport(validReportInput(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if legacy.WinRate != 0.875 || requireMetric(t, report, "trade", "win_rate").Value != "0.5" ||
+		requireMetric(t, report, "curve_diagnostics", "bar_positive_return_rate").Value != "0.666666666667" {
+		t.Fatal("legacy bar win rate crossed into OVR-304 trade evidence")
 	}
 }
 
