@@ -50,6 +50,7 @@ func TestVenueAdapterMigrationDefinesLockedImmutableRawFirstBoundary(t *testing.
 		"create constraint trigger trg_venue_observations_semantics",
 		"deferrable initially deferred",
 		"create function validate_venue_cancel_command",
+		"venue cancellation command requires the canonical persisted binding",
 		"create function validate_venue_lifecycle_observation",
 		"create constraint trigger trg_execution_lifecycle_venue_observation",
 		"create function validate_venue_execution_fill_observation",

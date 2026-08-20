@@ -216,6 +216,37 @@ func TestVenueAdapterMigrationAllowsExactLocalCancelCommandWithoutObservation(t 
 	}
 }
 
+func TestVenueAdapterMigrationRejectsCancelCommandWithoutPersistedBinding(t *testing.T) {
+	ctx, pool, base := newVenueAdapterMigrationPool(t)
+	artifact, fixture, intentID, orderID := seedRoutedKalshiVenueOrder(t, ctx, pool, base, "unbound-cancel-command")
+	at := venueMigrationTime().Add(3 * time.Hour)
+	sourceNamespace := "venue-adapter-policy-v1/kalshi/" + artifact.Version + "/cancel-request-v1"
+	sourceEventID := orderID.String() + "/cancel-request-v1"
+	eventID := economicid.DeterministicUUID(
+		"execution-lifecycle-event", intentID.String(), "ordinary", "venue_command",
+		sourceNamespace, sourceEventID, "",
+	)
+	evidence := venueMigrationCancelEvidenceFields(t, orderID, "", "", artifact.Version)
+	_, err := pool.Exec(ctx, `INSERT INTO execution_lifecycle_events (
+		id, intent_id, order_id, binding_id, kind, observation_class, prior_state,
+		next_state, account_id, environment, origin_type, origin_id,
+		strategy_version_id, policy_kind, policy_version, quantity_delta, source,
+		source_namespace, source_event_id, source_at, received_at, actor,
+		reason_code, evidence_bytes, evidence_sha256, evidence, created_at
+	) VALUES ($1,$2,$3,NULL,'cancel_requested','ordinary','routed','routed',$4,'paper_scored',
+		'strategy_version','strategy-version-1','strategy-version-1','venue',$5,8,'venue_command',
+		$6,$7,$8,$8,'venue-adapter','cancel_requested',$9,$10,convert_from($9,'UTF8')::JSONB,$8)`,
+		eventID, intentID, orderID, fixture.Common.AccountID, artifact.Version,
+		sourceNamespace, sourceEventID, at, evidence, migrationLifecycleSHA(evidence),
+	)
+	// Migration 71's lifecycle-state trigger may reject this before migration
+	// 73's deferred venue-command trigger, depending on trigger execution order.
+	// Either way, the out-of-order unbound command must never commit.
+	if err == nil {
+		t.Fatalf("unbound cancel command error = %v", err)
+	}
+}
+
 func TestVenueAdapterMigrationRequiresRawTerminalAndFailureObservations(t *testing.T) {
 	for name, state := range map[string]struct {
 		providerState string
@@ -404,6 +435,14 @@ func venueMigrationCancelEvidence(
 	orderID, bindingID uuid.UUID,
 	externalOrderID, policyVersion string,
 ) []byte {
+	return venueMigrationCancelEvidenceFields(t, orderID, bindingID.String(), externalOrderID, policyVersion)
+}
+
+func venueMigrationCancelEvidenceFields(
+	t *testing.T,
+	orderID uuid.UUID,
+	bindingID, externalOrderID, policyVersion string,
+) []byte {
 	t.Helper()
 	var encoded bytes.Buffer
 	encoder := json.NewEncoder(&encoded)
@@ -422,7 +461,7 @@ func venueMigrationCancelEvidence(
 		RequestBody     string `json:"request_body"`
 	}{
 		Schema: "venue-cancel-request-v1", OrderID: orderID.String(), Provider: "kalshi", Venue: "kalshi",
-		PolicyVersion: policyVersion, ClientOrderID: orderID.String(), BindingID: bindingID.String(),
+		PolicyVersion: policyVersion, ClientOrderID: orderID.String(), BindingID: bindingID,
 		ExternalOrderID: externalOrderID, Method: "DELETE",
 		PathTemplate: "/portfolio/events/orders/{external_order_id}", RequestBody: "<empty>",
 	})

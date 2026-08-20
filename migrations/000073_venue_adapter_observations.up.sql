@@ -339,6 +339,9 @@ BEGIN
     SELECT * INTO order_row FROM execution_orders WHERE id = event_row.order_id;
     SELECT * INTO artifact_row FROM venue_adapter_policy_artifacts WHERE policy_version = event_row.policy_version;
     SELECT * INTO binding_row FROM execution_order_bindings WHERE order_id = order_row.id;
+    IF binding_row.id IS NULL OR event_row.binding_id IS DISTINCT FROM binding_row.id THEN
+        RAISE EXCEPTION 'venue cancellation command requires the canonical persisted binding';
+    END IF;
     expected_namespace := 'venue-adapter-policy-v1/' || artifact_row.provider || '/' ||
         event_row.policy_version || '/cancel-request-v1';
     expected_path := CASE artifact_row.provider

@@ -178,13 +178,15 @@ func validateObservationContext(aggregate *lifecycle.Aggregate, observation *Obs
 	if aggregate == nil || aggregate.Order == nil || observation.AccountID != aggregate.Intent.AccountID ||
 		observation.IntentID != aggregate.Intent.ID || observation.OrderID != aggregate.Order.ID ||
 		observation.VenueContractID != aggregate.Order.VenueContractID || observation.Venue != aggregate.Order.Venue ||
-		string(observation.Provider) != aggregate.Order.Venue || observation.PolicyVersion != aggregate.Order.PolicyVersion ||
-		observation.ClientOrderID != aggregate.Order.ClientOrderID {
+		string(observation.Provider) != aggregate.Order.Venue || observation.PolicyVersion != aggregate.Order.PolicyVersion {
 		return fmt.Errorf("observation canonical lifecycle context does not match")
 	}
-	if aggregate.Binding != nil {
-		if observation.ExternalOrderID != aggregate.Binding.ExternalOrderID ||
-			(observation.BindingID != nil && *observation.BindingID != aggregate.Binding.ID) {
+	if aggregate.Binding != nil && observation.BindingID != nil && *observation.BindingID != aggregate.Binding.ID {
+		return fmt.Errorf("observation external binding context does not match")
+	}
+	if observation.MappedOutcome != OutcomeContradiction && observation.MappedOutcome != OutcomeMalformedObservation {
+		if observation.ClientOrderID != aggregate.Order.ClientOrderID ||
+			(aggregate.Binding != nil && observation.ExternalOrderID != aggregate.Binding.ExternalOrderID) {
 			return fmt.Errorf("observation external binding context does not match")
 		}
 	}

@@ -138,6 +138,14 @@ func TestPlanOrderResultFailsUnknownMalformedAndContradictoryFactsClosed(t *test
 			if name == "unknown status" && step.Observation.MappedOutcome != venue.OutcomeUnknownState {
 				t.Fatalf("unknown outcome = %s", step.Observation.MappedOutcome)
 			}
+			store := newAlpacaResultStore(fixture.context.Aggregate)
+			persisted, err := venue.PersistResult(context.Background(), store, fixture.context.Account.ID, result)
+			if err != nil {
+				t.Fatalf("contradiction evidence was not journalable: %v", err)
+			}
+			if persisted.State != lifecycle.StateFailedReconciliation || len(store.observations) != 1 {
+				t.Fatalf("persisted failure = state:%s observations:%d", persisted.State, len(store.observations))
+			}
 		})
 	}
 }
