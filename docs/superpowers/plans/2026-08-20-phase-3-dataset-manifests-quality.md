@@ -99,17 +99,17 @@ Out of scope:
 
 ## Task 2: Immutable point-in-time manifest graph
 
-- [ ] Add `internal/dataset/manifest.go` with typed partition/observation inputs,
+- [x] Add `internal/dataset/manifest.go` with typed partition/observation inputs,
   canonical output, deterministic sorting/identity, clone-safe getters, restore,
   and validation.
-- [ ] Derive partition row count, content hash, and min/max temporal facts from
+- [x] Derive partition row count, content hash, and min/max temporal facts from
   observations. Use domain-separated length-prefixed hashing so concatenation
   cannot collide.
-- [ ] Enforce exact decimal grammar and reject NaN/Inf/exponent notation,
+- [x] Enforce exact decimal grammar and reject NaN/Inf/exponent notation,
   crossed quotes, negative volume/depth, invalid correction lineage, duplicate
   source identities, noncontiguous sequence, invalid instrument IDs, and all
   lookahead/time-order violations.
-- [ ] Add deterministic reordering, tamper, boundary-time, correction, mixed-kind,
+- [x] Add deterministic reordering, tamper, boundary-time, correction, mixed-kind,
   and legacy-unavailable regression tests.
 - [ ] Commit and push the manifest slice after focused race tests.
 
