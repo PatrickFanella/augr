@@ -1249,6 +1249,23 @@ fixtures are synthetic; licensed live inputs, shared migration, independent
 review, provider population, deployment, broker routing, and live trading
 remain **BLOCKED_EXTERNAL**. Dependency-order execution proceeds to OVR-503.
 
+OVR-503 is complete locally as schema 90. One immutable copy target can now
+produce independently keyed prepared sessions against explicit exact
+origin-attributed current values, with deterministic canonical allocation,
+hard per-session turnover caps, monotonic progress, and no target crossing.
+Retained clean schema-90 evidence uses one unchanged source observation across
+four sessions and five normalized legs; `$9,000` of starting drift converges
+through residuals `$6,500 -> $4,000 -> $1,500 -> $0` without a new filing.
+Eight-writer convergence, changed-retry conflict, restart, recovery injection,
+forgery/append-only enforcement, nonempty rollback refusal, empty
+`90 -> 89 -> 90`, full backend/static and pinned frontend gates, and isolated
+production-image fresh-90 health/API/rollback-60/backup-restore/reapply passed.
+These results are **VERIFIED_LOCAL** only. Retained position inputs are
+synthetic; trusted runtime origin-position reads, licensed quotes, account and
+lifecycle adoption, shared migration, independent review, scheduling,
+deployment, broker routing, and live trading remain **BLOCKED_EXTERNAL**.
+Dependency-order execution proceeds to OVR-504.
+
 ### Milestone 6 — AI workbench and autonomy
 
 | ID | Depends on | Work | Acceptance |

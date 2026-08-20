@@ -51,43 +51,83 @@ positions, quotes, fills, or execution authority.
 
 ## Task 1: Deterministic drift engine
 
-- [ ] Define exact target/current/session inputs and canonical prepared output.
-- [ ] Derive canonical legs with hard turnover cap, monotonic progress, no
+- [x] Define exact target/current/session inputs and canonical prepared output.
+- [x] Derive canonical legs with hard turnover cap, monotonic progress, no
   overshoot, exact projected values, and explicit residual drift.
-- [ ] Prove sells, buys, mixed books, exact boundary, sub-cent rejection, zero
+- [x] Prove sells, buys, mixed books, exact boundary, sub-cent rejection, zero
   drift, insufficient budget, input permutation, and multi-session convergence.
-- [ ] Commit and push the pure engine slice.
+- [x] Commit and push the pure engine slice.
 
 ## Task 2: Migration 90 and repository
 
-- [ ] Persist immutable run identity, source/session/policy inputs, exact totals,
+- [x] Persist immutable run identity, source/session/policy inputs, exact totals,
   canonical bytes/JSON/digest, and normalized ordered legs.
-- [ ] Enforce subscription origin/source ownership, session uniqueness, leg
+- [x] Enforce subscription origin/source ownership, session uniqueness, leg
   reconstruction, run totals, append-only evidence, and empty-only rollback.
-- [ ] Prove exact concurrent retry convergence, changed retry conflict, restart,
+- [x] Prove exact concurrent retry convergence, changed retry conflict, restart,
   injected-stage rollback, forgery rejection, and nonempty rollback refusal.
-- [ ] Bump `RequiredSchemaVersion` to 90 after real PostgreSQL races pass.
-- [ ] Commit and push the persistence slice.
+- [x] Bump `RequiredSchemaVersion` to 90 after real PostgreSQL races pass.
+- [x] Commit and push the persistence slice.
 
 ## Task 3: Multi-session retained qualification
 
-- [ ] Retain at least three sessions using the same source observation, where
+- [x] Retain at least three sessions using the same source observation, where
   each session starts from the prior projection and the final session converges.
-- [ ] Prove every session remains inside its own cap, aggregate progress is
+- [x] Prove every session remains inside its own cap, aggregate progress is
   monotonic, source/origin never drift, and no new filing row is created.
-- [ ] Add an inspection/recovery/rollback runbook with exact retained IDs,
+- [x] Add an inspection/recovery/rollback runbook with exact retained IDs,
   digests, counts, budgets, and residuals.
-- [ ] Run focused/database races, all backend/static and pinned frontend gates,
+- [x] Run focused/database races, all backend/static and pinned frontend gates,
   diff review, and isolated kill-switched schema-90 health/API/rollback/reapply.
-- [ ] Commit/push verified slices, fetch, and prove `0 0` before OVR-504.
+- [x] Commit/push verified slices, fetch, and prove `0 0` before OVR-504.
 
 ## Acceptance evidence to record
 
-- [ ] Turnover-capped targets converge across multiple independently keyed
+- [x] Turnover-capped targets converge across multiple independently keyed
   sessions without a new source observation.
-- [ ] No session exceeds its budget, reverses direction, or crosses a target.
-- [ ] Retained normalized rows and canonical bytes reconstruct exact arithmetic.
-- [ ] Local qualification is `VERIFIED_LOCAL`; trusted runtime origin positions,
+- [x] No session exceeds its budget, reverses direction, or crosses a target.
+- [x] Retained normalized rows and canonical bytes reconstruct exact arithmetic.
+- [x] Local qualification is `VERIFIED_LOCAL`; trusted runtime origin positions,
   licensed quotes, shared migration, independent review, account/lifecycle
   adoption, scheduling, deployment, broker routing, and live trading remain
   `BLOCKED_EXTERNAL`.
+
+## Local qualification record (2026-08-20)
+
+OVR-503 is **VERIFIED_LOCAL** at schema 90. Retained loopback database
+`augr_ovr503_qual_20260820` contains subscription/origin
+`2f7efcc7-e85f-4081-8603-d5331735cd13`, the single unchanged source
+observation `2e84cf5e-b389-47d9-bc68-d50889d5e60c`, four prepared sessions,
+and five normalized legs. Starting drift `$9,000.00` converges with residuals
+`$6,500.00 -> $4,000.00 -> $1,500.00 -> $0.00`; prepared turnover is
+`$2,500.00` in each of the first three sessions and `$1,500.00` in the last.
+
+The retained run identities are:
+
+| Session | Run | SHA-256 |
+| --- | --- | --- |
+| `2026-08-20/regular` | `40569201-3e41-a4e6-5e4c-695c765e2afe` | `96d6259ba29da7d5a254229a4f21f5649a562a7a03edd991627fa229ee8fc3f4` |
+| `2026-08-21/regular` | `5f4c50df-93bf-1402-be0c-fcc63173ce5e` | `786571324bee65a0dfca39916cb318b4b166b8a477cb1dbfcdd1a8e927bca253` |
+| `2026-08-24/regular` | `710fbccf-045f-2c5a-d828-c310801aef06` | `af90b8cf90938dd06f1fc9c30e372ad87f882456b8fc019a23ac790cc04b0e78` |
+| `2026-08-25/regular` | `318e6509-876b-4802-1fa0-ac2f9c8296e3` | `91095b14befcb8496adf64edeb8ac3a57caf17a9fc2a3c094d81b78082ccb9f6` |
+
+Eight identical writers converge. Changed same-session evidence conflicts;
+injected run/leg failures leave no partial graph; restart reload, normalized
+forgery rejection, and append-only enforcement pass. The separate empty
+database `augr_ovr503_empty_20260820` passed `90 -> 89 -> 90`; the retained
+database refused rollback and preserved all evidence.
+
+The final exact code commit
+`e6efba6387887a61645c6d6160aed584a22cdbdb` passed 4,588 race tests across
+117 packages, backend build/vet/lint/gofumpt/called-symbol vulnerability gates,
+and pinned Node 22.23.2 frozen install, 162 tests, lint, production build, and
+the high-severity audit gate. The isolated production verifier passed fresh
+`1 -> 90`, health, authenticated read-only API smoke, `90 -> 60`, schema-60
+backup/restore, and `61 -> 90` reapplication.
+
+The retained starting values are explicit synthetic origin-attributed inputs,
+not a claim that runtime positions were read from a broker or shared account.
+A trusted runtime origin-position snapshot, licensed quote feed, OVR-502 quote
+handoff, account/lifecycle adoption, shared migration, independent review,
+scheduling, deployment, broker routing, and live trading remain
+**BLOCKED_EXTERNAL**.
