@@ -66,48 +66,48 @@ promotion decision or lifecycle event.
 
 ## Task 1: Exact evidence case and review domain
 
-- [ ] Implement exact OVR-602/306 graph binding and authoritative lifecycle
+- [x] Implement exact OVR-602/306 graph binding and authoritative lifecycle
   observation without promotion construction authority.
-- [ ] Implement closed reviewer identity/provenance, six required checks,
+- [x] Implement closed reviewer identity/provenance, six required checks,
   exact references, deterministic disposition, and reviewer-local supersession.
-- [ ] Prove supported/changes/rejected outcomes, permutation convergence,
+- [x] Prove supported/changes/rejected outcomes, permutation convergence,
   semantic identity changes, cross-parent rejection, missing/unknown references,
   stale supersession, tamper rejection, and clone-safe restoration.
-- [ ] Commit and push the domain slice after focused race tests.
+- [x] Commit and push the domain slice after focused race tests.
 
 ## Task 2: Deterministic multi-review summary
 
-- [ ] Project accepted reviewer heads into exact pass/fail/unknown counts,
+- [x] Project accepted reviewer heads into exact pass/fail/unknown counts,
   consensus/disagreement, unresolved-check, and escalation evidence.
-- [ ] Copy but never calculate or mutate the authoritative OVR-306 outcome and
+- [x] Copy but never calculate or mutate the authoritative OVR-306 outcome and
   next state; prove AI-ready cannot override policy hold/retirement and AI-reject
   cannot undo policy approval.
-- [ ] Prove review-head ordering convergence, stale/fork/duplicate rejection,
+- [x] Prove review-head ordering convergence, stale/fork/duplicate rejection,
   semantic identity changes, tamper rejection, and authority-surface closure.
-- [ ] Commit and push the summary slice after focused race tests.
+- [x] Commit and push the summary slice after focused race tests.
 
 ## Task 3: Migration 97, retained qualification, and closure
 
-- [ ] Persist immutable case/review/check/reference/supersession/summary graphs
+- [x] Persist immutable case/review/check/reference/supersession/summary graphs
   with exact OVR-602/306 parent scope and PostgreSQL reconstruction.
-- [ ] Prove eight-writer convergence, changed retry conflict, every-stage atomic
+- [x] Prove eight-writer convergence, changed retry conflict, every-stage atomic
   rollback, normalized forgery rejection, append-only behavior, nonempty
   rollback refusal, and empty `97 -> 96 -> 97`.
-- [ ] Retain policy-approved-but-review-changes-requested and policy-held-but-
+- [x] Retain policy-approved-but-review-changes-requested and policy-held-but-
   review-supported cases, proving review disposition never changes lifecycle.
-- [ ] Add an inspection/recovery/rollback runbook with exact IDs and digests.
-- [ ] Run focused/database races, repository-wide backend/static and pinned
+- [x] Add an inspection/recovery/rollback runbook with exact IDs and digests.
+- [x] Run focused/database races, repository-wide backend/static and pinned
   frontend gates, diff review, and isolated kill-switched schema-97 health/API/
   rollback/backup/restore/reapply.
 - [ ] Commit/push verified slices, fetch, and prove `0 0` before OVR-604.
 
 ## Acceptance evidence to record
 
-- [ ] Every review reconstructs exact hypothesis, critic, promotion policy/
+- [x] Every review reconstructs exact hypothesis, critic, promotion policy/
   decision, candidate, reviewer provenance, checks, and references.
-- [ ] AI recommendations and reviewer dispositions cannot construct, change,
+- [x] AI recommendations and reviewer dispositions cannot construct, change,
   apply, or supersede promotion state; OVR-306 remains authoritative.
-- [ ] Local qualification is `VERIFIED_LOCAL`; provider calls, licensed source
+- [x] Local qualification is `VERIFIED_LOCAL`; provider calls, licensed source
   acquisition, independent human review, lifecycle cutover, shared migration,
   scheduling, deployment, allocation, broker routing, and live trading remain
   `BLOCKED_EXTERNAL`.

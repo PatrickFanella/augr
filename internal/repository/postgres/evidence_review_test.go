@@ -96,7 +96,7 @@ func TestEvidenceReviewRetainedQualification(t *testing.T) {
 	if _, err = pool.Exec(ctx, repositoryMigrationSQL(t, "000097_evidence_review_workflow.down.sql")); err == nil || !strings.Contains(err.Error(), "cannot roll back") {
 		t.Fatalf("nonempty rollback=%v", err)
 	}
-	t.Logf("case=%s sha=%s reviews=%s/%s summary=%s sha=%s", fixture.Case.ID(), fixture.Case.Digest(), fixture.Reviews[0].ID(), fixture.Reviews[1].ID(), fixture.Summary.ID(), fixture.Summary.Digest())
+	t.Logf("case=%s sha=%s reviews=%s/%s summary=%s sha=%s held_case=%s held_sha=%s held_summary=%s held_summary_sha=%s", fixture.Case.ID(), fixture.Case.Digest(), fixture.Reviews[0].ID(), fixture.Reviews[1].ID(), fixture.Summary.ID(), fixture.Summary.Digest(), fixture.HeldCase.ID(), fixture.HeldCase.Digest(), fixture.HeldSummary.ID(), fixture.HeldSummary.Digest())
 }
 
 func seedEvidenceReviewParents(t *testing.T, ctx context.Context, pool *pgxpool.Pool, fixture evidencequalification.Fixture) {
