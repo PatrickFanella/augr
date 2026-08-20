@@ -1232,6 +1232,23 @@ cleanup, shared migration, independent review, runtime adoption, deployment,
 provider/broker routing, and live trading remain **BLOCKED_EXTERNAL**.
 Dependency-order execution proceeds to OVR-502.
 
+OVR-502 is complete locally as schema 89. Copy approval now resolves one exact
+canonical point-in-time quote snapshot and derives two-sided spread, freshness,
+market/session eligibility, and the executable ask for buys or bid for sells.
+Daily OHLCV remains nonauthoritative liquidity context and cannot approve.
+Retained clean schema-89 evidence contains two gate-version-1 approved intents
+and one exact gate-version-1 stale rejection; the buy case passes exactly at
+the inclusive 100 BPS boundary,
+the sell case uses its bid, exact retries converge, changed retries conflict,
+and PostgreSQL rejects forged quote arithmetic. Eight-writer convergence,
+restart, recovery injection, append-only evidence, nonempty rollback refusal,
+empty `89 -> 88 -> 89`, full backend/static and pinned frontend gates, and an
+isolated production-image fresh-89 health/API/rollback-60/backup-restore/reapply
+verifier passed. These results are **VERIFIED_LOCAL** only. The retained quote
+fixtures are synthetic; licensed live inputs, shared migration, independent
+review, provider population, deployment, broker routing, and live trading
+remain **BLOCKED_EXTERNAL**. Dependency-order execution proceeds to OVR-503.
+
 ### Milestone 6 — AI workbench and autonomy
 
 | ID | Depends on | Work | Acceptance |
