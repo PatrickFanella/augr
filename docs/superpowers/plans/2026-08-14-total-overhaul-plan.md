@@ -1285,6 +1285,23 @@ adoption, promotion, scheduling, deployment, broker routing, or live trading;
 those remain **BLOCKED_EXTERNAL**. Dependency-order execution proceeds to
 OVR-505.
 
+OVR-505 is complete locally as schema 92. One immutable OVR-301 manifest now
+binds prediction outcome books, every displayed level, and exact maker/taker
+fee formulas to point-in-time replay requests. The retained recorder has three
+books, twelve levels, three fee policies, three replays, and five fills. An
+earlier decision keeps its original book after a later correction arrives; a
+20-contract corrected request consumes only 15 displayed contracts and retains
+five unfilled; contract-curve ceiling rounding and notional-BPS fees reconstruct
+exactly through gross and net cash. Eight-writer convergence, changed-retry
+conflict, every-stage rollback, restart, forgery/append-only enforcement,
+nonempty rollback refusal, empty `92 -> 91 -> 92`, repository-wide backend/
+static and pinned frontend gates, and isolated production-image fresh-92
+health/API/rollback-60/backup-restore/reapply passed. These results are
+**VERIFIED_LOCAL** only. Synthetic fixtures do not establish licensed history,
+independent review, shared migration, runtime adoption, strategy evaluation,
+scheduling, deployment, venue routing, or live trading; those remain
+**BLOCKED_EXTERNAL**. Dependency-order execution proceeds to OVR-506.
+
 ### Milestone 6 — AI workbench and autonomy
 
 | ID | Depends on | Work | Acceptance |

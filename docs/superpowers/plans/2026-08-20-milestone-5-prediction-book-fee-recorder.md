@@ -62,54 +62,90 @@ intent, reserve capital, place an order, promote a strategy, or schedule work.
 
 ## Task 1: Manifest-bound book and fee model
 
-- [ ] Define stable market/outcome, book/revision, and fee-policy inputs using
+- [x] Define stable market/outcome, book/revision, and fee-policy inputs using
   exact decimals and UTC microsecond timestamps.
-- [ ] Validate exact `prediction_books` and `prediction_fees` manifest
+- [x] Validate exact `prediction_books` and `prediction_fees` manifest
   membership, ordered depth, correction lineage, effective windows, and
   deterministic input permutation.
-- [ ] Implement exact notional-BPS and contract-curve fee formulas with explicit
+- [x] Implement exact notional-BPS and contract-curve fee formulas with explicit
   maker/taker role, aggregation, scale, and rounding.
-- [ ] Prove missing/unmanifested/late evidence, crossed/duplicate/malformed
+- [x] Prove missing/unmanifested/late evidence, crossed/duplicate/malformed
   depth, correction lookahead, overlapping policy ambiguity, invalid scale,
   and float-like/inexact values fail closed.
-- [ ] Commit and push the evidence-model slice.
+- [x] Commit and push the evidence-model slice.
 
 ## Task 2: Point-in-time executable replay
 
-- [ ] Select the latest eligible outcome book and fee policy independently at
+- [x] Select the latest eligible outcome book and fee policy independently at
   each decision time without future revisions rewriting earlier results.
-- [ ] Consume exact displayed levels for limit-bounded buys and sells, retaining
+- [x] Consume exact displayed levels for limit-bounded buys and sells, retaining
   fills, weighted price, gross cash, fees, net cash, and residual quantity.
-- [ ] Retain explicit no-book, no-fee-policy, limit-blocked, partial, and filled
+- [x] Retain explicit no-book, no-fee-policy, limit-blocked, partial, and filled
   outcomes; no rejection may become a synthetic fill.
-- [ ] Prove multi-level price-time consumption, boundary equality, partial
+- [x] Prove multi-level price-time consumption, boundary equality, partial
   depth, correction availability, maker/taker fee differences, deterministic
   restart, canonical reconstruction, and no-lookahead.
-- [ ] Commit and push the replay slice.
+- [x] Commit and push the replay slice.
 
 ## Task 3: Migration 92 and retained qualification
 
-- [ ] Persist immutable recorder/book/level/fee/replay/fill identity and
+- [x] Persist immutable recorder/book/level/fee/replay/fill identity and
   normalized rows with PostgreSQL reconstruction and manifest-membership guards.
-- [ ] Prove eight-writer convergence, changed retry conflict, every-stage atomic
+- [x] Prove eight-writer convergence, changed retry conflict, every-stage atomic
   rollback, forgery rejection, append-only evidence, nonempty rollback refusal,
   and empty `92 -> 91 -> 92`.
-- [ ] Retain two outcomes, multi-level books, one later correction, maker/taker
+- [x] Retain two outcomes, multi-level books, one later correction, maker/taker
   policies, pre-correction and post-correction decisions, a partial fill, and an
   exact fee-rounding boundary.
-- [ ] Add an inspection/recovery/rollback runbook with exact IDs and digests.
-- [ ] Run focused/database races, repository-wide backend/static and pinned
+- [x] Add an inspection/recovery/rollback runbook with exact IDs and digests.
+- [x] Run focused/database races, repository-wide backend/static and pinned
   frontend gates, diff review, and isolated kill-switched schema-92 health/API/
   rollback/backup/restore/reapply.
-- [ ] Commit/push verified slices, fetch, and prove `0 0` before OVR-506.
+- [x] Commit/push verified slices, fetch, and prove `0 0` before OVR-506.
 
 ## Acceptance evidence to record
 
-- [ ] Every replay uses only book size and fee policy decision-available at its
+- [x] Every replay uses only book size and fee policy decision-available at its
   declared time; later corrections never rewrite prior results.
-- [ ] Exact displayed depth caps fills and every gross/fee/net value
+- [x] Exact displayed depth caps fills and every gross/fee/net value
   reconstructs from normalized levels under the bound policy.
-- [ ] Local qualification is `VERIFIED_LOCAL`; licensed historical acquisition,
+- [x] Local qualification is `VERIFIED_LOCAL`; licensed historical acquisition,
   independent review, shared migration, runtime adoption, strategy evaluation,
   scheduling, deployment, venue routing, and live trading remain
   `BLOCKED_EXTERNAL`.
+
+## Qualification record
+
+OVR-505 is complete locally in commits `35075e5` and `6d0615a`. Retained
+database `augr_ovr505_qual_20260820_v2` is clean schema 92 and contains
+manifest `c0578aa7-155b-a751-ee7c-c6adae73bf3b`, recorder
+`cd9a0810-a42e-a8f8-0a2f-604f45b42f92`, and canonical SHA-256
+`fbfc0229ffeb3d2eacf8460b02884e98493a5b408bb6623e96744c24c07f2787`.
+Its normalized graph has three books, twelve exact levels, three fee policies,
+three replay requests, and five fills.
+
+The retained pre-correction buy consumed two original ask levels for 15
+contracts, `$6.45` gross, `$0.26` ceiling-rounded contract-curve fee, and
+`$6.71` net cash. The post-correction 20-contract buy used only the newly
+available correction, consumed all 15 displayed contracts, and retained a
+5-contract residual instead of manufacturing liquidity. The maker sell filled
+10 at `$5.60` gross with an exact `$0.014` notional fee and `$5.586` net cash.
+Earlier decisions retain the original source key after the correction arrives.
+
+Eight concurrent writers converged, a changed limit conflicted, every injected
+parent/book/level/fee/replay/fill stage rolled back atomically, restart
+reconstruction passed, and forgery plus mutation failed closed. A retained
+graph refused downgrade, while `augr_ovr505_empty_20260820` passed
+`92 -> 91 -> 92`. Repository-wide gates passed 4,595 race-tested cases across
+122 packages, build, vet, lint, formatter, and symbol-level vulnerability
+scanning with zero reachable vulnerabilities. Pinned Node 22.23.2 passed all
+162 frontend tests, lint, and production build; the audit retains one known
+low-severity Windows-only esbuild development-server advisory. The exact
+synchronized `6d0615a` production-image verifier passed fresh `1 -> 92`, health,
+authenticated read-only API, `92 -> 60`, backup/restore, `60 -> 92`, and
+post-reapply health.
+
+This evidence is **VERIFIED_LOCAL**. Licensed historical acquisition,
+independent review, shared migration, runtime adoption, strategy evaluation,
+scheduling, deployment, venue routing, and live trading remain
+**BLOCKED_EXTERNAL**.
