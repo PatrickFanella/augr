@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/shopspring/decimal"
 )
 
 type CopyTradingRepo struct{ pool *pgxpool.Pool }
@@ -332,8 +334,24 @@ const copyIntentSelect = `SELECT id,subscription_id,origin_type,origin_id,source
 
 func scanCopyIntent(row pgx.Row) (*domain.CopyTradeIntent, error) {
 	var item domain.CopyTradeIntent
-	if err := row.Scan(&item.ID, &item.SubscriptionID, &item.OriginType, &item.OriginID, &item.SourceObservationID, &item.PipelineRunID, &item.InstrumentKey, &item.Ticker, &item.Side, &item.TargetWeight, &item.TargetValue, &item.AttributedCurrentValue, &item.RequestedNotional, &item.ExecutablePrice, &item.QuoteGateVersion, &item.DecisionQuoteSnapshotID, &item.DecisionBid, &item.DecisionAsk, &item.DecisionSpreadBPS, &item.DecisionAvailableAt, &item.DecisionAt, &item.DecisionMarketStatus, &item.DecisionSessionStatus, &item.CalculationVersion, &item.Calculation, &item.PolicyStatus, &item.PolicyReasons, &item.RiskStatus, &item.RiskReasons, &item.OrderID, &item.Status, &item.CreatedAt, &item.UpdatedAt); err != nil {
+	var bid, ask, spread, marketStatus, sessionStatus *string
+	if err := row.Scan(&item.ID, &item.SubscriptionID, &item.OriginType, &item.OriginID, &item.SourceObservationID, &item.PipelineRunID, &item.InstrumentKey, &item.Ticker, &item.Side, &item.TargetWeight, &item.TargetValue, &item.AttributedCurrentValue, &item.RequestedNotional, &item.ExecutablePrice, &item.QuoteGateVersion, &item.DecisionQuoteSnapshotID, &bid, &ask, &spread, &item.DecisionAvailableAt, &item.DecisionAt, &marketStatus, &sessionStatus, &item.CalculationVersion, &item.Calculation, &item.PolicyStatus, &item.PolicyReasons, &item.RiskStatus, &item.RiskReasons, &item.OrderID, &item.Status, &item.CreatedAt, &item.UpdatedAt); err != nil {
 		return nil, err
+	}
+	if bid != nil {
+		item.DecisionBid = normalizeCopyDecimal(*bid)
+	}
+	if ask != nil {
+		item.DecisionAsk = normalizeCopyDecimal(*ask)
+	}
+	if spread != nil {
+		item.DecisionSpreadBPS = normalizeCopyDecimal(*spread)
+	}
+	if marketStatus != nil {
+		item.DecisionMarketStatus = *marketStatus
+	}
+	if sessionStatus != nil {
+		item.DecisionSessionStatus = *sessionStatus
 	}
 	return &item, nil
 }
@@ -350,6 +368,13 @@ func (r *CopyTradingRepo) CreateIntent(ctx context.Context, intent *domain.CopyT
 	}
 	err := r.pool.QueryRow(ctx, `INSERT INTO copy_trade_intents (id,subscription_id,origin_type,origin_id,source_observation_id,pipeline_run_id,instrument_key,ticker,side,target_weight,target_value,attributed_current_value,requested_notional,executable_price,quote_gate_version,decision_quote_snapshot_id,decision_bid,decision_ask,decision_spread_bps,decision_available_at,decision_at,decision_market_status,decision_session_status,calculation_version,calculation,policy_status,policy_reasons,risk_status,risk_reasons,order_id,status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31) ON CONFLICT (subscription_id,source_observation_id,instrument_key,calculation_version) DO NOTHING RETURNING created_at,updated_at`, intent.ID, intent.SubscriptionID, intent.OriginType, intent.OriginID, intent.SourceObservationID, intent.PipelineRunID, intent.InstrumentKey, intent.Ticker, intent.Side, intent.TargetWeight, intent.TargetValue, intent.AttributedCurrentValue, intent.RequestedNotional, intent.ExecutablePrice, intent.QuoteGateVersion, intent.DecisionQuoteSnapshotID, nullIfEmpty(intent.DecisionBid), nullIfEmpty(intent.DecisionAsk), nullIfEmpty(intent.DecisionSpreadBPS), intent.DecisionAvailableAt, intent.DecisionAt, nullIfEmpty(intent.DecisionMarketStatus), nullIfEmpty(intent.DecisionSessionStatus), intent.CalculationVersion, intent.Calculation, intent.PolicyStatus, intent.PolicyReasons, intent.RiskStatus, intent.RiskReasons, intent.OrderID, intent.Status).Scan(&intent.CreatedAt, &intent.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
+		existing, loadErr := scanCopyIntent(r.pool.QueryRow(ctx, copyIntentSelect+` WHERE subscription_id=$1 AND source_observation_id=$2 AND instrument_key=$3 AND calculation_version=$4`, intent.SubscriptionID, intent.SourceObservationID, intent.InstrumentKey, intent.CalculationVersion))
+		if loadErr != nil {
+			return false, loadErr
+		}
+		if !sameCopyIntentCreation(existing, intent) {
+			return false, fmt.Errorf("postgres: copy intent retry changed immutable evidence: %w", repository.ErrIdempotencyConflict)
+		}
 		return false, nil
 	}
 	if err != nil {
@@ -376,7 +401,7 @@ func (r *CopyTradingRepo) ListIntents(ctx context.Context, subscriptionID uuid.U
 }
 
 func (r *CopyTradingRepo) UpdateIntent(ctx context.Context, intent *domain.CopyTradeIntent) error {
-	return r.pool.QueryRow(ctx, `UPDATE copy_trade_intents SET pipeline_run_id=$2,executable_price=$3,calculation=$4,policy_status=$5,policy_reasons=$6,risk_status=$7,risk_reasons=$8,order_id=$9,status=$10,updated_at=NOW() WHERE id=$1 RETURNING updated_at`, intent.ID, intent.PipelineRunID, intent.ExecutablePrice, intent.Calculation, intent.PolicyStatus, intent.PolicyReasons, intent.RiskStatus, intent.RiskReasons, intent.OrderID, intent.Status).Scan(&intent.UpdatedAt)
+	return r.pool.QueryRow(ctx, `UPDATE copy_trade_intents SET pipeline_run_id=$2,risk_status=$3,risk_reasons=$4,order_id=$5,status=$6,updated_at=NOW() WHERE id=$1 RETURNING updated_at`, intent.ID, intent.PipelineRunID, intent.RiskStatus, intent.RiskReasons, intent.OrderID, intent.Status).Scan(&intent.UpdatedAt)
 }
 
 func copyRepoNotFound(entity string, err error) error {
@@ -391,4 +416,37 @@ func nullIfEmpty(value string) any {
 		return nil
 	}
 	return value
+}
+
+func normalizeCopyDecimal(value string) string {
+	parsed, err := decimal.NewFromString(value)
+	if err != nil {
+		return value
+	}
+	return parsed.String()
+}
+
+func sameCopyIntentCreation(left, right *domain.CopyTradeIntent) bool {
+	if left == nil || right == nil {
+		return false
+	}
+	return left.ID == right.ID && left.SubscriptionID == right.SubscriptionID && left.OriginType == right.OriginType && left.OriginID == right.OriginID &&
+		left.SourceObservationID == right.SourceObservationID && left.InstrumentKey == right.InstrumentKey && left.Ticker == right.Ticker && left.Side == right.Side &&
+		left.TargetWeight == right.TargetWeight && left.TargetValue == right.TargetValue && left.AttributedCurrentValue == right.AttributedCurrentValue && left.RequestedNotional == right.RequestedNotional &&
+		equalFloatPointer(left.ExecutablePrice, right.ExecutablePrice) && left.QuoteGateVersion == right.QuoteGateVersion && equalUUIDPointer(left.DecisionQuoteSnapshotID, right.DecisionQuoteSnapshotID) &&
+		left.DecisionBid == right.DecisionBid && left.DecisionAsk == right.DecisionAsk && left.DecisionSpreadBPS == right.DecisionSpreadBPS && equalTimePointer(left.DecisionAvailableAt, right.DecisionAvailableAt) && equalTimePointer(left.DecisionAt, right.DecisionAt) &&
+		left.DecisionMarketStatus == right.DecisionMarketStatus && left.DecisionSessionStatus == right.DecisionSessionStatus && left.CalculationVersion == right.CalculationVersion && jsonEqual(left.Calculation, right.Calculation) &&
+		left.PolicyStatus == right.PolicyStatus && slices.Equal(left.PolicyReasons, right.PolicyReasons)
+}
+
+func equalFloatPointer(left, right *float64) bool {
+	return left == nil && right == nil || left != nil && right != nil && *left == *right
+}
+
+func equalUUIDPointer(left, right *uuid.UUID) bool {
+	return left == nil && right == nil || left != nil && right != nil && *left == *right
+}
+
+func equalTimePointer(left, right *time.Time) bool {
+	return left == nil && right == nil || left != nil && right != nil && left.Equal(*right)
 }

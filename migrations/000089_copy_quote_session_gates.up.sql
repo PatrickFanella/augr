@@ -36,7 +36,7 @@ BEGIN
         RETURN NEW;
     END IF;
     SELECT * INTO subscription FROM copy_subscriptions WHERE id=NEW.subscription_id;
-    IF NEW.policy_status = 'approved' THEN
+    IF NEW.decision_quote_snapshot_id IS NOT NULL THEN
         SELECT * INTO quote FROM quote_snapshots WHERE id=NEW.decision_quote_snapshot_id;
         IF NOT FOUND OR quote.bid IS NULL OR quote.ask IS NULL OR
            quote.bid::NUMERIC <> NEW.decision_bid OR quote.ask::NUMERIC <> NEW.decision_ask OR
@@ -44,7 +44,9 @@ BEGIN
            quote.market_status <> NEW.decision_market_status OR quote.session_status <> NEW.decision_session_status THEN
             RAISE EXCEPTION 'copy intent decision quote does not reconstruct';
         END IF;
-        expected_spread := (quote.ask-quote.bid)/((quote.ask+quote.bid)/2)*10000;
+    END IF;
+    IF NEW.policy_status = 'approved' THEN
+        expected_spread := round((quote.ask-quote.bid)/((quote.ask+quote.bid)/2)*10000,12);
         expected_price := CASE WHEN NEW.side='buy' THEN quote.ask ELSE quote.bid END;
         IF expected_spread <> NEW.decision_spread_bps OR expected_price <> NEW.executable_price OR
            NEW.decision_available_at > NEW.decision_at OR

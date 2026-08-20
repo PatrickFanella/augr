@@ -195,7 +195,7 @@ func Build13FTarget(input TargetInput) Preview {
 				reasons = append(reasons, "crossed_quote")
 			default:
 				midpoint := bid.Add(ask).Div(decimal.NewFromInt(2))
-				spread := ask.Sub(bid).Div(midpoint).Mul(decimal.NewFromInt(10000))
+				spread := ask.Sub(bid).Div(midpoint).Mul(decimal.NewFromInt(10000)).Round(12)
 				executable := ask
 				if side == domain.OrderSideSell {
 					executable = bid
