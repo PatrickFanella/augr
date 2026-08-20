@@ -87,12 +87,12 @@ Out of scope:
 
 ## Task 1: Domain vocabulary and fixed quality policy
 
-- [ ] Add `internal/dataset/policy.go` with bounded kinds, check/status/severity
+- [x] Add `internal/dataset/policy.go` with bounded kinds, check/status/severity
   codes, fixed v1 policy construction, canonical bytes, digest, deterministic
   ID, artifact construction, and restore/validate helpers.
-- [ ] Lock the exact policy bytes in tests. Include required checks per dataset
+- [x] Lock the exact policy bytes in tests. Include required checks per dataset
   kind and a stable definition of quarantine.
-- [ ] Reject unknown kinds/checks/statuses, duplicate policy rows, mutable
+- [x] Reject unknown kinds/checks/statuses, duplicate policy rows, mutable
   canonical state, non-UTC/non-microsecond timestamps, and changed-version
   reuse.
 - [ ] Commit and push the policy slice after focused race tests.
