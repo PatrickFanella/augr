@@ -9,12 +9,14 @@ repository qualify their fail-closed assessment and durable evidence machinery;
 they do not qualify elapsed time, external observations, or deployment.
 
 The complete local gate passed on commit
-`36bd23e07173ceb22f202a41f5f7111b239ca418`. It included the focused campaign
-twice, repository backend tests/vet/static analysis, 162 pinned frontend tests
-plus lint/typecheck/build, Compose and Dockerfile checks, isolated production
-health/authenticated read-only API, schema `101 -> 60 -> 101` with schema-60
-backup/restore, seven Prometheus rules, secret-history review across 1,292
-commits, and final clean-tree/commit identity.
+`fa70660471fd0e918548b29379eb9dbd0acdb9b0`. It included repository backend
+tests/vet/static analysis, 162 pinned frontend tests plus
+lint/typecheck/build, Compose and Dockerfile checks, isolated production
+health/authenticated read-only API, schema `102 -> 60 -> 102` with schema-60
+backup/restore, seven Prometheus rules, secret-history review across 1,297
+commits, and final clean-tree/commit identity. The OVR-701 focused campaign was
+also run twice under the race detector on the preceding clean Milestone-7
+checkpoint.
 
 Do not turn a synthetic test interval into a 30-, 60-, or 90-day claim. Do not
 infer profitability or readiness from source inspection, a passing unit test,
