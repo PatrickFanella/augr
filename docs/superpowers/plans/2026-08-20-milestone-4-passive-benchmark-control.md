@@ -79,16 +79,16 @@ Out of scope:
 
 ## Task 2: Migration 82 append-only evidence
 
-- [ ] Add declaration, observation, and opportunity-cost-report tables.
-- [ ] Independently reconstruct canonical bytes, IDs/hashes, exact parent
+- [x] Add declaration, observation, and opportunity-cost-report tables.
+- [x] Independently reconstruct canonical bytes, IDs/hashes, exact parent
   hashes, normalized children, and all derived values.
-- [ ] Reject mutation/deletion, omission/reordering, changed retries, forged
+- [x] Reject mutation/deletion, omission/reordering, changed retries, forged
   parents/results, and incomplete graphs.
-- [ ] Add no selector, scheduler/runtime trigger, promotion/allocation mutation,
+- [x] Add no selector, scheduler/runtime trigger, promotion/allocation mutation,
   provider writer, execution grant, UI authority, or legacy backfill.
-- [ ] Add empty-only rollback and bump `RequiredSchemaVersion` to 82 only after
+- [x] Add empty-only rollback and bump `RequiredSchemaVersion` to 82 only after
   real PostgreSQL migration tests pass.
-- [ ] Commit and push the migration slice after focused database races.
+- [x] Commit and push the migration slice after focused database races.
 
 ## Task 3: Repository, service, recovery, and qualification
 
