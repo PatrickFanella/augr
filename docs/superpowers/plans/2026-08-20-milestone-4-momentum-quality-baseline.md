@@ -72,14 +72,14 @@ Out of scope:
 
 ## Task 1: Policy, point-in-time universe, and ranking engine
 
-- [ ] Add immutable policy/scenario canonical objects with exact restoration.
-- [ ] Add point-in-time universe, price-anchor, fundamental, volatility,
+- [x] Add immutable policy/scenario canonical objects with exact restoration.
+- [x] Add point-in-time universe, price-anchor, fundamental, volatility,
   benchmark, and quote evidence validation.
-- [ ] Derive eligibility, momentum, low-volatility control, deterministic ranks,
+- [x] Derive eligibility, momentum, low-volatility control, deterministic ranks,
   equal-weight targets, and explicit cash.
-- [ ] Prove threshold edges, stable ties/input-order invariance, missing/stale/
+- [x] Prove threshold edges, stable ties/input-order invariance, missing/stale/
   revised evidence refusal, delisting handling, and deterministic replay.
-- [ ] Commit and push the ranking slice after focused races.
+- [x] Commit and push the ranking slice after focused races.
 
 ## Task 2: Rebalance, turnover, costs, regimes, and OVR-303 adapter
 
