@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/PatrickFanella/get-rich-quick/internal/copyorigin"
 	"github.com/PatrickFanella/get-rich-quick/internal/data/edgar"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
@@ -40,6 +41,7 @@ type PaperOrderExecutor interface {
 
 type ServiceDeps struct {
 	Repo       repository.CopyTradingRepository
+	OriginRuns copyorigin.Store
 	Strategies repository.StrategyRepository
 	Runs       repository.PipelineRunRepository
 	Positions  repository.PositionRepository
@@ -346,9 +348,11 @@ func validateStatusTransition(current, next domain.CopySubscriptionStatus) error
 }
 
 type RebalanceResult struct {
-	Run     domain.PipelineRun       `json:"run"`
-	Preview Preview                  `json:"preview"`
-	Intents []domain.CopyTradeIntent `json:"intents"`
+	Run             domain.PipelineRun       `json:"run,omitempty"`
+	OriginRunID     uuid.UUID                `json:"origin_run_id,omitempty"`
+	OriginRunSHA256 string                   `json:"origin_run_sha256,omitempty"`
+	Preview         Preview                  `json:"preview"`
+	Intents         []domain.CopyTradeIntent `json:"intents"`
 }
 
 type SyncSummary struct {
@@ -421,7 +425,41 @@ func (s *Service) Rebalance(ctx context.Context, id uuid.UUID) (*RebalanceResult
 		return nil, err
 	}
 	if subscription.LegacyStrategyID == nil {
-		return nil, fmt.Errorf("origin-native copy execution handoff is not configured")
+		if s.deps.OriginRuns == nil {
+			return nil, fmt.Errorf("copy origin run repository is unavailable")
+		}
+		intents := append([]domain.CopyTradeIntent(nil), preview.Intents...)
+		run, runErr := copyorigin.NewRun(*subscription, intents)
+		if runErr != nil {
+			return nil, runErr
+		}
+		for i := range intents {
+			created, createErr := s.deps.Repo.CreateIntent(ctx, &intents[i])
+			if createErr != nil {
+				return nil, createErr
+			}
+			if !created {
+				existing, listErr := s.deps.Repo.ListIntents(ctx, subscription.ID, 1000, 0)
+				if listErr != nil {
+					return nil, listErr
+				}
+				matched := false
+				for _, value := range existing {
+					if value.ID == intents[i].ID {
+						intents[i], matched = value, true
+						break
+					}
+				}
+				if !matched {
+					return nil, fmt.Errorf("copy origin intent retry did not reconstruct")
+				}
+			}
+		}
+		persisted, persistErr := s.deps.OriginRuns.RegisterRun(ctx, run)
+		if persistErr != nil {
+			return nil, persistErr
+		}
+		return &RebalanceResult{OriginRunID: persisted.ID(), OriginRunSHA256: persisted.Digest(), Preview: *preview, Intents: intents}, nil
 	}
 	now := s.deps.Now().UTC()
 	config, _ := json.Marshal(map[string]any{"copy_subscription_id": id, "source_observation_id": preview.Observation.ID, "calculation_version": CalculationVersion})

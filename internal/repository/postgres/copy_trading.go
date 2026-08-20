@@ -342,7 +342,13 @@ func (r *CopyTradingRepo) CreateIntent(ctx context.Context, intent *domain.CopyT
 	if intent.Calculation == nil {
 		intent.Calculation = json.RawMessage(`{}`)
 	}
-	err := r.pool.QueryRow(ctx, `INSERT INTO copy_trade_intents (subscription_id,origin_type,origin_id,source_observation_id,pipeline_run_id,instrument_key,ticker,side,target_weight,target_value,attributed_current_value,requested_notional,executable_price,calculation_version,calculation,policy_status,policy_reasons,risk_status,risk_reasons,order_id,status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) ON CONFLICT (subscription_id,source_observation_id,instrument_key,calculation_version) DO NOTHING RETURNING id,created_at,updated_at`, intent.SubscriptionID, intent.OriginType, intent.OriginID, intent.SourceObservationID, intent.PipelineRunID, intent.InstrumentKey, intent.Ticker, intent.Side, intent.TargetWeight, intent.TargetValue, intent.AttributedCurrentValue, intent.RequestedNotional, intent.ExecutablePrice, intent.CalculationVersion, intent.Calculation, intent.PolicyStatus, intent.PolicyReasons, intent.RiskStatus, intent.RiskReasons, intent.OrderID, intent.Status).Scan(&intent.ID, &intent.CreatedAt, &intent.UpdatedAt)
+	if intent.PolicyReasons == nil {
+		intent.PolicyReasons = []string{}
+	}
+	if intent.RiskReasons == nil {
+		intent.RiskReasons = []string{}
+	}
+	err := r.pool.QueryRow(ctx, `INSERT INTO copy_trade_intents (id,subscription_id,origin_type,origin_id,source_observation_id,pipeline_run_id,instrument_key,ticker,side,target_weight,target_value,attributed_current_value,requested_notional,executable_price,calculation_version,calculation,policy_status,policy_reasons,risk_status,risk_reasons,order_id,status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) ON CONFLICT (subscription_id,source_observation_id,instrument_key,calculation_version) DO NOTHING RETURNING created_at,updated_at`, intent.ID, intent.SubscriptionID, intent.OriginType, intent.OriginID, intent.SourceObservationID, intent.PipelineRunID, intent.InstrumentKey, intent.Ticker, intent.Side, intent.TargetWeight, intent.TargetValue, intent.AttributedCurrentValue, intent.RequestedNotional, intent.ExecutablePrice, intent.CalculationVersion, intent.Calculation, intent.PolicyStatus, intent.PolicyReasons, intent.RiskStatus, intent.RiskReasons, intent.OrderID, intent.Status).Scan(&intent.CreatedAt, &intent.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
 	}

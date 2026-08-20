@@ -660,6 +660,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 		}
 		deps.CopyTrading = copytrading.NewService(copytrading.ServiceDeps{
 			Repo:       copyTradingRepo,
+			OriginRuns: pgrepo.NewCopyOriginRepo(db.Pool),
 			Strategies: strategyRepo,
 			Runs:       runRepo,
 			Positions:  positionRepo,

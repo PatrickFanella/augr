@@ -2,11 +2,20 @@ LOCK TABLE copy_subscriptions, copy_trade_intents IN ACCESS EXCLUSIVE MODE;
 
 DO $$
 BEGIN
-    IF EXISTS (SELECT 1 FROM copy_subscriptions WHERE legacy_strategy_id IS NULL) THEN
+    IF EXISTS (SELECT 1 FROM copy_subscriptions WHERE legacy_strategy_id IS NULL)
+       OR EXISTS (SELECT 1 FROM copy_origin_rebalance_runs) THEN
         RAISE EXCEPTION 'cannot roll back copy subscription origins with origin-native subscriptions';
     END IF;
 END;
 $$;
+
+DROP TRIGGER copy_origin_run_intents_append_only ON copy_origin_rebalance_intents;
+DROP TRIGGER copy_origin_runs_append_only ON copy_origin_rebalance_runs;
+DROP TRIGGER IF EXISTS copy_origin_run_intent_guard ON copy_origin_rebalance_intents;
+DROP FUNCTION IF EXISTS copy_origin_run_intent_guard();
+DROP FUNCTION reject_copy_origin_evidence_mutation();
+DROP TABLE copy_origin_rebalance_intents;
+DROP TABLE copy_origin_rebalance_runs;
 
 DROP INDEX idx_copy_intents_origin_created;
 DROP TRIGGER copy_trade_intents_origin_guard ON copy_trade_intents;

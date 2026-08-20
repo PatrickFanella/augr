@@ -255,6 +255,12 @@ func (s *CopySubscription) Validate() error {
 	if s.Status == "" {
 		s.Status = CopySubscriptionDraft
 	}
+	if s.StockAllowlist == nil {
+		s.StockAllowlist = []string{}
+	}
+	if s.StockBlocklist == nil {
+		s.StockBlocklist = []string{}
+	}
 	if s.ID != uuid.Nil {
 		if s.OriginType == "" && s.OriginID == uuid.Nil {
 			s.OriginType, s.OriginID = "copy_subscription", s.ID

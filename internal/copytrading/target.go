@@ -2,12 +2,14 @@ package copytrading
 
 import (
 	"encoding/json"
+	"fmt"
 	"math"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
+	"github.com/PatrickFanella/get-rich-quick/internal/economicid"
 )
 
 const CalculationVersion = 1
@@ -168,6 +170,7 @@ func Build13FTarget(input TargetInput) Preview {
 			side = domain.OrderSideSell
 		}
 		intent := domain.CopyTradeIntent{SubscriptionID: sub.ID, OriginType: "copy_subscription", OriginID: sub.ID, SourceObservationID: input.Observation.ID, InstrumentKey: ticker, Ticker: ticker, Side: side, TargetWeight: target.weight, TargetValue: roundMoney(targetValue), AttributedCurrentValue: roundMoney(current), RequestedNotional: roundMoney(math.Abs(delta)), CalculationVersion: CalculationVersion, PolicyStatus: "approved", RiskStatus: "pending", Status: "received"}
+		intent.ID = economicid.DeterministicUUID("copy-trade-intent", sub.ID.String(), input.Observation.ID.String(), ticker, fmt.Sprintf("%d", CalculationVersion))
 		price, ok := input.Prices[ticker]
 		reasons := make([]string, 0, 3)
 		if !ok || price.Price <= 0 {
