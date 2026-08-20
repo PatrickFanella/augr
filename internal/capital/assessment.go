@@ -233,7 +233,7 @@ func validateAssessmentInput(input AssessmentInput) error {
 	if err := input.Instrument.Validate(); err != nil {
 		return fmt.Errorf("proposed instrument: %w", err)
 	}
-	if input.Instrument.AssetClass != instrument.AssetClassEquity && input.Instrument.AssetClass != instrument.AssetClassETF {
+	if input.Instrument.AssetClass != instrument.AssetClassEquity && input.Instrument.AssetClass != instrument.AssetClassETF && input.Instrument.AssetClass != instrument.AssetClassOption {
 		return fmt.Errorf("proposed instrument asset class %q is unsupported", input.Instrument.AssetClass)
 	}
 	if input.Currency != "USD" || input.Currency != input.Account.BaseCurrency ||

@@ -364,11 +364,15 @@ func preflightCapital(graph *EvidenceGraph, plan *Plan, steps []StepInput, mater
 		if quantity.IsNegative() {
 			direction = capital.ExposureIncreaseShort
 		}
+		proposedNotional, err := capitalAssessmentNotional(step, *inst, *contract, price)
+		if err != nil {
+			return nil, fmt.Errorf("experiment step %d capital notional: %w", sequence, err)
+		}
 		assessment, err := capital.Assess(capital.AssessmentInput{
 			Account: *graph.Account, Binding: *graph.CapitalBinding, Policy: graph.CapitalPolicy, State: graph.CapitalState,
 			Instrument: *inst, Currency: graph.Account.BaseCurrency,
 			ScenarioID: plan.ID().String() + "/step/" + fmt.Sprint(sequence), Direction: direction,
-			ProposedNotional: quantity.Abs().Mul(price).Mul(contract.Multiplier),
+			ProposedNotional: proposedNotional,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("experiment step %d capital assessment: %w", sequence, err)
@@ -379,6 +383,24 @@ func preflightCapital(graph *EvidenceGraph, plan *Plan, steps []StepInput, mater
 		assessments[sequence] = assessment
 	}
 	return assessments, nil
+}
+
+func capitalAssessmentNotional(step StepInput, inst instrument.Instrument, contract instrument.VenueContract, price decimal.Decimal) (decimal.Decimal, error) {
+	executionNotional := decimal.RequireFromString(step.Intent.Quantity).Mul(price).Mul(contract.Multiplier)
+	if inst.AssetClass != instrument.AssetClassOption {
+		return executionNotional, nil
+	}
+	var decision struct {
+		CapitalNotional string `json:"capital_notional"`
+	}
+	if err := json.Unmarshal(step.Decision, &decision); err != nil || decision.CapitalNotional == "" {
+		return decimal.Zero, fmt.Errorf("option decision lacks declared capital notional")
+	}
+	value, err := decimal.NewFromString(decision.CapitalNotional)
+	if err != nil || !value.IsPositive() || value.String() != decision.CapitalNotional || value.LessThan(executionNotional) {
+		return decimal.Zero, fmt.Errorf("option decision capital notional is invalid")
+	}
+	return value, nil
 }
 
 func (runner *Runner) executeStep(ctx context.Context, graph *EvidenceGraph, venue *simulation.Venue, plan *Plan, sequence int, step StepInput, material ObservationMaterial) (StepOutcomeInput, error) {

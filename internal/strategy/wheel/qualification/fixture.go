@@ -49,6 +49,17 @@ type Fixture struct {
 }
 
 func Build(mode strategycatalog.ExperimentMode) (*Fixture, error) {
+	return build(mode, nil, "95")
+}
+
+// BuildCapitalRejected retains valid wheel collateral but supplies too little
+// scored-account equity for the reviewed Reg T short requirement.
+func BuildCapitalRejected() (*Fixture, error) {
+	value := decimal.NewFromInt(5_000)
+	return build(strategycatalog.ExperimentPaperScored, &value, "45")
+}
+
+func build(mode strategycatalog.ExperimentMode, capitalOverride *decimal.Decimal, strike string) (*Fixture, error) {
 	if mode != strategycatalog.ExperimentPaperScored && mode != strategycatalog.ExperimentPaperStress {
 		return nil, fmt.Errorf("wheel qualification mode must be scored or stress")
 	}
@@ -64,6 +75,9 @@ func Build(mode strategycatalog.ExperimentMode) (*Fixture, error) {
 		buyingPowerMultiplier = decimal.Zero
 		namespace = "paper_stress/wheel-v1-qualification"
 	}
+	if capitalOverride != nil {
+		startingCapital = *capitalOverride
+	}
 	account, err := domain.NewAccount(domain.AccountInput{Name: "Wheel V1 " + string(mode), Environment: environment, Venue: "test-venue", BaseCurrency: "USD", StorageNamespace: namespace, StartingCapital: startingCapital, BuyingPowerMultiplier: buyingPowerMultiplier, MarginProfile: marginProfile, CreatedBy: "ovr402-qualification", CreationMetadata: json.RawMessage(`{"fixture":"wheel-v1"}`), CreatedAt: Start.Add(-2 * time.Hour)})
 	if err != nil {
 		return nil, err
@@ -74,12 +88,13 @@ func Build(mode strategycatalog.ExperimentMode) (*Fixture, error) {
 		return nil, err
 	}
 	underlying.ID = id(2, mode)
-	option, err := instrument.NewInstrument(instrument.InstrumentInput{IdentityKey: "osi:WHEEL-V1-PUT-95", AssetClass: instrument.AssetClassOption, PrimaryVenue: "test-venue", Currency: "USD", TickSize: decimal.RequireFromString("0.01"), LotSize: decimal.NewFromInt(1), Multiplier: decimal.NewFromInt(100), Expiration: &End, ExerciseStyle: instrument.ExerciseAmerican, SettlementMethod: instrument.SettlementPhysical, UnderlyingID: &underlying.ID, Status: instrument.StatusActive, Metadata: json.RawMessage(`{"contract_type":"put","strike":"95"}`), CreatedAt: Start.Add(-2 * time.Hour)})
+	optionMetadata, _ := json.Marshal(map[string]string{"contract_type": "put", "strike": strike})
+	option, err := instrument.NewInstrument(instrument.InstrumentInput{IdentityKey: "osi:WHEEL-V1-PUT-" + strike, AssetClass: instrument.AssetClassOption, PrimaryVenue: "test-venue", Currency: "USD", TickSize: decimal.RequireFromString("0.01"), LotSize: decimal.NewFromInt(1), Multiplier: decimal.NewFromInt(100), Expiration: &End, ExerciseStyle: instrument.ExerciseAmerican, SettlementMethod: instrument.SettlementPhysical, UnderlyingID: &underlying.ID, Status: instrument.StatusActive, Metadata: optionMetadata, CreatedAt: Start.Add(-2 * time.Hour)})
 	if err != nil {
 		return nil, err
 	}
 	option.ID = id(3, mode)
-	contract, err := instrument.NewVenueContract(instrument.VenueContractInput{InstrumentID: option.ID, Venue: "test-venue", ContractID: "WHEEL-V1-PUT-95", Currency: "USD", TickSize: option.TickSize, LotSize: option.LotSize, Multiplier: option.Multiplier, SettlementMethod: option.SettlementMethod, ValidFrom: Start.Add(-24 * time.Hour), ValidTo: &End, Metadata: json.RawMessage(`{"fixture":"wheel-v1"}`), CreatedAt: Start.Add(-2 * time.Hour)})
+	contract, err := instrument.NewVenueContract(instrument.VenueContractInput{InstrumentID: option.ID, Venue: "test-venue", ContractID: "WHEEL-V1-PUT-" + strike, Currency: "USD", TickSize: option.TickSize, LotSize: option.LotSize, Multiplier: option.Multiplier, SettlementMethod: option.SettlementMethod, ValidFrom: Start.Add(-24 * time.Hour), ValidTo: &End, Metadata: json.RawMessage(`{"fixture":"wheel-v1"}`), CreatedAt: Start.Add(-2 * time.Hour)})
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +138,7 @@ func Build(mode strategycatalog.ExperimentMode) (*Fixture, error) {
 	if err != nil {
 		return nil, err
 	}
-	scenario, err := wheel.NewScenario(wheel.ScenarioInput{Policy: policy, UnderlyingID: underlying.ID, InitialCapital: account.StartingCapital.String(), EvaluationStart: Start, EvaluationEnd: End, Mode: mode, Events: []wheel.EventInput{{Kind: wheel.EventAssessQuality, OccurredAt: Start, UnderlyingMark: "100", Quality: &wheel.QualityEvidence{AvailableAt: Start, ROIC: "0.2", DebtToAssets: "0.3", FreeCashFlow: "1000", EvidenceID: id(6, mode), EvidenceSHA256: strings.Repeat("6", 64)}, EvidenceID: id(7, mode), EvidenceSHA256: strings.Repeat("7", 64)}, {Kind: wheel.EventOpenPut, OccurredAt: RouteAt, UnderlyingMark: "100", Candidates: []wheel.Candidate{{InstrumentID: option.ID, VenueContractID: contract.ID, PartitionContentSHA256: partition.ContentSHA256, SourceKey: snapshot.ObservationID, OptionType: "put", Strike: "95", Expiry: End, Delta: "-0.25", Bid: "2", Ask: "2.1", OpenInterest: "1000", Volume: "100", AvailableAt: RouteAt, EvidenceID: snapshot.ID, EvidenceSHA256: contentSHA}}, EvidenceID: id(8, mode), EvidenceSHA256: strings.Repeat("8", 64)}, {Kind: wheel.EventExpiry, OccurredAt: End, UnderlyingMark: "100", EvidenceID: id(9, mode), EvidenceSHA256: strings.Repeat("9", 64)}}})
+	scenario, err := wheel.NewScenario(wheel.ScenarioInput{Policy: policy, UnderlyingID: underlying.ID, InitialCapital: account.StartingCapital.String(), EvaluationStart: Start, EvaluationEnd: End, Mode: mode, Events: []wheel.EventInput{{Kind: wheel.EventAssessQuality, OccurredAt: Start, UnderlyingMark: "100", Quality: &wheel.QualityEvidence{AvailableAt: Start, ROIC: "0.2", DebtToAssets: "0.3", FreeCashFlow: "1000", EvidenceID: id(6, mode), EvidenceSHA256: strings.Repeat("6", 64)}, EvidenceID: id(7, mode), EvidenceSHA256: strings.Repeat("7", 64)}, {Kind: wheel.EventOpenPut, OccurredAt: RouteAt, UnderlyingMark: "100", Candidates: []wheel.Candidate{{InstrumentID: option.ID, VenueContractID: contract.ID, PartitionContentSHA256: partition.ContentSHA256, SourceKey: snapshot.ObservationID, OptionType: "put", Strike: strike, Expiry: End, Delta: "-0.25", Bid: "2", Ask: "2.1", OpenInterest: "1000", Volume: "100", AvailableAt: RouteAt, EvidenceID: snapshot.ID, EvidenceSHA256: contentSHA}}, EvidenceID: id(8, mode), EvidenceSHA256: strings.Repeat("8", 64)}, {Kind: wheel.EventExpiry, OccurredAt: End, UnderlyingMark: "100", EvidenceID: id(9, mode), EvidenceSHA256: strings.Repeat("9", 64)}}})
 	if err != nil {
 		return nil, err
 	}

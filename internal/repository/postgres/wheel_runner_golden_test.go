@@ -6,14 +6,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/shopspring/decimal"
-
 	"github.com/PatrickFanella/get-rich-quick/internal/experimentrun"
 	experimentqualification "github.com/PatrickFanella/get-rich-quick/internal/experimentrun/qualification"
 	wheelqualification "github.com/PatrickFanella/get-rich-quick/internal/strategy/wheel/qualification"
 	"github.com/PatrickFanella/get-rich-quick/internal/strategycatalog"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func TestWheelRunnerScoredAndStressReplayThroughCommonBoundaries(t *testing.T) {
@@ -60,12 +58,10 @@ func TestWheelRunnerRejectsUnknownContractAndCapitalExcess(t *testing.T) {
 	})
 	t.Run("capital excess", func(t *testing.T) {
 		pool := newExperimentRunnerGoldenPool(t)
-		fixture, err := wheelqualification.Build(strategycatalog.ExperimentPaperScored)
+		fixture, err := wheelqualification.BuildCapitalRejected()
 		if err != nil {
 			t.Fatal(err)
 		}
-		fixture.Option.Multiplier = decimal.NewFromInt(1_000_000_000)
-		fixture.VenueContract.Multiplier = fixture.Option.Multiplier
 		persistWheelRunnerFixture(t, pool, fixture)
 		runner, _ := experimentrun.NewRunner(experimentqualification.Loader{Graph: fixture.Graph}, NewExperimentRunRepo(pool))
 		_, err = runner.Run(context.Background(), wheelRunRequest(fixture, uuid.New(), 0))

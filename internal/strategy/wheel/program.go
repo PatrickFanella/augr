@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/experimentrun"
 )
@@ -109,7 +110,8 @@ func (program *Program) Plan(ctx context.Context, input experimentrun.ProgramInp
 		if quantity == "" {
 			return nil, fmt.Errorf("wheel opening transition lacks contract quantity")
 		}
-		decision, _ := json.Marshal(map[string]any{"schema": "quality-filtered-wheel-decision-v1", "policy_id": program.policy.ID().String(), "scenario_id": program.scenario.ID().String(), "report_id": program.report.ID().String(), "event_sequence": sequence, "action": transition.Action, "reason": transition.Reason, "selected_instrument_id": transition.SelectedInstrumentID})
+		capitalNotional := decimal.RequireFromString(candidate.Strike).Mul(decimal.RequireFromString(program.policy.canonical.DeliverableQuantity)).Mul(decimal.RequireFromString(quantity)).String()
+		decision, _ := json.Marshal(map[string]any{"schema": "quality-filtered-wheel-decision-v1", "policy_id": program.policy.ID().String(), "scenario_id": program.scenario.ID().String(), "report_id": program.report.ID().String(), "event_sequence": sequence, "action": transition.Action, "reason": transition.Reason, "selected_instrument_id": transition.SelectedInstrumentID, "capital_notional": capitalNotional})
 		limitPrice := candidate.Bid
 		occurredAt := parseTime(event.OccurredAt)
 		steps = append(steps, experimentrun.StepInput{

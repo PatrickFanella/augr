@@ -108,15 +108,15 @@ Out of scope:
 
 ## Task 3: Migration 83 and append-only evidence
 
-- [ ] Add policy, scenario, source observation, transition, economic effect,
+- [x] Add policy, scenario, source observation, transition, economic effect,
   selected-contract, and lifecycle-report tables.
-- [ ] Independently reconstruct canonical bytes, IDs/hashes, exact parents,
+- [x] Independently reconstruct canonical bytes, IDs/hashes, exact parents,
   selection, state continuity, collateral/coverage, effects, marks, and totals.
-- [ ] Reject mutation/deletion, forks, gaps, changed retries, forged economics,
+- [x] Reject mutation/deletion, forks, gaps, changed retries, forged economics,
   naked states, missing sources, and incomplete normalized graphs.
-- [ ] Add no scheduler/runtime trigger, promotion/allocation mutation, provider
+- [x] Add no scheduler/runtime trigger, promotion/allocation mutation, provider
   writer, execution grant, UI authority, or legacy backfill.
-- [ ] Add empty-only rollback and bump `RequiredSchemaVersion` to 83 only after
+- [x] Add empty-only rollback and bump `RequiredSchemaVersion` to 83 only after
   real PostgreSQL migration races pass.
 - [ ] Commit and push the persistence slice.
 

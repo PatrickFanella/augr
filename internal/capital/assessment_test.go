@@ -160,7 +160,7 @@ func TestAssessRejectsMalformedContextWithoutEvidence(t *testing.T) {
 			input.Account.ID = bindingTestAccount(t, domain.AccountEnvironmentPaperScored, decimal.NewFromInt(100_000), domain.MarginProfileRegT, decimal.NewFromInt(2)).ID
 		},
 		"unsupported": func(input *AssessmentInput) {
-			input.Instrument.AssetClass = instrument.AssetClassOption
+			input.Instrument.AssetClass = instrument.AssetClassCryptoSpot
 		},
 		"instrument EUR": func(input *AssessmentInput) { input.Instrument.Currency = "EUR" },
 	}
