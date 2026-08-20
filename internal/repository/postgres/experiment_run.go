@@ -277,15 +277,16 @@ func (repo *ExperimentRunRepo) RecordCompletedResult(ctx context.Context, experi
 		return nil, nil, fmt.Errorf("postgres: lock completed experiment result identity: %w", err)
 	}
 	existingResult, resultLoadErr := getResultTx(ctx, tx, value.ID())
-	if resultLoadErr == nil {
+	switch {
+	case resultLoadErr == nil:
 		if !sameResult(existingResult, value) {
 			return nil, nil, experimentRunConflict("completed experiment result identity differs from accepted evidence")
 		}
-	} else if errors.Is(resultLoadErr, repository.ErrNotFound) {
+	case errors.Is(resultLoadErr, repository.ErrNotFound):
 		if err = repo.insertResultGraph(ctx, tx, value, event.OccurredAt()); err != nil {
 			return nil, nil, err
 		}
-	} else {
+	default:
 		return nil, nil, resultLoadErr
 	}
 	if err := repo.stage("result_graph"); err != nil {

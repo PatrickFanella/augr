@@ -248,15 +248,16 @@ func build(mode strategycatalog.ExperimentMode, orderQuantity, adapterDigestChar
 		PartitionContentSHA256: partition.ContentSHA256, ObservationSourceKey: snapshot.ObservationID,
 		ObservationContentSHA256: contentSHA, AvailableAt: available, Decision: json.RawMessage(`{"signal":"buy"}`), Action: action,
 	}
-	if action == experimentrun.ActionExecute {
+	switch action {
+	case experimentrun.ActionExecute:
 		step.Intent = &experimentrun.IntentSpecInput{
 			InstrumentID: inst.ID, VenueContractID: contract.ID, Side: "buy", OrderType: "market",
 			TimeInForce: "gtc", Quantity: orderQuantity, DecisionAt: RouteAt, RouteAt: RouteAt,
 		}
-	} else if action == experimentrun.ActionRejected {
+	case experimentrun.ActionRejected:
 		step.Decision = json.RawMessage(`{"signal":"rejected"}`)
 		step.RejectionCode = "fixture_policy_rejection"
-	} else {
+	default:
 		step.Decision = json.RawMessage(`{"signal":"hold"}`)
 	}
 	return &Fixture{

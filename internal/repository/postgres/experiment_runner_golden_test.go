@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"os"
 	"testing"
 	"time"
 
@@ -50,6 +51,58 @@ func TestExperimentRunnerGoldenPostgresReplayAndRestart(t *testing.T) {
 	if attempts != 2 || rawEvents != 2 || intents != 1 || orders != 1 || fills != 2 {
 		t.Fatalf("restart convergence attempts/raw/intents/orders/fills=%d/%d/%d/%d/%d", attempts, rawEvents, intents, orders, fills)
 	}
+}
+
+func TestExperimentRunnerRetainedQualification(t *testing.T) {
+	databaseURL := os.Getenv("EXPERIMENT_RUN_QUALIFICATION_DB_URL")
+	if databaseURL == "" {
+		t.Skip("set EXPERIMENT_RUN_QUALIFICATION_DB_URL to a dedicated empty schema-78 database")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	var schema string
+	var version, existing int
+	if err := pool.QueryRow(ctx, `SELECT current_schema()`).Scan(&schema); err != nil || schema != "public" {
+		t.Fatalf("qualification schema=%q err=%v", schema, err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT version FROM schema_migrations WHERE NOT dirty`).Scan(&version); err != nil || version != 78 {
+		t.Fatalf("qualification version=%d err=%v", version, err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT
+		(SELECT count(*) FROM experiment_programs)+(SELECT count(*) FROM experiment_replay_plans)+
+		(SELECT count(*) FROM experiment_run_attempts)+(SELECT count(*) FROM experiment_run_results)`).Scan(&existing); err != nil || existing != 0 {
+		t.Fatalf("qualification database is not experiment-run-empty count=%d err=%v", existing, err)
+	}
+	fixture := persistExperimentRunnerGolden(t, pool, strategycatalog.ExperimentPaperScored)
+	repo := NewExperimentRunRepo(pool)
+	runner, _ := experimentrun.NewRunner(qualification.Loader{Graph: fixture.Graph}, repo)
+	first := runGoldenExperiment(t, runner, fixture, uuid.MustParse("30300000-0000-4000-8000-000000000341"), 0)
+	second := runGoldenExperiment(t, runner, fixture, uuid.MustParse("30300000-0000-4000-8000-000000000342"), 1)
+	assertExactResult(t, second, first)
+	failing := &failCompletedResultStore{ExperimentRunRepo: repo, fail: true}
+	failedRunner, _ := experimentrun.NewRunner(qualification.Loader{Graph: fixture.Graph}, failing)
+	if result, err := failedRunner.Run(ctx, experimentrun.RunRequest{
+		ExperimentID: fixture.Graph.Experiment.ID(), AttemptID: uuid.MustParse("30300000-0000-4000-8000-000000000343"),
+		StartedAt: qualification.Start.Add(time.Second), FinishedAt: qualification.End.Add(2 * time.Second), Program: fixture.Program,
+	}); err == nil || result != nil {
+		t.Fatalf("retained injected failure result=%v err=%v", result, err)
+	}
+	var programs, plans, results, attempts, failed int
+	if err := pool.QueryRow(ctx, `SELECT
+		(SELECT count(*) FROM experiment_programs),(SELECT count(*) FROM experiment_replay_plans),
+		(SELECT count(*) FROM experiment_run_results),(SELECT count(*) FROM experiment_run_attempts),
+		(SELECT count(*) FROM experiment_run_attempt_events WHERE type='failed')`).Scan(&programs, &plans, &results, &attempts, &failed); err != nil {
+		t.Fatal(err)
+	}
+	if programs != 1 || plans != 1 || results != 1 || attempts != 3 || failed != 1 {
+		t.Fatalf("retained graph programs/plans/results/attempts/failed=%d/%d/%d/%d/%d", programs, plans, results, attempts, failed)
+	}
+	t.Logf("VERIFIED_LOCAL experiment=%s program=%s plan=%s result=%s sha256=%s attempts=%d",
+		fixture.Graph.Experiment.ID(), fixture.Program.Identity().ID(), first.PlanID(), first.ID(), first.Digest(), attempts)
 }
 
 func TestExperimentRunnerGoldenPartialFill(t *testing.T) {

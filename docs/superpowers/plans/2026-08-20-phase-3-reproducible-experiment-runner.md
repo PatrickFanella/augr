@@ -170,32 +170,32 @@ Out of scope:
 
 ## Task 6: Documentation, qualification, review, and synchronization
 
-- [ ] Add a runbook covering adapter registration, execution preflight, attempt/
+- [x] Add a runbook covering adapter registration, execution preflight, attempt/
   result inspection, replay comparison, scored/stress handling, interruption,
   preservation, no-promotion response, and empty-only rollback.
-- [ ] Apply migrations `1 -> 78` to fresh loopback databases, retain a complete
+- [x] Apply migrations `1 -> 78` to fresh loopback databases, retain a complete
   golden result, prove clean-database reproduction, nonempty rollback refusal,
   and separate empty `78 -> 77 -> 78`.
-- [ ] Run focused/database races, standard backend build/race/vet/lint/format/
+- [x] Run focused/database races, standard backend build/race/vet/lint/format/
   vulnerability gates, pinned Node 22 frozen install/audit/tests/lint/build,
   `git diff --check`, and an isolated kill-switched schema-78 health smoke.
-- [ ] Complete final diff review with no unresolved P0/P1, commit verified
+- [x] Complete final diff review with no unresolved P0/P1, commit verified
   slices, push/fetch, and prove `0 0` divergence before OVR-304.
 
 ## Acceptance evidence to record after implementation
 
-- [ ] A clean rerun reproduces every plan, decision, intent, order, transition,
+- [x] A clean rerun reproduces every plan, decision, intent, order, transition,
   fill, metric, outcome, aggregate, and final-result identity/hash.
-- [ ] Every run consumes only exact declaration-pinned dataset/policy/account/
+- [x] Every run consumes only exact declaration-pinned dataset/policy/account/
   capital/reference evidence and fails closed on mismatch or future data.
-- [ ] Raw-first economic persistence and restart recovery preserve the existing
+- [x] Raw-first economic persistence and restart recovery preserve the existing
   OVR-103/203/204 invariants without replacement orders or duplicate effects.
-- [ ] Scored/stress run evidence stays physically and semantically isolated;
+- [x] Scored/stress run evidence stays physically and semantically isolated;
   stress output cannot become promotion evidence.
-- [ ] Failed/interrupted attempts remain explicit and cannot masquerade as a
+- [x] Failed/interrupted attempts remain explicit and cannot masquerade as a
   complete result; retries append attempt evidence and converge economically.
-- [ ] Migration 78 is additive, append-only, empty-only reversible, and leaves
+- [x] Migration 78 is additive, append-only, empty-only reversible, and leaves
   legacy backtests, schedulers, deployments, and live execution untouched.
-- [ ] Local qualification is `VERIFIED_LOCAL`; real strategy adapters, licensed
+- [x] Local qualification is `VERIFIED_LOCAL`; real strategy adapters, licensed
   data, protected runner infrastructure, promotion, deployment, and production
   cutover remain `BLOCKED_EXTERNAL`.

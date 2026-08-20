@@ -1041,6 +1041,37 @@ shared migration, licensed production datasets, protected runner integration,
 experiment execution, promotion, activation, deployment, and cutover remain
 **BLOCKED_EXTERNAL**. Dependency-order execution proceeds to OVR-303.
 
+OVR-303 is complete locally as schema 78 and an explicit deterministic runner
+boundary. Program identities bind one reviewed adapter to an exact immutable
+version; replay plans pin the declaration, capital state, manifest observations,
+ordered decisions, and deterministic intent/order identities; attempts and
+results are append-only. Execution uses the unchanged common lifecycle,
+simulation, raw economic evidence, normalization, and ledger repositories.
+Schema 78 adds no current/best pointer, compiler, scheduler, provider fetch,
+promotion authority, writer grant, deployment activation, or legacy cutover.
+
+The retained loopback qualification migrated fresh databases `1 -> 78`, kept
+one scored golden result with two exact completed attempts and one explicit
+failed attempt, reproduced every plan/decision/intent/order/transition/fill/
+metric/aggregate/outcome/result identity in a second clean database, and proved
+scored/stress isolation, multi-fill and partial-fill economics, explicit no-op/
+rejection, restart convergence, and rollback at every result child stage. The
+retained result is `c91ed230-b32d-e08d-566f-bb5afd44035b` with SHA-256
+`db659ff445c2f1763cb374c75360cfe5f7ecf262ef2e6115f826b8c5e5aeb782`.
+Nonempty rollback refused without changing schema 78 or the retained result;
+a separate empty database passed `78 -> 77 -> 78`.
+
+Focused and full database-enabled races, backend build/vet/lint/format and
+symbol-level vulnerability checks, pinned Node 22 frozen install/tests/lint/
+production build and high-severity audit, and the isolated production-image
+schema-78 health/API/rollback/reapply smoke passed. The frontend audit retains
+one low-severity Windows-development-server esbuild advisory; it does not fail
+the high-severity gate or affect the Linux production artifact. OVR-303 is
+**VERIFIED_LOCAL** only. Real strategy adapters, licensed datasets, protected
+runner infrastructure, independent review, shared migration, statistical
+evaluation, promotion, deployment, and production cutover remain
+**BLOCKED_EXTERNAL**. Dependency-order execution proceeds to OVR-304.
+
 ### Milestone 4 — Deterministic strategy program
 
 | ID | Depends on | Work | Acceptance |
