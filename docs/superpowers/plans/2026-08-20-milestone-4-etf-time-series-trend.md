@@ -80,10 +80,10 @@ Out of scope:
   holdings, cash, costs, equity, and after-cost return.
 - [x] Bind an exact OVR-302 version and translate engine trades to ordered
   OVR-303 intents with exact manifest evidence and capital notional.
-- [ ] Prove scored/stress replay, turnover and exposure cap edges,
+- [x] Prove scored/stress replay, turnover and exposure cap edges,
   multi-rebalance convergence, common capital/simulation enforcement, and no
   runtime path.
-- [ ] Commit and push the execution/adapter slice after focused races.
+- [x] Commit and push the execution/adapter slice after focused races.
 
 ## Task 3: Migration 85 and append-only evidence
 
