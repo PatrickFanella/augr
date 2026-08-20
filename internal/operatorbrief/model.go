@@ -19,8 +19,10 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/economicid"
 )
 
-const BriefSchemaV1 = "daily-operator-brief-v1"
-const timeLayout = "2006-01-02T15:04:05.000000Z"
+const (
+	BriefSchemaV1 = "daily-operator-brief-v1"
+	timeLayout    = "2006-01-02T15:04:05.000000Z"
+)
 
 type PerformanceStatus string
 
@@ -31,14 +33,17 @@ const (
 	PerformanceUnavailable PerformanceStatus = "unavailable"
 )
 
-type FactInput struct{ Key, Value string }
-type PerformanceInput struct {
-	EvaluationID          uuid.UUID
-	EvaluationSHA256      string
-	Status                PerformanceStatus
-	Headline, Explanation string
-	Facts                 []FactInput
-}
+type (
+	FactInput        struct{ Key, Value string }
+	PerformanceInput struct {
+		EvaluationID          uuid.UUID
+		EvaluationSHA256      string
+		Status                PerformanceStatus
+		Headline, Explanation string
+		Facts                 []FactInput
+	}
+)
+
 type Input struct {
 	OperatingDay, Timezone string
 	GeneratedAt            time.Time
@@ -200,9 +205,11 @@ func performanceSection(input PerformanceInput) (Section, error) {
 	}
 	return Section{Name: "performance", Status: string(input.Status), Headline: input.Headline, Explanation: input.Explanation, EvidenceKind: "trade_portfolio_evaluation", EvidenceID: id, EvidenceSHA256: input.EvaluationSHA256, Facts: facts}, nil
 }
+
 func decisionSection(costs costattribution.Record) Section {
 	return Section{Name: "decisions", Status: "reviewed", Headline: "Evidence review decision is retained.", Explanation: "The brief reports the exact review summary referenced by cost attribution and cannot change its authority.", EvidenceKind: "evidence_review_summary", EvidenceID: costs.SummaryID.String(), EvidenceSHA256: costs.SummarySHA256, Facts: []Fact{{0, "summary_id", costs.SummaryID.String()}}}
 }
+
 func driftSection(supervisor dailysupervisor.Record) Section {
 	state, reason := "clean", "No reconciliation drift was admitted by the supervisor."
 	for _, check := range supervisor.Checks {
@@ -212,6 +219,7 @@ func driftSection(supervisor dailysupervisor.Record) Section {
 	}
 	return Section{Name: "drift", Status: state, Headline: "Reconciliation status is retained.", Explanation: reason, EvidenceKind: "venue_reconciliation_run", EvidenceID: supervisor.ReconciliationID.String(), EvidenceSHA256: supervisor.ReconciliationSHA256, Facts: []Fact{{0, "reconciliation_id", supervisor.ReconciliationID.String()}}}
 }
+
 func riskSection(supervisor dailysupervisor.Record) Section {
 	status := "ready"
 	facts := make([]Fact, 0, len(supervisor.Actions))
@@ -223,6 +231,7 @@ func riskSection(supervisor dailysupervisor.Record) Section {
 	}
 	return Section{Name: "risk", Status: status, Headline: "Supervisor work admissions are retained.", Explanation: "Admissions are evidence only and do not execute, cancel, flatten, or alter risk.", EvidenceKind: "daily_supervisor_assessment", EvidenceID: supervisor.ID.String(), EvidenceSHA256: supervisor.SHA256, Facts: facts}
 }
+
 func costSection(costs costattribution.Record) Section {
 	t := costs.Totals
 	facts := []Fact{{0, "actual_costs", t.ActualCosts}, {1, "estimated_costs", t.EstimatedCosts}, {2, "actual_rebates", t.ActualRebates}, {3, "estimated_rebates", t.EstimatedRebates}, {4, "known_net_cost", t.KnownNetCost}, {5, "unknown_count", fmt.Sprint(t.UnknownCount)}}
@@ -282,36 +291,42 @@ func normalizeFacts(values []FactInput) ([]Fact, error) {
 	}
 	return facts, nil
 }
+
 func (b *Brief) ID() uuid.UUID {
 	if b == nil {
 		return uuid.Nil
 	}
 	return b.id
 }
+
 func (b *Brief) Digest() string {
 	if b == nil {
 		return ""
 	}
 	return b.digest
 }
+
 func (b *Brief) CanonicalBytes() json.RawMessage {
 	if b == nil {
 		return nil
 	}
 	return append(json.RawMessage(nil), b.raw...)
 }
+
 func (b *Brief) Sections() []Section {
 	if b == nil {
 		return nil
 	}
 	return append([]Section(nil), b.canonical.Sections...)
 }
+
 func (b *Brief) Incidents() []Incident {
 	if b == nil {
 		return nil
 	}
 	return append([]Incident(nil), b.canonical.Incidents...)
 }
+
 func (b *Brief) Record() Record {
 	if b == nil {
 		return Record{}
@@ -325,6 +340,7 @@ func (b *Brief) Record() Record {
 	generated, _ := time.Parse(timeLayout, c.GeneratedAt)
 	return Record{b.id, b.digest, b.CanonicalBytes(), c.OperatingDay, c.Timezone, generated, supervisorID, c.SupervisorSHA256, reconciliationID, c.ReconciliationSHA256, costID, c.CostReportSHA256, summaryID, c.ReviewSummarySHA256, performanceID, c.PerformanceEvaluationSHA256, b.Sections(), b.Incidents()}
 }
+
 func normalizeTime(value time.Time) time.Time {
 	if value.IsZero() {
 		return time.Time{}
@@ -339,16 +355,22 @@ func validSHA(value string) bool {
 	_, err := hex.DecodeString(value)
 	return err == nil
 }
-func text(value string, max int) bool {
-	return value != "" && value == strings.TrimSpace(value) && len(value) <= max && !strings.ContainsRune(value, '\x00')
+
+func text(value string, limit int) bool {
+	return value != "" && value == strings.TrimSpace(value) && len(value) <= limit && !strings.ContainsRune(value, '\x00')
 }
+
 func key(value string) bool {
 	if value == "" || len(value) > 192 {
 		return false
 	}
 	for _, r := range value {
-		if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || strings.ContainsRune("_./:-", r)) {
-			return false
+		if r < 'a' || r > 'z' {
+			if r < '0' || r > '9' {
+				if !strings.ContainsRune("_./:-", r) {
+					return false
+				}
+			}
 		}
 	}
 	return true

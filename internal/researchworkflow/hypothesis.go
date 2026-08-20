@@ -26,11 +26,15 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/strategycatalog"
 )
 
-const HypothesisSchemaV1 = "evidence-bound-hypothesis-v1"
-const timeLayout = "2006-01-02T15:04:05.000000Z"
+const (
+	HypothesisSchemaV1 = "evidence-bound-hypothesis-v1"
+	timeLayout         = "2006-01-02T15:04:05.000000Z"
+)
 
-var tokenPattern = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,95}$`)
-var digestPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
+var (
+	tokenPattern  = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,95}$`)
+	digestPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
+)
 
 type Parents struct {
 	Manifest         *dataset.Manifest
@@ -462,25 +466,30 @@ func (h *Hypothesis) WorkflowKey() string { return h.canonical.WorkflowKey }
 func (h *Hypothesis) CanonicalBytes() json.RawMessage {
 	return append(json.RawMessage(nil), h.bytes...)
 }
+
 func (h *Hypothesis) ManifestID() uuid.UUID { return uuid.MustParse(h.canonical.Parents.ManifestID) }
+
 func (h *Hypothesis) ManifestDigest() string {
 	if h == nil {
 		return ""
 	}
 	return h.canonical.Parents.ManifestSHA256
 }
+
 func (h *Hypothesis) ProvenanceCost() string {
 	if h == nil {
 		return ""
 	}
 	return h.canonical.Provenance.Cost
 }
+
 func (h *Hypothesis) ProvenanceCurrency() string {
 	if h == nil {
 		return ""
 	}
 	return h.canonical.Provenance.Currency
 }
+
 func (h *Hypothesis) AssessmentID() uuid.UUID {
 	return uuid.MustParse(h.canonical.Parents.AssessmentID)
 }
@@ -492,6 +501,7 @@ func (h *Hypothesis) VersionDigest() string {
 	}
 	return h.canonical.Parents.VersionSHA256
 }
+
 func (h *Hypothesis) AssessmentDigest() string {
 	if h == nil {
 		return ""

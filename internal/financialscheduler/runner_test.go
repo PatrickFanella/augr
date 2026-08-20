@@ -31,6 +31,7 @@ func (s *runnerStore) Acquire(_ context.Context, occurrence *Occurrence, owner u
 	s.lease = Lease{OccurrenceID: occurrence.ID, OwnerID: owner, FenceToken: 1, Sequence: 1, ExpiresAt: time.Now().Add(ttl)}
 	return Acquisition{Lease: s.lease, Acquired: true}, nil
 }
+
 func (s *runnerStore) Renew(_ context.Context, lease Lease, ttl time.Duration) (Lease, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -42,6 +43,7 @@ func (s *runnerStore) Renew(_ context.Context, lease Lease, ttl time.Duration) (
 	s.lease = lease
 	return lease, nil
 }
+
 func (s *runnerStore) ClaimEffect(_ context.Context, lease Lease, effect *Effect) (*Effect, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -60,6 +62,7 @@ func (s *runnerStore) ClaimEffect(_ context.Context, lease Lease, effect *Effect
 	s.effects[effect.ID] = effect
 	return effect, nil
 }
+
 func (s *runnerStore) Complete(_ context.Context, lease Lease, _ bool, _ string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

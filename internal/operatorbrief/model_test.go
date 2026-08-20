@@ -84,6 +84,7 @@ func TestHealthyBriefHasFiveSectionsAndNoIncidents(t *testing.T) {
 		t.Fatalf("sections/incidents=%d/%v", len(brief.Sections()), brief.Incidents())
 	}
 }
+
 func TestAttentionBriefDerivesOpenIncidentsAndPreservesSafeWork(t *testing.T) {
 	brief, err := NewBrief(briefInput(t, true))
 	if err != nil {
@@ -106,6 +107,7 @@ func TestAttentionBriefDerivesOpenIncidentsAndPreservesSafeWork(t *testing.T) {
 		t.Fatalf("risk facts=%v", facts)
 	}
 }
+
 func TestReconciliationDriftAndRiskFailureRemainVisible(t *testing.T) {
 	drift, err := NewBrief(briefInputWithFailure(t, dailysupervisor.CheckReconciliation, false, false))
 	if err != nil {
@@ -129,6 +131,7 @@ func TestReconciliationDriftAndRiskFailureRemainVisible(t *testing.T) {
 		t.Fatalf("incidents=%+v", risk.Incidents())
 	}
 }
+
 func TestUnavailablePerformanceBecomesIncidentWithoutFakeEvidence(t *testing.T) {
 	in := briefInput(t, false)
 	in.Performance = PerformanceInput{Status: PerformanceUnavailable, Headline: "Performance unavailable.", Explanation: "No completed scored evaluation was retained.", Facts: []FactInput{{Key: "reason", Value: "missing_evaluation"}}}
@@ -144,6 +147,7 @@ func TestUnavailablePerformanceBecomesIncidentWithoutFakeEvidence(t *testing.T) 
 		t.Fatal("unavailable performance evidence accepted")
 	}
 }
+
 func TestFactPermutationConvergesAndSemanticChangeDoesNot(t *testing.T) {
 	in := briefInput(t, false)
 	first, err := NewBrief(in)
@@ -167,6 +171,7 @@ func TestFactPermutationConvergesAndSemanticChangeDoesNot(t *testing.T) {
 		t.Fatal("semantic change reused identity")
 	}
 }
+
 func TestTimezoneAndDSTDayFailClosed(t *testing.T) {
 	in := briefInput(t, false)
 	in.Timezone = "UTC"
@@ -179,6 +184,7 @@ func TestTimezoneAndDSTDayFailClosed(t *testing.T) {
 		t.Fatal("wrong DST day accepted")
 	}
 }
+
 func TestBriefHasNoNotificationOrMutationAuthoritySurface(t *testing.T) {
 	brief, err := NewBrief(briefInput(t, true))
 	if err != nil {

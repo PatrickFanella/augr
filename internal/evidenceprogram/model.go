@@ -323,6 +323,7 @@ func (a *Assessment) CanonicalBytes() []byte { return append([]byte(nil), a.raw.
 func (a *Assessment) Reference() EvidenceRef {
 	return EvidenceRef{Kind: a.value.Campaign, ID: a.id, SHA256: a.digest}
 }
+
 func (a *Assessment) Record() Record {
 	return Record{a.id, a.digest, append([]byte(nil), a.raw...), a.value.Campaign, a.value.Outcome, append([]string(nil), a.value.Blockers...)}
 }
@@ -345,6 +346,7 @@ func normalizeParents(values []EvidenceRef) ([]EvidenceRef, error) {
 	}
 	return parents, nil
 }
+
 func validateRef(value EvidenceRef) error {
 	if !validKey(value.Kind) || value.ID == uuid.Nil || len(value.SHA256) != 64 {
 		return fmt.Errorf("invalid evidence reference")
@@ -354,17 +356,23 @@ func validateRef(value EvidenceRef) error {
 	}
 	return nil
 }
+
 func validKey(value string) bool {
 	if value == "" || len(value) > 128 {
 		return false
 	}
 	for _, r := range value {
-		if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '_' || r == '-' || r == ':') {
-			return false
+		if r < 'a' || r > 'z' {
+			if r < '0' || r > '9' {
+				if r != '_' && r != '-' && r != ':' {
+					return false
+				}
+			}
 		}
 	}
 	return true
 }
+
 func validDecimal(value string) bool {
 	if strings.TrimSpace(value) != value || value == "" {
 		return false
@@ -372,6 +380,7 @@ func validDecimal(value string) bool {
 	_, err := decimal.NewFromString(value)
 	return err == nil
 }
+
 func durationDays(start, end time.Time) int {
 	start = start.UTC()
 	end = end.UTC()
@@ -380,6 +389,7 @@ func durationDays(start, end time.Time) int {
 	}
 	return int(end.Sub(start) / (24 * time.Hour))
 }
+
 func formatTime(value time.Time) string {
 	return value.UTC().Truncate(time.Microsecond).Format("2006-01-02T15:04:05.000000Z")
 }

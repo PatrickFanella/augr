@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+
 	"github.com/PatrickFanella/get-rich-quick/internal/operatorbrief"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -102,6 +103,7 @@ func (r *OperatorBriefRepo) RegisterBrief(ctx context.Context, brief *operatorbr
 	}
 	return &PersistedOperatorBrief{record.ID, record.SHA256, append([]byte(nil), record.CanonicalBytes...)}, nil
 }
+
 func (r *OperatorBriefRepo) GetBrief(ctx context.Context, id uuid.UUID) (*PersistedOperatorBrief, error) {
 	var p PersistedOperatorBrief
 	if err := r.pool.QueryRow(ctx, `SELECT id,sha256,canonical_bytes FROM daily_operator_briefs WHERE id=$1`, id).Scan(&p.ID, &p.SHA256, &p.CanonicalBytes); err != nil {
@@ -109,6 +111,7 @@ func (r *OperatorBriefRepo) GetBrief(ctx context.Context, id uuid.UUID) (*Persis
 	}
 	return &p, nil
 }
+
 func (r *OperatorBriefRepo) readAndCompareBrief(ctx context.Context, tx pgx.Tx, record operatorbrief.Record) (*PersistedOperatorBrief, error) {
 	var p PersistedOperatorBrief
 	if err := tx.QueryRow(ctx, `SELECT id,sha256,canonical_bytes FROM daily_operator_briefs WHERE id=$1`, record.ID).Scan(&p.ID, &p.SHA256, &p.CanonicalBytes); err != nil {
@@ -122,12 +125,14 @@ func (r *OperatorBriefRepo) readAndCompareBrief(ctx context.Context, tx pgx.Tx, 
 	}
 	return &p, nil
 }
+
 func (r *OperatorBriefRepo) stage(name string) error {
 	if r.afterStage == nil {
 		return nil
 	}
 	return r.afterStage(name)
 }
+
 func operatorBriefWriteError(operation string, err error) error {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {

@@ -24,8 +24,10 @@ import (
 
 const ReportSchemaV1 = "full-cost-attribution-report-v1"
 
-type Category string
-type Status string
+type (
+	Category string
+	Status   string
+)
 
 const (
 	CategoryModel          Category = "model"
@@ -43,10 +45,12 @@ const (
 	CoverageContainsUnknowns = "incomplete_unknown"
 )
 
-var categoryOrder = []Category{CategoryModel, CategoryData, CategoryFee, CategoryRebate, CategoryInfrastructure}
-var keyPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_./:-]{0,191}$`)
-var shaPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
-var currencyPattern = regexp.MustCompile(`^[A-Z]{3}$`)
+var (
+	categoryOrder   = []Category{CategoryModel, CategoryData, CategoryFee, CategoryRebate, CategoryInfrastructure}
+	keyPattern      = regexp.MustCompile(`^[a-z0-9][a-z0-9_./:-]{0,191}$`)
+	shaPattern      = regexp.MustCompile(`^[0-9a-f]{64}$`)
+	currencyPattern = regexp.MustCompile(`^[A-Z]{3}$`)
+)
 
 type LineInput struct {
 	Key, Amount                                       string
@@ -217,15 +221,14 @@ func normalizeLines(inputs []LineInput, parent Input) ([]Line, Totals, error) {
 			if value.Category == CategoryFee && value.Status == StatusActual && value.EvidenceKind != "ledger_transaction" || value.Category == CategoryRebate && value.Status == StatusActual && value.EvidenceKind != "ledger_transaction" {
 				return nil, Totals{}, fmt.Errorf("actual ledger cost evidence is invalid")
 			}
-			if value.Category == CategoryRebate {
-				if value.Status == StatusActual {
-					actualRebates = actualRebates.Add(amount)
-				} else {
-					estimatedRebates = estimatedRebates.Add(amount)
-				}
-			} else if value.Status == StatusActual {
+			switch {
+			case value.Category == CategoryRebate && value.Status == StatusActual:
+				actualRebates = actualRebates.Add(amount)
+			case value.Category == CategoryRebate:
+				estimatedRebates = estimatedRebates.Add(amount)
+			case value.Status == StatusActual:
 				actualCosts = actualCosts.Add(amount)
-			} else {
+			default:
 				estimatedCosts = estimatedCosts.Add(amount)
 			}
 		default:
@@ -255,30 +258,35 @@ func (r *Report) ID() uuid.UUID {
 	}
 	return r.id
 }
+
 func (r *Report) Digest() string {
 	if r == nil {
 		return ""
 	}
 	return r.digest
 }
+
 func (r *Report) CanonicalBytes() json.RawMessage {
 	if r == nil {
 		return nil
 	}
 	return append(json.RawMessage(nil), r.raw...)
 }
+
 func (r *Report) Totals() Totals {
 	if r == nil {
 		return Totals{}
 	}
 	return r.canonical.Totals
 }
+
 func (r *Report) Lines() []Line {
 	if r == nil {
 		return nil
 	}
 	return append([]Line(nil), r.canonical.Lines...)
 }
+
 func (r *Report) Record() Record {
 	if r == nil {
 		return Record{}
@@ -291,6 +299,7 @@ func (r *Report) Record() Record {
 	accountID, _ := uuid.Parse(c.AccountID)
 	return Record{r.id, r.digest, r.CanonicalBytes(), caseID, c.CaseSHA256, summaryID, c.SummarySHA256, hypothesisID, c.HypothesisSHA256, manifestID, c.ManifestSHA256, accountID, mustTime(c.WindowStart), mustTime(c.WindowEnd), mustTime(c.StatementAt), c.Currency, r.Lines(), c.Totals}
 }
+
 func exactAmount(value string) (decimal.Decimal, error) {
 	if value == "" || len(value) > 80 || strings.ContainsAny(value, "eE+") {
 		return decimal.Zero, fmt.Errorf("invalid amount")
@@ -301,6 +310,7 @@ func exactAmount(value string) (decimal.Decimal, error) {
 	}
 	return parsed, nil
 }
+
 func canonicalTime(value time.Time) bool {
 	return !value.IsZero() && value.Location() == time.UTC && value.Nanosecond()%1000 == 0
 }

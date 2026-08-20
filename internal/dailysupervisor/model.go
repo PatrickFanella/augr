@@ -20,10 +20,12 @@ const AssessmentSchemaV1 = "autonomous-daily-supervisor-assessment-v1"
 
 const PolicyVersionPrefix = "daily-supervisor-policy-v1@sha256:"
 
-type CheckName string
-type CheckState string
-type WorkClass string
-type Admission string
+type (
+	CheckName  string
+	CheckState string
+	WorkClass  string
+	Admission  string
+)
 
 const (
 	CheckDatabase             CheckName = "database"
@@ -51,8 +53,10 @@ const (
 	AdmissionHalted   Admission = "halted"
 )
 
-var checkOrder = []CheckName{CheckDatabase, CheckSchema, CheckLedgerProjection, CheckMarketData, CheckRiskBrake, CheckReconciliation, CheckExposureScheduler, CheckExitWorker, CheckSettlementWorker, CheckReconciliationWorker}
-var workOrder = []WorkClass{WorkNewExposure, WorkProtectiveExit, WorkSettlement, WorkReconciliation, WorkEvidenceOnly}
+var (
+	checkOrder = []CheckName{CheckDatabase, CheckSchema, CheckLedgerProjection, CheckMarketData, CheckRiskBrake, CheckReconciliation, CheckExposureScheduler, CheckExitWorker, CheckSettlementWorker, CheckReconciliationWorker}
+	workOrder  = []WorkClass{WorkNewExposure, WorkProtectiveExit, WorkSettlement, WorkReconciliation, WorkEvidenceOnly}
+)
 
 var requirements = map[WorkClass][]CheckName{
 	WorkNewExposure:    {CheckDatabase, CheckSchema, CheckLedgerProjection, CheckMarketData, CheckRiskBrake, CheckReconciliation, CheckExposureScheduler},
@@ -290,7 +294,9 @@ func canonicalChecks(inputs []CheckInput, evaluatedAt time.Time) ([]checkCanonic
 func (a *Assessment) ID() uuid.UUID                   { return a.id }
 func (a *Assessment) Digest() string                  { return a.digest }
 func (a *Assessment) CanonicalBytes() json.RawMessage { return append(json.RawMessage(nil), a.raw...) }
-func (a *Assessment) Actions() []Action               { return append([]Action(nil), a.canonical.Actions...) }
+
+func (a *Assessment) Actions() []Action { return append([]Action(nil), a.canonical.Actions...) }
+
 func (a *Assessment) Admission(work WorkClass) Admission {
 	for _, v := range a.canonical.Actions {
 		if v.Work == work {
@@ -299,6 +305,7 @@ func (a *Assessment) Admission(work WorkClass) Admission {
 	}
 	return AdmissionHalted
 }
+
 func (a *Assessment) Attention() []Attention {
 	return append([]Attention(nil), a.canonical.Attention...)
 }
@@ -333,6 +340,7 @@ func normalizeTime(v time.Time) time.Time {
 	}
 	return v.UTC().Truncate(time.Microsecond)
 }
+
 func formatTime(v time.Time) string { return normalizeTime(v).Format("2006-01-02T15:04:05.000000Z") }
 func hash(raw []byte) string        { s := sha256.Sum256(raw); return hex.EncodeToString(s[:]) }
 func validSHA(v string) bool {

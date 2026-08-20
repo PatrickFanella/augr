@@ -110,12 +110,14 @@ func (r *CostAttributionRepo) readAndCompareCost(ctx context.Context, tx pgx.Tx,
 	}
 	return &persisted, nil
 }
+
 func (r *CostAttributionRepo) stage(name string) error {
 	if r.afterStage == nil {
 		return nil
 	}
 	return r.afterStage(name)
 }
+
 func costAttributionWriteError(operation string, err error) error {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {

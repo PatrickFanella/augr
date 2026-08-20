@@ -221,8 +221,8 @@ func (r *FinancialSchedulerRepo) ClaimEffect(ctx context.Context, lease financia
 		if err := tx.Commit(ctx); err != nil {
 			return nil, err
 		}
-		copy := *effect
-		return &copy, nil
+		effectCopy := *effect
+		return &effectCopy, nil
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return nil, fmt.Errorf("postgres: read financial scheduler effect: %w", err)
@@ -237,8 +237,8 @@ func (r *FinancialSchedulerRepo) ClaimEffect(ctx context.Context, lease financia
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
-	copy := *effect
-	return &copy, nil
+	effectCopy := *effect
+	return &effectCopy, nil
 }
 
 func (r *FinancialSchedulerRepo) Complete(ctx context.Context, lease financialscheduler.Lease, succeeded bool, outcomeSHA256 string) error {
@@ -313,6 +313,7 @@ func latestLeaseEvent(ctx context.Context, tx pgx.Tx, occurrenceID uuid.UUID) (l
 func leaseEventID(occurrenceID uuid.UUID, sequence int64, kind string, ownerID uuid.UUID, fence int64) uuid.UUID {
 	return economicid.DeterministicUUID("financial-job-lease-event", occurrenceID.String(), fmt.Sprint(sequence), kind, ownerID.String(), fmt.Sprint(fence))
 }
+
 func eventLease(occurrenceID uuid.UUID, event leaseEventRow) financialscheduler.Lease {
 	lease := financialscheduler.Lease{OccurrenceID: occurrenceID, OwnerID: event.OwnerID, FenceToken: event.FenceToken, Sequence: event.Sequence, AcquiredAt: event.OccurredAt}
 	if event.ExpiresAt != nil {
@@ -320,6 +321,7 @@ func eventLease(occurrenceID uuid.UUID, event leaseEventRow) financialscheduler.
 	}
 	return lease
 }
+
 func financialNullableUUID(id uuid.UUID) any {
 	if id == uuid.Nil {
 		return nil

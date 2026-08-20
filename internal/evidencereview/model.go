@@ -32,9 +32,11 @@ const (
 	timeLayout           = "2006-01-02T15:04:05.000000Z"
 )
 
-var tokenPattern = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,95}$`)
-var digestPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
-var requiredChecks = []string{"cost_capacity", "policy_decision_consistency", "reproducibility", "safety_boundaries", "source_integrity", "statistical_controls"}
+var (
+	tokenPattern   = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,95}$`)
+	digestPattern  = regexp.MustCompile(`^[0-9a-f]{64}$`)
+	requiredChecks = []string{"cost_capacity", "policy_decision_consistency", "reproducibility", "safety_boundaries", "source_integrity", "statistical_controls"}
+)
 
 type CaseInput struct {
 	Hypothesis        *researchworkflow.Hypothesis
@@ -90,11 +92,14 @@ func NewCase(input CaseInput) (*Case, error) {
 	return &Case{c, raw, digest, economicid.DeterministicUUID("evidence-review-case", CaseSchemaV1+"@sha256:"+digest)}, nil
 }
 
-type ReviewerInput struct{ Key, Kind, Organization, IdentitySHA256, SystemPromptSHA256, DeveloperPromptSHA256, UserPromptSHA256 string }
-type CheckInput struct {
-	Name, State, Explanation string
-	References               []string
-}
+type (
+	ReviewerInput struct{ Key, Kind, Organization, IdentitySHA256, SystemPromptSHA256, DeveloperPromptSHA256, UserPromptSHA256 string }
+	CheckInput    struct {
+		Name, State, Explanation string
+		References               []string
+	}
+)
+
 type ReviewInput struct {
 	Case            *Case
 	Reviewer        ReviewerInput
@@ -179,7 +184,7 @@ func normalizeReviewer(v ReviewerInput) (reviewerCanonical, error) {
 	} else if !digestPattern.MatchString(v.SystemPromptSHA256) || !digestPattern.MatchString(v.DeveloperPromptSHA256) || !digestPattern.MatchString(v.UserPromptSHA256) {
 		return reviewerCanonical{}, fmt.Errorf("service reviewer prompt provenance is invalid")
 	}
-	return reviewerCanonical{v.Key, v.Kind, v.Organization, v.IdentitySHA256, v.SystemPromptSHA256, v.DeveloperPromptSHA256, v.UserPromptSHA256}, nil
+	return reviewerCanonical(v), nil
 }
 
 func normalizeChecks(values []CheckInput, allowed map[string]struct{}) ([]checkCanonical, string, error) {
@@ -303,6 +308,7 @@ func CaseFromCanonical(id uuid.UUID, digest string, raw json.RawMessage, input C
 	}
 	return rebuilt, nil
 }
+
 func ReviewFromCanonical(id uuid.UUID, digest string, raw json.RawMessage, c *Case, prior *Review) (*Review, error) {
 	var v reviewCanonical
 	if id == uuid.Nil || hash(raw) != digest || decodeExact(raw, &v) != nil {
@@ -325,84 +331,98 @@ func (c *Case) ID() uuid.UUID {
 	}
 	return c.id
 }
+
 func (c *Case) Digest() string {
 	if c == nil {
 		return ""
 	}
 	return c.digest
 }
+
 func (c *Case) CanonicalBytes() json.RawMessage {
 	if c == nil {
 		return nil
 	}
 	return append(json.RawMessage(nil), c.bytes...)
 }
+
 func (c *Case) CriticRecommendation() string {
 	if c == nil {
 		return ""
 	}
 	return c.canonical.CriticRecommendation
 }
+
 func (c *Case) AuthoritativeOutcome() string {
 	if c == nil {
 		return ""
 	}
 	return c.canonical.AuthoritativeOutcome
 }
+
 func (c *Case) AuthoritativeNextState() string {
 	if c == nil {
 		return ""
 	}
 	return c.canonical.AuthoritativeNextState
 }
+
 func (c *Case) HypothesisID() uuid.UUID {
 	if c == nil {
 		return uuid.Nil
 	}
 	return uuid.MustParse(c.canonical.HypothesisID)
 }
+
 func (c *Case) HypothesisDigest() string {
 	if c == nil {
 		return ""
 	}
 	return c.canonical.HypothesisSHA256
 }
+
 func (r *Review) ID() uuid.UUID {
 	if r == nil {
 		return uuid.Nil
 	}
 	return r.id
 }
+
 func (r *Review) Digest() string {
 	if r == nil {
 		return ""
 	}
 	return r.digest
 }
+
 func (r *Review) CanonicalBytes() json.RawMessage {
 	if r == nil {
 		return nil
 	}
 	return append(json.RawMessage(nil), r.bytes...)
 }
+
 func (r *Review) Disposition() string {
 	if r == nil {
 		return ""
 	}
 	return r.canonical.Disposition
 }
+
 func (r *Review) CaseID() uuid.UUID {
 	if r == nil {
 		return uuid.Nil
 	}
 	return uuid.MustParse(r.canonical.CaseID)
 }
+
 func (r *Review) ReviewerKey() string {
 	if r == nil {
 		return ""
 	}
 	return r.canonical.Reviewer.Key
 }
+
 func (r *Review) ReviewedAt() time.Time {
 	if r == nil {
 		return time.Time{}
@@ -410,11 +430,12 @@ func (r *Review) ReviewedAt() time.Time {
 	return mustTime(r.canonical.ReviewedAt)
 }
 func hash(v []byte) string { d := sha256.Sum256(v); return hex.EncodeToString(d[:]) }
-func canonicalText(v string, max int) bool {
-	return v != "" && v == strings.TrimSpace(v) && len(v) <= max && !strings.ContainsRune(v, '\x00')
+func canonicalText(v string, limit int) bool {
+	return v != "" && v == strings.TrimSpace(v) && len(v) <= limit && !strings.ContainsRune(v, '\x00')
 }
-func safeReviewText(v string, max int) bool {
-	if v != "" && !canonicalText(v, max) {
+
+func safeReviewText(v string, limit int) bool {
+	if v != "" && !canonicalText(v, limit) {
 		return false
 	}
 	lower := strings.ToLower(v)
@@ -425,6 +446,7 @@ func safeReviewText(v string, max int) bool {
 	}
 	return true
 }
+
 func canonicalTime(v time.Time) bool {
 	return !v.IsZero() && v.Location() == time.UTC && v.Nanosecond()%1000 == 0
 }

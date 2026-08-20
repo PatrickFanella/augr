@@ -297,6 +297,7 @@ func (r *EvidenceReviewRepo) loadReview(ctx context.Context, id uuid.UUID, revie
 	cache[id] = review
 	return review, nil
 }
+
 func (r *EvidenceReviewRepo) verifyCanonicalRows(ctx context.Context, table, column string, id uuid.UUID, expected any) error {
 	raw, _ := json.Marshal(expected)
 	var list []json.RawMessage
@@ -325,6 +326,7 @@ func (r *EvidenceReviewRepo) verifyCanonicalRows(ctx context.Context, table, col
 	}
 	return nil
 }
+
 func (r *EvidenceReviewRepo) verifyReferenceRows(ctx context.Context, reviewID uuid.UUID, checkSequence int, expected []string) error {
 	rows, err := r.pool.Query(ctx, `SELECT sequence,reference FROM evidence_review_check_references WHERE review_id=$1 AND check_sequence=$2 ORDER BY sequence`, reviewID, checkSequence)
 	if err != nil {
@@ -348,6 +350,7 @@ func (r *EvidenceReviewRepo) verifyReferenceRows(ctx context.Context, reviewID u
 	}
 	return nil
 }
+
 func (r *EvidenceReviewRepo) verifyRows(ctx context.Context, table, column string, id uuid.UUID, parent []byte, arrayKey string, _ bool) error {
 	var object map[string]json.RawMessage
 	if err := json.Unmarshal(parent, &object); err != nil {
@@ -379,12 +382,14 @@ func (r *EvidenceReviewRepo) verifyRows(ctx context.Context, table, column strin
 	}
 	return nil
 }
+
 func (r *EvidenceReviewRepo) stage(v string) error {
 	if r.afterStage != nil {
 		return r.afterStage(v)
 	}
 	return nil
 }
+
 func evidenceWriteError(action string, err error) error {
 	if err != nil && (strings.Contains(err.Error(), "duplicate key") || strings.Contains(err.Error(), "does not reconstruct") || strings.Contains(err.Error(), "foreign key")) {
 		return fmt.Errorf("postgres: evidence review %s conflict: %w", action, repository.ErrIdempotencyConflict)

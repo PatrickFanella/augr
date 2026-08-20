@@ -232,36 +232,42 @@ func (c *Critic) ID() uuid.UUID {
 	}
 	return c.id
 }
+
 func (c *Critic) Digest() string {
 	if c == nil {
 		return ""
 	}
 	return c.digest
 }
+
 func (c *Critic) ReviewKey() string {
 	if c == nil {
 		return ""
 	}
 	return c.canonical.ReviewKey
 }
+
 func (c *Critic) Recommendation() string {
 	if c == nil {
 		return ""
 	}
 	return c.canonical.Recommendation
 }
+
 func (c *Critic) HypothesisID() uuid.UUID {
 	if c == nil {
 		return uuid.Nil
 	}
 	return uuid.MustParse(c.canonical.HypothesisID)
 }
+
 func (c *Critic) HypothesisDigest() string {
 	if c == nil {
 		return ""
 	}
 	return c.canonical.HypothesisSHA256
 }
+
 func (c *Critic) CanonicalBytes() json.RawMessage {
 	if c == nil {
 		return nil

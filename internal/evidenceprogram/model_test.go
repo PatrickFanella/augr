@@ -12,10 +12,12 @@ import (
 func ref(kind string, n byte) EvidenceRef {
 	return EvidenceRef{Kind: kind, ID: uuid.MustParse(fmt.Sprintf("70000000-0000-4000-8000-%012x", n)), SHA256: fmt.Sprintf("%064x", n)}
 }
+
 func interval(days int) (time.Time, time.Time) {
 	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	return start, start.Add(time.Duration(days) * 24 * time.Hour)
 }
+
 func qualifiedShadow(t *testing.T) *Assessment {
 	t.Helper()
 	start, end := interval(30)
@@ -25,6 +27,7 @@ func qualifiedShadow(t *testing.T) *Assessment {
 	}
 	return value
 }
+
 func qualifiedPaper(t *testing.T) *Assessment {
 	t.Helper()
 	start, end := interval(60)
@@ -34,6 +37,7 @@ func qualifiedPaper(t *testing.T) *Assessment {
 	}
 	return value
 }
+
 func qualifiedPortfolio(t *testing.T) *Assessment {
 	t.Helper()
 	start, end := interval(60)

@@ -131,24 +131,28 @@ func SummaryFromCanonical(id uuid.UUID, digest string, raw json.RawMessage, inpu
 	}
 	return rebuilt, nil
 }
+
 func (s *Summary) ID() uuid.UUID {
 	if s == nil {
 		return uuid.Nil
 	}
 	return s.id
 }
+
 func (s *Summary) Digest() string {
 	if s == nil {
 		return ""
 	}
 	return s.digest
 }
+
 func (s *Summary) CanonicalBytes() json.RawMessage {
 	if s == nil {
 		return nil
 	}
 	return append(json.RawMessage(nil), s.bytes...)
 }
+
 func (s *Summary) Consensus() string {
 	if s == nil {
 		return ""
@@ -162,18 +166,21 @@ func (s *Summary) CaseID() uuid.UUID {
 	}
 	return uuid.MustParse(s.canonical.CaseID)
 }
+
 func (s *Summary) CaseDigest() string {
 	if s == nil {
 		return ""
 	}
 	return s.canonical.CaseSHA256
 }
+
 func (s *Summary) AuthoritativeOutcome() string {
 	if s == nil {
 		return ""
 	}
 	return s.canonical.AuthoritativeOutcome
 }
+
 func (s *Summary) AuthoritativeNextState() string {
 	if s == nil {
 		return ""

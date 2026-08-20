@@ -5,6 +5,12 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"os"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
 	"github.com/PatrickFanella/get-rich-quick/internal/costattribution"
 	"github.com/PatrickFanella/get-rich-quick/internal/dailysupervisor"
 	reviewqualification "github.com/PatrickFanella/get-rich-quick/internal/evidencereview/qualification"
@@ -13,11 +19,6 @@ import (
 	researchqualification "github.com/PatrickFanella/get-rich-quick/internal/researchworkflow/qualification"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"os"
-	"strings"
-	"sync"
-	"testing"
-	"time"
 )
 
 func TestOperatorBriefRetainedQualification(t *testing.T) {
@@ -199,6 +200,7 @@ func retainedSupervisorAssessment(t *testing.T, evaluated time.Time, key string,
 	}
 	return assessment
 }
+
 func retainedBriefInput(supervisor *dailysupervisor.Assessment, costs *costattribution.Report) operatorbrief.Input {
 	record := supervisor.Record()
 	generated := record.EvaluatedAt.Add(10 * time.Minute)

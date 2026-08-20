@@ -207,6 +207,7 @@ func (e Effect) Validate() error {
 
 func (e Effect) IntentIdempotencyKey() string { return "financial_effect:v1:" + e.ID.String() }
 func (e Effect) OrderIdempotencyKey() string  { return "financial_effect_order:v1:" + e.ID.String() }
+
 func (e Effect) SettlementIdempotencyKey() string {
 	return "financial_effect_settlement:v1:" + e.ID.String()
 }
@@ -283,6 +284,7 @@ func digestBytes(raw []byte) string { sum := sha256.Sum256(raw); return hex.Enco
 func formatTime(value time.Time) string {
 	return value.UTC().Truncate(time.Microsecond).Format("2006-01-02T15:04:05.000000Z")
 }
+
 func jsonEqual(left, right []byte) bool {
 	return bytes.Equal(left, right)
 }
