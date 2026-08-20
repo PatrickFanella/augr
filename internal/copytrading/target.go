@@ -167,7 +167,7 @@ func Build13FTarget(input TargetInput) Preview {
 		if delta < 0 {
 			side = domain.OrderSideSell
 		}
-		intent := domain.CopyTradeIntent{SubscriptionID: sub.ID, SourceObservationID: input.Observation.ID, InstrumentKey: ticker, Ticker: ticker, Side: side, TargetWeight: target.weight, TargetValue: roundMoney(targetValue), AttributedCurrentValue: roundMoney(current), RequestedNotional: roundMoney(math.Abs(delta)), CalculationVersion: CalculationVersion, PolicyStatus: "approved", RiskStatus: "pending", Status: "received"}
+		intent := domain.CopyTradeIntent{SubscriptionID: sub.ID, OriginType: "copy_subscription", OriginID: sub.ID, SourceObservationID: input.Observation.ID, InstrumentKey: ticker, Ticker: ticker, Side: side, TargetWeight: target.weight, TargetValue: roundMoney(targetValue), AttributedCurrentValue: roundMoney(current), RequestedNotional: roundMoney(math.Abs(delta)), CalculationVersion: CalculationVersion, PolicyStatus: "approved", RiskStatus: "pending", Status: "received"}
 		price, ok := input.Prices[ticker]
 		reasons := make([]string, 0, 3)
 		if !ok || price.Price <= 0 {

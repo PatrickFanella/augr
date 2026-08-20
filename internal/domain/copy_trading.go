@@ -206,7 +206,9 @@ type CopySubscription struct {
 	ID                 uuid.UUID              `json:"id"`
 	LeaderID           uuid.UUID              `json:"leader_id"`
 	SourceID           uuid.UUID              `json:"source_id"`
-	StrategyID         uuid.UUID              `json:"strategy_id"`
+	LegacyStrategyID   *uuid.UUID             `json:"legacy_strategy_id,omitempty"`
+	OriginType         string                 `json:"origin_type"`
+	OriginID           uuid.UUID              `json:"origin_id"`
 	Status             CopySubscriptionStatus `json:"status"`
 	IsPaper            bool                   `json:"is_paper"`
 	Method             CopySizingMethod       `json:"method"`
@@ -253,12 +255,22 @@ func (s *CopySubscription) Validate() error {
 	if s.Status == "" {
 		s.Status = CopySubscriptionDraft
 	}
+	if s.ID != uuid.Nil {
+		if s.OriginType == "" && s.OriginID == uuid.Nil {
+			s.OriginType, s.OriginID = "copy_subscription", s.ID
+		}
+		if s.OriginType != "copy_subscription" || s.OriginID != s.ID {
+			return fmt.Errorf("copy subscription origin must equal copy_subscription/<subscription id>")
+		}
+	}
 	return nil
 }
 
 type CopyTradeIntent struct {
 	ID                     uuid.UUID       `json:"id"`
 	SubscriptionID         uuid.UUID       `json:"subscription_id"`
+	OriginType             string          `json:"origin_type"`
+	OriginID               uuid.UUID       `json:"origin_id"`
 	SourceObservationID    uuid.UUID       `json:"source_observation_id"`
 	PipelineRunID          *uuid.UUID      `json:"pipeline_run_id,omitempty"`
 	InstrumentKey          string          `json:"instrument_key"`

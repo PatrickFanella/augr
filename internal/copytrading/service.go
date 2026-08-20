@@ -181,9 +181,14 @@ func (s *Service) UpsertMapping(ctx context.Context, mapping *domain.CopyInstrum
 }
 
 func (s *Service) CreateSubscription(ctx context.Context, subscription *domain.CopySubscription) error {
-	if s.deps.Strategies == nil {
-		return fmt.Errorf("strategy repository is unavailable")
+	if subscription == nil {
+		return fmt.Errorf("subscription is required")
 	}
+	// Subscription and origin identity are server-owned. Request JSON cannot
+	// select an identity that may collide with an existing attribution graph.
+	subscription.ID = uuid.New()
+	subscription.OriginType, subscription.OriginID = "copy_subscription", subscription.ID
+	subscription.LegacyStrategyID = nil
 	if err := subscription.Validate(); err != nil {
 		return err
 	}
@@ -201,22 +206,7 @@ func (s *Service) CreateSubscription(ctx context.Context, subscription *domain.C
 	if source.SourceType != domain.CopySourceSEC13F {
 		return fmt.Errorf("MVP subscriptions require a sec_13f source")
 	}
-	config, _ := json.Marshal(map[string]any{"kind": "copy_subscription", "leader_id": leader.ID, "source_id": source.ID})
-	strategy := &domain.Strategy{Name: "Replicate: " + leader.DisplayName, Description: "Internal paper strategy backing stock copy subscription", Ticker: "13F:" + source.ExternalKey, MarketType: domain.MarketTypeStock, Config: config, Status: domain.StrategyStatusPaused, IsPaper: true}
-	if err := strategy.Validate(); err != nil {
-		return err
-	}
-	if err := s.deps.Strategies.Create(ctx, strategy); err != nil {
-		return err
-	}
-	subscription.StrategyID = strategy.ID
-	if err := s.deps.Repo.CreateSubscription(ctx, subscription); err != nil {
-		if cleanupErr := s.deps.Strategies.Delete(ctx, strategy.ID); cleanupErr != nil {
-			s.deps.Logger.Error("copy trading: backing strategy cleanup failed", "strategy_id", strategy.ID, "error", cleanupErr)
-		}
-		return err
-	}
-	return nil
+	return s.deps.Repo.CreateSubscription(ctx, subscription)
 }
 
 func (s *Service) ListSubscriptions(ctx context.Context, filter repository.CopySubscriptionFilter, limit, offset int) ([]domain.CopySubscription, int, error) {
@@ -240,7 +230,8 @@ func (s *Service) UpdateSubscription(ctx context.Context, id uuid.UUID, replacem
 	if current.Status != domain.CopySubscriptionDraft && current.Status != domain.CopySubscriptionPreviewed && current.Status != domain.CopySubscriptionPaused {
 		return nil, fmt.Errorf("subscription can only be edited while draft, previewed, or paused")
 	}
-	replacement.ID, replacement.LeaderID, replacement.SourceID, replacement.StrategyID = current.ID, current.LeaderID, current.SourceID, current.StrategyID
+	replacement.ID, replacement.LeaderID, replacement.SourceID = current.ID, current.LeaderID, current.SourceID
+	replacement.LegacyStrategyID, replacement.OriginType, replacement.OriginID = current.LegacyStrategyID, current.OriginType, current.OriginID
 	replacement.Status, replacement.IsPaper, replacement.CreatedBy, replacement.CreatedAt = current.Status, true, current.CreatedBy, current.CreatedAt
 	if err := replacement.Validate(); err != nil {
 		return nil, err
@@ -280,8 +271,8 @@ func (s *Service) Preview(ctx context.Context, subscriptionID uuid.UUID) (*Previ
 		}
 	}
 	positions := []domain.Position{}
-	if s.deps.Positions != nil {
-		positions, err = s.deps.Positions.GetByStrategy(ctx, subscription.StrategyID, repository.PositionFilter{}, 1000, 0)
+	if s.deps.Positions != nil && subscription.LegacyStrategyID != nil {
+		positions, err = s.deps.Positions.GetByStrategy(ctx, *subscription.LegacyStrategyID, repository.PositionFilter{}, 1000, 0)
 		if err != nil {
 			return nil, err
 		}
@@ -321,8 +312,8 @@ func (s *Service) SetStatus(ctx context.Context, id uuid.UUID, next domain.CopyS
 	if err := s.deps.Repo.UpdateSubscription(ctx, subscription); err != nil {
 		return nil, err
 	}
-	if s.deps.Strategies != nil {
-		strategy, getErr := s.deps.Strategies.Get(ctx, subscription.StrategyID)
+	if s.deps.Strategies != nil && subscription.LegacyStrategyID != nil {
+		strategy, getErr := s.deps.Strategies.Get(ctx, *subscription.LegacyStrategyID)
 		if getErr != nil {
 			return nil, getErr
 		}
@@ -429,9 +420,12 @@ func (s *Service) Rebalance(ctx context.Context, id uuid.UUID) (*RebalanceResult
 	if err != nil {
 		return nil, err
 	}
+	if subscription.LegacyStrategyID == nil {
+		return nil, fmt.Errorf("origin-native copy execution handoff is not configured")
+	}
 	now := s.deps.Now().UTC()
 	config, _ := json.Marshal(map[string]any{"copy_subscription_id": id, "source_observation_id": preview.Observation.ID, "calculation_version": CalculationVersion})
-	run := domain.PipelineRun{StrategyID: subscription.StrategyID, Ticker: "13F:" + subscription.SourceID.String(), TradeDate: now, Status: domain.PipelineStatusRunning, StartedAt: now, ConfigSnapshot: config}
+	run := domain.PipelineRun{StrategyID: *subscription.LegacyStrategyID, Ticker: "13F:" + subscription.SourceID.String(), TradeDate: now, Status: domain.PipelineStatusRunning, StartedAt: now, ConfigSnapshot: config}
 	if err := s.deps.Runs.Create(ctx, &run); err != nil {
 		return nil, err
 	}
