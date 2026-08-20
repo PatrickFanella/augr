@@ -21,3 +21,10 @@ func (Fixture) CandidateInput(recorder *predictionreplay.Recorder, key, minimum,
 		{Key: "full-fill", Weight: "0.75", HorizonAt: predictionqualification.At(3, 15), QueueOutflow: "15"},
 	}}
 }
+
+func (Fixture) BuyCandidateInput(recorder *predictionreplay.Recorder) makerquote.Input {
+	return makerquote.Input{Recorder: recorder, CandidateKey: "qualified-buy", MarketID: "market-1", OutcomeID: predictionqualification.OutcomeYes, Side: predictionreplay.SideBuy, DecisionAt: predictionqualification.At(3, 14), QuotePrice: "0.39", QuoteQuantity: "5", PriorQueue: "0", StartingInventory: "0", InventoryLimit: "10", HourlyInventoryCostRate: "0.001", MinimumExpectedNet: "0.01", Scenarios: []makerquote.ScenarioInput{
+		{Key: "partial-fill", Weight: "0.25", HorizonAt: predictionqualification.At(3, 15), QueueOutflow: "10"},
+		{Key: "full-fill", Weight: "0.75", HorizonAt: predictionqualification.At(3, 15), QueueOutflow: "13"},
+	}}
+}

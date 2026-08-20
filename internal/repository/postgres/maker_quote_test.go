@@ -128,6 +128,13 @@ func TestMakerQuoteRetainedQualification(t *testing.T) {
 	if _, err = repo.RegisterCandidate(ctx, boundary); err != nil {
 		t.Fatal(err)
 	}
+	buy, err := makerquote.NewCandidate(fixture.BuyCandidateInput(recorder))
+	if err != nil || !buy.Qualified() {
+		t.Fatalf("buy=%v/%v", buy, err)
+	}
+	if _, err = repo.RegisterCandidate(ctx, buy); err != nil {
+		t.Fatal(err)
+	}
 	if _, err = pool.Exec(ctx, `UPDATE maker_quote_candidates SET reason='no_fill' WHERE id=$1`, qualified.ID()); err == nil || !strings.Contains(err.Error(), "append-only") {
 		t.Fatalf("append-only=%v", err)
 	}
@@ -135,8 +142,8 @@ func TestMakerQuoteRetainedQualification(t *testing.T) {
 		t.Fatalf("forgery=%v", err)
 	}
 	var candidates, scenarios int
-	if err = pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM maker_quote_candidates),(SELECT count(*) FROM maker_quote_scenarios)`).Scan(&candidates, &scenarios); err != nil || candidates != 4 || scenarios != 8 {
+	if err = pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM maker_quote_candidates),(SELECT count(*) FROM maker_quote_scenarios)`).Scan(&candidates, &scenarios); err != nil || candidates != 5 || scenarios != 10 {
 		t.Fatalf("counts=%d/%d err=%v", candidates, scenarios, err)
 	}
-	t.Logf("recorder=%s qualified=%s sha=%s expected_net=%s adverse=%s no_fill=%s boundary=%s candidates=%d scenarios=%d", recorder.ID(), qualified.ID(), qualified.Digest(), qualified.ExpectedNetCapture(), adverse.ID(), noFill.ID(), boundary.ID(), candidates, scenarios)
+	t.Logf("recorder=%s qualified_sell=%s sell_sha=%s sell_expected_net=%s qualified_buy=%s buy_sha=%s buy_expected_net=%s adverse=%s no_fill=%s boundary=%s candidates=%d scenarios=%d", recorder.ID(), qualified.ID(), qualified.Digest(), qualified.ExpectedNetCapture(), buy.ID(), buy.Digest(), buy.ExpectedNetCapture(), adverse.ID(), noFill.ID(), boundary.ID(), candidates, scenarios)
 }
