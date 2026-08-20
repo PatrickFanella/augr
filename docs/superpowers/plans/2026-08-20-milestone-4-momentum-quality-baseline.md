@@ -110,11 +110,11 @@ Out of scope:
 
 ## Task 4: Operations and qualification
 
-- [ ] Add a runbook for universe/source inspection, ranking replay, turnover and
+- [x] Add a runbook for universe/source inspection, ranking replay, turnover and
   cost reconciliation, regime review, failure/recovery, and rollback.
-- [ ] Retain local bull, bear, sideways, regime-transition, cap-hit, and
+- [x] Retain local bull, bear, sideways, regime-transition, cap-hit, and
   multi-rebalance scenarios with exact IDs/hashes and row counts.
-- [ ] Prove eight-writer convergence, restart, every-stage rollback, normalized
+- [x] Prove eight-writer convergence, restart, every-stage rollback, normalized
   forgery rejection, nonempty rollback refusal, and empty `84 -> 83 -> 84`.
 - [ ] Run focused/database races, all backend and pinned frontend gates, diff
   review, and isolated kill-switched schema-84 health/API/rollback/reapply.

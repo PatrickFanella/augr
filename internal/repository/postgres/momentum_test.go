@@ -4,9 +4,13 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/strategy/momentum"
 	momentumqualification "github.com/PatrickFanella/get-rich-quick/internal/strategy/momentum/qualification"
@@ -182,5 +186,63 @@ func TestMomentumMigrationEmptyRollbackAndReapply(t *testing.T) {
 	}
 	if _, err := pool.Exec(ctx, repositoryMigrationSQL(t, "000084_momentum_quality_baseline.up.sql")); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestMomentumRetainedQualification(t *testing.T) {
+	databaseURL := os.Getenv("MOMENTUM_V1_QUALIFICATION_DB_URL")
+	if databaseURL == "" {
+		t.Skip("set MOMENTUM_V1_QUALIFICATION_DB_URL to a dedicated empty schema-84 database")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	var schema string
+	var version, existing int
+	if err = pool.QueryRow(ctx, `SELECT current_schema()`).Scan(&schema); err != nil || schema != "public" {
+		t.Fatalf("qualification schema=%q err=%v", schema, err)
+	}
+	if err = pool.QueryRow(ctx, `SELECT version FROM schema_migrations WHERE NOT dirty`).Scan(&version); err != nil || version != 84 {
+		t.Fatalf("qualification version=%d err=%v", version, err)
+	}
+	if err = pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM momentum_v1_policies)+(SELECT count(*) FROM momentum_v1_scenarios)+(SELECT count(*) FROM momentum_v1_reports)`).Scan(&existing); err != nil || existing != 0 {
+		t.Fatalf("qualification database is not momentum-empty count=%d err=%v", existing, err)
+	}
+	fixture, err := momentumqualification.BuildRetainedScenarios()
+	if err != nil {
+		t.Fatal(err)
+	}
+	instruments := NewInstrumentRepo(pool)
+	if _, err = instruments.CreateInstrument(ctx, fixture.Base.Instrument); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = instruments.RegisterVenueContract(ctx, fixture.Base.VenueContract); err != nil {
+		t.Fatal(err)
+	}
+	repo := NewMomentumRepo(pool)
+	if _, err = repo.RegisterPolicy(ctx, fixture.Base.Policy); err != nil {
+		t.Fatal(err)
+	}
+	names := make([]string, 0, len(fixture.Scenarios))
+	for name := range fixture.Scenarios {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		if _, err = repo.RegisterScenario(ctx, fixture.Scenarios[name]); err != nil {
+			t.Fatalf("persist scenario %s: %v", name, err)
+		}
+		if _, err = repo.RecordReport(ctx, fixture.Reports[name]); err != nil {
+			t.Fatalf("persist report %s: %v", name, err)
+		}
+		t.Logf("%s scenario=%s sha=%s report=%s sha=%s", name, fixture.Scenarios[name].ID(), fixture.Scenarios[name].Digest(), fixture.Reports[name].ID(), fixture.Reports[name].Digest())
+	}
+	var policies, scenarios, sources, members, reports, rebalances, ranks, trades, holdings, regimes int
+	err = pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM momentum_v1_policies),(SELECT count(*) FROM momentum_v1_scenarios),(SELECT count(*) FROM momentum_v1_source_rebalances),(SELECT count(*) FROM momentum_v1_universe_members),(SELECT count(*) FROM momentum_v1_reports),(SELECT count(*) FROM momentum_v1_rebalances),(SELECT count(*) FROM momentum_v1_ranks),(SELECT count(*) FROM momentum_v1_trades),(SELECT count(*) FROM momentum_v1_holdings),(SELECT count(*) FROM momentum_v1_regimes)`).Scan(&policies, &scenarios, &sources, &members, &reports, &rebalances, &ranks, &trades, &holdings, &regimes)
+	if err != nil || policies != 1 || scenarios != 4 || sources != 10 || members != 10 || reports != 4 || rebalances != 10 || ranks != 10 || trades != 8 || holdings != 10 || regimes != 6 {
+		t.Fatalf("retained counts=%d/%d/%d/%d/%d/%d/%d/%d/%d/%d err=%v", policies, scenarios, sources, members, reports, rebalances, ranks, trades, holdings, regimes, err)
 	}
 }

@@ -23,3 +23,13 @@ func TestBuildMomentumRunnerFixtureScoredAndStress(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildRetainedScenarios(t *testing.T) {
+	fixture, err := BuildRetainedScenarios()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fixture.Scenarios) != 4 || len(fixture.Reports) != 4 || len(fixture.Reports["regime_transitions"].Rebalances()) != 4 {
+		t.Fatalf("retained scenarios=%d reports=%d", len(fixture.Scenarios), len(fixture.Reports))
+	}
+}
