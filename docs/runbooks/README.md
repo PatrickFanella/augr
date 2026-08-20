@@ -37,6 +37,7 @@ These runbooks are for operators and contributors handling a running system, an 
 
 - [Adding a new strategy](add-strategy.md)
 - [Capital-tier and margin-policy evidence](capital-margin-policy.md)
+- [Venue reconciliation evidence](venue-reconciliation.md)
 - [Polymarket live activation](polymarket-live-activation.md)
 
 ## Notes on scope

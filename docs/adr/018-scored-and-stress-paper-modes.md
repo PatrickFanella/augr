@@ -50,6 +50,13 @@ market order now fails closed instead of inventing `$1.00`. No runtime writer,
 scheduler, or shared database has been activated. See the
 [common simulation venue runbook](../runbooks/common-simulation-venue.md).
 
+OVR-207 reconciliation preserves the same account and evidence-namespace
+boundary. A scored and a stress account cannot share one local snapshot or run,
+and a clean venue comparison does not promote stress evidence. Reconciliation
+is exact and read-only; it creates immutable incidents for drift or insufficient
+evidence and has no callback that can edit either mode's economics. See the
+[venue reconciliation runbook](../runbooks/venue-reconciliation.md).
+
 ## Consequences
 
 ### Positive

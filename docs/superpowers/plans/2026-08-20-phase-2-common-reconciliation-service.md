@@ -383,7 +383,7 @@ DB_URL="$AUGR_PHASE2_DB_URL" go test -race -count=1 \
 
 ## Task 7: Qualification, documentation, review, and synchronization
 
-- [ ] Document policy, snapshot stability, comparison/reason semantics, read-only
+- [x] Document policy, snapshot stability, comparison/reason semantics, read-only
   inspection SQL, incident response, preservation rules, empty-only rollback,
   approximation limits, and the no-cutover boundary.
 - [ ] Apply migrations `1 -> 75` to dedicated loopback-only PostgreSQL; retain
