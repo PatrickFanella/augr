@@ -202,7 +202,7 @@ func (r *ResearchWorkflowRepo) RegisterWorkflow(ctx context.Context, hypothesis 
 	if err = tx.Commit(ctx); err != nil {
 		return nil, nil, researchWorkflowWriteError("commit", err)
 	}
-	loadedHypothesis, loadedCritic, err := r.GetWorkflow(ctx, hypothesis.ID(), parents)
+	loadedHypothesis, loadedCritic, err := r.GetWorkflow(ctx, hypothesis.ID(), critic.ID(), parents)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -212,8 +212,8 @@ func (r *ResearchWorkflowRepo) RegisterWorkflow(ctx context.Context, hypothesis 
 	return loadedHypothesis, loadedCritic, nil
 }
 
-func (r *ResearchWorkflowRepo) GetWorkflow(ctx context.Context, hypothesisID uuid.UUID, parents researchworkflow.Parents) (*researchworkflow.Hypothesis, *researchworkflow.Critic, error) {
-	if r == nil || r.pool == nil || hypothesisID == uuid.Nil {
+func (r *ResearchWorkflowRepo) GetWorkflow(ctx context.Context, hypothesisID, criticID uuid.UUID, parents researchworkflow.Parents) (*researchworkflow.Hypothesis, *researchworkflow.Critic, error) {
+	if r == nil || r.pool == nil || hypothesisID == uuid.Nil || criticID == uuid.Nil {
 		return nil, nil, fmt.Errorf("postgres: research workflow identity is required")
 	}
 	var hDigest string
@@ -230,10 +230,9 @@ func (r *ResearchWorkflowRepo) GetWorkflow(ctx context.Context, hypothesisID uui
 	if err = r.verifyHypothesisRows(ctx, hypothesisID, hRaw); err != nil {
 		return nil, nil, err
 	}
-	var criticID uuid.UUID
 	var cDigest string
 	var cRaw []byte
-	if err = r.pool.QueryRow(ctx, `SELECT id,sha256,canonical_bytes FROM research_critics WHERE hypothesis_id=$1`, hypothesisID).Scan(&criticID, &cDigest, &cRaw); err != nil {
+	if err = r.pool.QueryRow(ctx, `SELECT id,sha256,canonical_bytes FROM research_critics WHERE hypothesis_id=$1 AND id=$2`, hypothesisID, criticID).Scan(&criticID, &cDigest, &cRaw); err != nil {
 		return nil, nil, err
 	}
 	critic, err := researchworkflow.CriticFromCanonical(criticID, cDigest, cRaw, hypothesis)
