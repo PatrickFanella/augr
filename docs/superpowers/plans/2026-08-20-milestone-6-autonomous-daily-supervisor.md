@@ -60,7 +60,7 @@ allocation, settlement, broker route, deployment, or live trade.
   ledger/risk failure, settlement-only failure, unknown input, DST/day identity,
   permutation convergence, semantic conflict, and no automatic flatten path.
 - [x] Bind exact OVR-207 run/digest and OVR-604 occurrence/effect evidence.
-- [ ] Commit and push the domain slice after focused race tests.
+- [x] Commit and push the domain slice after focused race tests.
 
 ## Task 2: Schema 99 and retained qualification
 
@@ -71,22 +71,22 @@ allocation, settlement, broker route, deployment, or live trade.
   forgery rejection, nonempty rollback refusal, and empty `99 -> 98 -> 99`.
 - [x] Retain an all-pass day and a dependency-failure day proving new exposure
   halts while safe exits/reconciliation/settlement remain independently gated.
-- [ ] Commit and push the persistence slice after focused/database races.
+- [x] Commit and push the persistence slice after focused/database races.
 
 ## Task 3: Closure
 
-- [ ] Add inspection/recovery/rollback runbook evidence with exact IDs/digests
+- [x] Add inspection/recovery/rollback runbook evidence with exact IDs/digests
   and explicit activation/authority limits.
-- [ ] Run repository-wide backend/static and pinned frontend gates, diff review,
+- [x] Run repository-wide backend/static and pinned frontend gates, diff review,
   and isolated kill-switched schema-99 health/API/rollback/backup/restore/reapply.
-- [ ] Commit/push verified slices, fetch, and prove `0 0` before OVR-606.
+- [x] Commit/push verified slices, fetch, and prove `0 0` before OVR-606.
 
 ## Acceptance evidence to record
 
-- [ ] Every dependency failure deterministically halts new exposure.
-- [ ] Protective exits, settlements, and reconciliation use narrower explicit
+- [x] Every dependency failure deterministically halts new exposure.
+- [x] Protective exits, settlements, and reconciliation use narrower explicit
   gates and cannot be disabled merely because new exposure is halted.
-- [ ] No supervisor method or schema path can flatten, clear brakes, alter risk,
+- [x] No supervisor method or schema path can flatten, clear brakes, alter risk,
   promote, allocate, construct intents/orders, settle, or call providers.
-- [ ] Local qualification is `VERIFIED_LOCAL`; cutover and all external or
+- [x] Local qualification is `VERIFIED_LOCAL`; cutover and all external or
   financial mutations remain `BLOCKED_EXTERNAL`.
