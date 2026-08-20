@@ -139,6 +139,7 @@ type localCanonical struct {
 	AttestationHMACSHA256 string               `json:"attestation_hmac_sha256"`
 	ProjectionPayload     json.RawMessage      `json:"projection_payload"`
 	Cash                  string               `json:"cash"`
+	Equity                string               `json:"equity"`
 	Positions             []LocalPosition      `json:"positions"`
 	TransactionIDs        []string             `json:"transaction_ids"`
 	Fills                 []LocalFillEvidence  `json:"fills"`
@@ -205,7 +206,7 @@ func NewLocalSnapshot(input LocalSnapshotInput) (*LocalSnapshot, error) {
 		!input.HorizonStart.Before(input.HorizonEnd) || !input.HorizonEnd.Equal(input.Checkpoint.AsOf) {
 		return nil, fmt.Errorf("local snapshot scope does not match checkpoint")
 	}
-	cash, positions, err := decodeProjectionEconomics(input.Checkpoint)
+	cash, equity, positions, err := decodeProjectionEconomics(input.Checkpoint)
 	if err != nil {
 		return nil, err
 	}
@@ -230,7 +231,7 @@ func NewLocalSnapshot(input LocalSnapshotInput) (*LocalSnapshot, error) {
 		TransactionCount: input.Checkpoint.TransactionCount, InputChecksum: input.Checkpoint.InputChecksum,
 		OutputChecksum: input.Checkpoint.OutputChecksum, AttestationKeyID: input.Checkpoint.AttestationKeyID,
 		AttestationHMACSHA256: hex.EncodeToString(input.Checkpoint.AttestationHMAC),
-		ProjectionPayload:     append(json.RawMessage(nil), input.Checkpoint.PayloadBytes...), Cash: cash,
+		ProjectionPayload:     append(json.RawMessage(nil), input.Checkpoint.PayloadBytes...), Cash: cash, Equity: equity,
 		Positions: positions, TransactionIDs: transactionIDs, Fills: fills, Issues: issues,
 	}
 	encoded, err := json.Marshal(canonical)
@@ -244,7 +245,7 @@ func NewLocalSnapshot(input LocalSnapshotInput) (*LocalSnapshot, error) {
 	}, nil
 }
 
-func decodeProjectionEconomics(checkpoint *ledger.ProjectionCheckpoint) (string, []LocalPosition, error) {
+func decodeProjectionEconomics(checkpoint *ledger.ProjectionCheckpoint) (string, string, []LocalPosition, error) {
 	var payload struct {
 		Positions []struct {
 			InstrumentID string `json:"instrument_id"`
@@ -252,15 +253,20 @@ func decodeProjectionEconomics(checkpoint *ledger.ProjectionCheckpoint) (string,
 			Quantity     string `json:"quantity"`
 		} `json:"positions"`
 		Totals struct {
-			Cash string `json:"cash"`
+			Cash   string `json:"cash"`
+			Equity string `json:"equity"`
 		} `json:"totals"`
 	}
 	if err := json.Unmarshal(checkpoint.PayloadBytes, &payload); err != nil {
-		return "", nil, fmt.Errorf("decode projection economics: %w", err)
+		return "", "", nil, fmt.Errorf("decode projection economics: %w", err)
 	}
 	cash, err := exactDecimal(payload.Totals.Cash)
 	if err != nil {
-		return "", nil, fmt.Errorf("projection cash: %w", err)
+		return "", "", nil, fmt.Errorf("projection cash: %w", err)
+	}
+	equity, err := exactDecimal(payload.Totals.Equity)
+	if err != nil {
+		return "", "", nil, fmt.Errorf("projection equity: %w", err)
 	}
 	positions := make([]LocalPosition, 0, len(payload.Positions))
 	seen := make(map[uuid.UUID]struct{}, len(payload.Positions))
@@ -268,22 +274,22 @@ func decodeProjectionEconomics(checkpoint *ledger.ProjectionCheckpoint) (string,
 		instrumentID, parseErr := uuid.Parse(row.InstrumentID)
 		quantity, quantityErr := exactDecimal(row.Quantity)
 		if parseErr != nil || instrumentID == uuid.Nil || quantityErr != nil {
-			return "", nil, fmt.Errorf("projection position is invalid")
+			return "", "", nil, fmt.Errorf("projection position is invalid")
 		}
 		if _, ok := seen[instrumentID]; ok {
-			return "", nil, fmt.Errorf("projection position instrument is duplicated")
+			return "", "", nil, fmt.Errorf("projection position instrument is duplicated")
 		}
 		seen[instrumentID] = struct{}{}
 		parsed, _ := decimal.NewFromString(quantity)
 		if row.Open != !parsed.IsZero() {
-			return "", nil, fmt.Errorf("projection position open state contradicts quantity")
+			return "", "", nil, fmt.Errorf("projection position open state contradicts quantity")
 		}
 		if row.Open {
 			positions = append(positions, LocalPosition{InstrumentID: instrumentID, Quantity: quantity})
 		}
 	}
 	sort.Slice(positions, func(i, j int) bool { return positions[i].InstrumentID.String() < positions[j].InstrumentID.String() })
-	return cash, positions, nil
+	return cash, equity, positions, nil
 }
 
 func normalizeTransactionMembership(ids []uuid.UUID, checkpoint *ledger.ProjectionCheckpoint) ([]string, map[uuid.UUID]struct{}, error) {

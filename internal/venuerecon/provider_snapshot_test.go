@@ -30,7 +30,7 @@ func (resolver fixedResolver) ResolveVenueContract(_ context.Context, provider v
 	if resolver.err != nil {
 		return instrument.VenueContract{}, resolver.err
 	}
-	if contractID != "AAPL" || at.Before(testHorizonStart) || at.After(testHorizonEnd) {
+	if contractID != "AAPL" || at.Before(testHorizonStart) || at.After(testHorizonEnd.Add(24*time.Hour)) {
 		return instrument.VenueContract{}, errors.New("missing contract")
 	}
 	return instrument.VenueContract{

@@ -314,20 +314,20 @@ go test -race -count=1 ./internal/venuerecon -run 'Local|Projection|Lifecycle'
 
 ## Task 4: RED comparison, incident, and runner contract
 
-- [ ] Test empty and nonempty exact matches for cash, positions, and fills with
+- [x] Test empty and nonempty exact matches for cash, positions, and fills with
   zero incidents and stable canonical run evidence.
-- [ ] Test every missing-side and mismatched cash/quantity/price/fee/currency/
+- [x] Test every missing-side and mismatched cash/quantity/price/fee/currency/
   side/instrument/order/source fact produces the exact result and incident.
-- [ ] Test unstable/unavailable/incomplete snapshots, non-equivalent equity mark
+- [x] Test unstable/unavailable/incomplete snapshots, non-equivalent equity mark
   basis, and unsupported facts remain `not_comparable`, never matched or zero.
-- [ ] Test correction/bust links use original source/fill identity plus class and
+- [x] Test correction/bust links use original source/fill identity plus class and
   discriminator, never a revision event as an ordinary fill, and always remain
   explicit non-clean pending incidents without new economics.
-- [ ] Test one discrepancy cannot offset another, changed cents change identity,
+- [x] Test one discrepancy cannot offset another, changed cents change identity,
   retry convergence, deterministic ordering, and no partial clean result.
-- [ ] Prove the runner has no write-capable provider, ledger, capital-flow,
+- [x] Prove the runner has no write-capable provider, ledger, capital-flow,
   position, order, or fill dependency and invokes no correction callback.
-- [ ] Implement the pure comparer, incident builder, and orchestration runner.
+- [x] Implement the pure comparer, incident builder, and orchestration runner.
 
 Run:
 
