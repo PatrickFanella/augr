@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"sync"
@@ -13,7 +14,10 @@ import (
 
 	"github.com/PatrickFanella/get-rich-quick/internal/capital"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
+	"github.com/PatrickFanella/get-rich-quick/internal/execution/lifecycle"
+	"github.com/PatrickFanella/get-rich-quick/internal/marketdata"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
+	"github.com/PatrickFanella/get-rich-quick/internal/simulation"
 )
 
 func TestCapitalPolicyRepoRegistersLoadsAndReplaysExactArtifact(t *testing.T) {
@@ -207,6 +211,107 @@ func TestCapitalPolicyDatabaseRejectsMutationAndChangedBindingReplay(t *testing.
 	}
 	if _, err := pool.Exec(ctx, `DELETE FROM capital_margin_policy_artifacts WHERE id = $1`, artifact.ID); err == nil {
 		t.Fatal("artifact delete unexpectedly succeeded")
+	}
+}
+
+func TestCapitalGoldenReplayPersistsReloadsAndReplaysWithoutDuplication(t *testing.T) {
+	ctx, pool := newCapitalPolicyIntegrationPool(t)
+	fixture := newPostgresSimulationVenueFixtureWithPool(t, ctx, pool, lifecycle.TimeInForceDay, 6*time.Hour)
+	capitalRepo := NewCapitalPolicyRepo(pool)
+	artifact := newCapitalPolicyArtifact(t)
+	if _, err := capitalRepo.RegisterCapitalPolicy(ctx, artifact); err != nil {
+		t.Fatal(err)
+	}
+	policy, err := capital.PolicyFromArtifact(*artifact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding, err := capital.NewBinding(
+		*fixture.execution.account, policy, fixture.execution.account.StartingCapital,
+		fixture.execution.account.MarginProfile, capitalPolicyTestTime(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := capitalRepo.BindCapitalPolicy(ctx, binding); err != nil {
+		t.Fatal(err)
+	}
+
+	snapshot := fixture.snapshot(t, "capital-golden-restart", fixture.routed.Order.RoutedAt.Add(time.Second),
+		[]marketdata.DepthLevelInput{{Price: decimal.RequireFromString("10.18"), Size: decimal.NewFromInt(8)}},
+		[]marketdata.DepthLevelInput{{Price: decimal.RequireFromString("10.20"), Size: decimal.NewFromInt(8)}},
+	)
+	result, err := fixture.venue.Evaluate(fixture.request(fixture.routed, snapshot, *snapshot.AvailableAt))
+	if err != nil {
+		t.Fatal(err)
+	}
+	persisted, err := simulation.PersistResult(ctx, fixture.persistence(), fixture.accountID(), result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := simulation.NewOutcome(simulation.OutcomeInput{
+		Account: *fixture.execution.account, VenueContract: *fixture.execution.contract,
+		Aggregate: persisted, Fills: result.Fills,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	freshCapital := NewCapitalPolicyRepo(pool)
+	reloadedArtifact, err := freshCapital.GetCapitalPolicyByVersion(ctx, artifact.Version)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reloadedPolicy, err := capital.PolicyFromArtifact(*reloadedArtifact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reloadedBinding, err := freshCapital.GetCapitalBinding(ctx, fixture.accountID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloadedPolicy.Version() != policy.Version() || !capital.SameBindingPayload(reloadedBinding, binding) {
+		t.Fatalf("reloaded capital context = %q/%+v", reloadedPolicy.Version(), reloadedBinding)
+	}
+	freshLifecycle := NewExecutionLifecycleRepo(pool)
+	reloadedLifecycle, err := freshLifecycle.GetExecutionLifecycle(ctx, fixture.accountID(), persisted.Intent.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloadedLifecycle.State != lifecycle.StateFilled || len(reloadedLifecycle.Fills) != 1 {
+		t.Fatalf("reloaded lifecycle = state:%s fills:%d", reloadedLifecycle.State, len(reloadedLifecycle.Fills))
+	}
+	after, err := simulation.NewOutcome(simulation.OutcomeInput{
+		Account: *fixture.execution.account, VenueContract: *fixture.execution.contract,
+		Aggregate: reloadedLifecycle, Fills: result.Fills,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before.Hash() != after.Hash() || !bytes.Equal(before.CanonicalBytes(), after.CanonicalBytes()) {
+		t.Fatalf("restart outcome changed = %s/%s", before.Hash(), after.Hash())
+	}
+	if replayed, err := simulation.PersistResult(ctx, &postgresSimulationPersistence{
+		ledger: NewLedgerRepo(pool), lifecycle: freshLifecycle,
+	}, fixture.accountID(), result); err != nil || replayed.State != lifecycle.StateFilled {
+		t.Fatalf("restart replay = %+v/%v", replayed, err)
+	}
+
+	var artifacts, bindings, orders, fills, normalizations, transactions int
+	if err := pool.QueryRow(ctx, `SELECT
+		(SELECT COUNT(*) FROM capital_margin_policy_artifacts),
+		(SELECT COUNT(*) FROM account_capital_policy_bindings),
+		(SELECT COUNT(*) FROM execution_orders WHERE intent_id=$1),
+		(SELECT COUNT(*) FROM execution_fills WHERE intent_id=$1),
+		(SELECT COUNT(*) FROM economic_event_normalizations n JOIN economic_source_events e ON e.id=n.source_event_id WHERE e.account_id=$2 AND n.reference_type='execution_fill'),
+		(SELECT COUNT(*) FROM ledger_transactions WHERE account_id=$2 AND reference_type='execution_fill')`,
+		persisted.Intent.ID, fixture.accountID(),
+	).Scan(&artifacts, &bindings, &orders, &fills, &normalizations, &transactions); err != nil {
+		t.Fatal(err)
+	}
+	if artifacts != 1 || bindings != 1 || orders != 1 || fills != 1 || normalizations != 1 || transactions != 1 {
+		t.Fatalf("restart graph = artifacts:%d bindings:%d orders:%d fills:%d normalizations:%d transactions:%d",
+			artifacts, bindings, orders, fills, normalizations, transactions)
 	}
 }
 

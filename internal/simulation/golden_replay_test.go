@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/backtest"
@@ -209,6 +210,11 @@ func TestGoldenReplayConcurrentAdapterOrderingIsStable(t *testing.T) {
 
 type goldenFixtureOptions struct {
 	environment      domain.AccountEnvironment
+	startingCapital  decimal.Decimal
+	marginProfile    domain.MarginProfile
+	buyingPower      decimal.Decimal
+	storageNamespace string
+	desiredQuantity  decimal.Decimal
 	orderType        lifecycle.OrderType
 	timeInForce      lifecycle.TimeInForce
 	limitPrice       *decimal.Decimal
@@ -221,11 +227,21 @@ type goldenFixture struct {
 	instrument instrument.Instrument
 	contract   instrument.VenueContract
 	policy     *simulation.Policy
+	approved   *lifecycle.Aggregate
 	routed     *lifecycle.Aggregate
+	routeQuote marketdata.QuoteSnapshot
+	options    goldenFixtureOptions
 	routeAt    time.Time
 }
 
 func newGoldenFixture(t *testing.T, options goldenFixtureOptions) goldenFixture {
+	t.Helper()
+	fixture := newGoldenApprovedFixture(t, options)
+	routeGoldenFixture(t, &fixture)
+	return fixture
+}
+
+func newGoldenApprovedFixture(t *testing.T, options goldenFixtureOptions) goldenFixture {
 	t.Helper()
 	base := time.Date(2026, 8, 17, 12, 0, 0, 123456000, time.UTC)
 	routeAt := base.Add(time.Hour)
@@ -238,11 +254,26 @@ func newGoldenFixture(t *testing.T, options goldenFixtureOptions) goldenFixture 
 	if options.timeInForce == "" {
 		options.timeInForce = lifecycle.TimeInForceDay
 	}
-	namespace := string(options.environment) + "/golden-replay"
+	if options.startingCapital.IsZero() {
+		options.startingCapital = decimal.NewFromInt(100_000)
+	}
+	if options.marginProfile == "" {
+		options.marginProfile = domain.MarginProfileCash
+	}
+	if options.buyingPower.IsZero() && options.marginProfile != domain.MarginProfileStressUnlimited {
+		options.buyingPower = decimal.NewFromInt(1)
+	}
+	if options.desiredQuantity.IsZero() {
+		options.desiredQuantity = decimal.NewFromInt(10)
+	}
+	namespace := options.storageNamespace
+	if namespace == "" {
+		namespace = string(options.environment) + "/golden-replay"
+	}
 	account, err := domain.NewAccount(domain.AccountInput{
 		Name: "golden replay", Environment: options.environment, Venue: "internal",
-		BaseCurrency: "USD", StorageNamespace: namespace, StartingCapital: decimal.NewFromInt(100000),
-		BuyingPowerMultiplier: decimal.NewFromInt(1), MarginProfile: domain.MarginProfileCash,
+		BaseCurrency: "USD", StorageNamespace: namespace, StartingCapital: options.startingCapital,
+		BuyingPowerMultiplier: options.buyingPower, MarginProfile: options.marginProfile,
 		CreatedBy: "golden-replay", CreationMetadata: json.RawMessage(`{"fixture":"golden-replay"}`),
 		CreatedAt: base.Add(-24 * time.Hour),
 	})
@@ -259,6 +290,7 @@ func newGoldenFixture(t *testing.T, options goldenFixtureOptions) goldenFixture 
 	if err != nil {
 		t.Fatal(err)
 	}
+	reference.ID = uuid.MustParse("b4a740de-8bc6-49e1-8620-f6dfe4210d62")
 	validTo := base.Add(30 * 24 * time.Hour)
 	contract, err := instrument.NewVenueContract(instrument.VenueContractInput{
 		InstrumentID: reference.ID, Venue: "golden-venue", ContractID: "GOLDEN-EQUITY",
@@ -270,6 +302,7 @@ func newGoldenFixture(t *testing.T, options goldenFixtureOptions) goldenFixture 
 	if err != nil {
 		t.Fatal(err)
 	}
+	contract.ID = uuid.MustParse("f8d5924f-b2a5-48d1-9eec-8086d7b14232")
 	policyClass := options.policyAssetClass
 	if policyClass == "" {
 		policyClass = instrument.AssetClassEquity
@@ -299,13 +332,13 @@ func newGoldenFixture(t *testing.T, options goldenFixtureOptions) goldenFixture 
 	if err != nil {
 		t.Fatal(err)
 	}
-	fixture := goldenFixture{account: *account, instrument: *reference, contract: *contract, policy: policy, routeAt: routeAt}
+	fixture := goldenFixture{account: *account, instrument: *reference, contract: *contract, policy: policy, routeAt: routeAt, options: options}
 	routeSnapshot := fixture.snapshot(t, "route", routeAt.Add(-100*time.Millisecond), routeAt.Add(-200*time.Millisecond),
 		[]marketdata.DepthLevelInput{{Price: decimal.RequireFromString("10.18"), Size: decimal.NewFromInt(20)}},
 		[]marketdata.DepthLevelInput{{Price: decimal.RequireFromString("10.20"), Size: decimal.NewFromInt(20)}})
 	proposed, err := lifecycle.Propose(lifecycle.ProposeInput{
 		Account: *account, Instrument: *reference, DecisionSnapshot: routeSnapshot,
-		IdempotencyKey: "golden-intent", DesiredQuantityDelta: decimal.NewFromInt(10), DecisionAt: routeAt,
+		IdempotencyKey: "golden-intent", DesiredQuantityDelta: options.desiredQuantity, DecisionAt: routeAt,
 		OriginType: ledger.ExecutionOriginStrategyVersion, OriginID: "golden-strategy-v1",
 		StrategyVersionID: "golden-strategy-v1", Metadata: json.RawMessage(`{"signal":"golden"}`),
 		Event: goldenEvent("proposal", routeAt.Add(-time.Millisecond), routeAt), CreatedAt: routeAt,
@@ -313,7 +346,7 @@ func newGoldenFixture(t *testing.T, options goldenFixtureOptions) goldenFixture 
 	if err != nil {
 		t.Fatal(err)
 	}
-	allocation, err := lifecycle.Allocate(proposed, decimal.NewFromInt(10), goldenEvent("allocation", routeAt, routeAt), routeAt)
+	allocation, err := lifecycle.Allocate(proposed, options.desiredQuantity, goldenEvent("allocation", routeAt, routeAt), routeAt)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -329,21 +362,27 @@ func newGoldenFixture(t *testing.T, options goldenFixtureOptions) goldenFixture 
 	if err != nil {
 		t.Fatal(err)
 	}
-	route, err := lifecycle.Route(approved, lifecycle.RouteInput{
-		OrderIdempotencyKey: "golden-order", Instrument: *reference, VenueContract: *contract,
-		RouteSnapshot: routeSnapshot, QuoteRequirements: requirements, OrderType: options.orderType,
-		TimeInForce: options.timeInForce, LimitPrice: options.limitPrice, StopPrice: options.stopPrice,
-		PolicyKind: lifecycle.PolicySimulation, PolicyVersion: policy.Version(),
-		Event: goldenEvent("route", routeAt, routeAt), RoutedAt: routeAt, CreatedAt: routeAt,
+	fixture.approved = approved
+	fixture.routeQuote = routeSnapshot
+	return fixture
+}
+
+func routeGoldenFixture(t *testing.T, fixture *goldenFixture) {
+	t.Helper()
+	route, err := lifecycle.Route(fixture.approved, lifecycle.RouteInput{
+		OrderIdempotencyKey: "golden-order", Instrument: fixture.instrument, VenueContract: fixture.contract,
+		RouteSnapshot: fixture.routeQuote, QuoteRequirements: goldenQuoteRequirements(), OrderType: fixture.options.orderType,
+		TimeInForce: fixture.options.timeInForce, LimitPrice: fixture.options.limitPrice, StopPrice: fixture.options.stopPrice,
+		PolicyKind: lifecycle.PolicySimulation, PolicyVersion: fixture.policy.Version(),
+		Event: goldenEvent("route", fixture.routeAt, fixture.routeAt), RoutedAt: fixture.routeAt, CreatedAt: fixture.routeAt,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	fixture.routed, err = lifecycle.ApplyTransition(approved, route)
+	fixture.routed, err = lifecycle.ApplyTransition(fixture.approved, route)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return fixture
 }
 
 func runGoldenReplay(t *testing.T, fixture goldenFixture) (*simulation.Outcome, *simulation.Outcome) {
@@ -487,6 +526,7 @@ func (fixture goldenFixture) snapshot(
 	if err != nil {
 		t.Fatal(err)
 	}
+	snapshot.ID = uuid.NewSHA1(uuid.NameSpaceOID, []byte("golden-replay:"+label))
 	return *snapshot
 }
 
