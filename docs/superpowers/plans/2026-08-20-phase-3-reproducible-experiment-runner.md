@@ -129,18 +129,18 @@ Out of scope:
 
 ## Task 3: Migration 78 append-only run evidence
 
-- [ ] Add program registrations, replay plans/steps, run attempts/events, step
+- [x] Add program registrations, replay plans/steps, run attempts/events, step
   outcomes, results, ordered aggregate/outcome hashes, and exact metric tables.
-- [ ] Reconstruct canonical bytes, deterministic IDs/hashes, counts, order,
+- [x] Reconstruct canonical bytes, deterministic IDs/hashes, counts, order,
   parent scope, terminal states, mode/account namespace, and result completeness
   in deferred PostgreSQL constraints.
-- [ ] Reject mutation/deletion, forged completion, mixed scored/stress evidence,
+- [x] Reject mutation/deletion, forged completion, mixed scored/stress evidence,
   child omission/reordering, mismatched lifecycle IDs, and changed retries.
-- [ ] Add no current/best result pointer, scheduler, lease, writer grant,
+- [x] Add no current/best result pointer, scheduler, lease, writer grant,
   promotion field, legacy backfill, or runtime trigger.
-- [ ] Add lock-first empty-only rollback and bump `RequiredSchemaVersion` to 78
+- [x] Add lock-first empty-only rollback and bump `RequiredSchemaVersion` to 78
   only after isolated real-PostgreSQL tests pass.
-- [ ] Commit and push the migration slice after focused database races.
+- [x] Commit and push the migration slice after focused database races.
 
 ## Task 4: PostgreSQL repository and recovery
 
