@@ -201,6 +201,84 @@ func (r *Result) Metrics() Metrics {
 	return r.canonical.Metrics
 }
 
+func (r *Result) ExperimentID() uuid.UUID {
+	return resultUUID(r, func(value resultCanonical) string { return value.ExperimentID })
+}
+
+func (r *Result) ProgramID() uuid.UUID {
+	return resultUUID(r, func(value resultCanonical) string { return value.ProgramID })
+}
+
+func (r *Result) PlanID() uuid.UUID {
+	return resultUUID(r, func(value resultCanonical) string { return value.PlanID })
+}
+
+func (r *Result) AccountID() uuid.UUID {
+	return resultUUID(r, func(value resultCanonical) string { return value.AccountID })
+}
+
+func (r *Result) ManifestID() uuid.UUID {
+	return resultUUID(r, func(value resultCanonical) string { return value.ManifestID })
+}
+
+func (r *Result) QualityResultID() uuid.UUID {
+	return resultUUID(r, func(value resultCanonical) string { return value.QualityResultID })
+}
+
+func (r *Result) SimulationPolicyVersion() string {
+	if r == nil {
+		return ""
+	}
+	return r.canonical.SimulationPolicyVersion
+}
+
+func (r *Result) CapitalPolicyVersion() string {
+	if r == nil {
+		return ""
+	}
+	return r.canonical.CapitalPolicyVersion
+}
+
+func (r *Result) Mode() strategycatalog.ExperimentMode {
+	if r == nil {
+		return ""
+	}
+	return r.canonical.Mode
+}
+
+func (r *Result) Outcomes() []StepOutcomeInput {
+	if r == nil {
+		return nil
+	}
+	values := make([]StepOutcomeInput, len(r.canonical.Outcomes))
+	for i, outcome := range r.canonical.Outcomes {
+		values[i] = StepOutcomeInput{
+			Action: outcome.Action, DecisionSHA256: outcome.DecisionSHA256,
+			IntentID: parseOptionalUUID(outcome.IntentID), OrderID: parseOptionalUUID(outcome.OrderID),
+			TransitionIDs: parseUUIDTexts(outcome.TransitionIDs), FillIDs: parseUUIDTexts(outcome.FillIDs),
+			FilledQuantity: outcome.FilledQuantity, FeeTotal: outcome.FeeTotal,
+			AggregateSHA256: outcome.AggregateSHA256, OutcomeSHA256: outcome.OutcomeSHA256,
+		}
+	}
+	return values
+}
+
+func resultUUID(result *Result, selectValue func(resultCanonical) string) uuid.UUID {
+	if result == nil {
+		return uuid.Nil
+	}
+	id, _ := uuid.Parse(selectValue(result.canonical))
+	return id
+}
+func parseOptionalUUID(value string) uuid.UUID { id, _ := uuid.Parse(value); return id }
+func parseUUIDTexts(values []string) []uuid.UUID {
+	result := make([]uuid.UUID, len(values))
+	for i, value := range values {
+		result[i], _ = uuid.Parse(value)
+	}
+	return result
+}
+
 func validateResultCanonical(canonical resultCanonical) error {
 	for _, value := range []string{canonical.ExperimentID, canonical.ProgramID, canonical.PlanID, canonical.AccountID, canonical.ManifestID, canonical.QualityResultID} {
 		if _, err := uuid.Parse(value); err != nil {
@@ -469,6 +547,27 @@ func (event *AttemptEvent) ResultID() uuid.UUID {
 	}
 	id, _ := uuid.Parse(event.canonical.ResultID)
 	return id
+}
+
+func (event *AttemptEvent) OccurredAt() time.Time {
+	if event == nil {
+		return time.Time{}
+	}
+	return parseTime(event.canonical.OccurredAt)
+}
+
+func (event *AttemptEvent) ErrorCode() string {
+	if event == nil {
+		return ""
+	}
+	return event.canonical.ErrorCode
+}
+
+func (event *AttemptEvent) ErrorSHA256() string {
+	if event == nil {
+		return ""
+	}
+	return event.canonical.ErrorSHA256
 }
 
 func ValidateAttempt(events []*AttemptEvent) error {

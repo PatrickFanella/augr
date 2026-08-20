@@ -14,6 +14,7 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution/lifecycle"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution/venue"
+	"github.com/PatrickFanella/get-rich-quick/internal/experimentrun"
 	"github.com/PatrickFanella/get-rich-quick/internal/instrument"
 	"github.com/PatrickFanella/get-rich-quick/internal/ledger"
 	"github.com/PatrickFanella/get-rich-quick/internal/marketdata"
@@ -80,6 +81,18 @@ type ExecutionLifecycleRepository interface {
 	GetExecutionLifecycle(context.Context, uuid.UUID, uuid.UUID) (*lifecycle.Aggregate, error)
 	FindExecutionLifecycleByIdempotencyKey(context.Context, uuid.UUID, string) (*lifecycle.Aggregate, error)
 	ListExecutionRecoveryCandidates(context.Context, uuid.UUID, int) ([]*lifecycle.Aggregate, error)
+}
+
+// ExperimentRunRepository persists immutable experiment programs, replay
+// plans, attempts, and completed results without selecting a best/current
+// result or granting any promotion authority.
+type ExperimentRunRepository interface {
+	experimentrun.Store
+	GetProgram(context.Context, uuid.UUID) (*experimentrun.ProgramIdentity, error)
+	GetPlan(context.Context, uuid.UUID) (*experimentrun.Plan, error)
+	GetAttemptEvents(context.Context, uuid.UUID) ([]*experimentrun.AttemptEvent, error)
+	GetResult(context.Context, uuid.UUID) (*experimentrun.Result, error)
+	ListExperimentResults(context.Context, uuid.UUID, int, int) ([]*experimentrun.Result, error)
 }
 
 // SimulationPolicyRepository registers immutable content-addressed policy
