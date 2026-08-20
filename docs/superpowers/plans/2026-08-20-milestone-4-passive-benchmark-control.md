@@ -69,13 +69,13 @@ Out of scope:
 
 ## Task 1: Declaration and opportunity-cost domain
 
-- [ ] Add immutable benchmark declaration, ordered observation evidence,
+- [x] Add immutable benchmark declaration, ordered observation evidence,
   canonical restoration, and exact experiment-bound validation.
-- [ ] Add deterministic opportunity-cost report construction from one exact
+- [x] Add deterministic opportunity-cost report construction from one exact
   OVR-304 evaluation and declaration.
-- [ ] Prove benchmark/cash calculations, curve alignment, parent mismatch,
+- [x] Prove benchmark/cash calculations, curve alignment, parent mismatch,
   timestamp/value/source tamper, ordering, clone, and stable identity cases.
-- [ ] Commit and push the domain/calculator slice after focused races.
+- [x] Commit and push the domain/calculator slice after focused races.
 
 ## Task 2: Migration 82 append-only evidence
 
