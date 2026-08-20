@@ -64,44 +64,78 @@ or route orders.
 
 ## Task 1: Immutable OVR-505 simulation view
 
-- [ ] Expose detached point-in-time books, levels, and exact maker-fee
+- [x] Expose detached point-in-time books, levels, and exact maker-fee
   calculation without exposing mutable recorder canonical state.
-- [ ] Prove corrections obey availability, inside-price lookup is stable, and
+- [x] Prove corrections obey availability, inside-price lookup is stable, and
   fee formulas retain exact scale and rounding.
-- [ ] Commit and push the OVR-505 simulation-view slice.
+- [x] Commit and push the OVR-505 simulation-view slice.
 
 ## Task 2: Queue, markout, inventory, and quote evaluator
 
-- [ ] Validate passive inside quotes, displayed plus prior queue, complete
+- [x] Validate passive inside quotes, displayed plus prior queue, complete
   weighted scenario sets, inventory state/limit, carry rate, and minimum.
-- [ ] Compute deterministic no/partial/full fills, horizon midpoint markouts,
+- [x] Compute deterministic no/partial/full fills, horizon midpoint markouts,
   exact maker fees, elapsed inventory cost, and weighted expected net capture.
-- [ ] Prove buy/sell symmetry, adverse marks, queue equality, corrections,
+- [x] Prove buy/sell symmetry, adverse marks, queue equality, corrections,
   inventory-limit rejection, no-fill rejection, strict-profit equality,
   permutation, and canonical reconstruction.
-- [ ] Commit and push the pure maker evaluator.
+- [x] Commit and push the pure maker evaluator.
 
 ## Task 3: Migration 94 and retained qualification
 
-- [ ] Persist immutable candidate and scenario identity with recorder guards and
+- [x] Persist immutable candidate and scenario identity with recorder guards and
   PostgreSQL reconstruction.
-- [ ] Prove eight-writer convergence, changed retry conflict, every-stage atomic
+- [x] Prove eight-writer convergence, changed retry conflict, every-stage atomic
   rollback, forgery rejection, append-only evidence, nonempty rollback refusal,
   and empty `94 -> 93 -> 94`.
-- [ ] Retain one positive buy quote, one adverse/nonpositive rejection, one
+- [x] Retain one positive buy quote, one adverse/nonpositive rejection, one
   no-fill boundary, and one exact strict-profit boundary.
-- [ ] Add an inspection/recovery/rollback runbook with exact IDs and digests.
-- [ ] Run focused/database races, repository-wide backend/static and pinned
+- [x] Add an inspection/recovery/rollback runbook with exact IDs and digests.
+- [x] Run focused/database races, repository-wide backend/static and pinned
   frontend gates, diff review, and isolated kill-switched schema-94 health/API/
   rollback/backup/restore/reapply.
-- [ ] Commit/push verified slices, fetch, and prove `0 0` before Milestone 6.
+- [x] Commit/push verified slices, fetch, and prove `0 0` before Milestone 6.
 
 ## Acceptance evidence to record
 
-- [ ] Every qualified quote is passive at decision time, consumes only observed
+- [x] Every qualified quote is passive at decision time, consumes only observed
   outflow beyond immutable queue ahead, and uses later point-in-time marks.
-- [ ] Expected net spread capture remains strictly positive after exact maker
+- [x] Expected net spread capture remains strictly positive after exact maker
   fees, adverse/favorable markouts, and inventory carrying cost.
-- [ ] Local qualification is `VERIFIED_LOCAL`; licensed trade flow, queue
+- [x] Local qualification is `VERIFIED_LOCAL`; licensed trade flow, queue
   calibration, independent review, shared migration, scheduling, deployment,
   venue routing, and live trading remain `BLOCKED_EXTERNAL`.
+
+## Qualification record — 2026-08-20
+
+OVR-507 is `VERIFIED_LOCAL` on retained loopback database
+`augr_ovr507_qual_20260820_v2` at schema 94. Recorder
+`cd9a0810-a42e-a8f8-0a2f-604f45b42f92` produced qualified candidate
+`c06f1c08-93fd-b589-acd5-b8aad1df1382` with SHA-256
+`7d5e2f7283a47fb7970da1417f6f1ef1bba1ecb3a4fe873e521c8f1494a1768e`
+and expected net capture `0.02985`. Qualified buy candidate
+`05c7b77b-6a8e-71d0-86c4-4dafaadd6e39` has SHA-256
+`18ca8721832ba48d8a14ac0505831cbf5526d63c87080056984ceabbd207b632`
+and expected net capture `0.0408425`. The retained graph also includes high-cost
+nonpositive rejection `06553e27-fdb1-475e-416e-4f944fd72ccf`, queue-equality
+no-fill rejection `e5609fa5-39e2-bf57-d9f8-ab09de160191`, and exact expected-
+net equality rejection `2d05c9c6-93a9-da84-0ff1-f3925383946c`. It has five
+candidates and ten normalized scenarios.
+
+Eight concurrent writers converge, a changed retry conflicts, both persistence
+stages roll back atomically, restart reconstruction matches the canonical
+digest, and forged or mutated evidence is rejected. Migration 94 passed empty
+`94 -> 93 -> 94`; retained rollback refused with all four candidates and eight
+scenarios intact. The expected `golang-migrate` refusal set only its version
+metadata dirty, so the dedicated qualification database was inspected and
+forced back to clean version 94 without changing evidence.
+
+Repository-wide race tests, build, vet, lint, format, and reachable-
+vulnerability checks passed. Pinned Node 22.23.2 passed 162 frontend tests,
+lint, and production build; `npm audit --omit=dev` retains one low-severity
+Windows-only development-server advisory in esbuild. The isolated production
+verifier passed fresh `1 -> 94`, health, authenticated read-only API smoke,
+`94 -> 60` rollback, schema-60 backup/restore, reapply to 94, and post-reapply
+health. Licensed trade flow, queue calibration, independent review, shared
+migration, scheduling, deployment, venue routing, and live trading remain
+`BLOCKED_EXTERNAL`.

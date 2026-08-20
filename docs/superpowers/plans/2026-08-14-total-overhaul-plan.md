@@ -1321,6 +1321,25 @@ shared migration, runtime capital reservation, scheduling, deployment, venue
 routing, or live trading; those remain **BLOCKED_EXTERNAL**. Dependency-order
 execution proceeds to OVR-507.
 
+OVR-507 is complete locally as schema 94. One immutable OVR-505 recorder now
+supports detached point-in-time books and exact maker-fee calculation. The
+research evaluator admits only passive inside quotes, places displayed size and
+explicit prior interest ahead in queue, fills only observed outflow beyond that
+queue, marks later at an available book midpoint, and subtracts exact maker fees
+plus elapsed inventory carrying cost. The retained graph has five candidates
+and ten scenarios: qualified sell and buy quotes record expected net capture
+`0.02985` and `0.0408425` above minimum `0.01`, while high carry cost, queue-
+equality no-fill, and exact profit equality are rejected. Eight-writer
+convergence, changed-retry conflict,
+stage rollback, restart, forgery/append-only enforcement, retained rollback
+refusal, empty `94 -> 93 -> 94`, repository-wide backend/static and pinned
+frontend gates, and isolated production-image fresh-94 health/API/rollback-60/
+backup-restore/reapply passed. These results are **VERIFIED_LOCAL** only.
+Synthetic flow does not establish licensed history, real queue priority,
+calibrated probabilities, independent review, shared migration, scheduling,
+deployment, venue routing, or live trading; those remain **BLOCKED_EXTERNAL**.
+Dependency-order execution proceeds to Milestone 6.
+
 ### Milestone 6 — AI workbench and autonomy
 
 | ID | Depends on | Work | Acceptance |
