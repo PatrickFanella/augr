@@ -92,20 +92,20 @@ settlement of a real position, or live trade is authorized.
   order and settlement writers; one scheduled occurrence must retain exactly
   one intent, one order, and one settlement effect across races, crash/restart,
   timeout, delayed stale owner, and takeover.
-- [ ] Add inspection, recovery, takeover, and rollback runbook evidence with
+- [x] Add inspection, recovery, takeover, and rollback runbook evidence with
   retained IDs/digests and explicit legacy/cutover limits.
-- [ ] Run repository-wide backend/static and pinned frontend gates, diff review,
+- [x] Run repository-wide backend/static and pinned frontend gates, diff review,
   and isolated kill-switched schema-98 health/API/rollback/backup/restore/reapply.
 - [ ] Commit/push verified slices, fetch, and prove `0 0` before OVR-605.
 
 ## Acceptance evidence to record
 
-- [ ] Two instances cannot create duplicate occurrences, intents, orders, or
+- [x] Two instances cannot create duplicate occurrences, intents, orders, or
   settlements for one scheduled financial job.
-- [ ] Lease takeover is fenced at the database effect boundary; cancelling a Go
+- [x] Lease takeover is fenced at the database effect boundary; cancelling a Go
   context is defense in depth, not the source of correctness.
-- [ ] Every current financial job is classified and every mutation-capable job
+- [x] Every current financial job is classified and every mutation-capable job
   has an explicit deterministic effect contract.
-- [ ] Local qualification is `VERIFIED_LOCAL`; scheduler cutover, provider
+- [x] Local qualification is `VERIFIED_LOCAL`; scheduler cutover, provider
   access, shared migration, real settlement, allocation, broker routing,
   deployment, and live trading remain `BLOCKED_EXTERNAL`.
