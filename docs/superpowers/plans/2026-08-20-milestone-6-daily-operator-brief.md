@@ -52,13 +52,13 @@ allocation, settlement, broker route, deployment, or live trade.
 
 ## Task 1: Brief, sections, and incidents
 
-- [ ] Implement closed sections/statuses, canonical facts and explanations,
+- [x] Implement closed sections/statuses, canonical facts and explanations,
   exact evidence bindings, deterministic ordering/identity, and incident
   derivation.
-- [ ] Prove healthy day, halted exposure, reconciliation drift, risk failure,
+- [x] Prove healthy day, halted exposure, reconciliation drift, risk failure,
   incomplete costs, unavailable performance, DST/day checks, permutation
   convergence, semantic change, and no mutation/notification surface.
-- [ ] Bind exact OVR-304 evaluation, OVR-603 summary, OVR-207 reconciliation,
+- [x] Bind exact OVR-304 evaluation, OVR-603 summary, OVR-207 reconciliation,
   OVR-605 assessment, and OVR-606 cost report evidence.
 - [ ] Commit and push the domain slice after focused race tests.
 
