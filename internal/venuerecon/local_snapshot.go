@@ -446,6 +446,14 @@ func (snapshot *LocalSnapshot) Cash() decimal.Decimal {
 	return value
 }
 
+func (snapshot *LocalSnapshot) Equity() decimal.Decimal {
+	if snapshot == nil {
+		return decimal.Zero
+	}
+	value, _ := decimal.NewFromString(snapshot.canonical.Equity)
+	return value
+}
+
 func (snapshot *LocalSnapshot) Positions() []LocalPosition {
 	if snapshot == nil {
 		return nil

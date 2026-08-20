@@ -361,14 +361,14 @@ DB_URL="$AUGR_PHASE2_DB_URL" go test -race -count=1 \
 
 ## Task 6: Golden reconciliation and restart campaign
 
-- [ ] Build one Alpaca and one Kalshi canonical graph from raw provider fixtures
+- [x] Build one Alpaca and one Kalshi canonical graph from raw provider fixtures
   through OVR-205 observation, OVR-203 lifecycle, OVR-103 normalization/ledger,
   OVR-104 projection, stable provider/local snapshots, and a clean run.
-- [ ] Perturb cash, one position, and one fill independently and prove exact
+- [x] Perturb cash, one position, and one fill independently and prove exact
   critical incidents without any mutation or balancing transaction.
-- [ ] Inject failure after each persisted graph stage and prove restart/replay
+- [x] Inject failure after each persisted graph stage and prove restart/replay
   converges to the same run and incident identities.
-- [ ] Prove correction/bust evidence links exactly to the original fill and stays
+- [x] Prove correction/bust evidence links exactly to the original fill and stays
   non-clean without deleting that fill or inventing corrected economics;
   ambiguous/unstable provider state cannot produce a clean run.
 

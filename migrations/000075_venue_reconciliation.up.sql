@@ -185,7 +185,7 @@ CREATE TABLE venue_local_snapshot_fills (
     evidence JSONB NOT NULL CHECK (jsonb_typeof(evidence) = 'object'),
     PRIMARY KEY (snapshot_id, sequence),
     UNIQUE (snapshot_id, comparison_key),
-    UNIQUE (snapshot_id, fill_id)
+    CHECK (fill_id <> '00000000-0000-0000-0000-000000000000'::UUID)
 );
 CREATE TABLE venue_local_snapshot_issues (
     snapshot_id UUID NOT NULL REFERENCES venue_local_snapshots(id) ON DELETE RESTRICT,
