@@ -106,21 +106,44 @@ Out of scope:
   turnover-cap, and multi-rebalance scenarios with exact IDs/hashes/counts.
 - [x] Prove eight-writer convergence, restart, every-stage rollback, normalized
   forgery rejection, nonempty rollback refusal, and empty `85 -> 84 -> 85`.
-- [ ] Run focused/database races, all backend and pinned frontend gates, diff
+- [x] Run focused/database races, all backend and pinned frontend gates, diff
   review, and isolated kill-switched schema-85 health/API/rollback/reapply.
-- [ ] Commit/push verified slices, fetch, and prove `0 0` divergence before
+- [x] Commit/push verified slices, fetch, and prove `0 0` divergence before
   OVR-405.
 
 ## Acceptance evidence to record
 
-- [ ] Multi-horizon signals, volatility-scaled targets, exposure/turnover caps,
+- [x] Multi-horizon signals, volatility-scaled targets, exposure/turnover caps,
   whole-lot trades, costs, holdings, cash, and returns are exact and reproducible.
-- [ ] Missing/stale/revised/partial/forged evidence and negative or over-cap
+- [x] Missing/stale/revised/partial/forged evidence and negative or over-cap
   portfolio states fail.
-- [ ] The adapter remains deterministic inside OVR-303 boundaries and exposes
+- [x] The adapter remains deterministic inside OVR-303 boundaries and exposes
   cash and remaining drift rather than manufacturing allocation or fills.
-- [ ] Reports have no promotion, allocation, scheduling, deployment, provider,
+- [x] Reports have no promotion, allocation, scheduling, deployment, provider,
   or runtime authority.
-- [ ] Local qualification is `VERIFIED_LOCAL`; licensed real inputs,
+- [x] Local qualification is `VERIFIED_LOCAL`; licensed real inputs,
   independent review, shared migration, promotion, runtime adoption, and
   production activation remain `BLOCKED_EXTERNAL`.
+
+## Qualification record
+
+- Retained database: `augr_ovr404_qual_20260820`, clean schema 85.
+- Retained inventory: 1 policy, 5 scenarios, 11 source rebalances, 11 universe
+  members, 22 horizon anchors, 5 reports, 11 normalized rebalances, 11 signals,
+  9 whole-lot trades, and 8 holdings.
+- Retained scenario/report IDs: `all_cash`
+  `3875a288-31a5-b168-ee49-fc16b2b0a98b` / `75c82239-5937-1233-de8f-cbc6f805048e`;
+  `all_long` `2ade2f1f-ea6a-0fe8-9f82-651eaac96497` /
+  `b8c96ccf-2086-5843-5bc7-84faf9c8ac71`; `mixed_long_cash`
+  `21329517-70e3-dc43-1da4-e3096ffb531c` / `ff8ad549-acb8-9ab0-9594-caa525d4ef72`;
+  `turnover_multi` `386d5571-8d31-8bc7-1f94-cc4d16d50b8d` /
+  `51d3d988-a3d7-4f72-918a-36fa5d7562af`; `volatility_cap`
+  `8a29bd17-997b-3e0c-9cd6-b64b04d5d92c` / `3735f257-0216-2c9d-fe0d-a4dba1140a91`.
+- Backend: 4,555 race-enabled tests in 113 packages; build, vet, repository-wide
+  lint, `gofumpt`, and `govulncheck` passed.
+- Frontend: Node 22.23.2 frozen/ignored-script install, high-severity audit, 162
+  tests, lint, and production build passed.
+- Isolated production verifier built commit `e48f9fb`, migrated fresh 1 -> 85,
+  passed health and authenticated read-only API checks, rolled back 85 -> 60,
+  verified backup/restore, reapplied 61 -> 85, and returned healthy. The
+  temporary empty external `monitoring` network was removed after the pass.
