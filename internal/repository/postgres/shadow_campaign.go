@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/evidenceprogram"
@@ -37,7 +38,7 @@ func (r *ShadowCampaignRepo) RegisterCampaign(ctx context.Context, campaign *evi
 	defer func() { _ = tx.Rollback(ctx) }()
 	command, err := tx.Exec(ctx, `INSERT INTO shadow_campaigns(id,schema_name,campaign_key,started_at,target_days,benchmark_id,benchmark_sha256,candidate_count,sha256,canonical_bytes,canonical_json) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(id) DO NOTHING`, record.ID, evidenceprogram.ShadowCampaignSchemaV1, record.Key, record.StartedAt, evidenceprogram.ShadowTargetDays, record.Benchmark.ID, record.Benchmark.SHA256, len(record.Candidates), record.SHA256, []byte(record.CanonicalBytes), record.CanonicalBytes)
 	if err != nil {
-		return fmt.Errorf("postgres: persist shadow campaign: %w", err)
+		return shadowCampaignWriteError("persist shadow campaign", err)
 	}
 	if command.RowsAffected() == 0 {
 		return r.compareCampaign(ctx, tx, record.ID, record.SHA256, record.CanonicalBytes)
@@ -47,7 +48,7 @@ func (r *ShadowCampaignRepo) RegisterCampaign(ctx context.Context, campaign *evi
 	}
 	for sequence, candidate := range record.Candidates {
 		raw, _ := json.Marshal(candidate)
-		if _, err = tx.Exec(ctx, `INSERT INTO shadow_campaign_candidates(campaign_id,sequence,candidate_key,version_id,version_sha256,canonical_row) VALUES($1,$2,$3,$4,$5,$6)`, record.ID, sequence, candidate.Key, candidate.VersionID, candidate.SHA256, raw); err != nil {
+		if _, err = tx.Exec(ctx, `INSERT INTO shadow_campaign_candidates(campaign_id,sequence,candidate_key,version_id,version_sha256,canonical_row) VALUES($1,$2,$3,$4,$5,$6)`, record.ID, sequence, candidate.Key, candidate.VersionID, candidate.SHA256, string(raw)); err != nil {
 			return fmt.Errorf("postgres: persist shadow candidate: %w", err)
 		}
 	}
@@ -69,7 +70,7 @@ func (r *ShadowCampaignRepo) RegisterDay(ctx context.Context, day *evidenceprogr
 	defer func() { _ = tx.Rollback(ctx) }()
 	command, err := tx.Exec(ctx, `INSERT INTO shadow_campaign_days(id,schema_name,campaign_id,campaign_sha256,sequence,observed_at,source_kind,source_id,source_sha256,candidate_count,sha256,canonical_bytes,canonical_json) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT(id) DO NOTHING`, record.ID, evidenceprogram.ShadowDaySchemaV1, record.CampaignID, record.CampaignSHA256, record.Sequence, record.ObservedAt, record.Source.Kind, record.Source.ID, record.Source.SHA256, len(record.Candidates), record.SHA256, []byte(record.CanonicalBytes), record.CanonicalBytes)
 	if err != nil {
-		return fmt.Errorf("postgres: persist shadow day: %w", err)
+		return shadowCampaignWriteError("persist shadow day", err)
 	}
 	if command.RowsAffected() == 0 {
 		return r.compareDay(ctx, tx, record.ID, record.SHA256, record.CanonicalBytes)
@@ -79,7 +80,7 @@ func (r *ShadowCampaignRepo) RegisterDay(ctx context.Context, day *evidenceprogr
 	}
 	for sequence, candidate := range record.Candidates {
 		raw, _ := json.Marshal(candidate)
-		if _, err = tx.Exec(ctx, `INSERT INTO shadow_campaign_day_candidates(day_id,sequence,candidate_key,critical_defects,executable_samples,simulated_fills,slippage_known,slippage_divergence,canonical_row) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`, record.ID, sequence, candidate.Key, candidate.CriticalDefects, candidate.ExecutableSamples, candidate.SimulatedFills, candidate.SlippageKnown, candidate.SlippageDivergence, raw); err != nil {
+		if _, err = tx.Exec(ctx, `INSERT INTO shadow_campaign_day_candidates(day_id,sequence,candidate_key,critical_defects,executable_samples,simulated_fills,slippage_known,slippage_divergence,canonical_row) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`, record.ID, sequence, candidate.Key, candidate.CriticalDefects, candidate.ExecutableSamples, candidate.SimulatedFills, candidate.SlippageKnown, candidate.SlippageDivergence, string(raw)); err != nil {
 			return fmt.Errorf("postgres: persist shadow day candidate: %w", err)
 		}
 	}
@@ -150,4 +151,12 @@ func (r *ShadowCampaignRepo) stage(name string) error {
 		return r.afterStage(name)
 	}
 	return nil
+}
+
+func shadowCampaignWriteError(operation string, err error) error {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return fmt.Errorf("%w: %s", ErrShadowCampaignConflict, operation)
+	}
+	return fmt.Errorf("postgres: %s: %w", operation, err)
 }
