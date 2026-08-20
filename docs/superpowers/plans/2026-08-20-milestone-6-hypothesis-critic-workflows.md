@@ -99,7 +99,7 @@ creates an experiment/deployment.
 - [x] Run focused/database races, repository-wide backend/static and pinned
   frontend gates, diff review, and isolated kill-switched schema-96 health/API/
   rollback/backup/restore/reapply.
-- [ ] Commit/push verified slices, fetch, and prove `0 0` before OVR-603.
+- [x] Commit/push verified slices, fetch, and prove `0 0` before OVR-603.
 
 ## Acceptance evidence to record
 
