@@ -160,17 +160,17 @@ Out of scope:
 - [x] Prove identical and eight-writer retries converge, stable-family changed
   payload conflicts, injected stage failures roll back fully, and restart reload
   reproduces every ID/digest.
-- [ ] Retain a golden family with two config-derived versions, one admitted
+- [x] Retain a golden family with two config-derived versions, one admitted
   scored experiment, one explicit stress declaration, one proposed deployment,
   and one separately mapped `legacy_unvalidated` strategy.
-- [ ] Commit and push the repository slice after focused database races.
+- [x] Commit and push the repository slice after focused database races.
 
 ## Task 6: Documentation, qualification, review, and synchronization
 
-- [ ] Add a runbook covering version creation, exact experiment/deployment
+- [x] Add a runbook covering version creation, exact experiment/deployment
   inspection, scored/stress boundaries, legacy mapping, preservation, no-
   activation response, and empty-only rollback.
-- [ ] Apply migrations `1 -> 77` to a fresh loopback database and retain the
+- [x] Apply migrations `1 -> 77` to a fresh loopback database and retain the
   golden catalog. Prove config edit yields a second version, exact reload,
   nonempty rollback refusal, and separate empty `77 -> 76 -> 77`.
 - [ ] Run focused and repository-wide backend races/build/vet/lint/format/
@@ -184,17 +184,17 @@ Out of scope:
 
 ## Acceptance evidence to record after implementation
 
-- [ ] Editing accepted configuration creates a new immutable version while the
+- [x] Editing accepted configuration creates a new immutable version while the
   old family/version/experiment/deployment evidence remains unchanged.
-- [ ] Every new experiment declaration pins matching exact OVR-301 manifest and
+- [x] Every new experiment declaration pins matching exact OVR-301 manifest and
   quality evidence plus simulation/capital policy versions.
-- [ ] Scored quarantine or evidence-class mismatch fails closed; stress evidence
+- [x] Scored quarantine or evidence-class mismatch fails closed; stress evidence
   remains synthetic and cannot become promotion evidence.
-- [ ] Deployments remain inert proposals with explicit account, budget, capital,
+- [x] Deployments remain inert proposals with explicit account, budget, capital,
   schedule, timezone, and risk-policy identity; no activation path exists.
-- [ ] Legacy mappings remain explicitly unvalidated and create no version or
+- [x] Legacy mappings remain explicitly unvalidated and create no version or
   experiment automatically.
-- [ ] Migration 77 is additive, append-only, empty-only reversible, and leaves
+- [x] Migration 77 is additive, append-only, empty-only reversible, and leaves
   legacy runtime behavior and data untouched.
 - [ ] Local qualification is labeled `VERIFIED_LOCAL`; shared migration,
   production data, experiment execution, promotion, activation, and cutover

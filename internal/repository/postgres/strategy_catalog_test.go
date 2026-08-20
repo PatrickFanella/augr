@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -41,6 +42,11 @@ func newStrategyCatalogFixture(t *testing.T) strategyCatalogFixture {
 	t.Helper()
 	ctx := context.Background()
 	pool := newStrategyCatalogMigrationPool(t)
+	return newStrategyCatalogFixtureWithPool(t, ctx, pool)
+}
+
+func newStrategyCatalogFixtureWithPool(t *testing.T, ctx context.Context, pool *pgxpool.Pool) strategyCatalogFixture {
+	t.Helper()
 	economic := newEconomicLedgerFixture(t, ctx, pool, "strategy-catalog")
 
 	capitalArtifact := newCapitalPolicyArtifact(t)
@@ -109,6 +115,121 @@ func newStrategyCatalogFixture(t *testing.T) strategyCatalogFixture {
 		manifest: manifest, clean: clean, quarantined: quarantined, account: account, binding: binding,
 		simulation: simulationArtifact.Version, capital: capitalArtifact.Version,
 	}
+}
+
+func TestStrategyCatalogRepoRetainedQualification(t *testing.T) {
+	databaseURL := os.Getenv("STRATEGY_CATALOG_QUALIFICATION_DB_URL")
+	if databaseURL == "" {
+		t.Skip("set STRATEGY_CATALOG_QUALIFICATION_DB_URL to a dedicated empty schema-77 database")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	var schema string
+	var version, existing int
+	if err := pool.QueryRow(ctx, `SELECT current_schema()`).Scan(&schema); err != nil || schema != "public" {
+		t.Fatalf("qualification schema=%q err=%v", schema, err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT version FROM schema_migrations WHERE NOT dirty`).Scan(&version); err != nil || version != 77 {
+		t.Fatalf("qualification version=%d err=%v", version, err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT
+		(SELECT count(*) FROM strategy_families)+(SELECT count(*) FROM strategy_versions)+
+		(SELECT count(*) FROM research_experiments)+(SELECT count(*) FROM strategy_deployments)+
+		(SELECT count(*) FROM legacy_strategy_family_mappings)`).Scan(&existing); err != nil || existing != 0 {
+		t.Fatalf("qualification database is not catalog-empty: count=%d err=%v", existing, err)
+	}
+	fixture := newStrategyCatalogFixtureWithPool(t, ctx, pool)
+	if _, err := fixture.repo.RegisterStrategyFamily(ctx, fixture.family); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.repo.RegisterStrategyVersion(ctx, fixture.version); err != nil {
+		t.Fatal(err)
+	}
+	second := strategyCatalogVersion(t, fixture.family.ID(), json.RawMessage(`{"lookback_sessions":60,"rebalance":"daily"}`), dataset.KindBars, dataset.KindQuotes)
+	if _, err := fixture.repo.RegisterStrategyVersion(ctx, second); err != nil {
+		t.Fatal(err)
+	}
+	scored := fixture.scoredExperiment(t, fixture.version, fixture.clean)
+	if _, err := fixture.repo.DeclareResearchExperiment(ctx, scored); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.repo.ProposeStrategyDeployment(ctx, fixture.deployment(t, fixture.version)); err != nil {
+		t.Fatal(err)
+	}
+
+	capitalArtifact, err := NewCapitalPolicyRepo(pool).GetCapitalPolicyByVersion(ctx, fixture.capital)
+	if err != nil {
+		t.Fatal(err)
+	}
+	capitalPolicy, err := capital.PolicyFromArtifact(*capitalArtifact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stressAccount := newCapitalPolicyAccount(t, domain.AccountEnvironmentPaperStress, decimal.NewFromInt(5_000_000), domain.MarginProfileStressUnlimited, decimal.Zero, 303)
+	if err := NewAccountRepo(pool).Create(ctx, stressAccount); err != nil {
+		t.Fatal(err)
+	}
+	stressBinding, err := capital.NewBinding(*stressAccount, capitalPolicy, stressAccount.StartingCapital, stressAccount.MarginProfile, capitalPolicyTestTime())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewCapitalPolicyRepo(pool).BindCapitalPolicy(ctx, stressBinding); err != nil {
+		t.Fatal(err)
+	}
+	stress, err := strategycatalog.NewExperiment(strategycatalog.ExperimentInput{
+		VersionID: second.ID(), AccountID: stressAccount.ID, CapitalBindingID: stressBinding.ID,
+		ManifestID: fixture.manifest.ID(), QualityResultID: fixture.quarantined.ID(),
+		SimulationPolicyVersion: fixture.simulation, CapitalPolicyVersion: fixture.capital,
+		Mode: strategycatalog.ExperimentPaperStress, EvaluationStart: strategyCatalogEvaluationStart(),
+		EvaluationEnd: strategyCatalogEvaluationStart().Add(time.Hour), Seed: 303, DatasetQuarantined: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.repo.DeclareResearchExperiment(ctx, stress); err != nil {
+		t.Fatal(err)
+	}
+
+	legacyID := uuid.New()
+	if _, err := pool.Exec(ctx, `INSERT INTO strategies(
+		id,name,description,ticker,market_type,schedule_cron,config,status,skip_next_run,is_paper,is_active
+	) VALUES($1,'Retained legacy strategy','OVR-302 retained evidence','AAPL','stock',NULL,'{}'::jsonb,'inactive',false,true,false)`, legacyID); err != nil {
+		t.Fatal(err)
+	}
+	var snapshot string
+	if err := pool.QueryRow(ctx, `SELECT strategy_legacy_snapshot_sha($1)`, legacyID).Scan(&snapshot); err != nil {
+		t.Fatal(err)
+	}
+	mapping, err := strategycatalog.NewLegacyMapping(strategycatalog.LegacyMappingInput{
+		LegacyStrategyID: legacyID, FamilyID: fixture.family.ID(), LegacySnapshotSHA256: snapshot,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.repo.MapLegacyStrategyFamily(ctx, mapping); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, id := range []uuid.UUID{fixture.version.ID(), second.ID()} {
+		if _, err := NewStrategyCatalogRepo(pool).GetStrategyVersion(ctx, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var families, versions, kinds, experiments, deployments, mappings, events int
+	if err := pool.QueryRow(ctx, `SELECT
+		(SELECT count(*) FROM strategy_families),(SELECT count(*) FROM strategy_versions),
+		(SELECT count(*) FROM strategy_version_dataset_kinds),(SELECT count(*) FROM research_experiments),
+		(SELECT count(*) FROM strategy_deployments),(SELECT count(*) FROM legacy_strategy_family_mappings),
+		(SELECT count(*) FROM strategy_catalog_lifecycle_events)`).Scan(&families, &versions, &kinds, &experiments, &deployments, &mappings, &events); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("retained family=%s versions=%s,%s scored=%s stress=%s mapping=%s counts=%d/%d/%d/%d/%d/%d/%d",
+		fixture.family.ID(), fixture.version.ID(), second.ID(), scored.ID(), stress.ID(), mapping.ID(),
+		families, versions, kinds, experiments, deployments, mappings, events)
 }
 
 func TestStrategyCatalogRepoPersistsReloadsRetriesAndConfigVersions(t *testing.T) {
