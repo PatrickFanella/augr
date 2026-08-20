@@ -127,7 +127,7 @@ func NewRun(input Input) (*Run, error) {
 			continue
 		}
 		requested := decimal.Min(delta.Abs(), remaining)
-		projected := current
+		var projected decimal.Decimal
 		side := "buy"
 		if delta.IsNegative() {
 			side = "sell"
@@ -286,7 +286,7 @@ func equalValueCanonical(left, right []valueCanonical) bool {
 
 func equalLegs(left, right []legCanonical) bool { return bytes.Equal(mustJSON(left), mustJSON(right)) }
 func mustJSON(value any) []byte                 { raw, _ := json.Marshal(value); return raw }
-func hash(value []byte) string { sum := sha256.Sum256(value); return hex.EncodeToString(sum[:]) }
+func hash(value []byte) string                  { sum := sha256.Sum256(value); return hex.EncodeToString(sum[:]) }
 
 func decodeExact(raw []byte, target any) error {
 	decoder := json.NewDecoder(bytes.NewReader(raw))
