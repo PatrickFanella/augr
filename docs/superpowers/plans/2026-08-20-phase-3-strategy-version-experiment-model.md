@@ -129,11 +129,11 @@ Out of scope:
   without general transition authority.
 - [x] Prove assignment changes create new identities and no domain constructor
   can claim active/approved/completed state.
-- [ ] Commit and push the deployment/legacy slice after focused race tests.
+- [x] Commit and push the deployment/legacy slice after focused race tests.
 
 ## Task 4: Migration 77 append-only catalog graph
 
-- [ ] Add family, version, version-kind, experiment, deployment, legacy-mapping,
+- [x] Add family, version, version-kind, experiment, deployment, legacy-mapping,
   and lifecycle-evidence tables with exact foreign keys and repeated parent
   scope where needed.
 - [ ] Reconstruct canonical bytes, counts, sorted children, hashes, deterministic
@@ -142,10 +142,10 @@ Out of scope:
   in deferred constraints.
 - [ ] Reject update/delete, direct-SQL forged scope/identity/state, quarantined
   scored experiments, missing required dataset kinds, and active deployments.
-- [ ] Add indexes for family/version lineage, experiment evidence, account
+- [x] Add indexes for family/version lineage, experiment evidence, account
   deployment proposals, and explicit legacy mapping lookup. Add no current
   pointer, writer grant, scheduler, or legacy backfill.
-- [ ] Add lock-first empty-only rollback and bump `RequiredSchemaVersion` to 77
+- [x] Add lock-first empty-only rollback and bump `RequiredSchemaVersion` to 77
   only after isolated migration tests pass.
 - [ ] Commit and push the migration slice after focused real-PostgreSQL races.
 
