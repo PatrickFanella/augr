@@ -291,19 +291,19 @@ go test -race -count=1 ./internal/venuerecon -run 'Provider|Snapshot|Stable|Alpa
 
 ## Task 3: RED local snapshot
 
-- [ ] Test exact cash/open-position derivation from an independently validated
+- [x] Test exact cash/open-position derivation from an independently validated
   OVR-104 checkpoint and exact fill derivation from complete OVR-203/205 graphs.
-- [ ] Test exact checkpoint transaction membership, correction/bust provenance,
+- [x] Test exact checkpoint transaction membership, correction/bust provenance,
   fees, canonical instrument identity, account/provider/horizon isolation,
   deterministic ordering, bytes, and hash.
-- [ ] Reject incomplete lifecycle/normalization, unmatched observations,
+- [x] Reject incomplete lifecycle/normalization, unmatched observations,
   unsupported instruments, projection checksum drift, facts after `as_of`, and
   every caller-authored total or identity mismatch.
-- [ ] Prove a lifecycle fill committed after the checkpoint, or merely satisfying
+- [x] Prove a lifecycle fill committed after the checkpoint, or merely satisfying
   `as_of`, cannot enter unless its exact ledger transaction is in the rebuilt
   checkpoint set. Prove projection and local graph capture share one
   repeatable-read transaction.
-- [ ] Implement the pure local snapshot builder and one transaction-owning,
+- [x] Implement the pure local snapshot builder and one transaction-owning,
   read-only source interface.
 
 Run:
