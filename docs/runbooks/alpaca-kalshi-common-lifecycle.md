@@ -73,9 +73,9 @@ same exact plan. Never mint a new client ID, source event ID, or fill ID.
 
 ## Submission ambiguity and client-ID recovery
 
-The canonical lifecycle order UUID string is the stable provider
-`client_order_id`/`client_order_id`. The request body is deterministic and uses
-exact decimal strings; binary floating point is not used.
+The canonical lifecycle order UUID string is the stable provider client order
+ID for both Alpaca and Kalshi. The request body is deterministic and uses exact
+decimal strings; binary floating point is not used.
 
 - Alpaca: after a duplicate or ambiguous submit, look up exactly
   `/v2/orders:by_client_order_id`. A definitive request/auth failure and context
@@ -86,6 +86,15 @@ exact decimal strings; binary floating point is not used.
   Exactly one matching client ID must exist. Zero unresolved matches and more
   than one match are reconciliation incidents. Rate-limit, cooldown,
   request/auth, and context-cancellation errors remain visible.
+
+Kalshi Create Order V2 is a single YES-book request. It sends `bid`/`ask`,
+fixed-point `count` and `price`, and the reviewed conservative
+`self_trade_prevention_type=taker_at_cross`. Its immediate response is the
+compact `order_id`, `client_order_id`, `fill_count`, `remaining_count`, optional
+fill averages, and `ts_ms` object. Journal those exact bytes as a non-economic
+fill notice; do not inflate it into a portfolio order or derive fills from its
+counts/averages. A successful compact response and a portfolio-order recovery
+after an ambiguous/duplicate submit remain distinct evidence types.
 
 The recovered provider order must match the immutable ticker/symbol, action,
 book side, outcome, quantity, price, subaccount, exchange index, and client ID.
@@ -111,7 +120,10 @@ Kalshi accepts exactly these order states:
 Legacy synonyms such as `filled`, `open`, `new`, `pending`, `cancelled`,
 `complete`, and `partially_filled` are unknown states and fail reconciliation.
 For NO contracts, buy/sell map to ask/bid and the V2 single-book request price
-is exactly `1 - outcome_price`; no float rounding is permitted.
+is exactly `1 - outcome_price`; no float rounding is permitted. Raw order/fill
+observations retain the provider's YES-book `yes_price_dollars`. Canonical NO
+fill economics use `no_price_dollars`; PostgreSQL enforces the complement
+between those two price domains.
 
 ## Fill pagination and historical cutoffs
 
@@ -141,7 +153,10 @@ If DELETE times out after the command commits, reload the aggregate and retry
 the same command/request identity.
 
 Alpaca cancellation uses the immutable external order ID. Kalshi V2
-cancellation additionally carries the immutable subaccount and exchange index.
+cancellation additionally carries the immutable client ID, subaccount, and
+exchange index. The compact Kalshi DELETE response (`order_id`,
+`client_order_id`, `reduced_by`, `ts_ms`) is journaled as no-change evidence;
+only a later exact portfolio order with status `canceled` is terminal.
 
 ## Incident states
 

@@ -56,7 +56,9 @@ isolated schema-72 database.
   <https://docs.alpaca.markets/us/docs/activity-sse>.
 - Kalshi's current V2 order entry is
   `POST /portfolio/events/orders`; it requires a client order ID and exact
-  fixed-point count/price strings. Its allowed time-in-force values are
+  fixed-point count/price strings plus an explicit self-trade-prevention type.
+  The reviewed mapper uses conservative `taker_at_cross`. Its allowed
+  time-in-force values are
   `good_till_canceled`, `immediate_or_cancel`, and `fill_or_kill`:
   <https://docs.kalshi.com/api-reference/orders/create-order-v2>.
 - Kalshi documents the client order ID as its deduplication key; retrying the
@@ -405,17 +407,17 @@ Out of scope:
 - Create `internal/execution/venue/observation.go`
 - Create `internal/execution/venue/observation_test.go`
 
-- [ ] Write RED tests for exact policy identity, canonical-byte reconstruction,
+- [x] Write RED tests for exact policy identity, canonical-byte reconstruction,
   sorted bounded vocabularies, full Alpaca/Kalshi state tables, capability
   checks, one declared authoritative economic-fill feed, changed-byte conflict,
   and malformed-but-rehashed rejection.
-- [ ] Implement the two reviewed fixed-v1 policy artifacts and parse only from
+- [x] Implement the two reviewed fixed-v1 policy artifacts and parse only from
   revalidated canonical bytes.
-- [ ] Write RED tests for observation identity, exact bytes/hash/JSON,
+- [x] Write RED tests for observation identity, exact bytes/hash/JSON,
   provider-vs-local source identity labels, normalized UTC microsecond times,
   bounded mapped outcomes, exact replay, and changed revision/time/bytes
   conflict.
-- [ ] Prove every documented provider state/event appears exactly once in its
+- [x] Prove every documented provider state/event appears exactly once in its
   policy and legacy synonyms do not enter the common policy.
 
 Run after every RED/GREEN slice:
@@ -433,30 +435,30 @@ go test -count=1 ./internal/execution/venue
 - Create `migrations/000073_venue_adapter_observations_test.go`
 - Modify `internal/repository/postgres/schema_version.go`
 
-- [ ] Add source-shape RED tests for exact artifact reconstruction, append-only
+- [x] Add source-shape RED tests for exact artifact reconstruction, append-only
   artifact/observation tables, deterministic identities, policy-to-venue-order
   enforcement, provider-transition raw linkage, indexes, absence of grants or
   activation, the first-statement up lock, the complete down lock set, and
   empty-only rollback.
-- [ ] Add direct PostgreSQL tests proving forged canonical bytes/JSON/hash/
+- [x] Add direct PostgreSQL tests proving forged canonical bytes/JSON/hash/
   version, missing state entries, unsupported capability entries, wrong venue,
   preexisting venue orders, malformed observations, invalid Kalshi outcome
   metadata or projection, changed identity reuse, event-before-observation, and
   mismatched event bytes all fail.
-- [ ] Prove distinct no-change observations remain durable, provider-driven
+- [x] Prove distinct no-change observations remain durable, provider-driven
   fill/terminal/failure events require exact prior observations, local route and
   cancel-request events remain valid, and simulation orders remain unchanged.
-- [ ] Prove concurrent exact observation/artifact retries converge, changed
+- [x] Prove concurrent exact observation/artifact retries converge, changed
   retries conflict, update/delete fails, nonempty downgrade refuses, and empty
   `73 -> 72 -> 73` preserves schema 72.
-- [ ] In real PostgreSQL, race a schema-72 venue-order insert against migration
+- [x] In real PostgreSQL, race a schema-72 venue-order insert against migration
   up. The writer must either commit before the locked precondition and make
   migration fail, or wait for the post-trigger schema and require a registered
   artifact; it must never leave an unregistered venue order. Migration down
   takes `ACCESS EXCLUSIVE` locks on `execution_orders`, the artifact table,
   and the observation journal before its emptiness checks, refuses any
   migration-73 fact, and is likewise covered by a concurrent insert race.
-- [ ] Bump `RequiredSchemaVersion` only after the isolated migration suite
+- [x] Bump `RequiredSchemaVersion` only after the isolated migration suite
   passes.
 
 Run:
@@ -476,22 +478,22 @@ DB_URL="$AUGR_PHASE2_DB_URL" go test -race -count=1 \
 - Create `internal/execution/venue/result.go`
 - Create `internal/execution/venue/result_test.go`
 
-- [ ] Register/reload exact policy artifacts and record/reload raw observations
+- [x] Register/reload exact policy artifacts and record/reload raw observations
   through narrow interfaces. Exact insert-or-load retries converge; a changed
   identity wraps `repository.ErrIdempotencyConflict`.
-- [ ] Persist a result in strict order: venue observation; for a fill, matching
+- [x] Persist a result in strict order: venue observation; for a fill, matching
   economic raw event; then OVR-203 fill/transition. No-change observations stop
   after the journal insert.
-- [ ] Reject a transition lacking its observation, a fill lacking either raw
+- [x] Reject a transition lacking its observation, a fill lacking either raw
   boundary, nonmatching source identity/bytes/times, results for another
   account/order/policy, nil steps, and transitions out of order.
-- [ ] Persist the fixed cancellation-command event independently of provider
+- [x] Persist the fixed cancellation-command event independently of provider
   observations. Prove retry-before-transport, timeout-after-transport,
   fresh-process retry, and eight concurrent callers converge to one event;
   changed endpoint, binding, policy, client ID, or body conflicts.
-- [ ] Inject failure after each child write and prove restart converges from the
+- [x] Inject failure after each child write and prove restart converges from the
   retained raw journal/economic event without duplicate state or economics.
-- [ ] Run eight-writer exact replay and changed-payload races against policy,
+- [x] Run eight-writer exact replay and changed-payload races against policy,
   no-change observation, acknowledgement, partial fill, final fill, terminal,
   and unknown-state results.
 
@@ -511,30 +513,30 @@ DB_URL="$AUGR_PHASE2_DB_URL" go test -race -count=1 \
 - Modify `internal/execution/alpaca/client.go`
 - Modify `internal/execution/alpaca/client_test.go`
 
-- [ ] Add request-mapping RED tests for stable `client_order_id`, exact decimal
+- [x] Add request-mapping RED tests for stable `client_order_id`, exact decimal
   quantity/prices, common order type/TIF, canonical venue symbol, and explicit
   unsupported asset/instruction rejection. Prove no market-to-limit,
   extended-hours, notional, trailing, bracket, or float conversion occurs.
-- [ ] Add loopback transport tests for submit, get by client ID, get by external
+- [x] Add loopback transport tests for submit, get by client ID, get by external
   ID, cancel, order-filtered ascending fill activities, page tokens, 404,
   duplicate conflict, malformed JSON, repeated cursor, and context
   cancellation. Assert credentials never appear in logs or returned evidence.
-- [ ] Add a table-driven test for every Alpaca policy state/event. Distinguish
+- [x] Add a table-driven test for every Alpaca policy state/event. Distinguish
   canceled/expired/rejected; preserve all nonterminal values; fail replacement
   safely; and make unknown/malformed values produce explicit failure results.
-- [ ] Parse authoritative account-activity fills using exact decimal strings
+- [x] Parse authoritative account-activity fills using exact decimal strings
   and activity IDs. Journal stream fill/partial-fill payloads as non-economic
   `fill_notice` observations, then recover account activities. Validate order/
   client/symbol/side/cumulative/leaves facts and never derive a fill from a
   stream execution ID, average price, cumulative delta, or cross-feed
   price/quantity/time similarity.
-- [ ] Map fill corrections and busts to the exact prior canonical fill without
+- [x] Map fill corrections and busts to the exact prior canonical fill without
   changing economics. Reject missing/unknown previous IDs and changed reuse.
-- [ ] Prove routed submit response, immediate partial/complete first fill,
+- [x] Prove routed submit response, immediate partial/complete first fill,
   repeated partials, terminal status, cancel confirmation, duplicate submit,
   crash after external submit, crash after raw observation, stream disconnect,
   paged REST recovery, and fresh-process replay all converge.
-- [ ] Against real PostgreSQL, prove stream-first then activity, activity-first
+- [x] Against real PostgreSQL, prove stream-first then activity, activity-first
   then stream, two equal-price/equal-quantity activities with distinct IDs,
   and an uncorrelatable or contradictory second-feed payload. The first two
   produce exactly one economic graph, the independent activity IDs produce
@@ -557,31 +559,32 @@ go test -race -count=1 ./internal/execution/alpaca \
 - Modify `internal/execution/kalshi/live_client.go`
 - Modify `internal/execution/kalshi/live_client_test.go`
 
-- [ ] Add request-mapping RED tests for stable `client_order_id`, exact V2
+- [x] Add request-mapping RED tests for stable `client_order_id`, exact V2
   fixed-point count/price, GTC/IOC/FOK, immutable ticker/outcome/subaccount/
-  exchange-index facts, bid/ask mapping, and exact NO complement. Reject DAY,
+  exchange-index facts, conservative self-trade prevention, bid/ask mapping,
+  and exact NO complement. Reject DAY,
   GTD, market, missing outcome, float rounding, unsupported mechanics, and
   metadata/ticker mismatch before transport.
-- [ ] Validate the whole Kalshi venue-contract metadata object as exactly one
+- [x] Validate the whole Kalshi venue-contract metadata object as exactly one
   `kalshi_v2.outcome` string with lowercase `yes` or `no`, in Go and PostgreSQL.
   Reject missing/misspelled/non-string/case-variant values, any extra top-level
   or nested key, and disagreement with request action/book side or fill price
   fields before transport or economics.
-- [ ] Add loopback transport tests for V2 submit/get/cancel, current and
+- [x] Add loopback transport tests for V2 submit/get/cancel, current and
   historical order scans, exact client-ID selection, current and historical
   fill pagination, cursor termination, duplicate conflict, rate/error
   propagation, malformed JSON, and context cancellation.
-- [ ] Accept exactly `resting`, `canceled`, and `executed`; prove every legacy
+- [x] Accept exactly `resting`, `canceled`, and `executed`; prove every legacy
   synonym and arbitrary new status journals raw evidence and fails unknown.
-- [ ] Parse fills from exact `fill_id`, `count_fp`, outcome price, `fee_cost`,
+- [x] Parse fills from exact `fill_id`, `count_fp`, outcome price, `fee_cost`,
   and provider timestamp. Verify order/ticker/outcome/book side/action,
   subaccount/exchange index, fill/remaining/initial totals, and provider order
   identity before creating economics.
-- [ ] Prove resting-after-partial, immediate partial/complete submit, IOC
+- [x] Prove resting-after-partial, immediate partial/complete submit, IOC
   partial-plus-cancel, FOK cancel/no-fill, full execution, duplicate submit,
   current-to-historical cutoff, paginated recovery, crash/restart, and
   eight-writer replay converge without a duplicate order/fill/fee.
-- [ ] Prove missing fill details behind an executed/nonzero cumulative order,
+- [x] Prove missing fill details behind an executed/nonzero cumulative order,
   multiple client-ID matches, mismatched IDs, impossible totals, or an unknown
   event halts in reconciliation rather than guessing.
 
@@ -599,32 +602,32 @@ go test -race -count=1 ./internal/execution/kalshi \
 - Create `internal/repository/postgres/venue_adapter_integration_test.go`
 - Extend provider adapter tests as needed
 
-- [ ] Build complete canonical Alpaca and Kalshi fixtures from active accounts,
+- [x] Build complete canonical Alpaca and Kalshi fixtures from active accounts,
   instruments, dated venue contracts, quote snapshots, routed venue-policy
   orders, registered artifacts, and scripted provider observations.
-- [ ] Rehearse acknowledgement, no-change states, multiple fills, attached
+- [x] Rehearse acknowledgement, no-change states, multiple fills, attached
   Kalshi fee, cancellation, expiry, rejection, unknown state, replacement,
   correction, bust, duplicate submit, current/historical recovery, and fresh
   repository restart through the real PostgreSQL boundary.
-- [ ] Inject crashes after external-response receipt, venue journal, economic
+- [x] Inject crashes after external-response receipt, venue journal, economic
   raw insert, and lifecycle commit; restart with the same provider facts and
   assert one order, one binding, one fill/normalization/ledger effect per
   authoritative provider fill, plus separately durable no-change evidence.
-- [ ] Rehearse the fixed cancellation command across pre-DELETE retry,
+- [x] Rehearse the fixed cancellation command across pre-DELETE retry,
   post-DELETE timeout, concurrent callers, and changed-payload attack; assert
   one command event, no false cancellation, and conflict on changed evidence.
-- [ ] Attack direct SQL with valid hashes but invalid policy values, missing
+- [x] Attack direct SQL with valid hashes but invalid policy values, missing
   policy registration, forged observation mapping, terminal-before-fill,
   provider/external/client mismatch, provider-state synonym, and changed
   source revision. All must fail closed without modifying prior facts.
-- [ ] Attack Kalshi contract/observation linkage with absent, misspelled,
+- [x] Attack Kalshi contract/observation linkage with absent, misspelled,
   non-string, uppercase, extra, ambiguous, and wrong outcome metadata; wrong
   ticker/action/book-side/price projections; and reload after contract lookup.
   Invalid contract metadata must fail before an order commits. Mismatched
   provider facts must persist only as raw `contradiction` evidence and then a
   reconciliation-failure event; no raw economic event, fill, or ordinary
   provider transition may commit.
-- [ ] Confirm legacy Alpaca/Kalshi broker tests and runtime composition are
+- [x] Confirm legacy Alpaca/Kalshi broker tests and runtime composition are
   byte-for-byte behaviorally unchanged by the additive common adapters.
 
 Run:
@@ -644,14 +647,14 @@ DB_URL="$AUGR_PHASE2_DB_URL" go test -race -count=1 \
 - Modify `docs/superpowers/plans/2026-08-14-total-overhaul-plan.md`
 - Modify this plan with implementation evidence
 
-- [ ] Document policy registration, raw-first ordering, submission ambiguity,
+- [x] Document policy registration, raw-first ordering, submission ambiguity,
   client-ID recovery, provider mappings, fill pagination, historical cutoff,
   cancellation semantics, correction/bust handling, read-only inspection,
   incident states, empty-only rollback, and explicit activation boundaries.
-- [ ] Apply reviewed migrations `1 -> 73` to a dedicated loopback-only
+- [x] Apply reviewed migrations `1 -> 73` to a dedicated loopback-only
   database, retain one complete Alpaca and one complete Kalshi rehearsal graph,
   prove nonempty rollback refuses, and prove empty `73 -> 72 -> 73` separately.
-- [ ] Run focused races and whole-repository gates:
+- [x] Run focused races and whole-repository gates:
 
   ```bash
   go test -race -count=1 ./internal/execution/venue \
@@ -665,44 +668,108 @@ DB_URL="$AUGR_PHASE2_DB_URL" go test -race -count=1 \
   govulncheck ./...
   ```
 
-- [ ] Run the pinned Node 22 frontend test/lint/build gates even though OVR-205
+- [x] Run the pinned Node 22 frontend test/lint/build gates even though OVR-205
   changes no frontend source. Keep inherited failures separate from
   regressions.
-- [ ] Start the rebuilt binary only with the global kill switch active, live
+- [x] Start the rebuilt binary only with the global kill switch active, live
   trading and scheduler disabled, no provider credentials, isolated schema-73
   PostgreSQL, and isolated Redis. Check `/health`, `/healthz`, and
   `/api/v1/health`, then stop cleanly and prove the retained graph is unchanged.
-- [ ] Obtain independent final diff approval with no unresolved P0/P1.
-- [ ] Commit the reviewed slices, push `codex/augr-overhaul`, fetch, verify
+- [x] Obtain independent final diff approval with no unresolved P0/P1.
+- [x] Commit the reviewed slices, push `codex/augr-overhaul`, fetch, verify
   local/remote hash equality and `0 0` divergence, then continue to the next
   dependency-ready overhaul item.
 
 ## Acceptance evidence to record after implementation
 
-- [ ] Exact Alpaca and Kalshi adapter policies are content-addressed,
+- [x] Exact Alpaca and Kalshi adapter policies are content-addressed,
   independently reconstructed in Go/PostgreSQL, immutable, and required before
   a venue-policy route can persist.
-- [ ] Every known provider state/event has one explicit mapping and retains its
+- [x] Every known provider state/event has one explicit mapping and retains its
   original value/raw bytes even when the common state does not change.
-- [ ] Unknown, malformed, replaced, contradictory, correction, and bust facts
+- [x] Unknown, malformed, replaced, contradictory, correction, and bust facts
   halt visibly without a guessed order/fill/economic repair.
-- [ ] Stable client IDs and deterministic request bodies make retries and fresh
+- [x] Stable client IDs and deterministic request bodies make retries and fresh
   process recovery converge without a second order.
-- [ ] Cancel submission never masquerades as cancellation; current-history
+- [x] Cancel submission never masquerades as cancellation; current-history
   misses never masquerade as authoritative absence.
-- [ ] Every authoritative provider fill has one raw venue observation, one raw
+- [x] Every authoritative provider fill has one raw venue observation, one raw
   economic event, one normalization, one ledger transaction, one canonical
   fill, and one lifecycle event; non-authoritative notices and cumulative/
   average facts create no pseudo-fill.
-- [ ] Alpaca cancellation, expiry, and rejection remain distinct; Kalshi
+- [x] Alpaca cancellation, expiry, and rejection remain distinct; Kalshi
   accepts only its exact V2 state vocabulary, fixed-point semantics, exact
   whole-object outcome metadata, and SQL-enforced ticker/book-side projection.
-- [ ] Current/historical pagination, duplicate conflicts, partial fills,
+- [x] Current/historical pagination, duplicate conflicts, partial fills,
   immediate fills, fees, restart, and concurrent retry have real PostgreSQL
   evidence.
-- [ ] Migration 73 is additive, immutable, starts empty, rolls back only while
+- [x] Migration 73 is additive, immutable, starts empty, rolls back only while
   empty, preserves schema 72, and grants/activates nothing.
-- [ ] Legacy runtime behavior remains unchanged; no provider credential, live
+- [x] Legacy runtime behavior remains unchanged; no provider credential, live
   route, scheduler, shared database, or deployment was used.
-- [ ] Focused races, repository-wide gates, isolated migration rehearsal,
+- [x] Focused races, repository-wide gates, isolated migration rehearsal,
   kill-switched startup, and independent review are recorded honestly.
+
+## Local implementation evidence — 2026-08-20
+
+OVR-205 is complete as an additive local boundary on `codex/augr-overhaul`.
+Migration 73 registers and independently reconstructs the exact
+content-addressed Alpaca and Kalshi policy artifacts, rejects unregistered or
+wrong-venue routes, and stores immutable raw provider observations before any
+interpretation. The provider-neutral persistence coordinator preserves that
+raw-first order across retries and crash boundaries. Alpaca and Kalshi map
+exact decimal request/response fields, stable client IDs, bindings, terminal
+states, authoritative fill IDs, fees, corrections, busts, pagination, and
+ambiguous recovery into the OVR-203 lifecycle without activating a runtime
+writer. Kalshi recovery uses the current documented historical resources,
+`/historical/orders` and `/historical/fills`, after current portfolio pages.
+Its exact compact create/cancel responses remain separately journaled,
+non-economic evidence, and its required self-trade prevention is fixed to
+`taker_at_cross`.
+
+Real PostgreSQL tests cover exact replay, changed-payload conflict, deferred
+constraints, eight-writer convergence, stream/activity ordering, current and
+historical recovery, duplicate submission, immediate and partial fills,
+cancellation commands, and failures after the observation, economic-event,
+and lifecycle boundaries. A review-discovered raw-journal hole was closed so
+provider identity contradictions remain persistable evidence while canonical
+account, intent, order, venue, policy, contract, and local binding identity
+still must match. Migration 73 now also requires the canonical persisted
+binding for a cancellation command; an out-of-order unbound command cannot
+commit even if its evidence is internally consistent. Final V2 review also
+separated raw YES-book price from canonical NO-fill economics so neither can be
+silently substituted for the other.
+
+The final retained isolated database was rebuilt from the reviewed source with
+migrations `1 -> 73` and contains one complete Alpaca graph and one complete
+Kalshi graph: two policy artifacts, three venue observations (including the
+compact Kalshi submit), two economic source events, two canonical fills, two
+normalizations, and five ledger transactions including account-opening
+capital. Repository reload preserved
+both graphs. Nonempty `73 -> 72` rollback refused without deleting evidence; a
+separate empty database completed `73 -> 72 -> 73`.
+
+Focused schema-73 repository/migration tests passed under the race detector,
+including 65 tests after the final review repairs. Repository-wide short race
+tests, build, vet, lint, all 162 frontend tests, frontend lint, and the
+2,166-module production build passed with pinned Node 22. A rebuilt process
+started only with the global kill switch active, live trading and scheduler
+flags false, no provider credentials, isolated PostgreSQL, and isolated Redis;
+all three health routes reported database/Redis `ok`, shutdown was clean, and
+the retained economic graph was unchanged. Startup still constructs the
+existing in-process automation orchestrator and its 28 jobs when the scheduler
+flag is false; no job mutated the graph, and this is not scheduler-cutover
+evidence.
+
+Inherited gates remain separate and unsuppressed. `task fmt:check` still names
+only the same nine untouched Go files. `govulncheck ./...` still reports the
+same five reachable dependency advisories, and npm still reports eight
+existing dependency advisories. No shared/protected database was migrated, no
+real provider was called, no credential or writer grant was added, and no
+deployment, live route, scheduler cutover, or accounting correction occurred.
+
+Implementation was committed in reviewable slices from `46a3ac1` through
+`e3df7d0`, including the independent-review repairs and retained compact-submit
+rehearsal. Each slice was pushed to
+`origin/codex/augr-overhaul`; final phase documentation and synchronization are
+recorded in the subsequent closure commit before OVR-206 begins.

@@ -907,6 +907,68 @@ Reviewed OVR-204 implementation commit
 `origin/codex/augr-overhaul` and reconciled at identical local/remote hashes
 with `0 0` divergence before OVR-205 planning began.
 
+#### OVR-205 local implementation addendum — 2026-08-20
+
+OVR-205 is complete as an additive local venue-adapter boundary on
+`codex/augr-overhaul`; it has not been deployed, no shared database has been
+migrated, no real Alpaca or Kalshi account was contacted, and no credential,
+writer grant, scheduler, provider worker, or live route was activated.
+Migration 73 stores exact immutable Alpaca Trading API v2 and Kalshi Trade API
+v2 policy artifacts plus a byte-preserving raw venue-observation journal.
+PostgreSQL reconstructs the fixed policy grammar independently, requires the
+matching artifact before a venue order can persist, ties provider-driven
+lifecycle events to their prior raw observation, and permits rollback only
+while venue artifacts, observations, and orders are empty.
+
+The additive provider-neutral coordinator records the provider observation,
+then any authoritative raw economic event, then delegates the lifecycle graph
+to the common OVR-203 transaction. Alpaca request, lookup, cancellation,
+status, activity-fill, correction, and bust handling uses stable client order
+identity and exact decimals. Kalshi V2 request and recovery handling preserves
+fixed-point counts/prices, whole-object YES/NO metadata, GTC/IOC/FOK,
+subaccount and exchange-index facts, exact fill identity/fees, all three
+documented states, current pages, and `/historical/orders` plus
+`/historical/fills`. Unknown, malformed, replaced, contradictory, incomplete,
+or ambiguous facts remain raw evidence and fail reconciliation without guessed
+economics or a second order.
+
+Current Kalshi Create Order V2 qualification also pins the required
+`self_trade_prevention_type` to conservative `taker_at_cross`, retains the
+compact create and cancel response shapes as separately journaled non-economic
+evidence, and distinguishes the provider's raw single-book YES quote from the
+canonical NO economic fill price. A compact DELETE response is never treated
+as terminal cancellation.
+
+The retained loopback-only schema-73 rehearsal contains complete Alpaca and
+Kalshi graphs and reloads without duplicates. Crash injection after external
+response, observation, economic event, and lifecycle persistence; repeated and
+concurrent replay; duplicate submissions; pagination; immediate/partial fills;
+cancellation; and current-to-historical recovery converge in real PostgreSQL.
+Nonempty rollback refuses and a separate empty database proves `73 -> 72 ->
+73`. A kill-switched local runtime with provider credentials absent returned
+database/Redis `ok` on `/health`, `/healthz`, and `/api/v1/health`, stopped
+cleanly, and left the graph unchanged. The existing automation orchestrator
+still constructs 28 jobs when the scheduler flag is false; that observed
+composition is not activation or cutover evidence.
+
+Independent review first found two invariant gaps: contradictory provider IDs
+could prevent their own raw evidence from being journaled, and migration 73 did
+not itself require a persisted binding for cancellation commands. Commit
+`22b6f0535a1cb703bdc5ef07ebec33d3462dd1d1` closes both with adapter and real
+PostgreSQL regressions. A later review claim about NO order-response price was
+rejected against Kalshi OpenAPI 3.28.0's YES-book contract, but that check
+exposed real compact-response and required self-trade-prevention drift. The
+corrected transport then received one final P1: NO fills had collapsed raw
+YES-book and canonical economic price domains. Commits `4d1a44c` and `e3df7d0`
+correct the exact wire shapes, preserve submit/cancel observations, separate
+the two price domains, and add real PostgreSQL coverage. Independent final
+review reports no remaining P0/P1. Focused race/database tests,
+repository-wide short race tests, build, vet, lint, all 162 frontend tests,
+frontend lint, and the 2,166-module production build pass. The unchanged
+nine-file formatter drift,
+five reachable Go dependency advisories, and eight npm advisories remain
+explicit and unsuppressed. OVR-206 is the next dependency-ready item.
+
 ### Milestone 3 — Strategy and research system
 
 | ID | Depends on | Work | Acceptance |
