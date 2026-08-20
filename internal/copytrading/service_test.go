@@ -77,8 +77,8 @@ func (r *originCreateRepo) GetSource(context.Context, uuid.UUID) (*domain.CopyLe
 }
 
 func (r *originCreateRepo) CreateSubscription(_ context.Context, value *domain.CopySubscription) error {
-	copy := *value
-	r.subscription = &copy
+	stored := *value
+	r.subscription = &stored
 	return nil
 }
 

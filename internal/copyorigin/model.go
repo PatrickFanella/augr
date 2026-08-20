@@ -108,12 +108,14 @@ func (r *Run) ID() uuid.UUID {
 	}
 	return r.id
 }
+
 func (r *Run) Digest() string {
 	if r == nil {
 		return ""
 	}
 	return r.digest
 }
+
 func (r *Run) CanonicalBytes() json.RawMessage {
 	if r == nil {
 		return nil

@@ -68,58 +68,58 @@ Out of scope:
 
 ## Task 1: Domain and service origin contract
 
-- [ ] Add a closed copy-origin value object with exact canonical restoration.
-- [ ] Make subscription identity caller-independent and expose nullable legacy
+- [x] Add a closed copy-origin value object with exact canonical restoration.
+- [x] Make subscription identity caller-independent and expose nullable legacy
   strategy attribution separately.
-- [ ] Remove strategy creation/status mirroring from new subscription flows.
-- [ ] Prove N subscriptions create no strategies and cannot accept forged
+- [x] Remove strategy creation/status mirroring from new subscription flows.
+- [x] Prove N subscriptions create no strategies and cannot accept forged
   origin or strategy-version attribution.
-- [ ] Commit and push the focused domain/service slice.
+- [x] Commit and push the focused domain/service slice.
 
 ## Task 2: Origin-native runs and execution handoff
 
-- [ ] Add copy rebalance run identity independent of legacy pipeline strategy.
-- [ ] Bind previews, runs, and intents to one subscription origin and source
+- [x] Add copy rebalance run identity independent of legacy pipeline strategy.
+- [x] Bind previews, runs, and intents to one subscription origin and source
   observation.
-- [ ] Hand approved intents to OVR-203 with `copy_subscription` origin and no
+- [x] Hand approved intents to OVR-203 with `copy_subscription` origin and no
   strategy version; preserve paper-only risk and failure behavior.
-- [ ] Prove concurrent retry, restart, partial execution, rejection, and
+- [x] Prove concurrent retry, restart, partial execution, rejection, and
   cross-subscription forgery edges.
-- [ ] Commit and push the execution-handoff slice.
+- [x] Commit and push the execution-handoff slice.
 
 ## Task 3: Migration 88 and append-only reconstruction
 
-- [ ] Add/backfill subscription origins and explicit nullable legacy strategy
+- [x] Add/backfill subscription origins and explicit nullable legacy strategy
   references without deleting history.
-- [ ] Add normalized copy-origin run/intent attribution and cross-table guards.
-- [ ] Reconstruct the complete subscription-to-execution attribution graph and
+- [x] Add normalized copy-origin run/intent attribution and cross-table guards.
+- [x] Reconstruct the complete subscription-to-execution attribution graph and
   reject mutation, deletion, changed retry, partial write, and normalized
   forgery.
-- [ ] Add empty-only rollback and bump `RequiredSchemaVersion` to 88 only after
+- [x] Add empty-only rollback and bump `RequiredSchemaVersion` to 88 only after
   real PostgreSQL migration races pass.
-- [ ] Commit and push the persistence slice.
+- [x] Commit and push the persistence slice.
 
 ## Task 4: Operations and qualification
 
-- [ ] Add a runbook for origin inspection, legacy inventory, replay,
+- [x] Add a runbook for origin inspection, legacy inventory, replay,
   reconciliation, failure recovery, and rollback.
-- [ ] Retain multiple origin-native subscriptions and at least one complete
+- [x] Retain multiple origin-native subscriptions and at least one complete
   paper attribution graph with exact IDs, hashes, and counts.
-- [ ] Prove eight-writer convergence, restart, every-stage rollback,
+- [x] Prove eight-writer convergence, restart, every-stage rollback,
   append-only behavior, legacy preservation, zero registry growth, and empty
   `88 -> 87 -> 88`.
-- [ ] Run focused/database races, all backend and pinned frontend gates, diff
+- [x] Run focused/database races, all backend and pinned frontend gates, diff
   review, and isolated kill-switched schema-88 health/API/rollback/reapply.
-- [ ] Commit/push verified slices, fetch, and prove `0 0` divergence before
+- [x] Commit/push verified slices, fetch, and prove `0 0` divergence before
   OVR-502.
 
 ## Acceptance evidence to record
 
-- [ ] Subscription attribution remains exact across every retained layer.
-- [ ] New subscription count can grow while strategy-registry counts do not.
-- [ ] Legacy attribution remains readable without authorizing new legacy
+- [x] Subscription attribution remains exact across every retained layer.
+- [x] New subscription count can grow while strategy-registry counts do not.
+- [x] Legacy attribution remains readable without authorizing new legacy
   backing strategies.
-- [ ] Missing/revised/partial/forged origin evidence fails closed.
-- [ ] Local qualification is `VERIFIED_LOCAL`; shared migration, historical
+- [x] Missing/revised/partial/forged origin evidence fails closed.
+- [x] Local qualification is `VERIFIED_LOCAL`; shared migration, historical
   cleanup, independent review, runtime adoption, deployment, and live trading
   remain `BLOCKED_EXTERNAL`.
