@@ -18,6 +18,8 @@ import (
 
 const AssessmentSchemaV1 = "autonomous-daily-supervisor-assessment-v1"
 
+const PolicyVersionPrefix = "daily-supervisor-policy-v1@sha256:"
+
 type CheckName string
 type CheckState string
 type WorkClass string
@@ -114,6 +116,40 @@ type Assessment struct {
 	canonical assessmentCanonical
 }
 
+// Record is the immutable persistence projection of an Assessment. It contains
+// evidence identifiers and derived decisions only; it carries no executable
+// callbacks or mutation authority.
+type Record struct {
+	ID                        uuid.UUID
+	SHA256                    string
+	CanonicalBytes            json.RawMessage
+	OperatingDay              string
+	Timezone                  string
+	EvaluatedAt               time.Time
+	PolicyVersion             string
+	ReconciliationID          uuid.UUID
+	ReconciliationSHA256      string
+	SchedulerOccurrenceID     uuid.UUID
+	SchedulerOccurrenceSHA256 string
+	SchedulerEffectID         uuid.UUID
+	SchedulerEffectSHA256     string
+	PriorAssessmentID         uuid.UUID
+	PriorAssessmentSHA256     string
+	Checks                    []CheckRecord
+	Actions                   []Action
+	Attention                 []Attention
+}
+
+type CheckRecord struct {
+	Name           CheckName
+	State          CheckState
+	EvidenceID     uuid.UUID
+	EvidenceSHA256 string
+	ObservedAt     time.Time
+	FreshThrough   time.Time
+	Reason         string
+}
+
 type checkCanonical struct {
 	Name           CheckName  `json:"name"`
 	State          CheckState `json:"state"`
@@ -148,7 +184,7 @@ func NewAssessment(input Input) (*Assessment, error) {
 	if locationErr != nil || evaluatedAt.IsZero() || input.OperatingDay != evaluatedAt.In(location).Format("2006-01-02") {
 		return nil, fmt.Errorf("daily supervisor: operating day/timezone does not match evaluation")
 	}
-	if strings.TrimSpace(input.PolicyVersion) == "" || input.PolicyVersion != strings.TrimSpace(input.PolicyVersion) {
+	if !validPolicyVersion(input.PolicyVersion) {
 		return nil, fmt.Errorf("daily supervisor: policy version is required")
 	}
 	if input.Reconciliation.ID == uuid.Nil || !validSHA(input.Reconciliation.SHA256) || input.Reconciliation.IncidentCount < 0 || input.Reconciliation.Clean != (input.Reconciliation.IncidentCount == 0) {
@@ -267,6 +303,30 @@ func (a *Assessment) Attention() []Attention {
 	return append([]Attention(nil), a.canonical.Attention...)
 }
 
+func (a *Assessment) Record() Record {
+	reconciliationID, _ := uuid.Parse(a.canonical.ReconciliationID)
+	occurrenceID, _ := uuid.Parse(a.canonical.SchedulerOccurrenceID)
+	effectID, _ := uuid.Parse(a.canonical.SchedulerEffectID)
+	priorID, _ := uuid.Parse(a.canonical.PriorAssessmentID)
+	checks := make([]CheckRecord, 0, len(a.canonical.Checks))
+	for _, check := range a.canonical.Checks {
+		evidenceID, _ := uuid.Parse(check.EvidenceID)
+		observedAt, _ := time.Parse("2006-01-02T15:04:05.000000Z", check.ObservedAt)
+		freshThrough, _ := time.Parse("2006-01-02T15:04:05.000000Z", check.FreshThrough)
+		checks = append(checks, CheckRecord{check.Name, check.State, evidenceID, check.EvidenceSHA256, observedAt, freshThrough, check.Reason})
+	}
+	evaluatedAt, _ := time.Parse("2006-01-02T15:04:05.000000Z", a.canonical.EvaluatedAt)
+	return Record{
+		ID: a.id, SHA256: a.digest, CanonicalBytes: a.CanonicalBytes(), OperatingDay: a.canonical.OperatingDay,
+		Timezone: a.canonical.Timezone, EvaluatedAt: evaluatedAt, PolicyVersion: a.canonical.PolicyVersion,
+		ReconciliationID: reconciliationID, ReconciliationSHA256: a.canonical.ReconciliationSHA256,
+		SchedulerOccurrenceID: occurrenceID, SchedulerOccurrenceSHA256: a.canonical.SchedulerOccurrenceSHA256,
+		SchedulerEffectID: effectID, SchedulerEffectSHA256: a.canonical.SchedulerEffectSHA256,
+		PriorAssessmentID: priorID, PriorAssessmentSHA256: a.canonical.PriorAssessmentSHA256,
+		Checks: checks, Actions: a.Actions(), Attention: a.Attention(),
+	}
+}
+
 func normalizeTime(v time.Time) time.Time {
 	if v.IsZero() {
 		return time.Time{}
@@ -281,4 +341,8 @@ func validSHA(v string) bool {
 	}
 	_, e := hex.DecodeString(v)
 	return e == nil
+}
+
+func validPolicyVersion(value string) bool {
+	return strings.HasPrefix(value, PolicyVersionPrefix) && validSHA(strings.TrimPrefix(value, PolicyVersionPrefix))
 }

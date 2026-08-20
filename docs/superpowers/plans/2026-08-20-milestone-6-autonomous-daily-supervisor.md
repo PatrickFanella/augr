@@ -64,12 +64,12 @@ allocation, settlement, broker route, deployment, or live trade.
 
 ## Task 2: Schema 99 and retained qualification
 
-- [ ] Persist immutable policy/assessment/check/reference/action/attention and
+- [x] Persist immutable policy/assessment/check/reference/action/attention and
   supersession graphs with database reconstruction and authority checks.
-- [ ] Prove eight-writer convergence, changed retry conflict, every-stage
+- [x] Prove eight-writer convergence, changed retry conflict, every-stage
   rollback, restart, stale/fork rejection, append-only behavior, direct-SQL
   forgery rejection, nonempty rollback refusal, and empty `99 -> 98 -> 99`.
-- [ ] Retain an all-pass day and a dependency-failure day proving new exposure
+- [x] Retain an all-pass day and a dependency-failure day proving new exposure
   halts while safe exits/reconciliation/settlement remain independently gated.
 - [ ] Commit and push the persistence slice after focused/database races.
 
