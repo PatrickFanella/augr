@@ -92,11 +92,11 @@ Out of scope:
 
 ## Task 3: Repository, service, recovery, and qualification
 
-- [ ] Reload exact experiment/evaluation parents, register declarations,
+- [x] Reload exact experiment/evaluation parents, register declarations,
   evaluate, atomically append reports, and reconstruct normalized rows.
-- [ ] List evidence only by explicit experiment, evaluation, declaration, or
+- [x] List evidence only by explicit experiment, evaluation, declaration, or
   benchmark instrument; expose no best/latest/winner query.
-- [ ] Prove eight-writer convergence, restart reload, every-stage interruption
+- [x] Prove eight-writer convergence, restart reload, every-stage interruption
   rollback, changed retry conflict, normalized forgery rejection, and replay.
 - [ ] Retain a local benchmark declaration/report and record exact IDs/hashes,
   row counts, return values, and authority separation.

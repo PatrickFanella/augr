@@ -68,7 +68,8 @@ BEGIN
           CASE declaration.frequency WHEN 'minute' THEN current_observation.observed_at<>prior_observation.observed_at+INTERVAL '1 minute'
             WHEN 'daily' THEN current_observation.observed_at<>prior_observation.observed_at+INTERVAL '1 day'
             WHEN 'weekly' THEN current_observation.observed_at<>prior_observation.observed_at+INTERVAL '7 days'
-            WHEN 'monthly' THEN current_observation.observed_at<>prior_observation.observed_at+INTERVAL '1 month' END) AND
+            WHEN 'monthly' THEN current_observation.observed_at<>date_trunc('month',prior_observation.observed_at)+INTERVAL '1 month'+
+              (extract(day FROM prior_observation.observed_at)-1)*INTERVAL '1 day'+(prior_observation.observed_at-date_trunc('day',prior_observation.observed_at)) END) AND
       declaration.canonical_json=jsonb_build_object('schema',declaration.schema_name,'state',declaration.state,
         'experiment_id',declaration.experiment_id::TEXT,'experiment_sha256',declaration.experiment_sha256,
         'manifest_id',declaration.manifest_id::TEXT,'manifest_sha256',declaration.manifest_sha256,

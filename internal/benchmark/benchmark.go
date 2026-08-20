@@ -109,8 +109,10 @@ func NewDeclaration(input DeclarationInput) (*Declaration, error) {
 	}
 	encoded, _ := json.Marshal(canonical)
 	digest := hash(encoded)
-	return &Declaration{canonical: canonical, bytes: encoded, digest: digest,
-		id: economicid.DeterministicUUID("passive-benchmark-declaration", DeclarationSchemaV1+"@sha256:"+digest)}, nil
+	return &Declaration{
+		canonical: canonical, bytes: encoded, digest: digest,
+		id: economicid.DeterministicUUID("passive-benchmark-declaration", DeclarationSchemaV1+"@sha256:"+digest),
+	}, nil
 }
 
 func DeclarationFromCanonical(id uuid.UUID, digest string, raw []byte, experiment *strategycatalog.Experiment, manifest *dataset.Manifest) (*Declaration, error) {
@@ -130,10 +132,12 @@ func DeclarationFromCanonical(id uuid.UUID, digest string, raw []byte, experimen
 	if err != nil {
 		return nil, err
 	}
-	value, err := NewDeclaration(DeclarationInput{Experiment: experiment, Manifest: manifest, BenchmarkInstrumentID: instrumentID,
+	value, err := NewDeclaration(DeclarationInput{
+		Experiment: experiment, Manifest: manifest, BenchmarkInstrumentID: instrumentID,
 		BenchmarkKind: canonical.BenchmarkKind, Weighting: canonical.Weighting, DistributionTreatment: canonical.DistributionTreatment,
 		CashConvention: canonical.CashConvention, Frequency: canonical.Frequency, InitialNotional: canonical.InitialNotional,
-		DecimalScale: canonical.DecimalScale, Observations: observations})
+		DecimalScale: canonical.DecimalScale, Observations: observations,
+	})
 	if err != nil || canonical.Schema != DeclarationSchemaV1 || canonical.State != "declared" || value.ID() != id || value.Digest() != digest ||
 		!bytes.Equal(value.bytes, raw) {
 		return nil, fmt.Errorf("passive benchmark declaration identity does not reconstruct")
@@ -147,101 +151,120 @@ func (d *Declaration) ID() uuid.UUID {
 	}
 	return d.id
 }
+
 func (d *Declaration) Digest() string {
 	if d == nil {
 		return ""
 	}
 	return d.digest
 }
+
 func (d *Declaration) CanonicalBytes() json.RawMessage {
 	if d == nil {
 		return nil
 	}
 	return append(json.RawMessage(nil), d.bytes...)
 }
+
 func (d *Declaration) ExperimentID() uuid.UUID {
 	return canonicalUUID(d, func(v declarationCanonical) string { return v.ExperimentID })
 }
+
 func (d *Declaration) ExperimentDigest() string {
 	if d == nil {
 		return ""
 	}
 	return d.canonical.ExperimentSHA256
 }
+
 func (d *Declaration) ManifestID() uuid.UUID {
 	return canonicalUUID(d, func(v declarationCanonical) string { return v.ManifestID })
 }
+
 func (d *Declaration) ManifestDigest() string {
 	if d == nil {
 		return ""
 	}
 	return d.canonical.ManifestSHA256
 }
+
 func (d *Declaration) BenchmarkInstrumentID() uuid.UUID {
 	return canonicalUUID(d, func(v declarationCanonical) string { return v.BenchmarkInstrumentID })
 }
+
 func (d *Declaration) BenchmarkKind() string {
 	if d == nil {
 		return ""
 	}
 	return d.canonical.BenchmarkKind
 }
+
 func (d *Declaration) Weighting() string {
 	if d == nil {
 		return ""
 	}
 	return d.canonical.Weighting
 }
+
 func (d *Declaration) DistributionTreatment() string {
 	if d == nil {
 		return ""
 	}
 	return d.canonical.DistributionTreatment
 }
+
 func (d *Declaration) CashConvention() string {
 	if d == nil {
 		return ""
 	}
 	return d.canonical.CashConvention
 }
+
 func (d *Declaration) Frequency() string {
 	if d == nil {
 		return ""
 	}
 	return d.canonical.Frequency
 }
+
 func (d *Declaration) EvaluationStart() time.Time {
 	if d == nil {
 		return time.Time{}
 	}
 	return parseTime(d.canonical.EvaluationStart)
 }
+
 func (d *Declaration) EvaluationEnd() time.Time {
 	if d == nil {
 		return time.Time{}
 	}
 	return parseTime(d.canonical.EvaluationEnd)
 }
+
 func (d *Declaration) InitialNotional() string {
 	if d == nil {
 		return ""
 	}
 	return d.canonical.InitialNotional
 }
+
 func (d *Declaration) DecimalScale() int {
 	if d == nil {
 		return 0
 	}
 	return d.canonical.DecimalScale
 }
+
 func (d *Declaration) Observations() []ObservationInput {
 	if d == nil {
 		return nil
 	}
 	result := make([]ObservationInput, len(d.canonical.Observations))
 	for i, value := range d.canonical.Observations {
-		result[i] = ObservationInput{ObservedAt: parseTime(value.ObservedAt), Value: value.Value, CashReturn: value.CashReturn,
-			EvidenceID: uuid.MustParse(value.EvidenceID), EvidenceSHA256: value.EvidenceSHA256}
+		result[i] = ObservationInput{
+			ObservedAt: parseTime(value.ObservedAt), Value: value.Value, CashReturn: value.CashReturn,
+			EvidenceID: uuid.MustParse(value.EvidenceID), EvidenceSHA256: value.EvidenceSHA256,
+		}
 	}
 	return result
 }
@@ -304,15 +327,17 @@ func NewReport(declaration *Declaration, evaluationReport *evaluation.Report) (*
 	benchmarkWealth := notional.Mul(decimal.NewFromInt(1).Add(benchmarkReturn))
 	cashWealth := notional.Mul(cashGrowth)
 	q := func(value decimal.Decimal) string {
-		return value.RoundBank(int32(declaration.DecimalScale())).StringFixed(int32(declaration.DecimalScale()))
+		return value.Round(int32(declaration.DecimalScale())).StringFixed(int32(declaration.DecimalScale()))
 	}
-	canonical := reportCanonical{Schema: ReportSchemaV1, State: "completed", DeclarationID: declaration.ID().String(), DeclarationSHA256: declaration.Digest(),
+	canonical := reportCanonical{
+		Schema: ReportSchemaV1, State: "completed", DeclarationID: declaration.ID().String(), DeclarationSHA256: declaration.Digest(),
 		EvaluationID: evaluationReport.ID().String(), EvaluationSHA256: evaluationReport.Digest(), ExperimentID: declaration.ExperimentID().String(),
 		ManifestID: declaration.ManifestID().String(), BenchmarkInstrumentID: declaration.BenchmarkInstrumentID().String(),
 		StrategyTotalReturn: q(strategy), BenchmarkTotalReturn: q(benchmarkReturn), CashTotalReturn: q(cashReturn),
 		BenchmarkOpportunityCost: q(benchmarkReturn.Sub(strategy)), CashOpportunityCost: q(cashReturn.Sub(strategy)),
 		StrategyTerminalWealth: q(strategyWealth), BenchmarkTerminalWealth: q(benchmarkWealth), CashTerminalWealth: q(cashWealth),
-		BenchmarkWealthDifference: q(benchmarkWealth.Sub(strategyWealth)), CashWealthDifference: q(cashWealth.Sub(strategyWealth)), ObservationCount: len(declared)}
+		BenchmarkWealthDifference: q(benchmarkWealth.Sub(strategyWealth)), CashWealthDifference: q(cashWealth.Sub(strategyWealth)), ObservationCount: len(declared),
+	}
 	encoded, _ := json.Marshal(canonical)
 	digest := hash(encoded)
 	return &Report{canonical: canonical, bytes: encoded, digest: digest, id: economicid.DeterministicUUID("benchmark-opportunity-cost-report", ReportSchemaV1+"@sha256:"+digest)}, nil
@@ -336,105 +361,125 @@ func (r *Report) ID() uuid.UUID {
 	}
 	return r.id
 }
+
 func (r *Report) Digest() string {
 	if r == nil {
 		return ""
 	}
 	return r.digest
 }
+
 func (r *Report) CanonicalBytes() json.RawMessage {
 	if r == nil {
 		return nil
 	}
 	return append(json.RawMessage(nil), r.bytes...)
 }
+
 func (r *Report) DeclarationID() uuid.UUID {
 	return reportUUID(r, func(v reportCanonical) string { return v.DeclarationID })
 }
+
 func (r *Report) DeclarationDigest() string {
 	if r == nil {
 		return ""
 	}
 	return r.canonical.DeclarationSHA256
 }
+
 func (r *Report) EvaluationID() uuid.UUID {
 	return reportUUID(r, func(v reportCanonical) string { return v.EvaluationID })
 }
+
 func (r *Report) EvaluationDigest() string {
 	if r == nil {
 		return ""
 	}
 	return r.canonical.EvaluationSHA256
 }
+
 func (r *Report) ExperimentID() uuid.UUID {
 	return reportUUID(r, func(v reportCanonical) string { return v.ExperimentID })
 }
+
 func (r *Report) ManifestID() uuid.UUID {
 	return reportUUID(r, func(v reportCanonical) string { return v.ManifestID })
 }
+
 func (r *Report) BenchmarkInstrumentID() uuid.UUID {
 	return reportUUID(r, func(v reportCanonical) string { return v.BenchmarkInstrumentID })
 }
+
 func (r *Report) StrategyTotalReturn() string {
 	if r == nil {
 		return ""
 	}
 	return r.canonical.StrategyTotalReturn
 }
+
 func (r *Report) BenchmarkTotalReturn() string {
 	if r == nil {
 		return ""
 	}
 	return r.canonical.BenchmarkTotalReturn
 }
+
 func (r *Report) CashTotalReturn() string {
 	if r == nil {
 		return ""
 	}
 	return r.canonical.CashTotalReturn
 }
+
 func (r *Report) BenchmarkOpportunityCost() string {
 	if r == nil {
 		return ""
 	}
 	return r.canonical.BenchmarkOpportunityCost
 }
+
 func (r *Report) CashOpportunityCost() string {
 	if r == nil {
 		return ""
 	}
 	return r.canonical.CashOpportunityCost
 }
+
 func (r *Report) StrategyTerminalWealth() string {
 	if r == nil {
 		return ""
 	}
 	return r.canonical.StrategyTerminalWealth
 }
+
 func (r *Report) BenchmarkTerminalWealth() string {
 	if r == nil {
 		return ""
 	}
 	return r.canonical.BenchmarkTerminalWealth
 }
+
 func (r *Report) CashTerminalWealth() string {
 	if r == nil {
 		return ""
 	}
 	return r.canonical.CashTerminalWealth
 }
+
 func (r *Report) BenchmarkWealthDifference() string {
 	if r == nil {
 		return ""
 	}
 	return r.canonical.BenchmarkWealthDifference
 }
+
 func (r *Report) CashWealthDifference() string {
 	if r == nil {
 		return ""
 	}
 	return r.canonical.CashWealthDifference
 }
+
 func (r *Report) ObservationCount() int {
 	if r == nil {
 		return 0
@@ -476,6 +521,7 @@ func nextTime(prior, current time.Time, frequency string) bool {
 	}
 	return false
 }
+
 func canonicalUUID(d *Declaration, selectValue func(declarationCanonical) string) uuid.UUID {
 	if d == nil {
 		return uuid.Nil
@@ -483,6 +529,7 @@ func canonicalUUID(d *Declaration, selectValue func(declarationCanonical) string
 	id, _ := uuid.Parse(selectValue(d.canonical))
 	return id
 }
+
 func reportUUID(r *Report, selectValue func(reportCanonical) string) uuid.UUID {
 	if r == nil {
 		return uuid.Nil
@@ -490,10 +537,12 @@ func reportUUID(r *Report, selectValue func(reportCanonical) string) uuid.UUID {
 	id, _ := uuid.Parse(selectValue(r.canonical))
 	return id
 }
+
 func validDecimal(value string) bool {
 	d, err := decimal.NewFromString(value)
 	return err == nil && value == d.String() && len(value) <= 128 && d.Abs().LessThanOrEqual(decimal.New(1, 30))
 }
+
 func positive(value string) bool {
 	return validDecimal(value) && decimal.RequireFromString(value).IsPositive()
 }
@@ -506,12 +555,15 @@ func oneOf(value string, values ...string) bool {
 	}
 	return false
 }
+
 func canonicalTime(value time.Time) bool {
 	return !value.IsZero() && value.Location() == time.UTC && value.Equal(value.Truncate(time.Microsecond))
 }
 func formatTime(value time.Time) string { return value.Format(timeLayout) }
 func parseTime(value string) time.Time  { parsed, _ := time.Parse(timeLayout, value); return parsed }
-func hash(value []byte) string          { sum := sha256.Sum256(value); return hex.EncodeToString(sum[:]) }
+
+func hash(value []byte) string { sum := sha256.Sum256(value); return hex.EncodeToString(sum[:]) }
+
 func decodeExact(raw []byte, target any) error {
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()

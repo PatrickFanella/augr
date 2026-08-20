@@ -113,13 +113,15 @@ func benchmarkFixture(t *testing.T) (*Declaration, *Report) {
 
 func fixtureDeclarationInput(experiment *strategycatalog.Experiment, manifest *dataset.Manifest) DeclarationInput {
 	start := experiment.EvaluationStart()
-	return DeclarationInput{Experiment: experiment, Manifest: manifest, BenchmarkInstrumentID: fixtureInstrument(), BenchmarkKind: "total_return_index",
+	return DeclarationInput{
+		Experiment: experiment, Manifest: manifest, BenchmarkInstrumentID: fixtureInstrument(), BenchmarkKind: "total_return_index",
 		Weighting: "single_asset", DistributionTreatment: "reinvested", CashConvention: "explicit_per_period", Frequency: "daily", InitialNotional: "1000", DecimalScale: 12,
 		Observations: []ObservationInput{
 			{ObservedAt: start, Value: "100", CashReturn: "0", EvidenceID: fixtureEvidence(1), EvidenceSHA256: strings.Repeat("1", 64)},
 			{ObservedAt: start.Add(24 * time.Hour), Value: "105", CashReturn: "0.01", EvidenceID: fixtureEvidence(2), EvidenceSHA256: strings.Repeat("2", 64)},
 			{ObservedAt: start.Add(48 * time.Hour), Value: "110", CashReturn: "0.01", EvidenceID: fixtureEvidence(3), EvidenceSHA256: strings.Repeat("3", 64)},
-		}}
+		},
+	}
 }
 
 func benchmarkParents(t *testing.T) (*strategycatalog.Experiment, *evaluation.Report) {
@@ -128,31 +130,39 @@ func benchmarkParents(t *testing.T) (*strategycatalog.Experiment, *evaluation.Re
 	start := experiment.EvaluationStart()
 	state := json.RawMessage(`{"schema":"benchmark-test-capital-state-v1"}`)
 	stateSHA := hash(state)
-	plan, err := experimentrun.NewPlan(experimentrun.PlanInput{ExperimentID: experiment.ID(), ProgramID: fixtureID(20), AccountID: experiment.AccountID(),
+	plan, err := experimentrun.NewPlan(experimentrun.PlanInput{
+		ExperimentID: experiment.ID(), ProgramID: fixtureID(20), AccountID: experiment.AccountID(),
 		CapitalStateID: economicid.DeterministicUUID("capital-state", stateSHA), CapitalStateSHA256: stateSHA, CapitalProjectionCheckpointID: fixtureID(21), CapitalStateBytes: state,
 		ManifestID: experiment.ManifestID(), ManifestSHA256: fixtureManifest(t).Digest(), EvaluationStart: start, EvaluationEnd: start.Add(48 * time.Hour), Seed: experiment.Seed(), Mode: experiment.Mode(),
-		Steps: []experimentrun.StepInput{{PartitionContentSHA256: strings.Repeat("a", 64), ObservationSourceKey: "benchmark-test", ObservationContentSHA256: strings.Repeat("b", 64), AvailableAt: start.Add(time.Minute), Decision: json.RawMessage(`{"signal":"hold"}`), Action: experimentrun.ActionNoop}}})
+		Steps: []experimentrun.StepInput{{PartitionContentSHA256: strings.Repeat("a", 64), ObservationSourceKey: "benchmark-test", ObservationContentSHA256: strings.Repeat("b", 64), AvailableAt: start.Add(time.Minute), Decision: json.RawMessage(`{"signal":"hold"}`), Action: experimentrun.ActionNoop}},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := experimentrun.NewResult(experimentrun.ResultInput{Plan: plan, AccountID: experiment.AccountID(), QualityResultID: experiment.QualityResultID(),
+	result, err := experimentrun.NewResult(experimentrun.ResultInput{
+		Plan: plan, AccountID: experiment.AccountID(), QualityResultID: experiment.QualityResultID(),
 		SimulationPolicyVersion: experiment.SimulationPolicyVersion(), CapitalPolicyVersion: experiment.CapitalPolicyVersion(),
-		Outcomes: []experimentrun.StepOutcomeInput{{Action: experimentrun.ActionNoop, DecisionSHA256: plan.DecisionSHA256(0), FilledQuantity: "0", FeeTotal: "0"}}})
+		Outcomes: []experimentrun.StepOutcomeInput{{Action: experimentrun.ActionNoop, DecisionSHA256: plan.DecisionSHA256(0), FilledQuantity: "0", FeeTotal: "0"}},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	policy, err := evaluation.NewPolicy(evaluation.PolicyInput{Version: "benchmark-test-v1", Frequency: "daily", PeriodsPerYear: 252, ReturnKind: "simple",
-		CashConvention: "explicit_per_period", LotMethod: "fifo", RecoveryDefinition: "first_equity_at_or_above_prior_peak", DecimalScale: 12})
+	policy, err := evaluation.NewPolicy(evaluation.PolicyInput{
+		Version: "benchmark-test-v1", Frequency: "daily", PeriodsPerYear: 252, ReturnKind: "simple",
+		CashConvention: "explicit_per_period", LotMethod: "fifo", RecoveryDefinition: "first_equity_at_or_above_prior_peak", DecimalScale: 12,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	report, err := evaluation.NewReport(evaluation.ReportInput{Result: result, Policy: policy, EvaluationStart: start, EvaluationEnd: start.Add(48 * time.Hour),
+	report, err := evaluation.NewReport(evaluation.ReportInput{
+		Result: result, Policy: policy, EvaluationStart: start, EvaluationEnd: start.Add(48 * time.Hour),
 		Execution: evaluation.ExecutionInput{AttemptedOrders: "0", FilledOrders: "0", AttemptedQuantity: "0", FilledQuantity: "0"},
 		Observations: []evaluation.ObservationInput{
 			{ObservedAt: start, Equity: "100", BenchmarkValue: "100", CashReturn: "0", GrossExposure: "0", NetExposure: "0", LargestPositionWeight: "0", CumulativeOwnershipCost: "0", CumulativeTurnover: "0", CumulativeModeledSlippage: "0", EvidenceID: fixtureEvidence(1), EvidenceSHA256: strings.Repeat("1", 64)},
 			{ObservedAt: start.Add(24 * time.Hour), Equity: "102", BenchmarkValue: "105", CashReturn: "0.01", GrossExposure: "0", NetExposure: "0", LargestPositionWeight: "0", CumulativeOwnershipCost: "0", CumulativeTurnover: "0", CumulativeModeledSlippage: "0", EvidenceID: fixtureEvidence(2), EvidenceSHA256: strings.Repeat("2", 64)},
 			{ObservedAt: start.Add(48 * time.Hour), Equity: "105", BenchmarkValue: "110", CashReturn: "0.01", GrossExposure: "0", NetExposure: "0", LargestPositionWeight: "0", CumulativeOwnershipCost: "0", CumulativeTurnover: "0", CumulativeModeledSlippage: "0", EvidenceID: fixtureEvidence(3), EvidenceSHA256: strings.Repeat("3", 64)},
-		}})
+		},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,10 +192,12 @@ func rebuildEvaluation(t *testing.T, original *evaluation.Report, observations [
 func fixtureExperiment(t *testing.T) *strategycatalog.Experiment {
 	t.Helper()
 	start := time.Date(2026, 8, 20, 15, 0, 0, 0, time.UTC)
-	value, err := strategycatalog.NewExperiment(strategycatalog.ExperimentInput{VersionID: fixtureID(10), AccountID: fixtureID(11), CapitalBindingID: fixtureID(12),
+	value, err := strategycatalog.NewExperiment(strategycatalog.ExperimentInput{
+		VersionID: fixtureID(10), AccountID: fixtureID(11), CapitalBindingID: fixtureID(12),
 		ManifestID: fixtureManifest(t).ID(), QualityResultID: fixtureID(13), SimulationPolicyVersion: "simulation-policy-v1@sha256:" + strings.Repeat("c", 64),
 		CapitalPolicyVersion: "capital-margin-policy-v1@sha256:" + strings.Repeat("d", 64), Mode: strategycatalog.ExperimentPaperScored,
-		EvaluationStart: start, EvaluationEnd: start.Add(48 * time.Hour), Seed: 401})
+		EvaluationStart: start, EvaluationEnd: start.Add(48 * time.Hour), Seed: 401,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,10 +209,12 @@ func fixtureOtherManifest(t *testing.T) *dataset.Manifest { return newFixtureMan
 func newFixtureManifest(t *testing.T, label string) *dataset.Manifest {
 	t.Helper()
 	cutoff := time.Date(2026, 8, 20, 14, 0, 0, 0, time.UTC)
-	value, err := dataset.NewManifest(dataset.ManifestInput{DecisionCutoff: cutoff, Partitions: []dataset.PartitionInput{{Kind: dataset.KindBenchmarkMembership,
+	value, err := dataset.NewManifest(dataset.ManifestInput{DecisionCutoff: cutoff, Partitions: []dataset.PartitionInput{{
+		Kind:     dataset.KindBenchmarkMembership,
 		Provider: "fixture", Source: label, Namespace: "benchmark/" + label, RequestSHA256: hash([]byte("request-" + label)), MediaType: "application/json",
 		SymbologyVersion: "instrument-v1", AdjustmentPolicy: "total-return", Timezone: "UTC", Calendar: "XNYS-v1", Revision: "v1", License: "test-only", RetentionPolicy: "retain-test-evidence",
-		Observations: []dataset.ObservationInput{{SourceKey: label + "-membership", InstrumentID: fixtureInstrument(), EffectiveAt: cutoff.Add(-time.Hour), ObservedAt: cutoff.Add(-30 * time.Minute), AvailableAt: cutoff.Add(-time.Minute), Revision: "1", ContentSHA256: hash([]byte(label))}}}}})
+		Observations: []dataset.ObservationInput{{SourceKey: label + "-membership", InstrumentID: fixtureInstrument(), EffectiveAt: cutoff.Add(-time.Hour), ObservedAt: cutoff.Add(-30 * time.Minute), AvailableAt: cutoff.Add(-time.Minute), Revision: "1", ContentSHA256: hash([]byte(label))}},
+	}}})
 	if err != nil {
 		t.Fatal(err)
 	}
