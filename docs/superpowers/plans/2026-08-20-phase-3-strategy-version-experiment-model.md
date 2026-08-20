@@ -102,11 +102,11 @@ Out of scope:
 - [x] Prove reordered inputs converge, noncanonical config is rejected, config
   editing creates a new identity, source/compiler/data-contract changes create
   new identities, and tampering cannot restore.
-- [ ] Commit and push the family/version slice after focused race tests.
+- [x] Commit and push the family/version slice after focused race tests.
 
 ## Task 2: Experiment declarations and fail-closed admission
 
-- [ ] Add `internal/strategycatalog/experiment.go` with scored/stress modes,
+- [x] Add `internal/strategycatalog/experiment.go` with scored/stress modes,
   exact version/manifest/quality/simulation/capital pins, evaluation window,
   seed, dataset-quarantine fact, canonical declaration state, and identity.
 - [ ] Keep cross-aggregate admission in the repository: quality must match the
