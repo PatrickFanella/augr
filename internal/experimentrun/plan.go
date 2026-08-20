@@ -53,16 +53,20 @@ type StepInput struct {
 }
 
 type PlanInput struct {
-	ExperimentID    uuid.UUID
-	ProgramID       uuid.UUID
-	AccountID       uuid.UUID
-	ManifestID      uuid.UUID
-	ManifestSHA256  string
-	EvaluationStart time.Time
-	EvaluationEnd   time.Time
-	Seed            int64
-	Mode            strategycatalog.ExperimentMode
-	Steps           []StepInput
+	ExperimentID                  uuid.UUID
+	ProgramID                     uuid.UUID
+	AccountID                     uuid.UUID
+	CapitalStateID                uuid.UUID
+	CapitalStateSHA256            string
+	CapitalProjectionCheckpointID uuid.UUID
+	CapitalStateBytes             json.RawMessage
+	ManifestID                    uuid.UUID
+	ManifestSHA256                string
+	EvaluationStart               time.Time
+	EvaluationEnd                 time.Time
+	Seed                          int64
+	Mode                          strategycatalog.ExperimentMode
+	Steps                         []StepInput
 }
 
 type intentCanonical struct {
@@ -89,17 +93,21 @@ type stepCanonical struct {
 	Intent                   *intentCanonical `json:"intent"`
 }
 type planCanonical struct {
-	Schema          string                         `json:"schema"`
-	ExperimentID    string                         `json:"experiment_id"`
-	ProgramID       string                         `json:"program_id"`
-	AccountID       string                         `json:"account_id"`
-	ManifestID      string                         `json:"manifest_id"`
-	ManifestSHA256  string                         `json:"manifest_sha256"`
-	EvaluationStart string                         `json:"evaluation_start"`
-	EvaluationEnd   string                         `json:"evaluation_end"`
-	Seed            int64                          `json:"seed"`
-	Mode            strategycatalog.ExperimentMode `json:"mode"`
-	Steps           []stepCanonical                `json:"steps"`
+	Schema                        string                         `json:"schema"`
+	ExperimentID                  string                         `json:"experiment_id"`
+	ProgramID                     string                         `json:"program_id"`
+	AccountID                     string                         `json:"account_id"`
+	CapitalStateID                string                         `json:"capital_state_id"`
+	CapitalStateSHA256            string                         `json:"capital_state_sha256"`
+	CapitalProjectionCheckpointID string                         `json:"capital_projection_checkpoint_id"`
+	CapitalState                  json.RawMessage                `json:"capital_state"`
+	ManifestID                    string                         `json:"manifest_id"`
+	ManifestSHA256                string                         `json:"manifest_sha256"`
+	EvaluationStart               string                         `json:"evaluation_start"`
+	EvaluationEnd                 string                         `json:"evaluation_end"`
+	Seed                          int64                          `json:"seed"`
+	Mode                          strategycatalog.ExperimentMode `json:"mode"`
+	Steps                         []stepCanonical                `json:"steps"`
 }
 
 type Plan struct {
@@ -112,7 +120,11 @@ type Plan struct {
 var decimalPattern = regexp.MustCompile(`^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$`)
 
 func NewPlan(input PlanInput) (*Plan, error) {
-	if input.ExperimentID == uuid.Nil || input.ProgramID == uuid.Nil || input.AccountID == uuid.Nil || input.ManifestID == uuid.Nil ||
+	capitalState, capitalStateErr := exactJSONObject(input.CapitalStateBytes)
+	if input.ExperimentID == uuid.Nil || input.ProgramID == uuid.Nil || input.AccountID == uuid.Nil || input.CapitalStateID == uuid.Nil ||
+		!digestPattern.MatchString(input.CapitalStateSHA256) || input.CapitalProjectionCheckpointID == uuid.Nil || input.ManifestID == uuid.Nil ||
+		capitalStateErr != nil || hashBytes(capitalState) != input.CapitalStateSHA256 ||
+		input.CapitalStateID != economicid.DeterministicUUID("capital-state", input.CapitalStateSHA256) ||
 		!digestPattern.MatchString(input.ManifestSHA256) || !canonicalTime(input.EvaluationStart) ||
 		!canonicalTime(input.EvaluationEnd) || !input.EvaluationStart.Before(input.EvaluationEnd) ||
 		(input.Mode != strategycatalog.ExperimentPaperScored && input.Mode != strategycatalog.ExperimentPaperStress) ||
@@ -162,7 +174,10 @@ func NewPlan(input PlanInput) (*Plan, error) {
 	}
 	canonical := planCanonical{
 		Schema: PlanSchemaV1, ExperimentID: input.ExperimentID.String(), ProgramID: input.ProgramID.String(), AccountID: input.AccountID.String(),
-		ManifestID: input.ManifestID.String(), ManifestSHA256: input.ManifestSHA256, EvaluationStart: formatTime(input.EvaluationStart),
+		CapitalStateID: input.CapitalStateID.String(), CapitalStateSHA256: input.CapitalStateSHA256,
+		CapitalProjectionCheckpointID: input.CapitalProjectionCheckpointID.String(),
+		CapitalState:                  capitalState,
+		ManifestID:                    input.ManifestID.String(), ManifestSHA256: input.ManifestSHA256, EvaluationStart: formatTime(input.EvaluationStart),
 		EvaluationEnd: formatTime(input.EvaluationEnd), Seed: input.Seed, Mode: input.Mode, Steps: steps,
 	}
 	encoded, err := json.Marshal(canonical)
@@ -216,6 +231,14 @@ func PlanFromCanonical(id uuid.UUID, digest string, raw []byte) (*Plan, error) {
 	if err != nil {
 		return nil, err
 	}
+	capitalStateID, err := uuid.Parse(c.CapitalStateID)
+	if err != nil {
+		return nil, err
+	}
+	capitalProjectionID, err := uuid.Parse(c.CapitalProjectionCheckpointID)
+	if err != nil {
+		return nil, err
+	}
 	manifestID, err := uuid.Parse(c.ManifestID)
 	if err != nil {
 		return nil, err
@@ -240,7 +263,7 @@ func PlanFromCanonical(id uuid.UUID, digest string, raw []byte) (*Plan, error) {
 		}
 		inputs[i] = StepInput{PartitionContentSHA256: s.PartitionContentSHA256, ObservationSourceKey: s.ObservationSourceKey, ObservationContentSHA256: s.ObservationContentSHA256, AvailableAt: available, Decision: s.Decision, Action: s.Action, RejectionCode: s.RejectionCode, Intent: intent}
 	}
-	plan, err := NewPlan(PlanInput{ExperimentID: experimentID, ProgramID: programID, AccountID: accountID, ManifestID: manifestID, ManifestSHA256: c.ManifestSHA256, EvaluationStart: parseTime(c.EvaluationStart), EvaluationEnd: parseTime(c.EvaluationEnd), Seed: c.Seed, Mode: c.Mode, Steps: inputs})
+	plan, err := NewPlan(PlanInput{ExperimentID: experimentID, ProgramID: programID, AccountID: accountID, CapitalStateID: capitalStateID, CapitalStateSHA256: c.CapitalStateSHA256, CapitalProjectionCheckpointID: capitalProjectionID, CapitalStateBytes: c.CapitalState, ManifestID: manifestID, ManifestSHA256: c.ManifestSHA256, EvaluationStart: parseTime(c.EvaluationStart), EvaluationEnd: parseTime(c.EvaluationEnd), Seed: c.Seed, Mode: c.Mode, Steps: inputs})
 	if err != nil {
 		return nil, err
 	}
@@ -293,6 +316,36 @@ func (p *Plan) AccountID() uuid.UUID {
 	}
 	id, _ := uuid.Parse(p.canonical.AccountID)
 	return id
+}
+
+func (p *Plan) CapitalStateID() uuid.UUID {
+	if p == nil {
+		return uuid.Nil
+	}
+	id, _ := uuid.Parse(p.canonical.CapitalStateID)
+	return id
+}
+
+func (p *Plan) CapitalStateSHA256() string {
+	if p == nil {
+		return ""
+	}
+	return p.canonical.CapitalStateSHA256
+}
+
+func (p *Plan) CapitalProjectionCheckpointID() uuid.UUID {
+	if p == nil {
+		return uuid.Nil
+	}
+	id, _ := uuid.Parse(p.canonical.CapitalProjectionCheckpointID)
+	return id
+}
+
+func (p *Plan) CapitalStateBytes() json.RawMessage {
+	if p == nil {
+		return nil
+	}
+	return append(json.RawMessage(nil), p.canonical.CapitalState...)
 }
 
 func (p *Plan) ManifestID() uuid.UUID {
@@ -413,6 +466,22 @@ func (p *Plan) Steps() []StepInput {
 		}
 	}
 	return result
+}
+
+func exactJSONObject(raw json.RawMessage) (json.RawMessage, error) {
+	if len(raw) == 0 || len(raw) > 1<<20 {
+		return nil, fmt.Errorf("exact JSON object is required")
+	}
+	var value map[string]any
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	if err := decoder.Decode(&value); err != nil || value == nil {
+		return nil, fmt.Errorf("exact JSON object is invalid")
+	}
+	if err := requireJSONEOF(decoder); err != nil {
+		return nil, err
+	}
+	return append(json.RawMessage(nil), raw...), nil
 }
 
 func canonicalJSONObject(raw json.RawMessage) (json.RawMessage, error) {

@@ -14,6 +14,17 @@ CREATE FUNCTION experiment_program_identity(version_id_value TEXT,version_sha_va
     ',"adapter_sha256":'||dataset_json_string(adapter_sha_value)||',"runner_contract":'||dataset_json_string(runner_contract_value)||'}';
 $$ LANGUAGE sql IMMUTABLE STRICT;
 
+CREATE FUNCTION experiment_capital_state_identity(value JSONB) RETURNS TEXT AS $$
+  SELECT '{"schema":"capital-state-v1","account_id":'||dataset_json_string(value->>'account_id')||
+    ',"binding_id":'||dataset_json_string(value->>'binding_id')||',"policy_version":'||dataset_json_string(value->>'policy_version')||
+    ',"projection_checkpoint_id":'||dataset_json_string(value->>'projection_checkpoint_id')||
+    ',"projection_checksum":'||dataset_json_string(value->>'projection_checksum')||',"as_of":'||dataset_json_string(value->>'as_of')||
+    ',"currency":'||dataset_json_string(value->>'currency')||',"cash":'||dataset_json_string(value->>'cash')||
+    ',"equity":'||dataset_json_string(value->>'equity')||',"long_exposure":'||dataset_json_string(value->>'long_exposure')||
+    ',"short_exposure":'||dataset_json_string(value->>'short_exposure')||',"gross_exposure":'||dataset_json_string(value->>'gross_exposure')||
+    ',"maintenance_requirement":'||dataset_json_string(value->>'maintenance_requirement')||'}';
+$$ LANGUAGE sql IMMUTABLE STRICT;
+
 CREATE FUNCTION experiment_plan_intent_identity(instrument_id_value TEXT,contract_id_value TEXT,side_value TEXT,order_type_value TEXT,
   tif_value TEXT,quantity_value TEXT,limit_value TEXT,stop_value TEXT,decision_at_value TEXT,route_at_value TEXT) RETURNS TEXT AS $$
   SELECT '{"instrument_id":'||dataset_json_string(instrument_id_value)||',"venue_contract_id":'||dataset_json_string(contract_id_value)||
@@ -33,10 +44,13 @@ CREATE FUNCTION experiment_plan_step_identity(sequence_value INTEGER,partition_s
     ',"intent":'||COALESCE(intent_text,'null')||'}';
 $$ LANGUAGE sql IMMUTABLE;
 
-CREATE FUNCTION experiment_plan_identity(experiment_id_value TEXT,program_id_value TEXT,account_id_value TEXT,manifest_id_value TEXT,
+CREATE FUNCTION experiment_plan_identity(experiment_id_value TEXT,program_id_value TEXT,account_id_value TEXT,capital_state_id_value TEXT,
+  capital_state_sha_value TEXT,capital_checkpoint_id_value TEXT,capital_state_text TEXT,manifest_id_value TEXT,
   manifest_sha_value TEXT,start_value TEXT,end_value TEXT,seed_value BIGINT,mode_value TEXT,steps_text TEXT) RETURNS TEXT AS $$
   SELECT '{"schema":"experiment-replay-plan-v1","experiment_id":'||dataset_json_string(experiment_id_value)||
     ',"program_id":'||dataset_json_string(program_id_value)||',"account_id":'||dataset_json_string(account_id_value)||
+    ',"capital_state_id":'||dataset_json_string(capital_state_id_value)||',"capital_state_sha256":'||dataset_json_string(capital_state_sha_value)||
+    ',"capital_projection_checkpoint_id":'||dataset_json_string(capital_checkpoint_id_value)||',"capital_state":'||capital_state_text||
     ',"manifest_id":'||dataset_json_string(manifest_id_value)||',"manifest_sha256":'||dataset_json_string(manifest_sha_value)||
     ',"evaluation_start":'||dataset_json_string(start_value)||',"evaluation_end":'||dataset_json_string(end_value)||
     ',"seed":'||seed_value::TEXT||',"mode":'||dataset_json_string(mode_value)||',"steps":'||steps_text||'}';
@@ -107,6 +121,9 @@ CREATE TABLE experiment_replay_plans (
   experiment_id UUID NOT NULL REFERENCES research_experiments(id) ON DELETE RESTRICT,
   program_id UUID NOT NULL REFERENCES experiment_programs(id) ON DELETE RESTRICT,
   account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE RESTRICT,
+  capital_state_id UUID NOT NULL, capital_state_sha256 TEXT NOT NULL CHECK(capital_state_sha256 ~ '^[0-9a-f]{64}$'),
+  capital_projection_checkpoint_id UUID NOT NULL, capital_state_bytes BYTEA NOT NULL,
+  capital_state JSONB NOT NULL CHECK(jsonb_typeof(capital_state)='object'),
   manifest_id UUID NOT NULL REFERENCES dataset_manifests(id) ON DELETE RESTRICT, manifest_sha256 TEXT NOT NULL CHECK(manifest_sha256 ~ '^[0-9a-f]{64}$'),
   evaluation_start TIMESTAMPTZ NOT NULL CHECK(evaluation_start=date_trunc('microseconds',evaluation_start)),
   evaluation_end TIMESTAMPTZ NOT NULL CHECK(evaluation_end=date_trunc('microseconds',evaluation_end) AND evaluation_end>evaluation_start),
@@ -114,6 +131,10 @@ CREATE TABLE experiment_replay_plans (
   sha256 TEXT NOT NULL CHECK(sha256 ~ '^[0-9a-f]{64}$'), canonical_bytes BYTEA NOT NULL,
   canonical_json JSONB NOT NULL CHECK(jsonb_typeof(canonical_json)='object'), created_at TIMESTAMPTZ NOT NULL CHECK(created_at=date_trunc('microseconds',created_at)),
   CHECK(sha256=encode(digest(canonical_bytes,'sha256'),'hex')), CHECK(canonical_json=convert_from(canonical_bytes,'UTF8')::JSONB),
+  CHECK(capital_state_sha256=encode(digest(capital_state_bytes,'sha256'),'hex')),
+  CHECK(capital_state=convert_from(capital_state_bytes,'UTF8')::JSONB),
+  CHECK(convert_from(capital_state_bytes,'UTF8')=experiment_capital_state_identity(capital_state)),
+  CHECK(capital_state_id=economic_deterministic_uuid('capital-state',capital_state_sha256)),
   CHECK(id=economic_deterministic_uuid('experiment-replay-plan',schema_name||'@sha256:'||sha256))
 );
 
@@ -238,6 +259,9 @@ BEGIN
     JOIN experiment_programs program ON program.id=p.program_id AND program.version_id=e.version_id
     JOIN dataset_manifests m ON m.id=p.manifest_id
     WHERE p.id=target AND p.account_id=e.account_id AND p.manifest_id=e.manifest_id AND p.manifest_sha256=m.sha256 AND
+      p.capital_state->>'account_id'=p.account_id::TEXT AND p.capital_state->>'binding_id'=e.capital_binding_id::TEXT AND
+      p.capital_state->>'policy_version'=e.capital_policy_version AND
+      p.capital_state->>'projection_checkpoint_id'=p.capital_projection_checkpoint_id::TEXT AND
       p.evaluation_start=e.evaluation_start AND p.evaluation_end=e.evaluation_end AND p.seed=e.seed AND p.mode=e.mode AND
       p.step_count=(SELECT count(*) FROM experiment_replay_plan_steps WHERE plan_id=p.id) AND
       (SELECT min(sequence)=0 AND max(sequence)=p.step_count-1 FROM experiment_replay_plan_steps WHERE plan_id=p.id) AND
@@ -251,7 +275,8 @@ BEGIN
           s.order_idempotency_key<>'experiment/'||p.id::TEXT||'/step/'||s.sequence::TEXT||'/order' OR
           s.intent_id<>economic_deterministic_uuid('execution-intent',p.account_id::TEXT,s.intent_idempotency_key) OR
           s.order_id<>economic_deterministic_uuid('execution-order',s.intent_id::TEXT,s.order_idempotency_key)))) AND
-      p.canonical_bytes=convert_to(experiment_plan_identity(p.experiment_id::TEXT,p.program_id::TEXT,p.account_id::TEXT,p.manifest_id::TEXT,p.manifest_sha256,
+      p.canonical_bytes=convert_to(experiment_plan_identity(p.experiment_id::TEXT,p.program_id::TEXT,p.account_id::TEXT,p.capital_state_id::TEXT,
+        p.capital_state_sha256,p.capital_projection_checkpoint_id::TEXT,convert_from(p.capital_state_bytes,'UTF8'),p.manifest_id::TEXT,p.manifest_sha256,
         to_char(p.evaluation_start AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),to_char(p.evaluation_end AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
         p.seed,p.mode,steps_text),'UTF8');
   IF NOT FOUND THEN RAISE EXCEPTION 'experiment replay plan graph does not reconstruct'; END IF;

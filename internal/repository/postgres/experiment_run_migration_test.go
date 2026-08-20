@@ -2,6 +2,8 @@ package postgres
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"strings"
 	"sync"
@@ -13,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/dataset"
+	"github.com/PatrickFanella/get-rich-quick/internal/economicid"
 	"github.com/PatrickFanella/get-rich-quick/internal/experimentrun"
 	"github.com/PatrickFanella/get-rich-quick/internal/strategycatalog"
 )
@@ -62,9 +65,34 @@ func newExperimentRunMigrationFixture(t *testing.T) experimentMigrationFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
+	capitalCheckpointID := uuid.MustParse("30300000-0000-4000-8000-000000000398")
+	capitalStateBytes, _ := json.Marshal(struct {
+		Schema                 string `json:"schema"`
+		AccountID              string `json:"account_id"`
+		BindingID              string `json:"binding_id"`
+		PolicyVersion          string `json:"policy_version"`
+		ProjectionCheckpointID string `json:"projection_checkpoint_id"`
+		ProjectionChecksum     string `json:"projection_checksum"`
+		AsOf                   string `json:"as_of"`
+		Currency               string `json:"currency"`
+		Cash                   string `json:"cash"`
+		Equity                 string `json:"equity"`
+		LongExposure           string `json:"long_exposure"`
+		ShortExposure          string `json:"short_exposure"`
+		GrossExposure          string `json:"gross_exposure"`
+		MaintenanceRequirement string `json:"maintenance_requirement"`
+	}{
+		Schema: "capital-state-v1", AccountID: strategy.account.ID.String(), BindingID: strategy.binding.ID.String(),
+		PolicyVersion: strategy.capital, ProjectionCheckpointID: capitalCheckpointID.String(), ProjectionChecksum: strings.Repeat("e", 64),
+		AsOf: start.Format("2006-01-02T15:04:05.000000Z"), Currency: "USD", Cash: "100000", Equity: "100000",
+		LongExposure: "0", ShortExposure: "0", GrossExposure: "0", MaintenanceRequirement: "0",
+	})
 	plan, err := experimentrun.NewPlan(experimentrun.PlanInput{
 		ExperimentID: experiment.ID(), ProgramID: program.ID(), AccountID: strategy.account.ID, ManifestID: strategy.manifest.ID(),
-		ManifestSHA256: strategy.manifest.Digest(), EvaluationStart: start, EvaluationEnd: available.Add(time.Minute), Seed: 303,
+		CapitalStateID: economicid.DeterministicUUID("capital-state", migrationSHA(capitalStateBytes)), CapitalStateSHA256: migrationSHA(capitalStateBytes),
+		CapitalProjectionCheckpointID: capitalCheckpointID,
+		CapitalStateBytes:             capitalStateBytes,
+		ManifestSHA256:                strategy.manifest.Digest(), EvaluationStart: start, EvaluationEnd: available.Add(time.Minute), Seed: 303,
 		Mode: strategycatalog.ExperimentPaperScored, Steps: []experimentrun.StepInput{{
 			PartitionContentSHA256: partition.ContentSHA256, ObservationSourceKey: observation.SourceKey,
 			ObservationContentSHA256: observation.ContentSHA256, AvailableAt: available,
@@ -85,6 +113,11 @@ func newExperimentRunMigrationFixture(t *testing.T) experimentMigrationFixture {
 	strategy.ctx = ctx
 	strategy.pool = pool
 	return experimentMigrationFixture{strategy: strategy, program: program, plan: plan, result: result, start: start}
+}
+
+func migrationSHA(value []byte) string {
+	digest := sha256.Sum256(value)
+	return hex.EncodeToString(digest[:])
 }
 
 func TestExperimentRunMigrationConcurrentRegistrationConverges(t *testing.T) {
@@ -268,10 +301,13 @@ func insertExperimentProgramTx(ctx context.Context, tx pgx.Tx, program *experime
 
 func insertExperimentPlanParent(ctx context.Context, tx pgx.Tx, plan *experimentrun.Plan, createdAt time.Time) error {
 	_, err := tx.Exec(ctx, `INSERT INTO experiment_replay_plans(
-		id,schema_name,experiment_id,program_id,account_id,manifest_id,manifest_sha256,evaluation_start,evaluation_end,seed,mode,
+		id,schema_name,experiment_id,program_id,account_id,capital_state_id,capital_state_sha256,capital_projection_checkpoint_id,
+		capital_state_bytes,capital_state,manifest_id,manifest_sha256,evaluation_start,evaluation_end,seed,mode,
 		step_count,sha256,canonical_bytes,canonical_json,created_at
-	) VALUES($1,'experiment-replay-plan-v1',$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,convert_from($13,'UTF8')::jsonb,$14) ON CONFLICT(id) DO NOTHING`,
-		plan.ID(), plan.ExperimentID(), plan.ProgramID(), plan.AccountID(), plan.ManifestID(), plan.ManifestSHA256(), plan.EvaluationStart(),
+	) VALUES($1,'experiment-replay-plan-v1',$2,$3,$4,$5,$6,$7,$8,convert_from($8,'UTF8')::jsonb,$9,$10,$11,$12,$13,$14,
+		$15,$16,$17,convert_from($17,'UTF8')::jsonb,$18) ON CONFLICT(id) DO NOTHING`,
+		plan.ID(), plan.ExperimentID(), plan.ProgramID(), plan.AccountID(), plan.CapitalStateID(), plan.CapitalStateSHA256(),
+		plan.CapitalProjectionCheckpointID(), plan.CapitalStateBytes(), plan.ManifestID(), plan.ManifestSHA256(), plan.EvaluationStart(),
 		plan.EvaluationEnd(), plan.Seed(), plan.Mode(), plan.StepCount(), plan.Digest(), plan.CanonicalBytes(), createdAt)
 	return err
 }

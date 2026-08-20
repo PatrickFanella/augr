@@ -75,15 +75,19 @@ type Program interface {
 }
 
 type ProgramInput struct {
-	ExperimentID    uuid.UUID
-	AccountID       uuid.UUID
-	ManifestID      uuid.UUID
-	ManifestSHA256  string
-	EvaluationStart string
-	EvaluationEnd   string
-	Seed            int64
-	Mode            strategycatalog.ExperimentMode
-	Evidence        []ObservationEvidence
+	ExperimentID                  uuid.UUID
+	AccountID                     uuid.UUID
+	CapitalStateID                uuid.UUID
+	CapitalStateSHA256            string
+	CapitalProjectionCheckpointID uuid.UUID
+	CapitalStateBytes             json.RawMessage
+	ManifestID                    uuid.UUID
+	ManifestSHA256                string
+	EvaluationStart               string
+	EvaluationEnd                 string
+	Seed                          int64
+	Mode                          strategycatalog.ExperimentMode
+	Evidence                      []ObservationEvidence
 }
 
 type ObservationEvidence struct {

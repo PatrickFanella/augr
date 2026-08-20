@@ -245,8 +245,11 @@ func newRunnerFixture(t *testing.T) *runnerFixture {
 	}
 	program := &runnerProgram{identity: identity, build: func(input ProgramInput) (*Plan, error) {
 		return NewPlan(PlanInput{
-			ExperimentID: input.ExperimentID, ProgramID: identity.ID(), AccountID: input.AccountID, ManifestID: input.ManifestID,
-			ManifestSHA256: input.ManifestSHA256, EvaluationStart: start, EvaluationEnd: end, Seed: input.Seed, Mode: input.Mode,
+			ExperimentID: input.ExperimentID, ProgramID: identity.ID(), AccountID: input.AccountID,
+			CapitalStateID: input.CapitalStateID, CapitalStateSHA256: input.CapitalStateSHA256, ManifestID: input.ManifestID,
+			CapitalProjectionCheckpointID: input.CapitalProjectionCheckpointID,
+			CapitalStateBytes:             input.CapitalStateBytes,
+			ManifestSHA256:                input.ManifestSHA256, EvaluationStart: start, EvaluationEnd: end, Seed: input.Seed, Mode: input.Mode,
 			Steps: []StepInput{{
 				PartitionContentSHA256: partition.ContentSHA256, ObservationSourceKey: snapshot.ObservationID, ObservationContentSHA256: contentSHA, AvailableAt: available,
 				Decision: json.RawMessage(`{"signal":"buy"}`), Action: ActionExecute,

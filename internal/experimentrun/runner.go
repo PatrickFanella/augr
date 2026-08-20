@@ -256,7 +256,10 @@ func validateEvidenceGraph(experimentID uuid.UUID, graph *EvidenceGraph, program
 	}
 
 	input := ProgramInput{
-		ExperimentID: experiment.ID(), AccountID: graph.Account.ID, ManifestID: graph.Manifest.ID(), ManifestSHA256: graph.Manifest.Digest(),
+		ExperimentID: experiment.ID(), AccountID: graph.Account.ID, CapitalStateID: graph.CapitalState.ID(), CapitalStateSHA256: graph.CapitalState.Hash(),
+		CapitalProjectionCheckpointID: graph.CapitalState.ProjectionCheckpointID(),
+		CapitalStateBytes:             graph.CapitalState.CanonicalBytes(),
+		ManifestID:                    graph.Manifest.ID(), ManifestSHA256: graph.Manifest.Digest(),
 		EvaluationStart: formatTime(experiment.EvaluationStart()), EvaluationEnd: formatTime(experiment.EvaluationEnd()),
 		Seed: experiment.Seed(), Mode: experiment.Mode(),
 	}
@@ -307,7 +310,10 @@ func validateEvidenceGraph(experimentID uuid.UUID, graph *EvidenceGraph, program
 
 func validatePlan(graph *EvidenceGraph, program *ProgramIdentity, plan *Plan, materials map[string]ObservationMaterial) ([]StepInput, error) {
 	if plan == nil || plan.ExperimentID() != graph.Experiment.ID() || plan.ProgramID() != program.ID() ||
-		plan.AccountID() != graph.Account.ID || plan.ManifestID() != graph.Manifest.ID() || plan.ManifestSHA256() != graph.Manifest.Digest() ||
+		plan.AccountID() != graph.Account.ID || plan.CapitalStateID() != graph.CapitalState.ID() || plan.CapitalStateSHA256() != graph.CapitalState.Hash() ||
+		plan.CapitalProjectionCheckpointID() != graph.CapitalState.ProjectionCheckpointID() ||
+		string(plan.CapitalStateBytes()) != string(graph.CapitalState.CanonicalBytes()) ||
+		plan.ManifestID() != graph.Manifest.ID() || plan.ManifestSHA256() != graph.Manifest.Digest() ||
 		plan.EvaluationStart() != graph.Experiment.EvaluationStart() || plan.EvaluationEnd() != graph.Experiment.EvaluationEnd() ||
 		plan.Seed() != graph.Experiment.Seed() || plan.Mode() != graph.Experiment.Mode() {
 		return nil, fmt.Errorf("experiment replay plan does not match declaration")

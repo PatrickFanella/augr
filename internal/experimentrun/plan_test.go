@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/PatrickFanella/get-rich-quick/internal/economicid"
 	"github.com/PatrickFanella/get-rich-quick/internal/strategycatalog"
 )
 
@@ -81,7 +82,9 @@ func TestPlanTamperingAndModeSeparation(t *testing.T) {
 func validPlanInput() PlanInput {
 	start := time.Date(2026, 8, 20, 19, 0, 0, 123456000, time.UTC)
 	limit := "10.25"
-	return PlanInput{ExperimentID: uuid.MustParse("30300000-0000-4000-8000-000000000010"), ProgramID: uuid.MustParse("30300000-0000-4000-8000-000000000011"), AccountID: uuid.MustParse("30300000-0000-4000-8000-000000000013"), ManifestID: uuid.MustParse("30300000-0000-4000-8000-000000000012"), ManifestSHA256: strings.Repeat("a", 64), EvaluationStart: start, EvaluationEnd: start.Add(2 * time.Hour), Seed: 303, Mode: strategycatalog.ExperimentPaperScored, Steps: []StepInput{
+	state := json.RawMessage(`{"schema":"capital-state-test-v1"}`)
+	stateSHA := hashBytes(state)
+	return PlanInput{ExperimentID: uuid.MustParse("30300000-0000-4000-8000-000000000010"), ProgramID: uuid.MustParse("30300000-0000-4000-8000-000000000011"), AccountID: uuid.MustParse("30300000-0000-4000-8000-000000000013"), CapitalStateID: economicid.DeterministicUUID("capital-state", stateSHA), CapitalStateSHA256: stateSHA, CapitalProjectionCheckpointID: uuid.MustParse("30300000-0000-4000-8000-000000000016"), CapitalStateBytes: state, ManifestID: uuid.MustParse("30300000-0000-4000-8000-000000000012"), ManifestSHA256: strings.Repeat("a", 64), EvaluationStart: start, EvaluationEnd: start.Add(2 * time.Hour), Seed: 303, Mode: strategycatalog.ExperimentPaperScored, Steps: []StepInput{
 		{PartitionContentSHA256: strings.Repeat("b", 64), ObservationSourceKey: "quote-1", ObservationContentSHA256: strings.Repeat("c", 64), AvailableAt: start.Add(time.Minute), Decision: json.RawMessage(`{"signal":"hold"}`), Action: ActionNoop},
 		{PartitionContentSHA256: strings.Repeat("b", 64), ObservationSourceKey: "quote-2", ObservationContentSHA256: strings.Repeat("d", 64), AvailableAt: start.Add(2 * time.Minute), Decision: json.RawMessage(`{"signal":"buy"}`), Action: ActionExecute, Intent: &IntentSpecInput{InstrumentID: uuid.MustParse("30300000-0000-4000-8000-000000000013"), VenueContractID: uuid.MustParse("30300000-0000-4000-8000-000000000014"), Side: "buy", OrderType: "limit", TimeInForce: "day", Quantity: "10", LimitPrice: &limit, DecisionAt: start.Add(2 * time.Minute), RouteAt: start.Add(3 * time.Minute)}},
 	}}

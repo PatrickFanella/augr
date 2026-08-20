@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -17,6 +18,66 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/instrument"
 	"github.com/PatrickFanella/get-rich-quick/internal/ledger"
 )
+
+// StateFromCanonical restores a sealed state only when its exact bytes,
+// content identity, and independently loaded account/binding/policy agree.
+func StateFromCanonical(id uuid.UUID, digest string, raw []byte, account domain.Account, binding Binding, policy *Policy) (*State, error) {
+	if id == uuid.Nil || len(digest) != 64 || len(raw) == 0 {
+		return nil, fmt.Errorf("restore capital state: envelope is invalid")
+	}
+	var canonical canonicalState
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&canonical); err != nil {
+		return nil, fmt.Errorf("restore capital state: %w", err)
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		return nil, fmt.Errorf("restore capital state: canonical JSON has trailing content")
+	}
+	accountID, err := uuid.Parse(canonical.AccountID)
+	if err != nil {
+		return nil, fmt.Errorf("restore capital state account: %w", err)
+	}
+	bindingID, err := uuid.Parse(canonical.BindingID)
+	if err != nil {
+		return nil, fmt.Errorf("restore capital state binding: %w", err)
+	}
+	checkpointID, err := uuid.Parse(canonical.ProjectionCheckpointID)
+	if err != nil {
+		return nil, fmt.Errorf("restore capital state checkpoint: %w", err)
+	}
+	asOf, err := time.Parse("2006-01-02T15:04:05.000000Z", canonical.AsOf)
+	if err != nil {
+		return nil, fmt.Errorf("restore capital state as-of: %w", err)
+	}
+	values := make([]decimal.Decimal, 6)
+	for index, text := range []string{canonical.Cash, canonical.Equity, canonical.LongExposure, canonical.ShortExposure, canonical.GrossExposure, canonical.MaintenanceRequirement} {
+		values[index], err = decimal.NewFromString(text)
+		if err != nil || values[index].String() != text {
+			return nil, fmt.Errorf("restore capital state: amount %d is not canonical", index)
+		}
+	}
+	state := &State{
+		accountID: accountID, bindingID: bindingID, policyVersion: canonical.PolicyVersion,
+		projectionCheckpointID: checkpointID, projectionChecksum: canonical.ProjectionChecksum,
+		asOf: asOf, currency: canonical.Currency, cash: values[0], equity: values[1], longExposure: values[2],
+		shortExposure: values[3], grossExposure: values[4], maintenanceRequirement: values[5],
+	}
+	if canonical.Schema != capitalStateSchema {
+		return nil, fmt.Errorf("restore capital state: schema is invalid")
+	}
+	if err := state.seal(); err != nil {
+		return nil, fmt.Errorf("restore capital state: %w", err)
+	}
+	if state.id != id || state.hash != digest || !bytes.Equal(state.canonicalBytes, raw) {
+		return nil, fmt.Errorf("restore capital state: identity does not reconstruct")
+	}
+	if err := state.validate(account, binding, policy); err != nil {
+		return nil, fmt.Errorf("restore capital state: %w", err)
+	}
+	return state, nil
+}
 
 const (
 	capitalStateSchema = "capital-state-v1"
@@ -339,6 +400,15 @@ func (state *State) ID() uuid.UUID {
 		return uuid.Nil
 	}
 	return state.id
+}
+
+// ProjectionCheckpointID returns the immutable accounting checkpoint from
+// which this sealed capital state was derived.
+func (state *State) ProjectionCheckpointID() uuid.UUID {
+	if state == nil {
+		return uuid.Nil
+	}
+	return state.projectionCheckpointID
 }
 
 func (state *State) Cash() decimal.Decimal {

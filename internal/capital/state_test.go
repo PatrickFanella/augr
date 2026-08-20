@@ -1,6 +1,7 @@
 package capital
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -38,6 +39,23 @@ func TestStateFromProjectionDerivesExactSupportedExposure(t *testing.T) {
 	replayed, err := StateFromProjection(fixture.account, fixture.binding, fixture.policy, fixture.projection, fixture.instruments)
 	if err != nil || replayed.Hash() != state.Hash() || string(replayed.CanonicalBytes()) != string(state.CanonicalBytes()) {
 		t.Fatalf("replayed state = %+v/%v", replayed, err)
+	}
+}
+
+func TestStateCanonicalRestoreRequiresExactContextAndBytes(t *testing.T) {
+	fixture := newCapitalStateFixture(t, domain.MarginProfileRegT, decimal.NewFromInt(2), nil)
+	state, err := StateFromProjection(fixture.account, fixture.binding, fixture.policy, fixture.projection, fixture.instruments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restored, err := StateFromCanonical(state.ID(), state.Hash(), state.CanonicalBytes(), fixture.account, fixture.binding, fixture.policy)
+	if err != nil || restored.ID() != state.ID() || restored.Hash() != state.Hash() || !bytes.Equal(restored.CanonicalBytes(), state.CanonicalBytes()) {
+		t.Fatalf("restored state = %+v/%v", restored, err)
+	}
+	tampered := state.CanonicalBytes()
+	tampered[len(tampered)-2] ^= 1
+	if _, err := StateFromCanonical(state.ID(), state.Hash(), tampered, fixture.account, fixture.binding, fixture.policy); err == nil {
+		t.Fatal("tampered capital state restored")
 	}
 }
 
