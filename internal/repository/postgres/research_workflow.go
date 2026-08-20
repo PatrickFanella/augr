@@ -50,12 +50,22 @@ type researchHypothesisEnvelope struct {
 	Sources []struct {
 		Sequence           int      `json:"sequence"`
 		Key                string   `json:"key"`
+		URI                string   `json:"uri"`
+		Publisher          string   `json:"publisher"`
+		Title              string   `json:"title"`
+		PublishedAt        string   `json:"published_at"`
+		AvailableAt        string   `json:"available_at"`
+		ContentSHA256      string   `json:"content_sha256"`
+		License            string   `json:"license"`
 		ManifestSourceKeys []string `json:"manifest_source_keys"`
 	} `json:"sources"`
 	Searches []struct {
-		Sequence int    `json:"sequence"`
-		Key      string `json:"key"`
-		Results  []struct {
+		Sequence    int    `json:"sequence"`
+		Key         string `json:"key"`
+		Provider    string `json:"provider"`
+		QuerySHA256 string `json:"query_sha256"`
+		ExecutedAt  string `json:"executed_at"`
+		Results     []struct {
 			Sequence  int    `json:"sequence"`
 			SourceKey string `json:"source_key"`
 			Rank      int    `json:"rank"`
@@ -63,9 +73,12 @@ type researchHypothesisEnvelope struct {
 		} `json:"results"`
 	} `json:"searches"`
 	Tests []struct {
-		Sequence int    `json:"sequence"`
-		Key      string `json:"key"`
-		Type     string `json:"type"`
+		Sequence        int    `json:"sequence"`
+		Key             string `json:"key"`
+		Type            string `json:"type"`
+		ExpectedOutcome string `json:"expected_outcome"`
+		AcceptanceRule  string `json:"acceptance_rule"`
+		SpecTestKey     string `json:"spec_test_key"`
 	} `json:"tests"`
 }
 
@@ -77,18 +90,20 @@ type researchCriticEnvelope struct {
 	HypothesisSHA256 string `json:"hypothesis_sha256"`
 	Recommendation   string `json:"recommendation"`
 	Findings         []struct {
-		Sequence   int      `json:"sequence"`
-		Key        string   `json:"key"`
-		Category   string   `json:"category"`
-		Severity   string   `json:"severity"`
-		Status     string   `json:"status"`
-		References []string `json:"references"`
+		Sequence    int      `json:"sequence"`
+		Key         string   `json:"key"`
+		Category    string   `json:"category"`
+		Severity    string   `json:"severity"`
+		Status      string   `json:"status"`
+		References  []string `json:"references"`
+		Explanation string   `json:"explanation"`
 	} `json:"findings"`
 	Checks []struct {
-		Sequence   int      `json:"sequence"`
-		Name       string   `json:"name"`
-		State      string   `json:"state"`
-		References []string `json:"references"`
+		Sequence    int      `json:"sequence"`
+		Name        string   `json:"name"`
+		State       string   `json:"state"`
+		References  []string `json:"references"`
+		Explanation string   `json:"explanation"`
 	} `json:"checks"`
 }
 
