@@ -96,9 +96,9 @@ Out of scope:
 
 ## Task 2: OVR-303 adapter and strategy-version qualification
 
-- [ ] Add a content-addressed adapter identity bound to an exact OVR-302 Wheel
+- [x] Add a content-addressed adapter identity bound to an exact OVR-302 Wheel
   V1 version and immutable typed scenario evidence.
-- [ ] Translate engine open/close decisions to exact OVR-303 plan steps while
+- [x] Translate engine open/close decisions to exact OVR-303 plan steps while
   preserving non-order lifecycle events in the wheel report.
 - [ ] Reject program-input evidence mismatch, unrecognized instruments/venue
   contracts, reordered/partial evidence, invalid capital state, and mode drift.

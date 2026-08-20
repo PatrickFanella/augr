@@ -11,6 +11,7 @@ import (
 	"github.com/shopspring/decimal"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/economicid"
+	"github.com/PatrickFanella/get-rich-quick/internal/strategycatalog"
 )
 
 type EventKind string
@@ -36,19 +37,21 @@ type QualityEvidence struct {
 }
 
 type Candidate struct {
-	InstrumentID    uuid.UUID
-	VenueContractID uuid.UUID
-	OptionType      string
-	Strike          string
-	Expiry          time.Time
-	Delta           string
-	Bid             string
-	Ask             string
-	OpenInterest    string
-	Volume          string
-	AvailableAt     time.Time
-	EvidenceID      uuid.UUID
-	EvidenceSHA256  string
+	InstrumentID           uuid.UUID
+	VenueContractID        uuid.UUID
+	PartitionContentSHA256 string
+	SourceKey              string
+	OptionType             string
+	Strike                 string
+	Expiry                 time.Time
+	Delta                  string
+	Bid                    string
+	Ask                    string
+	OpenInterest           string
+	Volume                 string
+	AvailableAt            time.Time
+	EvidenceID             uuid.UUID
+	EvidenceSHA256         string
 }
 
 type EventInput struct {
@@ -70,25 +73,28 @@ type ScenarioInput struct {
 	InitialCapital  string
 	EvaluationStart time.Time
 	EvaluationEnd   time.Time
+	Mode            strategycatalog.ExperimentMode
 	Events          []EventInput
 }
 
 type (
 	qualityCanonical   struct{ AvailableAt, ROIC, DebtToAssets, FreeCashFlow, EvidenceID, EvidenceSHA256 string }
 	candidateCanonical struct {
-		InstrumentID    string `json:"instrument_id"`
-		VenueContractID string `json:"venue_contract_id"`
-		OptionType      string `json:"option_type"`
-		Strike          string `json:"strike"`
-		Expiry          string `json:"expiry"`
-		Delta           string `json:"delta"`
-		Bid             string `json:"bid"`
-		Ask             string `json:"ask"`
-		OpenInterest    string `json:"open_interest"`
-		Volume          string `json:"volume"`
-		AvailableAt     string `json:"available_at"`
-		EvidenceID      string `json:"evidence_id"`
-		EvidenceSHA256  string `json:"evidence_sha256"`
+		InstrumentID           string `json:"instrument_id"`
+		VenueContractID        string `json:"venue_contract_id"`
+		PartitionContentSHA256 string `json:"partition_content_sha256"`
+		SourceKey              string `json:"source_key"`
+		OptionType             string `json:"option_type"`
+		Strike                 string `json:"strike"`
+		Expiry                 string `json:"expiry"`
+		Delta                  string `json:"delta"`
+		Bid                    string `json:"bid"`
+		Ask                    string `json:"ask"`
+		OpenInterest           string `json:"open_interest"`
+		Volume                 string `json:"volume"`
+		AvailableAt            string `json:"available_at"`
+		EvidenceID             string `json:"evidence_id"`
+		EvidenceSHA256         string `json:"evidence_sha256"`
 	}
 )
 
@@ -106,15 +112,16 @@ type eventCanonical struct {
 	EvidenceSHA256     string               `json:"evidence_sha256"`
 }
 type scenarioCanonical struct {
-	Schema          string           `json:"schema"`
-	State           string           `json:"state"`
-	PolicyID        string           `json:"policy_id"`
-	PolicySHA256    string           `json:"policy_sha256"`
-	UnderlyingID    string           `json:"underlying_id"`
-	InitialCapital  string           `json:"initial_capital"`
-	EvaluationStart string           `json:"evaluation_start"`
-	EvaluationEnd   string           `json:"evaluation_end"`
-	Events          []eventCanonical `json:"events"`
+	Schema          string                         `json:"schema"`
+	State           string                         `json:"state"`
+	PolicyID        string                         `json:"policy_id"`
+	PolicySHA256    string                         `json:"policy_sha256"`
+	UnderlyingID    string                         `json:"underlying_id"`
+	InitialCapital  string                         `json:"initial_capital"`
+	EvaluationStart string                         `json:"evaluation_start"`
+	EvaluationEnd   string                         `json:"evaluation_end"`
+	Mode            strategycatalog.ExperimentMode `json:"mode"`
+	Events          []eventCanonical               `json:"events"`
 }
 type Scenario struct {
 	canonical scenarioCanonical
@@ -124,7 +131,7 @@ type Scenario struct {
 }
 
 func NewScenario(input ScenarioInput) (*Scenario, error) {
-	if input.Policy == nil || input.UnderlyingID == uuid.Nil || !positive(input.InitialCapital) || !canonicalTime(input.EvaluationStart) || !canonicalTime(input.EvaluationEnd) || !input.EvaluationStart.Before(input.EvaluationEnd) || len(input.Events) == 0 || len(input.Events) > 100000 {
+	if input.Policy == nil || input.UnderlyingID == uuid.Nil || !positive(input.InitialCapital) || !canonicalTime(input.EvaluationStart) || !canonicalTime(input.EvaluationEnd) || !input.EvaluationStart.Before(input.EvaluationEnd) || (input.Mode != strategycatalog.ExperimentPaperScored && input.Mode != strategycatalog.ExperimentPaperStress) || len(input.Events) == 0 || len(input.Events) > 100000 {
 		return nil, fmt.Errorf("wheel scenario is invalid")
 	}
 	events := make([]eventCanonical, len(input.Events))
@@ -143,7 +150,7 @@ func NewScenario(input ScenarioInput) (*Scenario, error) {
 	if !input.Events[0].OccurredAt.Equal(input.EvaluationStart) || !input.Events[len(input.Events)-1].OccurredAt.Equal(input.EvaluationEnd) {
 		return nil, fmt.Errorf("wheel events do not span evaluation window")
 	}
-	canonical := scenarioCanonical{Schema: ScenarioSchemaV1, State: "declared", PolicyID: input.Policy.ID().String(), PolicySHA256: input.Policy.Digest(), UnderlyingID: input.UnderlyingID.String(), InitialCapital: input.InitialCapital, EvaluationStart: formatTime(input.EvaluationStart), EvaluationEnd: formatTime(input.EvaluationEnd), Events: events}
+	canonical := scenarioCanonical{Schema: ScenarioSchemaV1, State: "declared", PolicyID: input.Policy.ID().String(), PolicySHA256: input.Policy.Digest(), UnderlyingID: input.UnderlyingID.String(), InitialCapital: input.InitialCapital, EvaluationStart: formatTime(input.EvaluationStart), EvaluationEnd: formatTime(input.EvaluationEnd), Mode: input.Mode, Events: events}
 	encoded, _ := json.Marshal(canonical)
 	digest := hash(encoded)
 	return &Scenario{canonical: canonical, bytes: encoded, digest: digest, id: economicid.DeterministicUUID("quality-filtered-wheel-scenario", ScenarioSchemaV1+"@sha256:"+digest)}, nil
@@ -206,7 +213,7 @@ func canonicalizeEvent(sequence int, event EventInput, policy *Policy) (eventCan
 }
 
 func canonicalizeCandidate(value Candidate, decisionAt time.Time, policy *Policy) (candidateCanonical, error) {
-	if value.InstrumentID == uuid.Nil || value.VenueContractID == uuid.Nil || (value.OptionType != "put" && value.OptionType != "call") || !positive(value.Strike) || !canonicalTime(value.Expiry) || !value.Expiry.After(decisionAt) || !signed(value.Delta) || !positive(value.Bid) || !positive(value.Ask) || decimal.RequireFromString(value.Ask).LessThan(decimal.RequireFromString(value.Bid)) || !nonnegative(value.OpenInterest) || !nonnegative(value.Volume) || !canonicalTime(value.AvailableAt) || value.AvailableAt.After(decisionAt) || value.EvidenceID == uuid.Nil || !digestPattern.MatchString(value.EvidenceSHA256) {
+	if value.InstrumentID == uuid.Nil || value.VenueContractID == uuid.Nil || !digestPattern.MatchString(value.PartitionContentSHA256) || value.SourceKey == "" || (value.OptionType != "put" && value.OptionType != "call") || !positive(value.Strike) || !canonicalTime(value.Expiry) || !value.Expiry.After(decisionAt) || !signed(value.Delta) || !positive(value.Bid) || !positive(value.Ask) || decimal.RequireFromString(value.Ask).LessThan(decimal.RequireFromString(value.Bid)) || !nonnegative(value.OpenInterest) || !nonnegative(value.Volume) || !canonicalTime(value.AvailableAt) || value.AvailableAt.After(decisionAt) || value.EvidenceID == uuid.Nil || !digestPattern.MatchString(value.EvidenceSHA256) {
 		return candidateCanonical{}, fmt.Errorf("option candidate is invalid")
 	}
 	delta := decimal.RequireFromString(value.Delta)
@@ -217,7 +224,7 @@ func canonicalizeCandidate(value Candidate, decisionAt time.Time, policy *Policy
 	if spread.GreaterThan(decimal.RequireFromString(policy.canonical.MaximumSpreadRatio)) {
 		return candidateCanonical{}, fmt.Errorf("option candidate spread exceeds policy")
 	}
-	return candidateCanonical{InstrumentID: value.InstrumentID.String(), VenueContractID: value.VenueContractID.String(), OptionType: value.OptionType, Strike: value.Strike, Expiry: formatTime(value.Expiry), Delta: value.Delta, Bid: value.Bid, Ask: value.Ask, OpenInterest: value.OpenInterest, Volume: value.Volume, AvailableAt: formatTime(value.AvailableAt), EvidenceID: value.EvidenceID.String(), EvidenceSHA256: value.EvidenceSHA256}, nil
+	return candidateCanonical{InstrumentID: value.InstrumentID.String(), VenueContractID: value.VenueContractID.String(), PartitionContentSHA256: value.PartitionContentSHA256, SourceKey: value.SourceKey, OptionType: value.OptionType, Strike: value.Strike, Expiry: formatTime(value.Expiry), Delta: value.Delta, Bid: value.Bid, Ask: value.Ask, OpenInterest: value.OpenInterest, Volume: value.Volume, AvailableAt: formatTime(value.AvailableAt), EvidenceID: value.EvidenceID.String(), EvidenceSHA256: value.EvidenceSHA256}, nil
 }
 
 func candidateKey(value Candidate) string {
@@ -287,6 +294,13 @@ func (s *Scenario) EvaluationEnd() time.Time {
 	return parseTime(s.canonical.EvaluationEnd)
 }
 
+func (s *Scenario) Mode() strategycatalog.ExperimentMode {
+	if s == nil {
+		return ""
+	}
+	return s.canonical.Mode
+}
+
 func cloneString(value *string) *string {
 	if value == nil {
 		return nil
@@ -313,7 +327,7 @@ func ScenarioFromCanonical(id uuid.UUID, digest string, raw []byte, policy *Poli
 		}
 		events[i] = EventInput{Kind: event.Kind, OccurredAt: parseTime(event.OccurredAt), UnderlyingMark: event.UnderlyingMark, Quality: quality, Candidates: candidates, OptionMarkAsk: cloneString(event.OptionMarkAsk), DividendPerShare: cloneString(event.DividendPerShare), AssignmentOptionID: assignmentID, EvidenceID: uuid.MustParse(event.EvidenceID), EvidenceSHA256: event.EvidenceSHA256}
 	}
-	value, err := NewScenario(ScenarioInput{Policy: policy, UnderlyingID: uuid.MustParse(canonical.UnderlyingID), InitialCapital: canonical.InitialCapital, EvaluationStart: parseTime(canonical.EvaluationStart), EvaluationEnd: parseTime(canonical.EvaluationEnd), Events: events})
+	value, err := NewScenario(ScenarioInput{Policy: policy, UnderlyingID: uuid.MustParse(canonical.UnderlyingID), InitialCapital: canonical.InitialCapital, EvaluationStart: parseTime(canonical.EvaluationStart), EvaluationEnd: parseTime(canonical.EvaluationEnd), Mode: canonical.Mode, Events: events})
 	if err != nil || canonical.Schema != ScenarioSchemaV1 || canonical.State != "declared" || value.ID() != id || value.Digest() != digest || !bytes.Equal(value.bytes, raw) {
 		return nil, fmt.Errorf("wheel scenario identity does not reconstruct")
 	}
@@ -328,5 +342,5 @@ func qualityInput(value *qualityCanonical) *QualityEvidence {
 }
 
 func candidateInput(value candidateCanonical) Candidate {
-	return Candidate{InstrumentID: uuid.MustParse(value.InstrumentID), VenueContractID: uuid.MustParse(value.VenueContractID), OptionType: value.OptionType, Strike: value.Strike, Expiry: parseTime(value.Expiry), Delta: value.Delta, Bid: value.Bid, Ask: value.Ask, OpenInterest: value.OpenInterest, Volume: value.Volume, AvailableAt: parseTime(value.AvailableAt), EvidenceID: uuid.MustParse(value.EvidenceID), EvidenceSHA256: value.EvidenceSHA256}
+	return Candidate{InstrumentID: uuid.MustParse(value.InstrumentID), VenueContractID: uuid.MustParse(value.VenueContractID), PartitionContentSHA256: value.PartitionContentSHA256, SourceKey: value.SourceKey, OptionType: value.OptionType, Strike: value.Strike, Expiry: parseTime(value.Expiry), Delta: value.Delta, Bid: value.Bid, Ask: value.Ask, OpenInterest: value.OpenInterest, Volume: value.Volume, AvailableAt: parseTime(value.AvailableAt), EvidenceID: uuid.MustParse(value.EvidenceID), EvidenceSHA256: value.EvidenceSHA256}
 }

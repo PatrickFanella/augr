@@ -2,11 +2,14 @@ package wheel
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/PatrickFanella/get-rich-quick/internal/strategycatalog"
 )
 
 func TestWheelAssignmentDividendCoveredCallAndCappedUpside(t *testing.T) {
@@ -188,7 +191,7 @@ func wheelScenarioInput(policy *Policy, extraCandidates bool) ScenarioInput {
 	if extraCandidates {
 		putCandidates = append(putCandidates, wheelCandidate("put", "90", "-0.21", start.Add(32*24*time.Hour), 22))
 	}
-	return ScenarioInput{Policy: policy, UnderlyingID: underlying, InitialCapital: "10000", EvaluationStart: start, EvaluationEnd: start.Add(63 * 24 * time.Hour), Events: []EventInput{
+	return ScenarioInput{Policy: policy, UnderlyingID: underlying, InitialCapital: "10000", EvaluationStart: start, EvaluationEnd: start.Add(63 * 24 * time.Hour), Mode: strategycatalog.ExperimentPaperScored, Events: []EventInput{
 		{Kind: EventAssessQuality, OccurredAt: start, UnderlyingMark: "100", Quality: &QualityEvidence{AvailableAt: start, ROIC: "0.2", DebtToAssets: "0.3", FreeCashFlow: "1000", EvidenceID: wheelID(1), EvidenceSHA256: strings.Repeat("1", 64)}, EvidenceID: wheelID(11), EvidenceSHA256: strings.Repeat("a", 64)},
 		{Kind: EventOpenPut, OccurredAt: start.Add(24 * time.Hour), UnderlyingMark: "100", Candidates: putCandidates, EvidenceID: wheelID(12), EvidenceSHA256: strings.Repeat("b", 64)},
 		{Kind: EventExpiry, OccurredAt: start.Add(31 * 24 * time.Hour), UnderlyingMark: "90", EvidenceID: wheelID(13), EvidenceSHA256: strings.Repeat("c", 64)},
@@ -208,7 +211,7 @@ func wheelCallEvent(at time.Time, _ uuid.UUID, extra bool) EventInput {
 }
 
 func wheelCandidate(kind, strike, delta string, expiry time.Time, salt int) Candidate {
-	return Candidate{InstrumentID: wheelID(100 + salt), VenueContractID: wheelID(200 + salt), OptionType: kind, Strike: strike, Expiry: expiry, Delta: delta, Bid: map[string]string{"put": "2", "call": "1.5"}[kind], Ask: map[string]string{"put": "2.1", "call": "1.6"}[kind], OpenInterest: "1000", Volume: "100", AvailableAt: expiry.Add(-31 * 24 * time.Hour), EvidenceID: wheelID(300 + salt), EvidenceSHA256: strings.Repeat("9", 64)}
+	return Candidate{InstrumentID: wheelID(100 + salt), VenueContractID: wheelID(200 + salt), PartitionContentSHA256: strings.Repeat("8", 64), SourceKey: fmt.Sprintf("wheel-option-%d", salt), OptionType: kind, Strike: strike, Expiry: expiry, Delta: delta, Bid: map[string]string{"put": "2", "call": "1.5"}[kind], Ask: map[string]string{"put": "2.1", "call": "1.6"}[kind], OpenInterest: "1000", Volume: "100", AvailableAt: expiry.Add(-31 * 24 * time.Hour), EvidenceID: wheelID(300 + salt), EvidenceSHA256: strings.Repeat("9", 64)}
 }
 
 func wheelID(value int) uuid.UUID {
