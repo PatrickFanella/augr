@@ -66,48 +66,48 @@ creates an experiment/deployment.
 
 ## Task 1: Evidence-bound hypothesis artifact
 
-- [ ] Implement exact OVR-301/305/601 bindings, falsifiable claim contract,
+- [x] Implement exact OVR-301/305/601 bindings, falsifiable claim contract,
   point-in-time source snapshots, full search lineage, authoring provenance,
   and declared tests.
-- [ ] Validate every source against manifest observations and every compiled
+- [x] Validate every source against manifest observations and every compiled
   candidate/robustness relationship against exact immutable parents.
-- [ ] Prove permutation convergence, semantic-edit identity changes, missing/
+- [x] Prove permutation convergence, semantic-edit identity changes, missing/
   future/unmanifested source rejection, incomplete search/test rejection,
   tamper rejection, and clone-safe restoration.
-- [ ] Commit and push the hypothesis slice.
+- [x] Commit and push the hypothesis slice.
 
 ## Task 2: Independent critic artifact
 
-- [ ] Implement closed findings and explicit source/leakage/search-adjustment/
+- [x] Implement closed findings and explicit source/leakage/search-adjustment/
   cost/test/reproducibility checks with advisory recommendation only.
-- [ ] Require exact hypothesis binding and deterministic recommendation rules;
+- [x] Require exact hypothesis binding and deterministic recommendation rules;
   prove critical/high/unknown findings cannot be review-ready.
-- [ ] Prove critic permutation convergence, semantic edits change identity,
+- [x] Prove critic permutation convergence, semantic edits change identity,
   missing references fail, tampering fails, and no lifecycle authority exists.
-- [ ] Commit and push the critic slice.
+- [x] Commit and push the critic slice.
 
 ## Task 3: Migration 96 and retained qualification
 
-- [ ] Persist immutable hypothesis/source/search/result/test and critic/finding/
+- [x] Persist immutable hypothesis/source/search/result/test and critic/finding/
   check graphs with exact parent scope and PostgreSQL reconstruction.
-- [ ] Prove eight-writer convergence, changed retry conflict, every-stage atomic
+- [x] Prove eight-writer convergence, changed retry conflict, every-stage atomic
   rollback, forgery rejection, append-only evidence, nonempty rollback refusal,
   and empty `96 -> 95 -> 96`.
-- [ ] Retain one review-ready synthetic workflow and one critical-finding
+- [x] Retain one review-ready synthetic workflow and one critical-finding
   rejection without creating experiment/deployment/lifecycle records.
-- [ ] Add an inspection/recovery/rollback runbook with exact IDs and digests.
-- [ ] Run focused/database races, repository-wide backend/static and pinned
+- [x] Add an inspection/recovery/rollback runbook with exact IDs and digests.
+- [x] Run focused/database races, repository-wide backend/static and pinned
   frontend gates, diff review, and isolated kill-switched schema-96 health/API/
   rollback/backup/restore/reapply.
 - [ ] Commit/push verified slices, fetch, and prove `0 0` before OVR-603.
 
 ## Acceptance evidence to record
 
-- [ ] Every hypothesis and critic artifact reconstructs exact sources,
+- [x] Every hypothesis and critic artifact reconstructs exact sources,
   prompt/model hashes, declared tests, and complete search lineage.
-- [ ] Critic recommendations never change promotion/deployment state; policy
+- [x] Critic recommendations never change promotion/deployment state; policy
   evaluators and explicit future experiment review remain authoritative.
-- [ ] Local qualification is `VERIFIED_LOCAL`; model/search invocation,
+- [x] Local qualification is `VERIFIED_LOCAL`; model/search invocation,
   licensed source acquisition, independent review, experiment execution, shared
   migration, scheduling, deployment, broker routing, and live trading remain
   `BLOCKED_EXTERNAL`.
