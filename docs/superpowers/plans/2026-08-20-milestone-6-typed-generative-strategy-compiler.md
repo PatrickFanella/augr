@@ -61,47 +61,83 @@ transition, scheduler, intent, or order path.
 
 ## Task 1: Typed specification and expression AST
 
-- [ ] Implement canonical inputs, universe/benchmark, typed closed expressions,
+- [x] Implement canonical inputs, universe/benchmark, typed closed expressions,
   sizing/exits, costs/capacity, prohibitions, tests, retirement, and provenance.
-- [ ] Prove malformed, unbound, type-invalid, nondeterministic, lookahead-capable,
+- [x] Prove malformed, unbound, type-invalid, nondeterministic, lookahead-capable,
   noncanonical, oversized, or incomplete specifications fail closed.
-- [ ] Prove permutation convergence, semantic-edit identity change, clone-safe
+- [x] Prove permutation convergence, semantic-edit identity change, clone-safe
   getters, tamper rejection, and exact canonical restoration.
-- [ ] Commit and push the typed-specification slice.
+- [x] Commit and push the typed-specification slice.
 
 ## Task 2: Deterministic OVR-302 compiler
 
-- [ ] Compile one valid spec into canonical OVR-302 configuration and one exact
+- [x] Compile one valid spec into canonical OVR-302 configuration and one exact
   immutable `strategycatalog.Version` with fixed compiler/source/decision pins.
-- [ ] Bind a content-addressed receipt to family/spec/version IDs and digests;
+- [x] Bind a content-addressed receipt to family/spec/version IDs and digests;
   reconstruct compiled bytes independently and expose no deployment authority.
-- [ ] Prove repeated/concurrent compilation is byte-identical, all semantic
+- [x] Prove repeated/concurrent compilation is byte-identical, all semantic
   edits change identity, invalid inputs return no output, and output cannot claim
   active/proposed/deployed state.
-- [ ] Commit and push the compiler slice.
+- [x] Commit and push the compiler slice.
 
 ## Task 3: Migration 95 and retained qualification
 
-- [ ] Persist immutable spec parents/children and compilation receipts with
+- [x] Persist immutable spec parents/children and compilation receipts with
   exact OVR-302 family/version scope and PostgreSQL reconstruction.
-- [ ] Prove eight-writer convergence, changed retry conflict, every-stage atomic
+- [x] Prove eight-writer convergence, changed retry conflict, every-stage atomic
   rollback, forgery rejection, append-only evidence, nonempty rollback refusal,
   and empty `95 -> 94 -> 95`.
-- [ ] Retain one valid compilation and explicit invalid/nondeterministic
+- [x] Retain one valid compilation and explicit invalid/nondeterministic
   no-artifact attempts without fabricating rejected deployment records.
-- [ ] Add an inspection/recovery/rollback runbook with exact IDs and digests.
-- [ ] Run focused/database races, repository-wide backend/static and pinned
+- [x] Add an inspection/recovery/rollback runbook with exact IDs and digests.
+- [x] Run focused/database races, repository-wide backend/static and pinned
   frontend gates, diff review, and isolated kill-switched schema-95 health/API/
   rollback/backup/restore/reapply.
-- [ ] Commit/push verified slices, fetch, and prove `0 0` before OVR-602.
+- [x] Commit/push verified slices, fetch, and prove `0 0` before OVR-602.
 
 ## Acceptance evidence to record
 
-- [ ] One generated spec deterministically reconstructs its exact typed config,
+- [x] One generated spec deterministically reconstructs its exact typed config,
   OVR-302 version, and compilation receipt under repeated and concurrent use.
-- [ ] Invalid or nondeterministic output yields no spec/version/receipt and no
+- [x] Invalid or nondeterministic output yields no spec/version/receipt and no
   path can create or activate a deployment.
-- [ ] Local qualification is `VERIFIED_LOCAL`; model invocation, source/search
+- [x] Local qualification is `VERIFIED_LOCAL`; model invocation, source/search
   lineage, independent review, experiment declaration/execution, shared
   migration, scheduling, deployment, broker routing, and live trading remain
   `BLOCKED_EXTERNAL`.
+
+## Qualification record — 2026-08-20
+
+OVR-601 is `VERIFIED_LOCAL` on retained loopback database
+`augr_ovr601_qual_20260820` at schema 95. Family
+`4fd31192-fb3b-e65e-5301-b0051ed37e92` binds typed spec
+`146583ee-f990-51bf-f94f-d8416bd5ae94` with SHA-256
+`e66fb26fcc33cd76dcce616543f8962ad7d2f821742d80fcb056169b51b45ca3`.
+The compiler emitted immutable OVR-302 version
+`147faf3b-9721-686f-9388-4c0c3b300f3c` with SHA-256
+`4f9705a44729d9591e0d4d07efdb476b181aab62d4ae33e7261e86f7bd5da8b9`
+and receipt `0aa08924-7d7a-bf97-a413-9361dab85aa2` with SHA-256
+`a3a873940fe594a25eebc37d17ef9a648ea0fe3c8ef1cba81597bec35329ae46`.
+Seventeen normalized spec rows reconstruct independently.
+
+Eight concurrent compiler calls and eight concurrent database writers converge
+byte-for-byte. A semantic edit creates a distinct spec/version and conflicts
+under the retained family/spec key. Injected parent, normalized-row, and receipt
+failures roll back atomically; restart reconstruction matches all three digests;
+forged and mutated evidence is rejected. Missing safety prohibitions, unknown or
+random operators, unbound inputs, type errors, stale-data continuation,
+noncanonical numerics, and invalid compiler identity produce no spec/version/
+receipt. Migration 95 passed empty `95 -> 94 -> 95`; retained rollback refused
+with the spec, seventeen rows, and receipt intact. The expected failed down set
+only migration metadata dirty; the dedicated qualification database was
+inspected and forced back to clean version 95 without changing evidence.
+
+Repository-wide race tests, build, vet, lint, format, and reachable-
+vulnerability checks passed. Pinned Node 22.23.2 passed 162 frontend tests,
+lint, and production build; `npm audit --omit=dev` retains one low-severity
+Windows-only development-server advisory in esbuild. The isolated production
+verifier passed fresh `1 -> 95`, health, authenticated read-only API smoke,
+`95 -> 60` rollback, schema-60 backup/restore, reapply to 95, and post-reapply
+health. Model invocation, source/search lineage, independent review, experiment
+declaration/execution, shared migration, scheduling, deployment, broker routing,
+and live trading remain `BLOCKED_EXTERNAL`.

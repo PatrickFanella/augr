@@ -1352,6 +1352,25 @@ Dependency-order execution proceeds to Milestone 6.
 | OVR-606 | OVR-102, OVR-301, OVR-603 | Full cost attribution | Model, data, fee, rebate, and infrastructure costs are actual, estimated, or explicitly unknown. |
 | OVR-607 | OVR-605 | Daily operator brief and incident inbox | One brief explains performance, decisions, drift, risk, costs, and required attention. |
 
+OVR-601 is complete locally as schema 95. A generated candidate is now limited
+to a typed, bounded specification with freshness-and-abstention inputs, fixed
+universe and benchmark, a closed deterministic expression AST, bounded sizing,
+explicit exits/costs/capacity, mandatory safety prohibitions, property/example
+tests, retirement rules, and authoring provenance. The compiler emits one exact
+immutable OVR-302 strategy version and one content-addressed `compiled` receipt,
+with no experiment, deployment, schedule, intent, or order authority. The
+retained graph has one spec, seventeen normalized rows, one bound version, and
+one receipt. Eight compiler calls and eight writers converge byte-for-byte;
+semantic change conflicts under the stable key; invalid/nondeterministic input
+emits nothing. Stage rollback, restart, forgery/append-only enforcement,
+retained rollback refusal, empty `95 -> 94 -> 95`, repository-wide backend/
+static and pinned frontend gates, and isolated production-image fresh-95
+health/API/rollback-60/backup-restore/reapply passed. These results are
+**VERIFIED_LOCAL** only. Model invocation, source/search lineage, independent
+review, experiment execution, shared migration, scheduling, deployment, broker
+routing, and live trading remain **BLOCKED_EXTERNAL**. Dependency-order
+execution proceeds to OVR-602.
+
 ### Milestone 7 — Evidence program
 
 | ID | Depends on | Work | Acceptance |
