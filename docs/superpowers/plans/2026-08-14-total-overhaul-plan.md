@@ -969,6 +969,40 @@ nine-file formatter drift,
 five reachable Go dependency advisories, and eight npm advisories remain
 explicit and unsuppressed. OVR-206 is the next dependency-ready item.
 
+#### OVR-206 and OVR-207 local implementation addendum — 2026-08-20
+
+OVR-206 is complete locally as an exact content-addressed capital and margin
+policy boundary. Six scored Reg-T capital tiers from `$500` through `$5m` and
+one explicitly isolated stress/unlimited profile bind immutably to accounts.
+The common simulation replay assesses capital before route, preserves identical
+backtest and paper lifecycle/economic outcomes after admission, and creates no
+downstream order or economic evidence after rejection. The retained schema-74
+rehearsal contains one policy, seven accounts, seven bindings, and seven capital
+flows; nonempty rollback refused and a separate empty database proved `74 ->
+73 -> 74`. Full local gates and independent review passed. This is an
+approximation contract, not a claim of broker buying-power parity.
+
+OVR-207 is complete locally as a provider-neutral, exact, read-only
+reconciliation boundary. Two complete equivalent provider captures are
+required before comparison. Exact cash, position, and fill facts reconcile
+against one verified OVR-104 checkpoint and the OVR-205/203/103 lineage;
+missing, unstable, incomplete, unmapped, correction, bust, or drift evidence
+creates deterministic immutable results and incidents without mutating either
+source. Incomplete local lineage that previously could disappear behind joins
+is now retained as `local_fill_incomplete`, and every persisted child row
+copies and validates its parent scope.
+
+Fresh migration `1 -> 75`, retained Alpaca/Kalshi clean replays plus an
+intentional cash drift, nonempty rollback refusal, separate empty `75 -> 74 ->
+75`, focused and repository-wide race/build/vet/lint/format/vulnerability
+gates, all 162 frontend tests and production build, and a kill-switched local
+health smoke all passed. Independent final review approved the complete diff.
+The smoke again observed that the stale-run reconciler starts despite
+`ENABLE_SCHEDULER=false`; no evidence rows changed. OVR-206 and OVR-207 are
+**VERIFIED_LOCAL** only: no shared migration, provider call, broker mutation,
+deployment, activation, correction workflow, or cutover occurred. Milestone 2
+is locally code-complete, and dependency-order execution proceeds to OVR-301.
+
 ### Milestone 3 — Strategy and research system
 
 | ID | Depends on | Work | Acceptance |

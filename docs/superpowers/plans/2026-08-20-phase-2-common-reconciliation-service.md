@@ -411,24 +411,57 @@ DB_URL="$AUGR_PHASE2_DB_URL" go test -race -count=1 \
   and schedulers false, no provider credentials, isolated schema-75 PostgreSQL,
   and isolated Redis. Check all health routes, stop cleanly, and prove retained
   evidence unchanged.
-- [ ] Obtain independent final diff approval with no unresolved P0/P1.
-- [ ] Commit verified slices, push `codex/augr-overhaul`, fetch, prove local and
+- [x] Obtain independent final diff approval with no unresolved P0/P1.
+- [x] Commit verified slices, push `codex/augr-overhaul`, fetch, prove local and
   remote hashes equal with `0 0` divergence, then begin OVR-301.
 
 ## Acceptance evidence to record after implementation
 
-- [ ] Stable external snapshot admission requires two byte/evidence-equivalent
+- [x] Stable external snapshot admission requires two byte/evidence-equivalent
   complete reads; changing or incomplete provider state cannot be called clean.
-- [ ] Exact cash, fill, and position agreement produces deterministic matched
+- [x] Exact cash, fill, and position agreement produces deterministic matched
   results with zero incidents for both Alpaca and Kalshi fixtures.
-- [ ] Every drift or non-comparable fact produces immutable run/result/incident
+- [x] Every drift or non-comparable fact produces immutable run/result/incident
   evidence and never silently mutates provider or local economic state.
-- [ ] Provider fills reconcile to exact OVR-205 observations, OVR-203 lifecycle,
+- [x] Provider fills reconcile to exact OVR-205 observations, OVR-203 lifecycle,
   OVR-103 normalization, and exact OVR-104 checkpoint transaction membership.
-- [ ] Correction/bust evidence keys through the original fill relationship and
+- [x] Correction/bust evidence keys through the original fill relationship and
   remains an incident until a separately reviewed correction workflow exists.
-- [ ] Migration 75 is additive, append-only, empty-only reversible, and activates
+- [x] Migration 75 is additive, append-only, empty-only reversible, and activates
   no runtime path, grant, scheduler, correction, or current-policy pointer.
-- [ ] Focused races, real PostgreSQL, full backend/frontend gates, kill-switched
+- [x] Focused races, real PostgreSQL, full backend/frontend gates, kill-switched
   startup, independent review, commits, push, and synchronization are recorded
   honestly with local synthetic evidence separated from external qualification.
+
+## Closure evidence (2026-08-20)
+
+- The reviewed plan in `b7d885e` was implemented across commits `0ab3afb`
+  through `4e478bc`. The final repair makes incomplete local lifecycle lineage
+  explicit and non-clean, preserves provider snapshot failure provenance, and
+  copies plus validates parent scope on every reconciliation child row.
+- A fresh dedicated loopback PostgreSQL database applied migrations `1 -> 75`.
+  Its retained public-schema rehearsal contains one policy, three provider
+  snapshots, two local snapshots, three runs, fourteen results, and one
+  intentional cash-drift incident; every retained run digest recomputes. The
+  nonempty rollback refused. A separate empty database completed `75 -> 74 ->
+  75`.
+- Focused reconciliation and migration suites passed under the race detector,
+  including orphan-observation and forged-child-scope regressions.
+  Repository-wide `task test:race`, backend build, vet, lint, format check, and
+  `govulncheck` passed with zero called vulnerabilities.
+- Pinned Node `v22.23.2` install, all 162 frontend tests, lint, and the
+  2,166-module production build passed. The remaining npm finding is one
+  low-severity transitive esbuild advisory affecting the Windows development
+  server, not the qualified Linux production bundle.
+- The rebuilt binary started only against isolated schema-75 PostgreSQL and
+  Redis with the global kill switch active, live trading and schedulers false,
+  no provider credentials, and inert placeholder data/LLM endpoints. `/health`,
+  `/healthz`, and `/api/v1/health` returned HTTP 200 with database and Redis
+  `ok`; shutdown completed with zero in-flight runs and retained counts were
+  unchanged. The pre-existing stale-run reconciler still starts while
+  `ENABLE_SCHEDULER=false`; this is recorded as a runtime-composition gap, not
+  cutover evidence.
+- Independent final review returned `APPROVE` with no P0/P1/P2 findings.
+- Evidence status: **VERIFIED_LOCAL**. No shared or production database was
+  migrated, no external provider or broker was called, and no deployment,
+  correction workflow, scheduler activation, or cutover was performed.
