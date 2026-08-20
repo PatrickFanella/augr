@@ -256,12 +256,12 @@ Out of scope:
 
 ## Task 1: RED policy and canonical evidence vocabulary
 
-- [ ] Test the exact fixed policy, providers, stability rule, comparison kinds,
+- [x] Test the exact fixed policy, providers, stability rule, comparison kinds,
   statuses, reasons, severities, canonical ordering, digest, version, UUID,
   defensive copies, and round-trip decode.
-- [ ] Reject missing, extra, duplicate, unknown, reordered, malformed, overlong,
+- [x] Reject missing, extra, duplicate, unknown, reordered, malformed, overlong,
   unbounded, or caller-defaulted policy facts.
-- [ ] Implement the minimum immutable policy artifact and closed enums.
+- [x] Implement the minimum immutable policy artifact and closed enums.
 
 Run:
 
