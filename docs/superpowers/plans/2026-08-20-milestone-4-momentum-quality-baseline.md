@@ -83,10 +83,10 @@ Out of scope:
 
 ## Task 2: Rebalance, turnover, costs, regimes, and OVR-303 adapter
 
-- [ ] Derive sell-before-buy trades, cap scaling, remaining target drift,
+- [x] Derive sell-before-buy trades, cap scaling, remaining target drift,
   holdings, cash, executable-price costs, turnover, and after-cost return.
-- [ ] Derive bull/bear/sideways regimes and per-regime/transition metrics.
-- [ ] Bind an exact OVR-302 version and translate engine trades to ordered
+- [x] Derive bull/bear/sideways regimes and per-regime/transition metrics.
+- [x] Bind an exact OVR-302 version and translate engine trades to ordered
   OVR-303 intents with exact manifest evidence and capital notional.
 - [ ] Prove scored/stress replay, cap edges, multi-rebalance convergence, regime
   transitions, common capital/simulation enforcement, and no runtime path.
