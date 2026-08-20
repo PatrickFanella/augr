@@ -53,12 +53,12 @@ settlement, broker route, deployment, or live trade.
 
 ## Task 1: Cost-line and report domain
 
-- [ ] Implement closed categories/statuses, evidence/method contracts, exact
+- [x] Implement closed categories/statuses, evidence/method contracts, exact
   decimals, deterministic ordering/identity, totals, and completeness state.
-- [ ] Prove actual/estimated/unknown handling, missing-category rejection,
+- [x] Prove actual/estimated/unknown handling, missing-category rejection,
   unknown-is-not-zero, fee/rebate signs, currency isolation, permutation
   convergence, semantic change, and no promotion/ledger mutation surface.
-- [ ] Bind exact OVR-603 case/summary, OVR-301 manifest/hypothesis, account, and
+- [x] Bind exact OVR-603 case/summary, OVR-301 manifest/hypothesis, account, and
   reporting window evidence.
 - [ ] Commit and push the domain slice after focused race tests.
 

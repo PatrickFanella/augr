@@ -355,6 +355,18 @@ func (c *Case) AuthoritativeNextState() string {
 	}
 	return c.canonical.AuthoritativeNextState
 }
+func (c *Case) HypothesisID() uuid.UUID {
+	if c == nil {
+		return uuid.Nil
+	}
+	return uuid.MustParse(c.canonical.HypothesisID)
+}
+func (c *Case) HypothesisDigest() string {
+	if c == nil {
+		return ""
+	}
+	return c.canonical.HypothesisSHA256
+}
 func (r *Review) ID() uuid.UUID {
 	if r == nil {
 		return uuid.Nil

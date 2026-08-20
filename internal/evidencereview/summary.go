@@ -156,6 +156,18 @@ func (s *Summary) Consensus() string {
 	return s.canonical.Consensus
 }
 func (s *Summary) EscalationRequired() bool { return s != nil && s.canonical.EscalationRequired }
+func (s *Summary) CaseID() uuid.UUID {
+	if s == nil {
+		return uuid.Nil
+	}
+	return uuid.MustParse(s.canonical.CaseID)
+}
+func (s *Summary) CaseDigest() string {
+	if s == nil {
+		return ""
+	}
+	return s.canonical.CaseSHA256
+}
 func (s *Summary) AuthoritativeOutcome() string {
 	if s == nil {
 		return ""

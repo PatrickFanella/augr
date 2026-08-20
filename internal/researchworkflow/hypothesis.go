@@ -463,6 +463,24 @@ func (h *Hypothesis) CanonicalBytes() json.RawMessage {
 	return append(json.RawMessage(nil), h.bytes...)
 }
 func (h *Hypothesis) ManifestID() uuid.UUID { return uuid.MustParse(h.canonical.Parents.ManifestID) }
+func (h *Hypothesis) ManifestDigest() string {
+	if h == nil {
+		return ""
+	}
+	return h.canonical.Parents.ManifestSHA256
+}
+func (h *Hypothesis) ProvenanceCost() string {
+	if h == nil {
+		return ""
+	}
+	return h.canonical.Provenance.Cost
+}
+func (h *Hypothesis) ProvenanceCurrency() string {
+	if h == nil {
+		return ""
+	}
+	return h.canonical.Provenance.Currency
+}
 func (h *Hypothesis) AssessmentID() uuid.UUID {
 	return uuid.MustParse(h.canonical.Parents.AssessmentID)
 }
