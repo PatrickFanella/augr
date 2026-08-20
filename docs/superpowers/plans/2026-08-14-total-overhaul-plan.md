@@ -1172,6 +1172,28 @@ independent review, shared migration, promotion, runtime adoption, allocation,
 scheduling, deployment, and production activation remain **BLOCKED_EXTERNAL**.
 Dependency-order execution proceeds to OVR-403.
 
+**OVR-403 through OVR-405 local completion addendum (2026-08-20):** Additive
+migrations 84 through 86 and the deterministic momentum/quality, ETF
+time-series trend, and defined-risk vertical-spread boundaries are complete.
+Each program binds exact point-in-time manifest evidence, derives executable
+whole-lot/contract decisions and costs, replays through OVR-303 scored/stress
+boundaries, and persists an independently reconstructable append-only graph.
+OVR-405 makes package-versus-sequential execution explicit, admits only four
+1:1 European cash-settled verticals, reserves engine-derived maximum loss and
+orphan risk, refuses insufficient atomic depth without a leg, and immediately
+unwinds a sequential protective-leg orphan from separately pinned executable
+evidence. Retained schema `augr_ovr405_qual_20260820` contains 2 policies, 7
+scenarios, 14 legs, 16 observations, 7 reports, and 12 fills. Focused and full
+repository PostgreSQL races, all nonexternal backend races/static gates, pinned
+frontend gates, and isolated production-image fresh-86 health/API/rollback-60/
+backup-restore/reapply smoke passed. A combined database-enabled all-package
+run also exposed six pre-existing migration-test shared-schema isolation
+failures; OVR405's migration chain and repository tests passed independently.
+These results are **VERIFIED_LOCAL** only. Licensed inputs, broker semantics,
+independent review, shared migration, promotion, runtime adoption, allocation,
+scheduling, deployment, and production activation remain **BLOCKED_EXTERNAL**.
+Dependency-order execution proceeds to OVR-406.
+
 ### Milestone 5 — Copy and event-market repair
 
 | ID | Depends on | Work | Acceptance |

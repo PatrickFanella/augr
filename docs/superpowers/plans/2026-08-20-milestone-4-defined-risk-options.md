@@ -73,9 +73,10 @@ Out of scope:
    expiration payoff, fees, ending cash, and after-cost return are engine-
    derived. Callers cannot supply economics or outcomes.
 9. The OVR-303 adapter emits engine-derived ordered leg intents with exact
-   observation evidence. It declares the engine-derived reservation for common
-   capital assessment and preserves atomicity/orphan assumptions in immutable
-   adapter evidence; it grants no broker package-order semantics.
+   observation evidence. It exposes the exact spread reservation and uses the
+   greater conservative leg notional where the common capital service requires
+   it; immutable adapter evidence preserves both values and all atomicity/orphan
+   assumptions. It grants no broker package-order semantics.
 10. Identical writers converge. Changed retries, gaps/forks, unknown references,
     forged structure/economics/fills/orphan/settlement, and partial graphs fail.
 11. Reports cannot select, promote, allocate, schedule, deploy, call providers,
@@ -84,60 +85,97 @@ Out of scope:
 
 ## Task 1: Policy, scenario, structure, and economics engine
 
-- [ ] Add immutable canonical policy/scenario objects with exact restoration.
-- [ ] Validate all four vertical structures and reject every unsupported or
+- [x] Add immutable canonical policy/scenario objects with exact restoration.
+- [x] Validate all four vertical structures and reject every unsupported or
   ambiguous contract/ratio/style/expiry/multiplier combination.
-- [ ] Derive executable net premium, width, whole-contract quantity, maximum
+- [x] Derive executable net premium, width, whole-contract quantity, maximum
   loss/reward, reservation, fees, and capital admission.
-- [ ] Prove debit/credit boundaries, quote/depth edges, capital caps, stable
+- [x] Prove debit/credit boundaries, quote/depth edges, capital caps, stable
   replay, and missing/stale/revised evidence refusal.
-- [ ] Commit and push the engine slice after focused races.
+- [x] Commit and push the engine slice after focused races.
 
 ## Task 2: Multi-leg lifecycle, orphan handling, and OVR-303 adapter
 
-- [ ] Derive atomic success/refusal and sequential success/orphan-unwind paths.
-- [ ] Derive terminal intrinsic payoff, ending cash, costs, and return for
+- [x] Derive atomic success/refusal and sequential success/orphan-unwind paths.
+- [x] Derive terminal intrinsic payoff, ending cash, costs, and return for
   winning, losing, and exact-strike expiration.
-- [ ] Bind an exact OVR-302 version and translate only engine-derived legs to an
+- [x] Bind an exact OVR-302 version and translate only engine-derived legs to an
   OVR-303 scored/stress plan with exact manifest and reservation evidence.
-- [ ] Prove common simulation/capital enforcement and absence of runtime paths.
-- [ ] Commit and push the lifecycle/adapter slice after focused races.
+- [x] Prove common simulation/capital enforcement and absence of runtime paths.
+- [x] Commit and push the lifecycle/adapter slice after focused races.
 
 ## Task 3: Migration 86 and append-only evidence
 
-- [ ] Add policy, scenario, contract/observation, report, fill, orphan, and
+- [x] Add policy, scenario, contract/observation, report, fill, orphan, and
   settlement tables with normalized quantities and money values.
-- [ ] Reconstruct canonical identities, chronology, structure, pricing,
+- [x] Reconstruct canonical identities, chronology, structure, pricing,
   reservations, fills, unwind, payoff, costs, cash, and return.
-- [ ] Reject mutation/deletion, gaps/forks, changed retry, forgery, partial
+- [x] Reject mutation/deletion, gaps/forks, changed retry, forgery, partial
   evidence, unknown references, and capital/risk violations.
-- [ ] Add empty-only rollback and bump `RequiredSchemaVersion` to 86 only after
+- [x] Add empty-only rollback and bump `RequiredSchemaVersion` to 86 only after
   real PostgreSQL migration races pass.
-- [ ] Commit and push the persistence slice.
+- [x] Commit and push the persistence slice.
 
 ## Task 4: Operations and qualification
 
-- [ ] Add a runbook for structure/risk replay, leg/fill inspection, orphan
+- [x] Add a runbook for structure/risk replay, leg/fill inspection, orphan
   reconciliation, settlement, failure/recovery, and rollback.
-- [ ] Retain atomic debit/credit, sequential success, orphan unwind, losing,
+- [x] Retain atomic debit/credit, sequential success, orphan unwind, losing,
   winning, and exact-strike scenarios with exact IDs/hashes/counts.
-- [ ] Prove eight-writer convergence, restart, every-stage rollback, normalized
+- [x] Prove eight-writer convergence, restart, every-stage rollback, normalized
   forgery rejection, nonempty rollback refusal, and empty `86 -> 85 -> 86`.
-- [ ] Run focused/database races, all backend and pinned frontend gates, diff
+- [x] Run focused/database races, all backend and pinned frontend gates, diff
   review, and isolated kill-switched schema-86 health/API/rollback/reapply.
-- [ ] Commit/push verified slices, fetch, and prove `0 0` divergence before
+- [x] Commit/push verified slices, fetch, and prove `0 0` divergence before
   OVR-406.
 
 ## Acceptance evidence to record
 
-- [ ] Every supported vertical's structure, price, risk, reservation, fills,
+- [x] Every supported vertical's structure, price, risk, reservation, fills,
   orphan outcome, settlement, costs, and return are exact and reproducible.
-- [ ] Atomic failure cannot leave a leg; sequential failure must expose and
+- [x] Atomic failure cannot leave a leg; sequential failure must expose and
   unwind the orphan from pinned executable evidence.
-- [ ] Missing/stale/revised/partial/forged evidence and unsupported exercise or
+- [x] Missing/stale/revised/partial/forged evidence and unsupported exercise or
   strategy behavior fail closed.
-- [ ] Reports have no promotion, allocation, scheduling, deployment, provider,
+- [x] Reports have no promotion, allocation, scheduling, deployment, provider,
   broker, or runtime authority.
-- [ ] Local qualification is `VERIFIED_LOCAL`; licensed real inputs,
+- [x] Local qualification is `VERIFIED_LOCAL`; licensed real inputs,
   independent review, shared migration, promotion, runtime adoption, and
   production activation remain `BLOCKED_EXTERNAL`.
+
+## Qualification record
+
+- Retained database: `augr_ovr405_qual_20260820`, clean schema 86.
+- Retained inventory: 2 policies, 7 scenarios, 14 legs, 16 observations, 7
+  reports, and 12 fills.
+- Retained scenario/report IDs: `atomic_bear_call_exact_strike`
+  `6bb751df-3ec2-4eb7-a472-79e22d5d9efd` /
+  `dcb7ec1e-a56e-7412-0882-cc10352089cd`; `atomic_bear_put_winner`
+  `cc4c6713-6e7a-1e83-6627-60bef8f1e459` /
+  `f8c7eccb-e08d-01a0-edfb-b162d9e56182`; `atomic_bull_call_winner`
+  `6a0520c7-9471-a52d-72d6-0f4164419d8c` /
+  `b63692d4-1b38-d70f-82c4-e7604449cce3`; `atomic_bull_put_loser`
+  `1f275455-5bab-2c48-971b-ca1a3af47586` /
+  `52921d56-86f3-5a30-85cd-3ef04f181a2e`; `atomic_depth_rejected`
+  `ad12a616-67e1-d58b-4bf3-78292b827fe1` /
+  `a7c82800-4c14-031f-5a6a-47f650e8e342`; `sequential_orphan_unwind`
+  `3148df76-d08d-bdcd-ef59-3d69e6a32479` /
+  `a9227b97-9756-33f9-e965-cdaabe572102`; `sequential_success`
+  `8cd8f663-5f7d-ac59-4a7d-ea86545ea31b` /
+  `645941d5-6959-4a2e-1b4c-a3c907439d5c`.
+- Backend: 4,568 race-enabled tests in 115 packages; build, vet, repository-wide
+  lint, `gofumpt`, and symbol-level vulnerability checks passed. The complete
+  PostgreSQL repository race suite passed in 331 seconds. A combined
+  all-package DB run exposed six pre-existing migration-package shared-schema
+  isolation failures; the same legacy tests also conflict serially on a fresh
+  database. OVR405's focused migration/repository races and fresh migration
+  chain passed.
+- Frontend: pinned Node 22.23.2 frozen/ignored-script install, high-severity
+  audit, 162 tests, lint, and production build passed with no known advisory.
+- Isolated production verifier built commit `9c544a0`, migrated fresh 1 -> 86,
+  passed health and authenticated read-only API checks, rolled back 86 -> 60,
+  verified backup/restore, reapplied 61 -> 86, and returned healthy. The
+  temporary external `monitoring` network was removed after the pass.
+- This is **VERIFIED_LOCAL** only. Licensed real option data, broker complex-
+  order semantics, independent review, shared migration, promotion, runtime
+  adoption, deployment, and production activation remain **BLOCKED_EXTERNAL**.
