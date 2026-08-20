@@ -279,12 +279,15 @@ func parseMoney(value string) (decimal.Decimal, error) {
 	}
 	return parsed, nil
 }
+
 func equalValueCanonical(left, right []valueCanonical) bool {
 	return bytes.Equal(mustJSON(left), mustJSON(right))
 }
+
 func equalLegs(left, right []legCanonical) bool { return bytes.Equal(mustJSON(left), mustJSON(right)) }
 func mustJSON(value any) []byte                 { raw, _ := json.Marshal(value); return raw }
-func hash(value []byte) string                  { sum := sha256.Sum256(value); return hex.EncodeToString(sum[:]) }
+func hash(value []byte) string { sum := sha256.Sum256(value); return hex.EncodeToString(sum[:]) }
+
 func decodeExact(raw []byte, target any) error {
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
@@ -304,24 +307,28 @@ func (r *Run) ID() uuid.UUID {
 	}
 	return r.id
 }
+
 func (r *Run) Digest() string {
 	if r == nil {
 		return ""
 	}
 	return r.digest
 }
+
 func (r *Run) CanonicalBytes() json.RawMessage {
 	if r == nil {
 		return nil
 	}
 	return append(json.RawMessage(nil), r.bytes...)
 }
+
 func (r *Run) SessionKey() string {
 	if r == nil {
 		return ""
 	}
 	return r.canonical.SessionKey
 }
+
 func (r *Run) SourceObservationID() uuid.UUID {
 	if r == nil {
 		return uuid.Nil
@@ -329,6 +336,7 @@ func (r *Run) SourceObservationID() uuid.UUID {
 	value, _ := uuid.Parse(r.canonical.SourceObservationID)
 	return value
 }
+
 func (r *Run) SubscriptionID() uuid.UUID {
 	if r == nil {
 		return uuid.Nil
@@ -336,12 +344,14 @@ func (r *Run) SubscriptionID() uuid.UUID {
 	value, _ := uuid.Parse(r.canonical.SubscriptionID)
 	return value
 }
+
 func (r *Run) PreparedTurnover() string {
 	if r == nil {
 		return ""
 	}
 	return r.canonical.PreparedTurnover
 }
+
 func (r *Run) ResidualDrift() string {
 	if r == nil {
 		return ""
