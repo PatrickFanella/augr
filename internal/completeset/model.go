@@ -32,6 +32,7 @@ type LegBinding struct {
 
 type Input struct {
 	Recorder         *predictionreplay.Recorder
+	CandidateKey     string
 	MarketID         string
 	Outcomes         []uuid.UUID
 	Legs             []LegBinding
@@ -80,6 +81,7 @@ type candidateCanonical struct {
 	Reason                 string              `json:"reason"`
 	RecorderID             string              `json:"recorder_id"`
 	RecorderSHA256         string              `json:"recorder_sha256"`
+	CandidateKey           string              `json:"candidate_key"`
 	MarketID               string              `json:"market_id"`
 	Outcomes               []string            `json:"outcomes"`
 	SetQuantity            string              `json:"set_quantity"`
@@ -109,12 +111,13 @@ func NewCandidate(input Input) (*Candidate, error) {
 	if input.Recorder == nil {
 		return nil, fmt.Errorf("complete set recorder is required")
 	}
+	candidateKey := strings.TrimSpace(input.CandidateKey)
 	marketID := strings.TrimSpace(input.MarketID)
 	quantity, quantityErr := exactDecimal(input.SetQuantity)
 	payoutPerSet, payoutErr := exactDecimal(input.PayoutPerSet)
 	available, availableErr := exactDecimal(input.AvailableCapital)
 	minimum, minimumErr := exactDecimal(input.MinimumProfit)
-	if marketID == "" || quantityErr != nil || !quantity.GreaterThan(decimal.Zero) || payoutErr != nil || !payoutPerSet.GreaterThan(decimal.Zero) || availableErr != nil || available.IsNegative() || minimumErr != nil || minimum.IsNegative() {
+	if candidateKey == "" || marketID == "" || quantityErr != nil || !quantity.GreaterThan(decimal.Zero) || payoutErr != nil || !payoutPerSet.GreaterThan(decimal.Zero) || availableErr != nil || available.IsNegative() || minimumErr != nil || minimum.IsNegative() {
 		return nil, fmt.Errorf("complete set economics are invalid")
 	}
 	outcomes, err := normalizeOutcomes(input.Outcomes)
@@ -126,7 +129,7 @@ func NewCandidate(input Input) (*Candidate, error) {
 		return nil, err
 	}
 	canonical := candidateCanonical{
-		Schema: SchemaV1, State: "rejected", RecorderID: input.Recorder.ID().String(), RecorderSHA256: input.Recorder.Digest(),
+		Schema: SchemaV1, State: "rejected", RecorderID: input.Recorder.ID().String(), RecorderSHA256: input.Recorder.Digest(), CandidateKey: candidateKey,
 		MarketID: marketID, Outcomes: outcomes, SetQuantity: quantity.String(), PayoutPerSet: payoutPerSet.String(),
 		AvailableCapital: available.String(), MinimumProfit: minimum.String(), EntryCost: "0", Payout: quantity.Mul(payoutPerSet).String(),
 		AfterCostProfit: quantity.Mul(payoutPerSet).String(), WorstOrphanLoss: "0", ReservedCapital: "0",
@@ -293,7 +296,7 @@ func FromCanonical(id uuid.UUID, digest string, raw []byte, recorder *prediction
 	if id == uuid.Nil || recorder == nil || !digestPattern.MatchString(digest) || hash(raw) != digest || decodeExact(raw, &canonical) != nil || canonical.Schema != SchemaV1 || canonical.RecorderID != recorder.ID().String() || canonical.RecorderSHA256 != recorder.Digest() {
 		return nil, fmt.Errorf("complete set envelope is invalid")
 	}
-	input := Input{Recorder: recorder, MarketID: canonical.MarketID, SetQuantity: canonical.SetQuantity, PayoutPerSet: canonical.PayoutPerSet, AvailableCapital: canonical.AvailableCapital, MinimumProfit: canonical.MinimumProfit}
+	input := Input{Recorder: recorder, CandidateKey: canonical.CandidateKey, MarketID: canonical.MarketID, SetQuantity: canonical.SetQuantity, PayoutPerSet: canonical.PayoutPerSet, AvailableCapital: canonical.AvailableCapital, MinimumProfit: canonical.MinimumProfit}
 	for _, outcome := range canonical.Outcomes {
 		parsed, err := uuid.Parse(outcome)
 		if err != nil {

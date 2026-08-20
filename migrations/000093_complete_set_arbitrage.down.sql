@@ -1,0 +1,12 @@
+LOCK TABLE complete_set_candidates IN ACCESS EXCLUSIVE MODE;
+DO $$ BEGIN IF EXISTS(SELECT 1 FROM complete_set_candidates) THEN RAISE EXCEPTION 'cannot roll back complete set arbitrage with retained evidence'; END IF; END; $$;
+DROP FUNCTION reject_complete_set_mutation() CASCADE;
+DROP FUNCTION validate_complete_set_graph() CASCADE;
+DROP FUNCTION validate_complete_set_scenario_leg() CASCADE;
+DROP FUNCTION validate_complete_set_row() CASCADE;
+DROP FUNCTION validate_complete_set_parent() CASCADE;
+DROP TABLE complete_set_orphan_scenario_legs;
+DROP TABLE complete_set_orphan_scenarios;
+DROP TABLE complete_set_legs;
+DROP TABLE complete_set_bindings;
+DROP TABLE complete_set_candidates;
