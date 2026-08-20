@@ -279,6 +279,68 @@ func (r *ResearchWorkflowRepo) verifyHypothesisRows(ctx context.Context, id uuid
 			}
 		}
 	}
+	var typed researchHypothesisEnvelope
+	if err := json.Unmarshal(raw, &typed); err != nil {
+		return err
+	}
+	for _, source := range typed.Sources {
+		rows, err := r.pool.Query(ctx, `SELECT sequence,manifest_source_key FROM research_hypothesis_source_manifest_keys WHERE hypothesis_id=$1 AND source_sequence=$2 ORDER BY sequence`, id, source.Sequence)
+		if err != nil {
+			return err
+		}
+		stored := []string{}
+		for rows.Next() {
+			var sequence int
+			var value string
+			if err = rows.Scan(&sequence, &value); err != nil {
+				rows.Close()
+				return err
+			}
+			if sequence != len(stored) {
+				rows.Close()
+				return fmt.Errorf("postgres: research source keys do not reconstruct")
+			}
+			stored = append(stored, value)
+		}
+		rows.Close()
+		if len(stored) != len(source.ManifestSourceKeys) {
+			return fmt.Errorf("postgres: research source keys do not reconstruct")
+		}
+		for index := range stored {
+			if stored[index] != source.ManifestSourceKeys[index] {
+				return fmt.Errorf("postgres: research source key does not reconstruct")
+			}
+		}
+	}
+	for _, search := range typed.Searches {
+		rows, err := r.pool.Query(ctx, `SELECT sequence,canonical_row FROM research_hypothesis_search_results WHERE hypothesis_id=$1 AND search_sequence=$2 ORDER BY sequence`, id, search.Sequence)
+		if err != nil {
+			return err
+		}
+		stored := []json.RawMessage{}
+		for rows.Next() {
+			var sequence int
+			var value []byte
+			if err = rows.Scan(&sequence, &value); err != nil {
+				rows.Close()
+				return err
+			}
+			if sequence != len(stored) {
+				rows.Close()
+				return fmt.Errorf("postgres: research search results do not reconstruct")
+			}
+			stored = append(stored, value)
+		}
+		rows.Close()
+		if len(stored) != len(search.Results) {
+			return fmt.Errorf("postgres: research search results do not reconstruct")
+		}
+		for index := range stored {
+			if !jsonEqual(stored[index], mustJSON(search.Results[index])) {
+				return fmt.Errorf("postgres: research search result does not reconstruct")
+			}
+		}
+	}
 	return nil
 }
 
@@ -314,6 +376,51 @@ func (r *ResearchWorkflowRepo) verifyCriticRows(ctx context.Context, id uuid.UUI
 			if !jsonEqual(stored[index], expected[index]) {
 				return fmt.Errorf("postgres: research critic row does not reconstruct")
 			}
+		}
+	}
+	var typed researchCriticEnvelope
+	if err := json.Unmarshal(raw, &typed); err != nil {
+		return err
+	}
+	for _, finding := range typed.Findings {
+		if err := r.verifyReferenceRows(ctx, "research_critic_finding_references", "finding_sequence", id, finding.Sequence, finding.References); err != nil {
+			return err
+		}
+	}
+	for _, check := range typed.Checks {
+		if err := r.verifyReferenceRows(ctx, "research_critic_check_references", "check_sequence", id, check.Sequence, check.References); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *ResearchWorkflowRepo) verifyReferenceRows(ctx context.Context, table, parentColumn string, criticID uuid.UUID, parentSequence int, expected []string) error {
+	rows, err := r.pool.Query(ctx, fmt.Sprintf(`SELECT sequence,reference FROM %s WHERE critic_id=$1 AND %s=$2 ORDER BY sequence`, table, parentColumn), criticID, parentSequence)
+	if err != nil {
+		return err
+	}
+	stored := []string{}
+	for rows.Next() {
+		var sequence int
+		var value string
+		if err = rows.Scan(&sequence, &value); err != nil {
+			rows.Close()
+			return err
+		}
+		if sequence != len(stored) {
+			rows.Close()
+			return fmt.Errorf("postgres: research critic references do not reconstruct")
+		}
+		stored = append(stored, value)
+	}
+	rows.Close()
+	if len(stored) != len(expected) {
+		return fmt.Errorf("postgres: research critic references do not reconstruct")
+	}
+	for index := range stored {
+		if stored[index] != expected[index] {
+			return fmt.Errorf("postgres: research critic reference does not reconstruct")
 		}
 	}
 	return nil
