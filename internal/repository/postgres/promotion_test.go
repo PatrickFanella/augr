@@ -7,8 +7,11 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/PatrickFanella/get-rich-quick/internal/evaluation"
 	"github.com/PatrickFanella/get-rich-quick/internal/promotion"
+	"github.com/PatrickFanella/get-rich-quick/internal/robustness"
 	"github.com/PatrickFanella/get-rich-quick/internal/strategycatalog"
 )
 
@@ -138,6 +141,74 @@ func TestPromotionRepositoryRejectsCompetingInitialDecisionFork(t *testing.T) {
 	if _, err := fixture.repo.RecordDecision(ctx, alternative); err == nil {
 		t.Fatal("competing initial decision fork succeeded")
 	}
+}
+
+func TestPromotionRepositoryApprovedHeldRetiredEvidence(t *testing.T) {
+	fixture := newPromotionRepositoryFixture(t)
+	ctx := context.Background()
+	approved, err := fixture.repo.RecordDecision(ctx, fixture.decision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	held, _ := promotion.NewDecision(promotion.DecisionInput{Deployment: fixture.deployment, Assessment: fixture.robustness.assessment, Policy: fixture.policy, PriorDecision: approved})
+	if _, err := fixture.repo.RecordDecision(ctx, held); err != nil {
+		t.Fatal(err)
+	}
+	failed := failedRobustnessAssessment(t, fixture.robustness)
+	if _, err := fixture.robustness.repo.RecordAssessment(ctx, failed); err != nil {
+		t.Fatal(err)
+	}
+	strategy := fixture.robustness.evaluation.experiment.strategy
+	retiredDeployment, err := strategycatalog.NewDeployment(strategycatalog.DeploymentInput{
+		VersionID: strategy.version.ID(), AccountID: strategy.account.ID, CapitalBindingID: strategy.binding.ID,
+		Budget: "9000", ScheduleCron: "0 14 * * 1-5", Timezone: "America/Chicago", RiskPolicyVersion: "risk-v1", Mode: strategycatalog.ExperimentPaperScored,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := strategy.repo.ProposeStrategyDeployment(ctx, retiredDeployment); err != nil {
+		t.Fatal(err)
+	}
+	retirePolicy, _ := promotion.NewPolicy(promotion.PolicyInput{Version: "promotion-policy-v1@retained-retire", RequiredGates: []string{"overall_robustness"}, FailureAction: promotion.ActionRetire})
+	if _, err := fixture.repo.RegisterPolicy(ctx, retirePolicy); err != nil {
+		t.Fatal(err)
+	}
+	retired, err := promotion.NewDecision(promotion.DecisionInput{Deployment: retiredDeployment, Assessment: failed, Policy: retirePolicy})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.repo.RecordDecision(ctx, retired); err != nil {
+		t.Fatal(err)
+	}
+	if approved.Outcome() != promotion.OutcomeApproved || held.Outcome() != promotion.OutcomeHeld || retired.Outcome() != promotion.OutcomeRetired {
+		t.Fatalf("outcomes=%s/%s/%s", approved.Outcome(), held.Outcome(), retired.Outcome())
+	}
+	t.Logf("VERIFIED_LOCAL approved=%s held=%s retired=%s failed_assessment=%s", approved.ID(), held.ID(), retired.ID(), failed.ID())
+}
+
+func failedRobustnessAssessment(t *testing.T, fixture robustnessRepositoryFixture) *robustness.Assessment {
+	t.Helper()
+	ctx := context.Background()
+	start := fixture.evaluation.experiment.plan.EvaluationStart()
+	baseline1 := robustnessEvaluationReport(t, fixture.evaluation, start.Add(10*time.Second), []string{"100", "90", "80"}, "failed-b1")
+	perturbed1 := robustnessEvaluationReport(t, fixture.evaluation, start.Add(10*time.Second), []string{"100", "89", "78"}, "failed-p1")
+	baseline2 := robustnessEvaluationReport(t, fixture.evaluation, start.Add(150*time.Second), []string{"100", "90", "80"}, "failed-b2")
+	perturbed2 := robustnessEvaluationReport(t, fixture.evaluation, start.Add(150*time.Second), []string{"100", "89", "78"}, "failed-p2")
+	for _, report := range []*evaluation.Report{baseline1, perturbed1, baseline2, perturbed2} {
+		if _, err := fixture.evaluation.repo.RecordEvaluation(ctx, report); err != nil {
+			t.Fatal(err)
+		}
+	}
+	assessment, err := robustness.NewAssessment(robustness.AssessmentInput{Family: fixture.family, Policy: fixture.policy, Mode: strategycatalog.ExperimentPaperScored, Candidates: []robustness.CandidateInput{{
+		VersionID: fixture.evaluation.experiment.strategy.version.ID(), Folds: []robustness.FoldInput{
+			{TrainStart: start.Add(-10 * time.Second), TrainEnd: start.Add(5 * time.Second), Baseline: baseline1, Perturbations: []robustness.ScenarioInput{{Kind: "cost_up", Severity: "double_cost", Report: perturbed1}}},
+			{TrainStart: start.Add(135 * time.Second), TrainEnd: start.Add(145 * time.Second), Baseline: baseline2, Perturbations: []robustness.ScenarioInput{{Kind: "cost_up", Severity: "double_cost", Report: perturbed2}}},
+		},
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return assessment
 }
 
 func TestPromotionRepositoryRollsBackEveryDecisionStage(t *testing.T) {
