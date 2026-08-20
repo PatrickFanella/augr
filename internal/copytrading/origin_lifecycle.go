@@ -1,6 +1,7 @@
 package copytrading
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -14,6 +15,27 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/ledger"
 	"github.com/PatrickFanella/get-rich-quick/internal/marketdata"
 )
+
+type ExecutionProposalStore interface {
+	ProposeExecutionIntent(context.Context, *lifecycle.Aggregate) (*lifecycle.Aggregate, error)
+}
+
+type OriginLifecycleExecutor struct{ store ExecutionProposalStore }
+
+func NewOriginLifecycleExecutor(store ExecutionProposalStore) *OriginLifecycleExecutor {
+	return &OriginLifecycleExecutor{store: store}
+}
+
+func (e *OriginLifecycleExecutor) Propose(ctx context.Context, input OriginProposalInput) (*lifecycle.Aggregate, error) {
+	if e == nil || e.store == nil {
+		return nil, fmt.Errorf("copy origin lifecycle store is unavailable")
+	}
+	aggregate, err := BuildOriginProposal(input)
+	if err != nil {
+		return nil, err
+	}
+	return e.store.ProposeExecutionIntent(ctx, aggregate)
+}
 
 // OriginProposalInput is the exact OVR-203 handoff for one approved copy
 // intent. OVR-502 supplies the fresh executable decision snapshot; this

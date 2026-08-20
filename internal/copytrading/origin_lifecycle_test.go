@@ -1,6 +1,7 @@
 package copytrading
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 	"time"
@@ -9,10 +10,18 @@ import (
 	"github.com/shopspring/decimal"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
+	"github.com/PatrickFanella/get-rich-quick/internal/execution/lifecycle"
 	"github.com/PatrickFanella/get-rich-quick/internal/instrument"
 	"github.com/PatrickFanella/get-rich-quick/internal/ledger"
 	"github.com/PatrickFanella/get-rich-quick/internal/marketdata"
 )
+
+type proposalCapture struct{ aggregate *lifecycle.Aggregate }
+
+func (p *proposalCapture) ProposeExecutionIntent(_ context.Context, aggregate *lifecycle.Aggregate) (*lifecycle.Aggregate, error) {
+	p.aggregate = aggregate
+	return aggregate, nil
+}
 
 func TestBuildOriginProposalUsesSubscriptionWithoutStrategyVersion(t *testing.T) {
 	t.Parallel()
@@ -42,6 +51,19 @@ func TestBuildOriginProposalUsesSubscriptionWithoutStrategyVersion(t *testing.T)
 		if _, err := BuildOriginProposal(value); err == nil {
 			t.Fatalf("accepted %s forgery", name)
 		}
+	}
+}
+
+func TestOriginLifecycleExecutorPersistsExactProposal(t *testing.T) {
+	t.Parallel()
+	store := &proposalCapture{}
+	input := originProposalFixture(t)
+	got, err := NewOriginLifecycleExecutor(store).Propose(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if store.aggregate == nil || got.Intent.ID != store.aggregate.Intent.ID || got.Intent.OriginID != input.Subscription.ID.String() || got.Intent.StrategyVersionID != "" {
+		t.Fatalf("proposal=%+v captured=%+v", got, store.aggregate)
 	}
 }
 
