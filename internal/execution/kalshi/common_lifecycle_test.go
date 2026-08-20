@@ -3,6 +3,8 @@ package kalshi
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/url"
 	"reflect"
 	"testing"
@@ -11,9 +13,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 
+	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution/lifecycle"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution/venue"
 	"github.com/PatrickFanella/get-rich-quick/internal/instrument"
+	"github.com/PatrickFanella/get-rich-quick/internal/ledger"
 )
 
 func TestMapKalshiCommonOrderRequestProjectsExactV2Facts(t *testing.T) {
@@ -148,6 +152,209 @@ func TestKalshiCommonLifecycleClientUsesV2EndpointsAndPaginatesRecovery(t *testi
 	}
 }
 
+func TestKalshiCommonLifecycleClientFailsClosedAndRecoversAmbiguousSubmit(t *testing.T) {
+	request := CommonOrderRequest{Ticker: "KX-TEST", ClientOrderID: "client-1", Side: "bid", Count: "12.50", Price: "0.37", TimeInForce: "good_till_canceled", Subaccount: 7, ExchangeIndex: 0, Outcome: "yes", Action: "buy"}
+	recoveredBody := []byte(`{"orders":[{"order_id":"external-1","client_order_id":"client-1","ticker":"KX-TEST","side":"yes","action":"buy","outcome_side":"yes","book_side":"bid","type":"limit","status":"resting","yes_price_dollars":"0.37","no_price_dollars":"0.63","fill_count_fp":"0.00","remaining_count_fp":"12.50","initial_count_fp":"12.50","subaccount_number":7,"exchange_index":0}],"cursor":""}`)
+	t.Run("ambiguous submit", func(t *testing.T) {
+		transport := &scriptedSignedClient{post: []scriptedResponse{{err: errors.New("connection reset after write")}}, get: []scriptedResponse{{body: recoveredBody}}}
+		client, _ := NewCommonLifecycleClient(transport)
+		fact, err := client.SubmitOrLookup(context.Background(), request)
+		if err != nil || fact.Order.ID != "external-1" || len(transport.calls) != 2 {
+			t.Fatalf("recovery = %#v, %v, calls=%v", fact, err, transport.calls)
+		}
+	})
+	t.Run("rate limit propagates", func(t *testing.T) {
+		transport := &scriptedSignedClient{post: []scriptedResponse{{err: errors.New("kalshi POST rate limited: status=429")}}}
+		client, _ := NewCommonLifecycleClient(transport)
+		if _, err := client.SubmitOrLookup(context.Background(), request); err == nil || len(transport.calls) != 1 {
+			t.Fatalf("error=%v calls=%v", err, transport.calls)
+		}
+	})
+	t.Run("context cancellation propagates", func(t *testing.T) {
+		transport := &scriptedSignedClient{post: []scriptedResponse{{err: context.Canceled}}}
+		client, _ := NewCommonLifecycleClient(transport)
+		if _, err := client.SubmitOrLookup(context.Background(), request); !errors.Is(err, context.Canceled) || len(transport.calls) != 1 {
+			t.Fatalf("error=%v calls=%v", err, transport.calls)
+		}
+	})
+	t.Run("malformed JSON", func(t *testing.T) {
+		transport := &scriptedSignedClient{post: []scriptedResponse{{body: []byte(`{"order":`)}}}
+		client, _ := NewCommonLifecycleClient(transport)
+		if _, err := client.Submit(context.Background(), request); err == nil {
+			t.Fatal("malformed response accepted")
+		}
+	})
+	t.Run("multiple exact matches", func(t *testing.T) {
+		body := []byte(`{"orders":[{"order_id":"one","client_order_id":"client-1"},{"order_id":"two","client_order_id":"client-1"}],"cursor":""}`)
+		transport := &scriptedSignedClient{get: []scriptedResponse{{body: body}}}
+		client, _ := NewCommonLifecycleClient(transport)
+		if _, err := client.FindByClientOrderID(context.Background(), "client-1", 7); err == nil {
+			t.Fatal("multiple client matches accepted")
+		}
+	})
+	t.Run("repeated cursor", func(t *testing.T) {
+		page := scriptedResponse{body: []byte(`{"orders":[],"cursor":"same"}`)}
+		transport := &scriptedSignedClient{get: []scriptedResponse{page, page}}
+		client, _ := NewCommonLifecycleClient(transport)
+		if _, err := client.FindByClientOrderID(context.Background(), "client-1", 7); err == nil {
+			t.Fatal("repeated cursor accepted")
+		}
+	})
+}
+
+func TestPlanKalshiFillResultsCreateExactEconomicsAndConverge(t *testing.T) {
+	fixture := newKalshiResultFixture(t, "no", "12.50")
+	facts := []CommonFillFact{
+		fixture.fillFact(t, "fill-1", "5.00", "0.63", "0.37", "0.08", 1),
+		fixture.fillFact(t, "fill-2", "7.50", "0.62", "0.38", "0.12", 2),
+	}
+	result, err := PlanFillResults(fixture.context, facts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Aggregate.State != lifecycle.StateFilled || len(result.Steps) != 2 || len(result.Aggregate.Fills) != 2 {
+		t.Fatalf("result = %#v", result)
+	}
+	if !result.Aggregate.Fills[0].Price.Equal(decimal.RequireFromString("0.63")) {
+		t.Fatalf("NO economic price = %s", result.Aggregate.Fills[0].Price)
+	}
+	for index, step := range result.Steps {
+		if step.Observation.SourceEventID != facts[index].Fill.ID || step.Observation.CanonicalOutcome != "no" ||
+			step.Observation.ProviderBookSide != "ask" || step.Observation.ProviderAction != "buy" ||
+			step.EconomicSourceEvent == nil || step.Transition == nil || step.Transition.Fill == nil || step.Transition.Normalization == nil {
+			t.Fatalf("step %d = %#v", index, step)
+		}
+	}
+}
+
+func TestPlanKalshiFillResultFailsClosedOnContradictionWithoutEconomics(t *testing.T) {
+	fixture := newKalshiResultFixture(t, "yes", "12.50")
+	fact := fixture.fillFact(t, "fill-bad", "5.00", "0.37", "0.63", "0.08", 1)
+	fact.Fill.Ticker = "OTHER"
+	result, err := PlanFillResults(fixture.context, []CommonFillFact{fact})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Aggregate.State != lifecycle.StateFailedReconciliation || len(result.Steps) != 1 ||
+		result.Steps[0].Observation.MappedOutcome != venue.OutcomeContradiction || result.Steps[0].EconomicSourceEvent != nil ||
+		result.Steps[0].Transition == nil || result.Steps[0].Transition.Fill != nil {
+		t.Fatalf("contradiction result = %#v", result)
+	}
+}
+
+func TestPlanKalshiOrderResultsAcceptOnlyExactStatesAndRequireFillDetails(t *testing.T) {
+	fixture := newKalshiResultFixture(t, "yes", "12.50")
+	resting := fixture.orderFact(t, "resting", "0.00", "12.50")
+	ack, err := PlanOrderResult(fixture.context, venue.ObservationSubmitResponse, resting)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ack.Aggregate.State != lifecycle.StateWorking || ack.Aggregate.Binding == nil || ack.Aggregate.Binding.ExternalOrderID != "external-1" {
+		t.Fatalf("ack = %#v", ack)
+	}
+
+	missing := fixture
+	missing.context.Aggregate = ack.Aggregate
+	executed := missing.orderFact(t, "executed", "12.50", "0.00")
+	failed, err := PlanOrderResult(missing.context, venue.ObservationOrderSnapshot, executed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if failed.Aggregate.State != lifecycle.StateFailedReconciliation || failed.Steps[0].Observation.MappedOutcome != venue.OutcomeContradiction {
+		t.Fatalf("executed without fills = %#v", failed)
+	}
+
+	legacy := newKalshiResultFixture(t, "yes", "12.50")
+	for _, status := range []string{"filled", "open", "new", "pending", "cancelled", "complete", "partially_filled"} {
+		legacyFact := legacy.orderFact(t, status, "0.00", "12.50")
+		unknown, err := PlanOrderResult(legacy.context, venue.ObservationOrderSnapshot, legacyFact)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if unknown.Aggregate.State != lifecycle.StateFailedReconciliation || unknown.Steps[0].Observation.MappedOutcome != venue.OutcomeUnknownState {
+			t.Fatalf("legacy status %q = %#v", status, unknown)
+		}
+	}
+}
+
+func TestPlanKalshiExecutedOrderIsEvidenceOnlyAfterExactFills(t *testing.T) {
+	fixture := newKalshiResultFixture(t, "yes", "12.50")
+	fills, err := PlanFillResults(fixture.context, []CommonFillFact{fixture.fillFact(t, "fill-full", "12.50", "0.37", "0.63", "0.20", 1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture.context.Aggregate = fills.Aggregate
+	executed := fixture.orderFact(t, "executed", "12.50", "0.00")
+	result, err := PlanOrderResult(fixture.context, venue.ObservationOrderSnapshot, executed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Aggregate.State != lifecycle.StateFilled || len(result.Steps) != 1 || result.Steps[0].Transition != nil || result.Steps[0].Observation.MappedOutcome != venue.OutcomeFillNotice {
+		t.Fatalf("executed = %#v", result)
+	}
+}
+
+type kalshiResultFixture struct {
+	context CommonLifecycleContext
+	now     time.Time
+}
+
+func newKalshiResultFixture(t *testing.T, outcome, quantity string) kalshiResultFixture {
+	t.Helper()
+	now := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
+	account, err := domain.NewAccount(domain.AccountInput{Name: "Kalshi lifecycle", Environment: domain.AccountEnvironmentPaperScored, Venue: "kalshi", BaseCurrency: "USD", StorageNamespace: "paper_scored/kalshi-lifecycle", StartingCapital: decimal.NewFromInt(10000), BuyingPowerMultiplier: decimal.NewFromInt(1), MarginProfile: domain.MarginProfileCash, CreatedBy: "test", CreationMetadata: json.RawMessage(`{}`), CreatedAt: now})
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy, order, primary, contract := kalshiCommonFixture(outcome, lifecycle.SideBuy, lifecycle.TimeInForceGTC)
+	order.AccountID, order.IntentID = account.ID, uuid.New()
+	order.Quantity = decimal.RequireFromString(quantity)
+	allocated := order.Quantity
+	aggregate := &lifecycle.Aggregate{Intent: lifecycle.Intent{ID: order.IntentID, AccountID: account.ID, Environment: account.Environment, InstrumentID: primary.ID, OriginType: ledger.ExecutionOriginStrategyVersion, OriginID: "strategy-version-1", StrategyVersionID: "strategy-version-1"}, State: lifecycle.StateRouted, AllocatedQuantity: &allocated, Order: order}
+	return kalshiResultFixture{context: CommonLifecycleContext{Policy: policy, Aggregate: aggregate, Account: account, Instrument: primary, VenueContract: contract, Route: CommonRouteFacts{Subaccount: 7, ExchangeIndex: 0}, ReceivedAt: now.Add(10 * time.Second)}, now: now}
+}
+
+func (fixture kalshiResultFixture) fillFact(t *testing.T, id, count, outcomePrice, complement, fee string, seconds int) CommonFillFact {
+	t.Helper()
+	outcome, err := exactKalshiOutcome(fixture.context.VenueContract.Metadata)
+	if err != nil {
+		t.Fatal(err)
+	}
+	yesPrice, noPrice := outcomePrice, complement
+	if outcome == "no" {
+		yesPrice, noPrice = complement, outcomePrice
+	}
+	book := "bid"
+	if outcome == "no" {
+		book = "ask"
+	}
+	raw := json.RawMessage(fmt.Sprintf(`{"fill_id":%q,"trade_id":%q,"order_id":"external-1","ticker":%q,"side":%q,"action":"buy","outcome_side":%q,"book_side":%q,"count_fp":%q,"yes_price_dollars":%q,"no_price_dollars":%q,"fee_cost":%q,"created_time":%q,"subaccount_number":7,"exchange_index":0}`, id, "trade-"+id, fixture.context.VenueContract.ContractID, outcome, outcome, book, count, yesPrice, noPrice, fee, fixture.now.Add(time.Duration(seconds)*time.Second).Format(time.RFC3339Nano)))
+	var fill CommonFill
+	if err := decodeOneJSON(raw, &fill); err != nil {
+		t.Fatal(err)
+	}
+	return CommonFillFact{Fill: fill, RawPayload: raw}
+}
+
+func (fixture kalshiResultFixture) orderFact(t *testing.T, status, filled, remaining string) *CommonOrderFact {
+	t.Helper()
+	outcome, err := exactKalshiOutcome(fixture.context.VenueContract.Metadata)
+	if err != nil {
+		t.Fatal(err)
+	}
+	book := expectedKalshiBookSide(outcome, fixture.context.Aggregate.Order.Side)
+	yesPrice, noPrice := "0.37", "0.63"
+	if outcome == "no" {
+		yesPrice, noPrice = "0.63", "0.37"
+	}
+	raw := json.RawMessage(fmt.Sprintf(`{"order_id":"external-1","client_order_id":%q,"ticker":%q,"side":%q,"action":%q,"outcome_side":%q,"book_side":%q,"type":"limit","status":%q,"yes_price_dollars":%q,"no_price_dollars":%q,"fill_count_fp":%q,"remaining_count_fp":%q,"initial_count_fp":%q,"created_time":%q,"last_update_time":%q,"subaccount_number":7,"exchange_index":0}`, fixture.context.Aggregate.Order.ClientOrderID, fixture.context.VenueContract.ContractID, outcome, fixture.context.Aggregate.Order.Side, outcome, book, status, yesPrice, noPrice, filled, remaining, fixture.context.Aggregate.Order.Quantity.StringFixed(2), fixture.now.Format(time.RFC3339Nano), fixture.now.Add(3*time.Second).Format(time.RFC3339Nano)))
+	var order CommonOrder
+	if err := decodeOneJSON(raw, &order); err != nil {
+		t.Fatal(err)
+	}
+	return &CommonOrderFact{Order: order, RawPayload: raw}
+}
+
 type scriptedResponse struct {
 	body []byte
 	err  error
@@ -161,14 +368,17 @@ func (s *scriptedSignedClient) Get(_ context.Context, path string, query url.Val
 	s.calls = append(s.calls, "GET "+path+"?"+query.Encode())
 	return shiftScript(&s.get)
 }
+
 func (s *scriptedSignedClient) Post(_ context.Context, path string, _ any) ([]byte, error) {
 	s.calls = append(s.calls, "POST "+path)
 	return shiftScript(&s.post)
 }
+
 func (s *scriptedSignedClient) Delete(_ context.Context, path string, query url.Values) ([]byte, error) {
 	s.calls = append(s.calls, "DELETE "+path+"?"+query.Encode())
 	return shiftScript(&s.delete)
 }
+
 func shiftScript(items *[]scriptedResponse) ([]byte, error) {
 	if len(*items) == 0 {
 		return []byte(`{}`), nil

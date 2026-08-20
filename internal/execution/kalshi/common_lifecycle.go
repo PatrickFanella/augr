@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -154,8 +155,8 @@ type CommonOrder struct {
 	InitialCountFP   string `json:"initial_count_fp"`
 	CreatedTime      string `json:"created_time"`
 	LastUpdateTime   string `json:"last_update_time"`
-	SubaccountNumber int    `json:"subaccount_number"`
-	ExchangeIndex    int    `json:"exchange_index"`
+	SubaccountNumber *int   `json:"subaccount_number"`
+	ExchangeIndex    *int   `json:"exchange_index"`
 }
 
 type CommonOrderFact struct {
@@ -177,8 +178,8 @@ type CommonFill struct {
 	NoPriceDollars   string `json:"no_price_dollars"`
 	FeeCost          string `json:"fee_cost"`
 	CreatedTime      string `json:"created_time"`
-	SubaccountNumber int    `json:"subaccount_number"`
-	ExchangeIndex    int    `json:"exchange_index"`
+	SubaccountNumber *int   `json:"subaccount_number"`
+	ExchangeIndex    *int   `json:"exchange_index"`
 }
 
 type CommonFillFact struct {
@@ -213,6 +214,27 @@ func (c *CommonLifecycleClient) Submit(ctx context.Context, request CommonOrderR
 		return nil, fmt.Errorf("kalshi common lifecycle: submit response missing order id")
 	}
 	return &CommonOrderFact{Order: envelope.Order, RawPayload: append(json.RawMessage(nil), body...)}, nil
+}
+
+// SubmitOrLookup resolves duplicate and ambiguous submit outcomes using only
+// the stable client_order_id. Rate limits and definitive request/auth failures
+// remain visible to the caller and are never disguised as an absence.
+func (c *CommonLifecycleClient) SubmitOrLookup(ctx context.Context, request CommonOrderRequest) (*CommonOrderFact, error) {
+	submitted, err := c.Submit(ctx, request)
+	if err == nil {
+		return submitted, nil
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || definitiveKalshiSubmitFailure(err) {
+		return nil, err
+	}
+	recovered, lookupErr := c.FindByClientOrderID(ctx, request.ClientOrderID, request.Subaccount)
+	if lookupErr != nil {
+		return nil, fmt.Errorf("kalshi common lifecycle: unresolved submit (%v): %w", err, lookupErr)
+	}
+	if err := validateRecoveredOrder(request, recovered.Order); err != nil {
+		return nil, err
+	}
+	return recovered, nil
 }
 
 func (c *CommonLifecycleClient) FindByClientOrderID(ctx context.Context, clientOrderID string, subaccount int) (*CommonOrderFact, error) {
@@ -347,6 +369,30 @@ func validateCommonRequest(request CommonOrderRequest) error {
 	}
 	if request.TimeInForce != "good_till_canceled" && request.TimeInForce != "immediate_or_cancel" && request.TimeInForce != "fill_or_kill" {
 		return fmt.Errorf("kalshi common lifecycle: invalid time in force")
+	}
+	return nil
+}
+
+func definitiveKalshiSubmitFailure(err error) bool {
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "status=400") || strings.Contains(message, "status=401") ||
+		strings.Contains(message, "status=403") || strings.Contains(message, "status=422") ||
+		strings.Contains(message, "status=429") || strings.Contains(message, "rate limit") ||
+		strings.Contains(message, "cooldown")
+}
+
+func validateRecoveredOrder(request CommonOrderRequest, order CommonOrder) error {
+	if order.ClientOrderID != request.ClientOrderID || order.Ticker != request.Ticker || order.BookSide != request.Side ||
+		order.Action != request.Action || order.OutcomeSide != request.Outcome || order.SubaccountNumber == nil ||
+		*order.SubaccountNumber != request.Subaccount || order.ExchangeIndex == nil || *order.ExchangeIndex != request.ExchangeIndex {
+		return fmt.Errorf("kalshi common lifecycle: recovered order differs from immutable request")
+	}
+	initial, initialErr := decimal.NewFromString(order.InitialCountFP)
+	wantCount, countErr := decimal.NewFromString(request.Count)
+	yesPrice, priceErr := decimal.NewFromString(order.YesPriceDollars)
+	wantPrice, wantPriceErr := decimal.NewFromString(request.Price)
+	if initialErr != nil || countErr != nil || priceErr != nil || wantPriceErr != nil || !initial.Equal(wantCount) || !yesPrice.Equal(wantPrice) {
+		return fmt.Errorf("kalshi common lifecycle: recovered order totals or price differ from immutable request")
 	}
 	return nil
 }
