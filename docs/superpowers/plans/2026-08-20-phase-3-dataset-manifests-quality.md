@@ -145,17 +145,17 @@ Out of scope:
   child scope, counts, time/lookahead, decimal facts, correction lineage,
   canonical bytes, mutation, nonempty rollback, and empty `76 -> 75 -> 76`.
 - [x] Bump `RequiredSchemaVersion` only after the isolated migration suite passes.
-- [ ] Commit and push the migration slice after focused race tests.
+- [x] Commit and push the migration slice after focused race tests.
 
 ## Task 5: PostgreSQL repository and restart replay
 
-- [ ] Add `internal/repository/postgres/dataset.go` for atomic policy, manifest,
+- [x] Add `internal/repository/postgres/dataset.go` for atomic policy, manifest,
   and quality-result persistence plus exact reload.
-- [ ] Identical retries converge; changed payload under the same identity returns
+- [x] Identical retries converge; changed payload under the same identity returns
   `ErrIdempotencyConflict`; concurrent writers produce one complete graph.
-- [ ] Inject failures after each parent/child stage and prove no partial graph
+- [x] Inject failures after each parent/child stage and prove no partial graph
   commits. Reload must revalidate canonical bytes and every relational child.
-- [ ] Add one retained golden graph covering bars, quotes, a correction, session
+- [x] Add one retained golden graph covering bars, quotes, a correction, session
   facts, instrument validity, a clean result, and one separately quarantined
   perturbation. Restart/recompute must reproduce all IDs and hashes.
 - [ ] Commit and push the repository slice after focused real-PostgreSQL races.

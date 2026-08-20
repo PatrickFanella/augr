@@ -10,6 +10,7 @@ import (
 
 	"github.com/PatrickFanella/get-rich-quick/internal/accountingrecon"
 	"github.com/PatrickFanella/get-rich-quick/internal/capital"
+	"github.com/PatrickFanella/get-rich-quick/internal/dataset"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution/lifecycle"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution/venue"
@@ -136,6 +137,17 @@ type VenueReconciliationRepository interface {
 	RecordVenueLocalSnapshot(context.Context, *venuerecon.LocalSnapshot, time.Time) error
 	RecordVenueReconciliationRun(context.Context, *venuerecon.Run, time.Time) (*venuerecon.Run, error)
 	GetVenueReconciliationRun(context.Context, uuid.UUID) (*venuerecon.Run, error)
+}
+
+// DatasetRepository persists immutable point-in-time manifests and their
+// deterministic quality evidence. It neither fetches data nor selects a
+// current manifest for an experiment.
+type DatasetRepository interface {
+	RegisterDatasetPolicy(context.Context, *dataset.PolicyArtifact) (*dataset.PolicyArtifact, error)
+	RecordDatasetManifest(context.Context, *dataset.Manifest, time.Time) (*dataset.Manifest, error)
+	GetDatasetManifest(context.Context, uuid.UUID) (*dataset.Manifest, error)
+	RecordDatasetQualityResult(context.Context, *dataset.QualityResult, time.Time) (*dataset.QualityResult, error)
+	GetDatasetQualityResult(context.Context, uuid.UUID) (*dataset.QualityResult, error)
 }
 
 // QuoteSnapshotRepository persists immutable, exact market observations and
