@@ -9,7 +9,7 @@ recommend, promote, allocate, schedule, deploy, activate, or place orders.
 Use only a dedicated loopback database:
 
 ```bash
-export CAPACITY_V1_QUALIFICATION_DB_URL='postgres://USER:PASSWORD@127.0.0.1:PORT/augr_ovr406_qual_20260820?sslmode=disable'
+export CAPACITY_V1_QUALIFICATION_DB_URL='postgres://USER:PASSWORD@127.0.0.1:PORT/augr_ovr406_qual_20260820_v2?sslmode=disable'
 psql "$CAPACITY_V1_QUALIFICATION_DB_URL" -Atc \
   "select current_database(),current_schema(),version,dirty from schema_migrations"
 ```

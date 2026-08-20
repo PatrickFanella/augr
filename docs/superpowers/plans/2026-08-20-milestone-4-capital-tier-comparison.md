@@ -82,55 +82,85 @@ Out of scope:
 
 ## Task 1: Family evidence adapters
 
-- [ ] Add immutable family capacity contracts and exact restoration.
-- [ ] Implement passive, wheel, momentum, trend, and defined-risk adapters from
+- [x] Add immutable family capacity contracts and exact restoration.
+- [x] Implement passive, wheel, momentum, trend, and defined-risk adapters from
   canonical completed evaluation/source reports.
-- [ ] Prove unit capital, depth/policy caps, after-cost return, source identity,
+- [x] Prove unit capital, depth/policy caps, after-cost return, source identity,
   mode/window, and rejection edges without caller-authored economics.
-- [ ] Commit and push the adapter slice after focused races.
+- [x] Commit and push the adapter slice after focused races.
 
 ## Task 2: Six-tier comparison engine
 
-- [ ] Evaluate every family at all six finite tiers in stable order.
-- [ ] Derive whole units, executable/unused capital, saturation, explicit
+- [x] Evaluate every family at all six finite tiers in stable order.
+- [x] Derive whole units, executable/unused capital, saturation, explicit
   rejection, and first viable tier.
-- [ ] Prove boundary equality, below-unit, source-cap saturation, no-viable,
+- [x] Prove boundary equality, below-unit, source-cap saturation, no-viable,
   input-order independence, deterministic replay, and no ranking fields.
-- [ ] Commit and push the comparison engine after focused races.
+- [x] Commit and push the comparison engine after focused races.
 
 ## Task 3: Migration 87 and append-only evidence
 
-- [ ] Add comparison, family, and tier-outcome tables with exact normalized
+- [x] Add comparison, family, and tier-outcome tables with exact normalized
   identities, quantities, money, reasons, and source references.
-- [ ] Reconstruct the five-family/six-tier graph and all arithmetic.
-- [ ] Reject mutation/deletion, gaps/forks, changed retry, duplicate/missing
+- [x] Reconstruct the five-family/six-tier graph and all arithmetic.
+- [x] Reject mutation/deletion, gaps/forks, changed retry, duplicate/missing
   family/tier, normalized forgery, and partial writes.
-- [ ] Add empty-only rollback and bump `RequiredSchemaVersion` to 87 only after
+- [x] Add empty-only rollback and bump `RequiredSchemaVersion` to 87 only after
   real PostgreSQL migration races pass.
-- [ ] Commit and push the persistence slice.
+- [x] Commit and push the persistence slice.
 
 ## Task 4: Operations and qualification
 
-- [ ] Add a runbook for source replay, tier arithmetic, capacity saturation,
+- [x] Add a runbook for source replay, tier arithmetic, capacity saturation,
   failure/recovery, inventory, and rollback.
-- [ ] Retain one complete five-family by six-tier comparison with exact IDs,
+- [x] Retain one complete five-family by six-tier comparison with exact IDs,
   hashes, counts, viable thresholds, and saturation evidence.
-- [ ] Prove eight-writer convergence, restart, every-stage rollback, normalized
+- [x] Prove eight-writer convergence, restart, every-stage rollback, normalized
   forgery rejection, nonempty rollback refusal, and empty `87 -> 86 -> 87`.
-- [ ] Run focused/database races, all backend and pinned frontend gates, diff
+- [x] Run focused/database races, all backend and pinned frontend gates, diff
   review, and isolated kill-switched schema-87 health/API/rollback/reapply.
-- [ ] Commit/push verified slices, fetch, and prove `0 0` divergence before
+- [x] Commit/push verified slices, fetch, and prove `0 0` divergence before
   Milestone 5.
 
 ## Acceptance evidence to record
 
-- [ ] All five families have exactly six finite tier outcomes and an explicit
+- [x] All five families have exactly six finite tier outcomes and an explicit
   minimum viable reviewed tier or unavailable state.
-- [ ] Capacity is whole-unit, source-capped, cost-aware evidence rather than a
+- [x] Capacity is whole-unit, source-capped, cost-aware evidence rather than a
   scaled-return or profitability claim.
-- [ ] Missing/revised/partial/forged source and tier evidence fails closed.
-- [ ] The comparison has no ranking, promotion, allocation, scheduling,
+- [x] Missing/revised/partial/forged source and tier evidence fails closed.
+- [x] The comparison has no ranking, promotion, allocation, scheduling,
   deployment, provider, broker, or runtime authority.
-- [ ] Local qualification is `VERIFIED_LOCAL`; licensed real inputs,
+- [x] Local qualification is `VERIFIED_LOCAL`; licensed real inputs,
   independent review, shared migration, promotion, runtime adoption, and
   production activation remain `BLOCKED_EXTERNAL`.
+
+## Qualification record — 2026-08-20
+
+OVR-406 is **VERIFIED_LOCAL** at code commit
+`d99ec872c3fc04d015bd12c03d021698218f2fd9`. The corrected retained database
+`augr_ovr406_qual_20260820_v2` is clean schema 87 and contains 5 immutable
+family contracts, 1 comparison, 5 normalized family rows, and 30 normalized
+tier rows. Comparison `62d4b849-5529-097a-9897-db4610176028` has SHA-256
+`8917e9f7d42b8ad6f3b714173ffc9348c07204b75a76c44aeefbcf566a9b80d5`.
+Its canonical JSON contains the required snake-case `schema`, `state`, and
+`capital_policy_version` keys and none of the superseded Go-name variants.
+
+The defined-risk fixture derives `$122` reserved capital per complete spread,
+ten spreads of common two-leg executable depth, a first viable reviewed tier
+of `$500`, and source-depth saturation from `$5,000` upward. Passive, wheel,
+momentum/quality, and ETF trend are explicitly unavailable with
+`source_capacity_not_observed`; no capacity or minimum is invented. Focused
+capacity and PostgreSQL races pass after the canonical-envelope correction.
+The preceding full backend qualification covered 4,570 race tests in 116
+packages plus build, vet, repository-wide lint, formatting, and vulnerability
+gates; pinned Node 22.23.2 frontend qualification covered 162 tests, lint, and
+production build. The isolated production-image verifier then passed on the
+exact corrected code commit: fresh migration `1 -> 87`, authenticated
+read-only API smoke, lossless `87 -> 60`, schema-60 backup/restore, reapply
+`61 -> 87`, and post-reapply health.
+
+This evidence contains no rank, winner, recommendation, allocation, runtime
+pointer, scheduler instruction, or execution authority. Licensed real inputs,
+independent review, shared-database migration, promotion, runtime adoption,
+deployment, and production activation remain **BLOCKED_EXTERNAL**.

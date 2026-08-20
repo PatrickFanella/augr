@@ -1194,6 +1194,20 @@ independent review, shared migration, promotion, runtime adoption, allocation,
 scheduling, deployment, and production activation remain **BLOCKED_EXTERNAL**.
 Dependency-order execution proceeds to OVR-406.
 
+OVR-406 is complete locally. Five immutable family capacity contracts are
+compared at all six reviewed OVR-206 finite capital tiers without ranking or
+promotion authority. Retained clean schema-87 evidence in
+`augr_ovr406_qual_20260820_v2` contains 5 contracts, 1 comparison, 5 family
+rows, and 30 tier rows. The defined-risk fixture has a `$500` first viable
+reviewed tier from `$122` per complete spread and ten spreads of common-leg
+depth; the other four families honestly remain
+`source_capacity_not_observed`. Focused races, the prior full backend and
+pinned frontend gates, and an isolated production-image fresh-87 health/API/
+rollback-60/backup-restore/reapply verifier passed. These results are
+**VERIFIED_LOCAL** only; licensed real inputs, independent review, shared
+migration, promotion, runtime adoption, deployment, and production activation
+remain **BLOCKED_EXTERNAL**. Dependency-order execution proceeds to OVR-501.
+
 ### Milestone 5 — Copy and event-market repair
 
 | ID | Depends on | Work | Acceptance |
