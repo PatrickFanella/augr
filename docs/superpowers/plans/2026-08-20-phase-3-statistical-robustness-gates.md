@@ -148,30 +148,60 @@ Out of scope:
   normalized reconstruction, and explicit family/candidate/report listing.
 - [x] Prove identical/eight-writer convergence, changed retry conflict, restart,
   interruption and rollback at every child stage, and clean-database replay.
-- [ ] Retain scored/stress families plus an unadjusted winner that fails after
+- [x] Retain scored/stress families plus an unadjusted winner that fails after
   family expansion, stable perturbations, degraded perturbations, concentrated
   returns, unavailable statistics, and threshold boundaries.
 - [x] Add a runbook covering fold design, leakage prevention, perturbations,
   uncertainty, correction interpretation, preservation, no-promotion response,
   and rollback.
-- [ ] Apply fresh `1 -> 80`, retain a complete family, prove nonempty rollback
+- [x] Apply fresh `1 -> 80`, retain a complete family, prove nonempty rollback
   refusal and separate empty `80 -> 79 -> 80`.
-- [ ] Run focused/full database races, backend build/race/vet/lint/format/vuln,
+- [x] Run focused/full database races, backend build/race/vet/lint/format/vuln,
   pinned Node 22 frozen install/audit/tests/lint/build, diff review, and isolated
   kill-switched schema-80 health/API/rollback/reapply smoke.
-- [ ] Commit/push verified slices, fetch, and prove `0 0` divergence before
+- [x] Commit/push verified slices, fetch, and prove `0 0` divergence before
   OVR-306.
 
 ## Acceptance evidence to record
 
-- [ ] No baseline passes from an unadjusted point estimate or a partial search
+- [x] No baseline passes from an unadjusted point estimate or a partial search
   family; every gate states its samples, assumptions, threshold, and reason.
-- [ ] Walk-forward evidence is out-of-sample, purged, embargoed, ordered, and
+- [x] Walk-forward evidence is out-of-sample, purged, embargoed, ordered, and
   bound to exact OVR-304 reports without training leakage.
-- [ ] Perturbation, bootstrap, concentration, and multiple-testing results
+- [x] Perturbation, bootstrap, concentration, and multiple-testing results
   replay identically from retained evidence and normalized rows.
-- [ ] Scored/stress evidence stays isolated, and no robustness pass grants
+- [x] Scored/stress evidence stays isolated, and no robustness pass grants
   promotion, deployment, scheduling, or capital-allocation authority.
-- [ ] Local qualification is `VERIFIED_LOCAL`; real candidate reports, licensed
+- [x] Local qualification is `VERIFIED_LOCAL`; real candidate reports, licensed
   data, independent statistical review, promotion, deployment, and production
   cutover remain `BLOCKED_EXTERNAL`.
+
+## Qualification record — 2026-08-20
+
+- `VERIFIED_LOCAL`: retained isolated schema `augr_ovr305_qual_20260820`
+  contains assessment `22501eba-953f-2a33-801d-63eefee6bb14`, SHA-256
+  `1a53eda31330d14335ff048e5bee235482027f1359aa12a99ee69ace76c46e3a`,
+  family `407dbd81-e6f8-382a-315d-1269067b66dc`, policy
+  `2a72d80e-9fe8-fbea-dc55-9d807155b7f7`, and candidate version
+  `3451a886-558c-39b6-e384-647c2a3cbc3e`.
+- The retained normalized graph has `1/1/1/1/2/4/10/5` policy/family/
+  assessment/candidate/fold/scenario/statistic/gate rows. Exact restarted reload,
+  eight concurrent writers, append-only refusal, normalized-forgery rejection,
+  every-child interruption rollback, and nonempty migration refusal passed.
+- Domain races retain scored/stress isolation, positive/negative/constant and
+  concentrated samples, stable/degraded perturbations, threshold boundaries,
+  and family expansion that rejects candidates which pass unadjusted.
+- Empty real-PostgreSQL rehearsal passed `78 -> 80 -> 79 -> 80`. The production
+  image smoke passed fresh `1 -> 80`, authenticated read-only API health,
+  rollback to schema 60, backup/restore, reapply through 80, and restarted
+  health with execution credentials absent.
+- Backend unit races passed across all packages; focused real-PostgreSQL races
+  passed for OVR-303/304/305 and the legacy integration fixture was aligned to
+  migration 62 before its race passed. Build, vet, golangci-lint, gofumpt, and
+  govulncheck passed with zero reachable vulnerabilities.
+- Pinned Node `22.23.2` frozen install, audit-at-high, 162 tests, lint, and build
+  passed. Audit reports one low-severity Windows-only esbuild development-server
+  advisory. Node 26 is unsupported and was not used as qualification evidence.
+- `BLOCKED_EXTERNAL`: real candidate evidence, licensed data, independent
+  statistical review, lifecycle promotion/retirement, deployment, and
+  production cutover.
