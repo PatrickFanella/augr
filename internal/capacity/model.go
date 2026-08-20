@@ -151,7 +151,7 @@ func unavailable(e EvaluationEvidence, f FamilyKind, id uuid.UUID, digest, ret, 
 }
 
 func newContract(e EvaluationEvidence, f FamilyKind, sourceID uuid.UUID, sourceDigest, sourceReturn string, available bool, reason, capitalPerUnit string, maxUnits int) (*Contract, error) {
-	if e == nil || e.ID() == uuid.Nil || sourceID == uuid.Nil || !digestPattern.MatchString(e.Digest()) || !digestPattern.MatchString(sourceDigest) || hash(e.CanonicalBytes()) != e.Digest() || e.Mode() != strategycatalog.ExperimentPaperScored || !validDecimal(sourceReturn) {
+	if e == nil || e.ID() == uuid.Nil || sourceID == uuid.Nil || !validFamily(f) || !digestPattern.MatchString(e.Digest()) || !digestPattern.MatchString(sourceDigest) || hash(e.CanonicalBytes()) != e.Digest() || e.Mode() != strategycatalog.ExperimentPaperScored || !validDecimal(sourceReturn) || !e.EvaluationStart().Before(e.EvaluationEnd()) {
 		return nil, fmt.Errorf("capacity family evidence is invalid")
 	}
 	returnValue, ok := evaluationReturn(e.Metrics())
@@ -203,7 +203,7 @@ func (c *Contract) CanonicalBytes() json.RawMessage {
 
 func ContractFromCanonical(id uuid.UUID, digest string, raw []byte) (*Contract, error) {
 	var c contractCanonical
-	if id == uuid.Nil || !digestPattern.MatchString(digest) || hash(raw) != digest || decodeExact(raw, &c) != nil || c.Schema != ContractSchemaV1 || c.State != "completed" {
+	if id == uuid.Nil || !digestPattern.MatchString(digest) || hash(raw) != digest || decodeExact(raw, &c) != nil || !validContractCanonical(c) {
 		return nil, fmt.Errorf("capacity contract envelope is invalid")
 	}
 	encoded, _ := json.Marshal(c)
@@ -212,6 +212,29 @@ func ContractFromCanonical(id uuid.UUID, digest string, raw []byte) (*Contract, 
 		return nil, fmt.Errorf("capacity contract identity does not reconstruct")
 	}
 	return value, nil
+}
+
+func validContractCanonical(c contractCanonical) bool {
+	evaluationID, evaluationErr := uuid.Parse(c.EvaluationID)
+	sourceID, sourceErr := uuid.Parse(c.SourceReportID)
+	start, startErr := time.Parse("2006-01-02T15:04:05.000000Z", c.EvaluationStart)
+	end, endErr := time.Parse("2006-01-02T15:04:05.000000Z", c.EvaluationEnd)
+	if c.Schema != ContractSchemaV1 || c.State != "completed" || !validFamily(c.Family) || evaluationErr != nil || sourceErr != nil || evaluationID == uuid.Nil || sourceID == uuid.Nil || !digestPattern.MatchString(c.EvaluationSHA256) || !digestPattern.MatchString(c.SourceReportSHA256) || startErr != nil || endErr != nil || !start.Before(end) || !validDecimal(c.AfterCostReturn) {
+		return false
+	}
+	if c.CapacityAvailable {
+		return c.UnavailableReason == "" && positive(c.CapitalPerUnit) && c.MaximumUnits > 0
+	}
+	return c.UnavailableReason == "source_capacity_not_observed" && c.CapitalPerUnit == "0" && c.MaximumUnits == 0
+}
+
+func validFamily(f FamilyKind) bool {
+	switch f {
+	case FamilyPassive, FamilyWheel, FamilyMomentum, FamilyTrend, FamilyDefinedRisk:
+		return true
+	default:
+		return false
+	}
 }
 
 func validDecimal(v string) bool {

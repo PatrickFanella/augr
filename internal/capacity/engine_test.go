@@ -75,6 +75,20 @@ func TestComparisonRetainsSixTiersUnavailableFamiliesAndSaturation(t *testing.T)
 	if err != nil || !bytes.Equal(restored.CanonicalBytes(), comparison.CanonicalBytes()) {
 		t.Fatalf("replay=%v", err)
 	}
+	var envelope map[string]json.RawMessage
+	if err = json.Unmarshal(comparison.CanonicalBytes(), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"schema", "state", "capital_policy_version", "families"} {
+		if _, ok := envelope[key]; !ok {
+			t.Fatalf("missing canonical key %q: %s", key, comparison.CanonicalBytes())
+		}
+	}
+	for _, key := range []string{"Schema", "State", "CapitalPolicyVersion"} {
+		if _, ok := envelope[key]; ok {
+			t.Fatalf("non-canonical key %q: %s", key, comparison.CanonicalBytes())
+		}
+	}
 	for _, family := range comparison.Families() {
 		if len(family.Tiers) != 6 {
 			t.Fatalf("tiers=%+v", family)

@@ -34,8 +34,10 @@ type FamilyOutcome struct {
 }
 type (
 	comparisonCanonical struct {
-		Schema, State, CapitalPolicyVersion string
-		Families                            []FamilyOutcome `json:"families"`
+		Schema               string          `json:"schema"`
+		State                string          `json:"state"`
+		CapitalPolicyVersion string          `json:"capital_policy_version"`
+		Families             []FamilyOutcome `json:"families"`
 	}
 	Comparison struct {
 		canonical comparisonCanonical
