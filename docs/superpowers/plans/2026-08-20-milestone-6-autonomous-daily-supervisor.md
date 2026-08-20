@@ -54,12 +54,12 @@ allocation, settlement, broker route, deployment, or live trade.
 
 ## Task 1: Policy, assessment, and action matrix
 
-- [ ] Implement closed checks/work classes, exact evidence references,
+- [x] Implement closed checks/work classes, exact evidence references,
   deterministic action derivation, attention items, and daily supersession.
-- [ ] Prove all-pass, provider outage, stale/corrupt data, reconciliation drift,
+- [x] Prove all-pass, provider outage, stale/corrupt data, reconciliation drift,
   ledger/risk failure, settlement-only failure, unknown input, DST/day identity,
   permutation convergence, semantic conflict, and no automatic flatten path.
-- [ ] Bind exact OVR-207 run/digest and OVR-604 occurrence/effect evidence.
+- [x] Bind exact OVR-207 run/digest and OVR-604 occurrence/effect evidence.
 - [ ] Commit and push the domain slice after focused race tests.
 
 ## Task 2: Schema 99 and retained qualification

@@ -14,6 +14,7 @@ func Catalog() map[string]JobDefinition {
 	}{
 		{"alpaca_reconcile", []MutationClass{MutationReconciliation, MutationProvider}},
 		{"current_data_refresh", []MutationClass{MutationEvidence, MutationProvider}},
+		{"daily_supervisor", []MutationClass{MutationEvidence}},
 		{"daily_review", []MutationClass{MutationEvidence}},
 		{"deep_scan", []MutationClass{MutationEvidence, MutationProvider}},
 		{"discovery_run", []MutationClass{MutationEvidence}},

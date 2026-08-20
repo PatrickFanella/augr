@@ -58,7 +58,7 @@ CREATE TABLE financial_job_effect_claims (
     id UUID PRIMARY KEY,
     schema_name TEXT NOT NULL CHECK (schema_name = 'financial-job-effect-v1'),
     occurrence_id UUID NOT NULL REFERENCES financial_job_occurrences(id) ON DELETE RESTRICT,
-    effect_kind TEXT NOT NULL CHECK (effect_kind IN ('execution_intent','execution_order','settlement','ledger','allocation','provider_mutation')),
+    effect_kind TEXT NOT NULL CHECK (effect_kind IN ('execution_intent','execution_order','settlement','ledger','allocation','provider_mutation','supervisor_assessment')),
     business_key TEXT NOT NULL CHECK (business_key ~ '^[a-z0-9][a-z0-9_./:-]{0,191}$'),
     payload_sha256 TEXT NOT NULL CHECK (payload_sha256 ~ '^[0-9a-f]{64}$'),
     owner_id UUID NOT NULL,

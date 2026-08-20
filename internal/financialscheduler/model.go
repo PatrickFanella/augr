@@ -52,6 +52,7 @@ const (
 	EffectLedger     EffectKind = "ledger"
 	EffectAllocation EffectKind = "allocation"
 	EffectProvider   EffectKind = "provider_mutation"
+	EffectSupervisor EffectKind = "supervisor_assessment"
 )
 
 var normalizedKey = regexp.MustCompile(`^[a-z0-9][a-z0-9_./:-]{0,191}$`)
@@ -263,7 +264,7 @@ func validMutationClass(value MutationClass) bool {
 
 func validEffectKind(value EffectKind) bool {
 	switch value {
-	case EffectIntent, EffectOrder, EffectSettlement, EffectLedger, EffectAllocation, EffectProvider:
+	case EffectIntent, EffectOrder, EffectSettlement, EffectLedger, EffectAllocation, EffectProvider, EffectSupervisor:
 		return true
 	default:
 		return false
