@@ -386,10 +386,10 @@ DB_URL="$AUGR_PHASE2_DB_URL" go test -race -count=1 \
 - [x] Document policy, snapshot stability, comparison/reason semantics, read-only
   inspection SQL, incident response, preservation rules, empty-only rollback,
   approximation limits, and the no-cutover boundary.
-- [ ] Apply migrations `1 -> 75` to dedicated loopback-only PostgreSQL; retain
+- [x] Apply migrations `1 -> 75` to dedicated loopback-only PostgreSQL; retain
   one policy, one stable Alpaca run, one stable Kalshi run, and explicit drift
   incidents; reload and recompute all evidence; prove nonempty rollback refusal.
-- [ ] In a separate empty database, prove `75 -> 74 -> 75`.
+- [x] In a separate empty database, prove `75 -> 74 -> 75`.
 - [ ] Run focused races and repository-wide gates:
 
   ```bash

@@ -462,10 +462,17 @@ func newProjectionIntegrationPool(t *testing.T, ctx context.Context) projectionI
 	if err != nil {
 		t.Fatal(err)
 	}
-	schemaName := "integration_projection_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	schemaName := os.Getenv("AUGR_RETAIN_PROJECTION_SCHEMA")
+	retainSchema := schemaName != ""
+	preMigratedSchema := retainSchema && os.Getenv("AUGR_RETAIN_PROJECTION_SCHEMA_PREMIGRATED") == "true"
+	if !retainSchema {
+		schemaName = "integration_projection_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	}
 	identifier := pgx.Identifier{schemaName}.Sanitize()
-	if _, err := adminPool.Exec(ctx, `CREATE SCHEMA `+identifier); err != nil {
-		t.Fatal(err)
+	if !preMigratedSchema {
+		if _, err := adminPool.Exec(ctx, `CREATE SCHEMA `+identifier); err != nil {
+			t.Fatal(err)
+		}
 	}
 	config, err := pgxpool.ParseConfig(databaseURL)
 	if err != nil {
@@ -494,13 +501,15 @@ func newProjectionIntegrationPool(t *testing.T, ctx context.Context) projectionI
 		}
 	}
 	sort.Strings(names)
-	for _, name := range names {
-		contents, err := os.ReadFile(filepath.Join(migrationDirectory, name))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := ownerPool.Exec(ctx, string(contents)); err != nil {
-			t.Fatalf("apply %s: %v", name, err)
+	if !preMigratedSchema {
+		for _, name := range names {
+			contents, err := os.ReadFile(filepath.Join(migrationDirectory, name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := ownerPool.Exec(ctx, string(contents)); err != nil {
+				t.Fatalf("apply %s: %v", name, err)
+			}
 		}
 	}
 	signingSecret := make([]byte, 32)
@@ -554,6 +563,10 @@ func newProjectionIntegrationPool(t *testing.T, ctx context.Context) projectionI
 	t.Cleanup(func() {
 		writerPool.Close()
 		ownerPool.Close()
+		if retainSchema {
+			adminPool.Close()
+			return
+		}
 		if _, cleanupErr := adminPool.Exec(ctx, `DROP SCHEMA IF EXISTS `+identifier+` CASCADE`); cleanupErr != nil {
 			t.Errorf("drop projection integration schema: %v", cleanupErr)
 		}

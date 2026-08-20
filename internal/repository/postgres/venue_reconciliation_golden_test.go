@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -233,19 +235,109 @@ func TestVenueReconciliationGoldenCorrectionBustAndUnstableRemainNonClean(t *tes
 	})
 }
 
+func TestVenueReconciliationPersistentRehearsal(t *testing.T) {
+	databaseURL := os.Getenv("AUGR_VENUE_RECONCILIATION_REHEARSAL_DB_URL")
+	if databaseURL == "" {
+		t.Skip("set AUGR_VENUE_RECONCILIATION_REHEARSAL_DB_URL only for an explicitly disposable schema-75 database")
+	}
+	if os.Getenv("DB_URL") != databaseURL || os.Getenv("AUGR_RETAIN_PROJECTION_SCHEMA") == "" {
+		t.Fatal("DB_URL must equal the rehearsal URL and AUGR_RETAIN_PROJECTION_SCHEMA must name the retained schema")
+	}
+	ctx := context.Background()
+	pools := newProjectionIntegrationPool(t, ctx)
+	if os.Getenv("AUGR_RETAIN_PROJECTION_SCHEMA_PREMIGRATED") != "true" {
+		applyVenueReconciliationMigrations(t, ctx, pools.owner)
+	}
+	repo := NewVenueReconciliationRepo(pools.owner)
+
+	alpacaFixture := newVenueReconciliationGoldenFixtureWithPools(t, venue.ProviderAlpaca, pools)
+	persistVenueReconciliationGolden(t, alpacaFixture, repo)
+	kalshiFixture := newVenueReconciliationGoldenFixtureWithPools(t, venue.ProviderKalshi, pools)
+	persistVenueReconciliationGolden(t, kalshiFixture, repo)
+	driftSnapshot := buildGoldenProviderSnapshot(t, alpacaFixture, func(input *venuerecon.CaptureInput) {
+		input.Cash = decimal.RequireFromString(input.Cash).Add(decimal.RequireFromString("0.01")).String()
+	})
+	driftRun, err := venuerecon.Compare(venuerecon.CompareInput{
+		Policy: alpacaFixture.policy, Provider: &venuerecon.SnapshotAdmission{Snapshot: driftSnapshot},
+		Local: alpacaFixture.local, EquityBasisEquivalent: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if driftRun.Clean || len(driftRun.Incidents) != 1 || driftRun.Incidents[0].Reason != venuerecon.ReasonCashMismatch {
+		t.Fatalf("retained drift run = %+v", driftRun)
+	}
+	driftFixture := alpacaFixture
+	driftFixture.stable, driftFixture.run = driftSnapshot, driftRun
+	persistVenueReconciliationGolden(t, driftFixture, repo)
+
+	for _, fixture := range []venueReconciliationGoldenFixture{alpacaFixture, kalshiFixture, driftFixture} {
+		freshLocal, captureErr := venuerecon.NewLocalSource(NewVenueReconciliationLocalReader(pools.owner)).Capture(ctx, fixture.request)
+		if captureErr != nil || freshLocal.ID() != fixture.local.ID() {
+			t.Fatalf("retained local recompute = %v/%v", snapshotID(freshLocal), captureErr)
+		}
+		freshProvider := buildGoldenProviderSnapshot(t, fixture, func(input *venuerecon.CaptureInput) {
+			if fixture.run.ID == driftRun.ID {
+				input.Cash = decimal.RequireFromString(input.Cash).Add(decimal.RequireFromString("0.01")).String()
+			}
+		})
+		freshRun, compareErr := venuerecon.Compare(venuerecon.CompareInput{
+			Policy: fixture.policy, Provider: &venuerecon.SnapshotAdmission{Snapshot: freshProvider},
+			Local: freshLocal, EquityBasisEquivalent: true,
+		})
+		if compareErr != nil || freshProvider.ID() != fixture.stable.ID() || freshRun.ID != fixture.run.ID || freshRun.SHA256 != fixture.run.SHA256 {
+			t.Fatalf("retained recompute = provider:%v run:%v hash:%s err:%v", freshProvider.ID(), freshRun.ID, freshRun.SHA256, compareErr)
+		}
+		loaded, loadErr := repo.GetVenueReconciliationRun(ctx, fixture.run.ID)
+		if loadErr != nil || loaded.ID != freshRun.ID || loaded.SHA256 != freshRun.SHA256 {
+			t.Fatalf("retained reload = %+v, %v", loaded, loadErr)
+		}
+	}
+
+	var policies, providers, locals, runs, incidents int
+	if err := pools.owner.QueryRow(ctx, `SELECT
+		(SELECT count(*) FROM venue_reconciliation_policy_artifacts),
+		(SELECT count(*) FROM venue_provider_snapshots),(SELECT count(*) FROM venue_local_snapshots),
+		(SELECT count(*) FROM venue_reconciliation_runs),(SELECT count(*) FROM venue_reconciliation_incidents)`).
+		Scan(&policies, &providers, &locals, &runs, &incidents); err != nil {
+		t.Fatal(err)
+	}
+	if policies != 1 || providers != 3 || locals != 2 || runs != 3 || incidents != 1 {
+		t.Fatalf("retained graph counts=%d/%d/%d/%d/%d", policies, providers, locals, runs, incidents)
+	}
+	if _, err := pools.owner.Exec(ctx, repositoryMigrationSQL(t, "000075_venue_reconciliation.down.sql")); err == nil || !strings.Contains(err.Error(), "cannot roll back migration 75") {
+		t.Fatalf("nonempty schema-75 rollback error = %v", err)
+	}
+}
+
 func newVenueReconciliationGoldenFixture(t *testing.T, provider venue.Provider) venueReconciliationGoldenFixture {
 	t.Helper()
 	ctx := context.Background()
 	pools := newProjectionIntegrationPool(t, ctx)
+	applyVenueReconciliationMigrations(t, ctx, pools.owner)
+	return newVenueReconciliationGoldenFixtureWithPools(t, provider, pools)
+}
+
+func applyVenueReconciliationMigrations(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
+	t.Helper()
 	for _, migration := range []string{
 		"000070_accounting_dual_run.up.sql", "000071_common_execution_lifecycle.up.sql",
 		"000072_simulation_policy_artifacts.up.sql", "000073_venue_adapter_observations.up.sql",
 		"000074_capital_margin_profiles.up.sql", "000075_venue_reconciliation.up.sql",
 	} {
-		if _, err := pools.owner.Exec(ctx, repositoryMigrationSQL(t, migration)); err != nil {
+		if _, err := pool.Exec(ctx, repositoryMigrationSQL(t, migration)); err != nil {
 			t.Fatalf("apply %s: %v", migration, err)
 		}
 	}
+}
+
+func newVenueReconciliationGoldenFixtureWithPools(
+	t *testing.T,
+	provider venue.Provider,
+	pools projectionIntegrationPools,
+) venueReconciliationGoldenFixture {
+	t.Helper()
+	ctx := context.Background()
 	var account *domain.Account
 	var contract *instrument.VenueContract
 	var baseTime time.Time
