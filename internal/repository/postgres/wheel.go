@@ -253,12 +253,18 @@ func (repo *WheelRepo) RecordReport(ctx context.Context, value *wheel.Report) (*
 			if err != nil {
 				return nil, evaluationWriteError("insert wheel selected contract", err)
 			}
+			if err = repo.stage("wheel_selected_contract"); err != nil {
+				return nil, err
+			}
 		}
 		for effectSequence, effect := range transition.Effects {
 			_, err = tx.Exec(ctx, `INSERT INTO wheel_v1_economic_effects(report_id,transition_sequence,effect_sequence,kind,instrument_id,quantity,amount,evidence_id,evidence_sha256)
 				VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(report_id,transition_sequence,effect_sequence) DO NOTHING`, value.ID(), transition.Sequence, effectSequence, effect.Kind, effect.InstrumentID, effect.Quantity, effect.Amount, effect.EvidenceID, effect.EvidenceSHA256)
 			if err != nil {
 				return nil, evaluationWriteError("insert wheel economic effect", err)
+			}
+			if err = repo.stage("wheel_economic_effect"); err != nil {
+				return nil, err
 			}
 		}
 		if err = repo.stage("wheel_transition"); err != nil {

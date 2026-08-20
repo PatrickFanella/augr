@@ -122,11 +122,11 @@ Out of scope:
 
 ## Task 4: Operations and qualification
 
-- [ ] Add a runbook for policy review, source inspection, replay, accounting
+- [x] Add a runbook for policy review, source inspection, replay, accounting
   reconciliation, assignment/dividend response, failure, and rollback.
-- [ ] Retain local put-expiry, put-assignment, dividend, covered-call expiry,
+- [x] Retain local put-expiry, put-assignment, dividend, covered-call expiry,
   and call-away scenarios with exact IDs/hashes and row counts.
-- [ ] Prove eight-writer convergence, restart, every-stage rollback, normalized
+- [x] Prove eight-writer convergence, restart, every-stage rollback, normalized
   forgery rejection, nonempty rollback refusal, and empty `83 -> 82 -> 83`.
 - [ ] Run focused/database races, all backend and pinned frontend gates, diff
   review, and isolated kill-switched schema-83 health/API/rollback/reapply.
@@ -145,3 +145,22 @@ Out of scope:
 - [ ] Local qualification is `VERIFIED_LOCAL`; licensed real inputs,
   independent review, shared migration, promotion, runtime adoption, and
   production activation remain `BLOCKED_EXTERNAL`.
+
+## Qualification record (2026-08-20)
+
+Retained database: `augr_ovr402_qual_20260820`, schema 83. Counts are policy /
+scenario / source / report / transition / effect / selected contract =
+`1 / 5 / 22 / 5 / 22 / 32 / 14`.
+
+| Lifecycle | Scenario ID / SHA-256 | Report ID / SHA-256 |
+|---|---|---|
+| put expiry | `72c07d89-6882-811a-76fe-114a3e827ba9` / `c0e9202e25ecd0d8fc1f2d7633c49de03036be7d4f03c3bc307fde58924f2da7` | `2e9be806-9c0d-4af9-ea93-c6f17cef3d72` / `6b504da5a773e739df4c3f4f4c43cc06fd9b13b62c9387cc2190e77256f89018` |
+| put assignment | `85f38f38-ac60-891e-0cfe-e97e7cbd8f91` / `47372fde752dc0fe5f25f9cf38f90336fcba713c346fc88fa7695a975e76dc06` | `78fdde7d-0708-9035-20a7-44f1806476b1` / `d0169140486c271905c45e8c2fdbba518bdbcde2b620c6dce97a819e0c170772` |
+| dividend | `69d5e658-f8df-a1ee-fb70-b7ee41923ec8` / `1c0f9edf68aa8dba4db3b69296c6deb238fe4cd1c242d1074982480ac237e351` | `0089aa46-d341-a90a-425b-47672ed9987f` / `59f158322b69fb9e93abcefac988e05b500ff472ca00b2b072dcb84af59a527f` |
+| covered-call expiry | `486efe92-0a67-b9f3-ecaa-42db7add8a00` / `487101c31fe332ee17c8e3b10aabd51bfd3d6d85db05398ca3b61e211f93daa4` | `9a550c88-d94e-3e2d-7a30-df227029cbc7` / `db76cf529929d3137a97fe46592a47af2376a35673bb8c12a1dd7a3a0131ff4a` |
+| call-away | `76584aef-6dcb-347f-1ba9-86e448f89e91` / `c444c553c65c0a293b8a3c830859ff2d96d1109434395fd99de782228c34e59b` | `6cbab571-9dcd-26cf-4798-6a8a9ce694b2` / `a468e8e465c798f2e9d3ee4ce4ed706e4c966979e4a226c153dd757f8b7eea81` |
+
+Focused races cover deterministic domain replay, scored/stress OVR303 runner
+execution, common capital rejection, PostgreSQL eight-writer convergence,
+restart, all write-stage interruption, append-only enforcement, normalized
+forgery reload refusal, nonempty rollback refusal, and empty `83 -> 82 -> 83`.

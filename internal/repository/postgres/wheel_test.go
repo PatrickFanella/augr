@@ -4,11 +4,16 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/PatrickFanella/get-rich-quick/internal/instrument"
 	"github.com/PatrickFanella/get-rich-quick/internal/strategy/wheel"
 	wheelqualification "github.com/PatrickFanella/get-rich-quick/internal/strategy/wheel/qualification"
 	"github.com/PatrickFanella/get-rich-quick/internal/strategycatalog"
@@ -133,18 +138,20 @@ func TestWheelRepositoryAtomicStagesAppendOnlyAndRollbackRefusal(t *testing.T) {
 	if _, err := fixture.repo.RegisterScenario(ctx, fixture.scenario); err != nil {
 		t.Fatal(err)
 	}
-	fixture.repo.afterStage = func(stage string) error {
-		if stage == "wheel_transition" {
-			return errors.New("injected")
+	for _, failedStage := range []string{"wheel_report", "wheel_selected_contract", "wheel_economic_effect", "wheel_transition"} {
+		fixture.repo.afterStage = func(stage string) error {
+			if stage == failedStage {
+				return errors.New("injected")
+			}
+			return nil
 		}
-		return nil
-	}
-	if _, err := fixture.repo.RecordReport(ctx, fixture.report); err == nil {
-		t.Fatal("partial report accepted")
-	}
-	var reportCount int
-	if err := fixture.base.evaluation.experiment.strategy.pool.QueryRow(ctx, `SELECT count(*) FROM wheel_v1_reports`).Scan(&reportCount); err != nil || reportCount != 0 {
-		t.Fatalf("partial report rows=%d/%v", reportCount, err)
+		if _, err := fixture.repo.RecordReport(ctx, fixture.report); err == nil {
+			t.Fatalf("partial report stage %s accepted", failedStage)
+		}
+		var reportCount int
+		if err := fixture.base.evaluation.experiment.strategy.pool.QueryRow(ctx, `SELECT count(*) FROM wheel_v1_reports`).Scan(&reportCount); err != nil || reportCount != 0 {
+			t.Fatalf("partial report stage %s rows=%d/%v", failedStage, reportCount, err)
+		}
 	}
 	fixture.repo.afterStage = nil
 	if _, err := fixture.repo.RecordReport(ctx, fixture.report); err != nil {
@@ -198,5 +205,72 @@ func TestWheelMigrationEmptyRollbackAndReapply(t *testing.T) {
 	}
 	if _, err := pool.Exec(ctx, repositoryMigrationSQL(t, "000083_quality_filtered_wheel_v1.up.sql")); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestWheelRetainedQualification(t *testing.T) {
+	databaseURL := os.Getenv("WHEEL_V1_QUALIFICATION_DB_URL")
+	if databaseURL == "" {
+		t.Skip("set WHEEL_V1_QUALIFICATION_DB_URL to a dedicated empty schema-83 database")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	var schema string
+	var version, existing int
+	if err = pool.QueryRow(ctx, `SELECT current_schema()`).Scan(&schema); err != nil || schema != "public" {
+		t.Fatalf("qualification schema=%q err=%v", schema, err)
+	}
+	if err = pool.QueryRow(ctx, `SELECT version FROM schema_migrations WHERE NOT dirty`).Scan(&version); err != nil || version != 83 {
+		t.Fatalf("qualification version=%d err=%v", version, err)
+	}
+	if err = pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM wheel_v1_policies)+(SELECT count(*) FROM wheel_v1_scenarios)+(SELECT count(*) FROM wheel_v1_reports)`).Scan(&existing); err != nil || existing != 0 {
+		t.Fatalf("qualification database is not wheel-empty count=%d err=%v", existing, err)
+	}
+	fixture, err := wheelqualification.BuildLifecycleScenarios()
+	if err != nil {
+		t.Fatal(err)
+	}
+	instruments := NewInstrumentRepo(pool)
+	for _, value := range []*instrument.Instrument{fixture.Underlying, fixture.Put, fixture.Call} {
+		if _, err = instruments.CreateInstrument(ctx, value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, value := range []*instrument.VenueContract{fixture.PutContract, fixture.CallContract} {
+		if _, err = instruments.RegisterVenueContract(ctx, value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err = NewDatasetRepo(pool).RecordDatasetManifest(ctx, fixture.Manifest, fixture.CreatedAt); err != nil {
+		t.Fatal(err)
+	}
+	repo := NewWheelRepo(pool)
+	if _, err = repo.RegisterPolicy(ctx, fixture.Policy); err != nil {
+		t.Fatal(err)
+	}
+	names := make([]string, 0, len(fixture.Scenarios))
+	for name := range fixture.Scenarios {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		if _, err = repo.RegisterScenario(ctx, fixture.Scenarios[name]); err != nil {
+			t.Fatalf("persist scenario %s: %v", name, err)
+		}
+		if _, err = repo.RecordReport(ctx, fixture.Reports[name]); err != nil {
+			t.Fatalf("persist report %s: %v", name, err)
+		}
+		t.Logf("%s scenario=%s sha=%s report=%s sha=%s", name, fixture.Scenarios[name].ID(), fixture.Scenarios[name].Digest(), fixture.Reports[name].ID(), fixture.Reports[name].Digest())
+	}
+	var policies, scenarios, sources, reports, transitions, effects, selected int
+	err = pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM wheel_v1_policies),(SELECT count(*) FROM wheel_v1_scenarios),(SELECT count(*) FROM wheel_v1_source_observations),
+		(SELECT count(*) FROM wheel_v1_reports),(SELECT count(*) FROM wheel_v1_transitions),(SELECT count(*) FROM wheel_v1_economic_effects),(SELECT count(*) FROM wheel_v1_selected_contracts)`).
+		Scan(&policies, &scenarios, &sources, &reports, &transitions, &effects, &selected)
+	if err != nil || policies != 1 || scenarios != 5 || sources != 22 || reports != 5 || transitions != 22 || effects != 32 || selected != 14 {
+		t.Fatalf("retained counts=%d/%d/%d/%d/%d/%d/%d err=%v", policies, scenarios, sources, reports, transitions, effects, selected, err)
 	}
 }
