@@ -1,12 +1,18 @@
 package postgres
 
 import (
+	"context"
 	"errors"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/shopspring/decimal"
 
+	"github.com/PatrickFanella/get-rich-quick/internal/execution/alpaca"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution/kalshi"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution/lifecycle"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution/venue"
@@ -69,5 +75,71 @@ func TestVenueAdapterIntegratedKalshiCrashBoundaryRecovery(t *testing.T) {
 				t.Fatalf("recovered graph = %d/%d/%d/%d/%d fees=%d", observations, economics, fills, normalizations, transactions, fees)
 			}
 		})
+	}
+}
+
+func TestVenueAdapterPersistentRehearsal(t *testing.T) {
+	databaseURL := os.Getenv("AUGR_VENUE_ADAPTER_REHEARSAL_DB_URL")
+	if databaseURL == "" {
+		t.Skip("set AUGR_VENUE_ADAPTER_REHEARSAL_DB_URL only for an explicitly disposable schema-73 database")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	suffix := uuid.NewString()
+
+	kalshiFixture := newVenueAdapterRepositoryFixtureWithPool(t, ctx, pool, "persistent-kalshi-"+suffix)
+	kalshiPolicy, err := venue.ReviewedPolicy(venue.ProviderKalshi)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kalshiContext := kalshi.CommonLifecycleContext{
+		Policy: kalshiPolicy, Aggregate: kalshiFixture.aggregate, Account: kalshiFixture.base.account,
+		Instrument: kalshiFixture.base.instrument, VenueContract: kalshiFixture.base.contract,
+		Route:      kalshi.CommonRouteFacts{Subaccount: 0, ExchangeIndex: 0},
+		ReceivedAt: kalshiFixture.base.baseTime.Add(20 * time.Second),
+	}
+	kalshiFact := kalshiPostgresFillFact(t, kalshiContext,
+		"persistent-kalshi-order-"+suffix, "persistent-kalshi-fill-"+suffix,
+		kalshiFixture.aggregate.Order.Quantity, kalshiFixture.base.baseTime.Add(10*time.Second))
+	kalshiResult, err := kalshi.PlanFillResults(kalshiContext, []kalshi.CommonFillFact{kalshiFact})
+	if err != nil {
+		t.Fatal(err)
+	}
+	persistedKalshi, err := venue.PersistResult(ctx, newPostgresVenueResultStore(pool), kalshiFixture.base.account.ID, kalshiResult)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	alpacaFixture := newAlpacaVenueAdapterFixtureWithPool(t, ctx, pool, "persistent-alpaca-"+suffix)
+	alpacaResult := alpacaFixture.planFills(t, []alpaca.FillActivityFact{
+		alpacaFixture.fillFact(t, "persistent-alpaca-fill-"+suffix, alpacaFixture.aggregate.Order.Quantity.String(), "10.25", alpacaFixture.aggregate.Order.Quantity.String(), "0"),
+	})
+	persistedAlpaca, err := venue.PersistResult(ctx, newPostgresVenueResultStore(pool), alpacaFixture.account.ID, alpacaResult)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for label, check := range map[string]struct {
+		accountID uuid.UUID
+		intentID  uuid.UUID
+		wantFills int
+	}{
+		"kalshi": {kalshiFixture.base.account.ID, persistedKalshi.Intent.ID, 1},
+		"alpaca": {alpacaFixture.account.ID, persistedAlpaca.Intent.ID, 1},
+	} {
+		reloaded, reloadErr := NewExecutionLifecycleRepo(pool).GetExecutionLifecycle(ctx, check.accountID, check.intentID)
+		if reloadErr != nil {
+			t.Fatalf("reload %s: %v", label, reloadErr)
+		}
+		if reloaded.State != lifecycle.StateFilled || len(reloaded.Fills) != check.wantFills {
+			t.Fatalf("%s retained graph = %s/%d", label, reloaded.State, len(reloaded.Fills))
+		}
+	}
+	if _, err := pool.Exec(ctx, repositoryMigrationSQL(t, "000073_venue_adapter_observations.down.sql")); err == nil || !strings.Contains(err.Error(), "cannot roll back migration 73") {
+		t.Fatalf("nonempty schema-73 rollback error = %v", err)
 	}
 }

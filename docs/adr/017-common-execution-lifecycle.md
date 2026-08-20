@@ -2,7 +2,7 @@
 title: "ADR-017: Common intent and execution lifecycle"
 description: "Use one idempotent state machine for backtest, paper, shadow, and future live execution."
 status: "accepted"
-updated: "2026-08-15"
+updated: "2026-08-20"
 tags: [adr, execution, lifecycle, simulation]
 ---
 
@@ -66,9 +66,24 @@ adapters therefore share the same request, transitions, policy version, and
 economic outcome hash within one ADR-018 mode. See the
 [common simulation venue runbook](../runbooks/common-simulation-venue.md).
 
-This local implementation does not activate a writer, scheduler, or external
-venue adapter and does not cut over legacy runtime paths. Those remain separate
-activation and OVR-205 decisions.
+OVR-205 now supplies additive Alpaca Trading API v2 and Kalshi Trade API v2
+adapters locally. Each route is governed by one independently reconstructed,
+content-addressed venue policy. Stable lifecycle order IDs become provider
+client IDs; exact provider bytes are journaled before interpretation; and every
+authoritative fill continues through the same OVR-103/203 normalization,
+ledger, binding, fill, and event graph. Alpaca stream fills are notices while
+account-activity `FILL` identities are economic. Kalshi accepts only
+`resting`, `canceled`, and `executed`; executed is evidence-only until exact
+fill IDs already account for the full order. Current/historical recovery,
+ambiguous submission, cancellation commands, corrections, busts, unknown
+states, and contradictions all fail closed without a guessed order or fill.
+See the [Alpaca and Kalshi common-lifecycle runbook](../runbooks/alpaca-kalshi-common-lifecycle.md).
+
+This local implementation does not activate a writer, scheduler, provider
+credential, or external venue route and does not cut over legacy runtime paths.
+Production activation, external-paper fidelity, writer identity, protected
+database migration, reconciliation, alerting, and cutover remain separate
+reviewed decisions.
 
 ## Consequences
 

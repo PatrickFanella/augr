@@ -163,6 +163,16 @@ type alpacaVenueAdapterFixture struct {
 func newAlpacaVenueAdapterFixture(t *testing.T, key string) alpacaVenueAdapterFixture {
 	t.Helper()
 	ctx, pool := newVenueAdapterIntegrationPool(t)
+	return newAlpacaVenueAdapterFixtureWithPool(t, ctx, pool, key)
+}
+
+func newAlpacaVenueAdapterFixtureWithPool(
+	t *testing.T,
+	ctx context.Context,
+	pool *pgxpool.Pool,
+	key string,
+) alpacaVenueAdapterFixture {
+	t.Helper()
 	baseTime := time.Date(2026, 8, 15, 20, 0, 0, 123456000, time.UTC)
 	suffix := stringsToUpperWithoutHyphens(uuid.NewString())
 	account, err := domain.NewAccount(domain.AccountInput{

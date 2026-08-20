@@ -600,6 +600,16 @@ type venueAdapterRepositoryFixture struct {
 func newVenueAdapterRepositoryFixture(t *testing.T, key string) venueAdapterRepositoryFixture {
 	t.Helper()
 	ctx, pool := newVenueAdapterIntegrationPool(t)
+	return newVenueAdapterRepositoryFixtureWithPool(t, ctx, pool, key)
+}
+
+func newVenueAdapterRepositoryFixtureWithPool(
+	t *testing.T,
+	ctx context.Context,
+	pool *pgxpool.Pool,
+	key string,
+) venueAdapterRepositoryFixture {
+	t.Helper()
 	baseTime := time.Date(2026, 8, 15, 23, 0, 0, 123456000, time.UTC)
 	suffix := uuid.NewString()
 	account, err := domain.NewAccount(domain.AccountInput{
