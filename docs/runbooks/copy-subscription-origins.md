@@ -11,7 +11,7 @@ historical strategy, or migrate a shared database.
 Use a dedicated loopback database:
 
 ```bash
-export COPY_ORIGIN_QUALIFICATION_DB_URL='postgres://USER:PASSWORD@127.0.0.1:PORT/augr_ovr501_qual_20260820_v2?sslmode=disable'
+export COPY_ORIGIN_QUALIFICATION_DB_URL='postgres://USER:PASSWORD@127.0.0.1:PORT/augr_ovr501_qual_20260820_v3?sslmode=disable'
 psql "$COPY_ORIGIN_QUALIFICATION_DB_URL" -Atc \
   "select current_database(),current_schema(),version,dirty from schema_migrations"
 ```
@@ -60,7 +60,7 @@ COPY_ORIGIN_QUALIFICATION_DB_URL="$COPY_ORIGIN_QUALIFICATION_DB_URL" \
   -run TestCopyOriginRetainedQualification -count=1 -v
 ```
 
-Expected retained inventory is one subscription, two copy intents, one origin
+Expected retained inventory is two subscriptions, two copy intents, one origin
 run, two normalized run-intent rows, and zero strategy rows. Eight identical
 writers converge. Injected failure after the run or child stage leaves zero
 run rows. Mutation must fail with `copy origin evidence is append-only`.

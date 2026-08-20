@@ -1220,6 +1220,18 @@ remain **BLOCKED_EXTERNAL**. Dependency-order execution proceeds to OVR-501.
 | OVR-506 | OVR-505 | Complete-set arbitrage engine | All legs, capital reservation, and orphan worst case must remain profitable. |
 | OVR-507 | OVR-505 | Maker simulation and quoting | Net spread capture remains positive after markouts and inventory cost. |
 
+OVR-501 is complete locally. New copy subscriptions are their own exact
+`copy_subscription/<UUID>` origins and create no per-subscription strategy
+rows. Retained clean schema-88 evidence contains 2 subscriptions, 2 intents,
+1 canonical rebalance run, 2 normalized run-intent rows, and 0 strategies;
+eight writers converge, stage failures roll back, normalized forgery fails,
+and empty `88 -> 87 -> 88` succeeds. Full backend/static and pinned frontend
+gates plus isolated production-image fresh-88 health/API/rollback-60/backup-
+restore/reapply passed. These results are **VERIFIED_LOCAL**. Historical
+cleanup, shared migration, independent review, runtime adoption, deployment,
+provider/broker routing, and live trading remain **BLOCKED_EXTERNAL**.
+Dependency-order execution proceeds to OVR-502.
+
 ### Milestone 6 — AI workbench and autonomy
 
 | ID | Depends on | Work | Acceptance |

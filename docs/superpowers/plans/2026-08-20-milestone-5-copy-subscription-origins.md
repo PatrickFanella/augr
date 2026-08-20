@@ -123,3 +123,39 @@ Out of scope:
 - [x] Local qualification is `VERIFIED_LOCAL`; shared migration, historical
   cleanup, independent review, runtime adoption, deployment, and live trading
   remain `BLOCKED_EXTERNAL`.
+
+## Qualification record — 2026-08-20
+
+OVR-501 is **VERIFIED_LOCAL**. The application behavior qualified in the
+isolated production image is commit
+`7ec15c386c85615e48de04e53805b684dbe81006`; the subsequent
+`651cfdfe9a5cc7a224b65d0ebea62c1d23309da9` commit expands only retained test
+coverage to a second subscription. Clean retained database
+`augr_ovr501_qual_20260820_v3` is schema 88 and contains 2 origin-native
+subscriptions, 2 copy intents, 1 canonical rebalance run, 2 normalized run
+intent rows, and 0 strategy rows. The complete retained graph is rooted at
+subscription/origin `4b9ae278-021a-4847-a3a8-075b19876641`; run
+`4e7f0d9a-b0d7-d634-1fec-43f4a2531c51` has SHA-256
+`178ba50ed49364cc9b080c81a1505920058df57cc7e7e5bdeec70f60435f34cf`.
+
+Eight identical writers converge after restart. Injected failure after either
+the run or normalized-intent stage leaves zero run graph rows. Cross-parent
+origin/source/calculation mismatches fail at trusted Go and PostgreSQL
+boundaries; mutation fails with `copy origin evidence is append-only`.
+Nonempty rollback refuses origin-native evidence, while the separate
+`augr_ovr501_empty_20260820` database completed clean `88 -> 87 -> 88`.
+
+Full backend qualification passed 4,574 race tests in 117 packages, build,
+vet, repository-wide lint, gofumpt, and vulnerability scanning with no called
+symbol vulnerabilities. Pinned Node 22.23.2 frontend qualification passed
+frozen script-free installation, no known dependency vulnerabilities, 162
+tests, lint, and production build. The isolated production verifier passed
+fresh migration `1 -> 88`, authenticated read-only API smoke, lossless
+`88 -> 60`, schema-60 backup/restore, reapply `61 -> 88`, and post-reapply
+health.
+
+Origin-native runs remain prepared until OVR-502 supplies a fresh executable
+quote and valid session to the common-lifecycle proposal adapter. Historical
+strategy deletion, shared migration, independent review, runtime adoption,
+deployment, provider/broker routing, and live trading remain
+**BLOCKED_EXTERNAL**.
