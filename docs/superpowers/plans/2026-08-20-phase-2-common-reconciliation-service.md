@@ -271,16 +271,16 @@ go test -count=1 ./internal/venuerecon -run 'Policy|Vocabulary'
 
 ## Task 2: RED provider snapshot and stability protocol
 
-- [ ] Test exact Alpaca and Kalshi account/position/fill fixture normalization,
+- [x] Test exact Alpaca and Kalshi account/position/fill fixture normalization,
   canonical contract resolution, raw page preservation, pagination completion,
   and deterministic snapshot bytes/hash/identity.
-- [ ] Test duplicate IDs/cursors, malformed decimals/times, ambiguous contracts,
+- [x] Test duplicate IDs/cursors, malformed decimals/times, ambiguous contracts,
   namespace/account/provider drift, incomplete pages, unsupported facts, and
   changed bytes under reused source identity fail closed.
-- [ ] Test two identical captures admit one stable snapshot while any cash,
+- [x] Test two identical captures admit one stable snapshot while any cash,
   equity, position, fill, cursor, raw page, revision, or source-time change
   returns `snapshot_unstable` evidence and no comparable economic snapshot.
-- [ ] Implement provider-neutral capture types, pure adapter normalization, and
+- [x] Implement provider-neutral capture types, pure adapter normalization, and
   a read-only double-capture coordinator with no mutation interface.
 
 Run:
