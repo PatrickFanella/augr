@@ -1302,6 +1302,25 @@ independent review, shared migration, runtime adoption, strategy evaluation,
 scheduling, deployment, venue routing, or live trading; those remain
 **BLOCKED_EXTERNAL**. Dependency-order execution proceeds to OVR-506.
 
+OVR-506 is complete locally as schema 93. One immutable OVR-505 recorder now
+binds every complete-set entry and same-time executable unwind to exact replayed
+depth and fees, enumerates every nonempty proper orphan subset, and qualifies
+only when capital covers entry plus worst orphan loss and guarded profit is
+strictly above the declared minimum. The retained three-outcome fixture has
+three candidates, nine bindings, nine legs, eighteen orphan scenarios, and
+twenty-seven scenario legs. Its qualified candidate records entry cost `9`,
+payout `10`, worst orphan loss `0.2`, reserved capital `9.2`, and guarded profit
+`0.8` above minimum `0.5`; an exact `0.8` minimum is rejected, as is available
+capital below `9.2`. Eight-writer convergence, changed-retry conflict, every-
+stage rollback, restart, forgery/append-only enforcement, nonempty rollback
+refusal, empty `93 -> 92 -> 93`, repository-wide backend/static and pinned
+frontend gates, and isolated production-image fresh-93 health/API/rollback-60/
+backup-restore/reapply passed. These results are **VERIFIED_LOCAL** only.
+Synthetic fixtures do not establish licensed history, independent review,
+shared migration, runtime capital reservation, scheduling, deployment, venue
+routing, or live trading; those remain **BLOCKED_EXTERNAL**. Dependency-order
+execution proceeds to OVR-507.
+
 ### Milestone 6 — AI workbench and autonomy
 
 | ID | Depends on | Work | Acceptance |

@@ -61,50 +61,81 @@ reserve real cash, create intents, or route orders.
 
 ## Task 1: Complete-set and capital model
 
-- [ ] Expose immutable OVR-505 replay results without exposing mutable
+- [x] Expose immutable OVR-505 replay results without exposing mutable
   canonical state.
-- [ ] Validate complete outcome coverage, same-time exact entry/unwind replay
+- [x] Validate complete outcome coverage, same-time exact entry/unwind replay
   binding, quantity, payout, available capital, and minimum profit.
-- [ ] Compute exact entry cost, payout, after-cost profit, and capital coverage
+- [x] Compute exact entry cost, payout, after-cost profit, and capital coverage
   only from recorded fills/fees.
-- [ ] Prove missing/duplicate/extra outcomes, partial/cross-market/cross-time/
+- [x] Prove missing/duplicate/extra outcomes, partial/cross-market/cross-time/
   wrong-side/wrong-role/wrong-quantity rows, and insufficient capital fail.
-- [ ] Commit and push the complete-set slice.
+- [x] Commit and push the complete-set slice.
 
 ## Task 2: Orphan enumeration and qualification
 
-- [ ] Enumerate all nonempty proper subsets deterministically and retain every
+- [x] Enumerate all nonempty proper subsets deterministically and retain every
   scenario plus its exact entry/unwind leg economics.
-- [ ] Select worst nonnegative orphan loss with stable tie-breaking and require
+- [x] Select worst nonnegative orphan loss with stable tie-breaking and require
   strict profit after the orphan guard and declared minimum.
-- [ ] Retain qualified and rejected candidates with exact reasons; no rejection
+- [x] Retain qualified and rejected candidates with exact reasons; no rejection
   may emit an execution artifact.
-- [ ] Prove all-leg success, each singleton orphan, multi-leg orphan, zero-loss
+- [x] Prove all-leg success, each singleton orphan, multi-leg orphan, zero-loss
   floor, equality boundaries, input permutation, and canonical reconstruction.
-- [ ] Commit and push the orphan-guard slice.
+- [x] Commit and push the orphan-guard slice.
 
 ## Task 3: Migration 93 and retained qualification
 
-- [ ] Persist immutable candidate/leg/scenario/scenario-leg identity and
+- [x] Persist immutable candidate/leg/scenario/scenario-leg identity and
   normalized rows with PostgreSQL reconstruction and OVR-505 recorder guards.
-- [ ] Prove eight-writer convergence, changed retry conflict, every-stage atomic
+- [x] Prove eight-writer convergence, changed retry conflict, every-stage atomic
   rollback, forgery rejection, append-only evidence, nonempty rollback refusal,
   and empty `93 -> 92 -> 93`.
-- [ ] Retain at least one qualified set, one insufficient-capital rejection,
+- [x] Retain at least one qualified set, one insufficient-capital rejection,
   all singleton orphan paths, a multi-leg orphan path, and an exact strict
   profitability boundary.
-- [ ] Add an inspection/recovery/rollback runbook with exact IDs and digests.
-- [ ] Run focused/database races, repository-wide backend/static and pinned
+- [x] Add an inspection/recovery/rollback runbook with exact IDs and digests.
+- [x] Run focused/database races, repository-wide backend/static and pinned
   frontend gates, diff review, and isolated kill-switched schema-93 health/API/
   rollback/backup/restore/reapply.
-- [ ] Commit/push verified slices, fetch, and prove `0 0` before OVR-507.
+- [x] Commit/push verified slices, fetch, and prove `0 0` before OVR-507.
 
 ## Acceptance evidence to record
 
-- [ ] Every qualified candidate covers every outcome at exact executable size,
+- [x] Every qualified candidate covers every outcome at exact executable size,
   exact recorded fees, and one same-time executable unwind per leg.
-- [ ] Available capital covers entry plus the enumerated worst orphan loss, and
+- [x] Available capital covers entry plus the enumerated worst orphan loss, and
   profit after that guard strictly exceeds the declared minimum.
-- [ ] Local qualification is `VERIFIED_LOCAL`; licensed inputs, independent
+- [x] Local qualification is `VERIFIED_LOCAL`; licensed inputs, independent
   review, shared migration, runtime capital reservation, scheduling, deployment,
   venue routing, and live trading remain `BLOCKED_EXTERNAL`.
+
+## Qualification record — 2026-08-20
+
+OVR-506 is `VERIFIED_LOCAL` on retained loopback database
+`augr_ovr506_qual_20260820_v2` at schema 93. Recorder
+`75a5cfb9-f0a9-cbf3-fbbe-ef89ae9f4f3a` produced qualified candidate
+`e0780885-932e-4544-473e-37d4f1f3e615` with SHA-256
+`52277d1d03f0b2b746059cfd25ce4a60b9a6f20fc5b9bf3165e79b9286056b20`,
+insufficient-capital rejection `4a2ee54d-eabc-6c53-5f0d-275cf4dcb286`,
+and exact strict-boundary rejection `e69e1f7b-2fec-818e-8aea-df862efa4cec`.
+The retained graph has three candidates, nine bindings, nine legs, eighteen
+orphan scenarios, and twenty-seven scenario legs.
+
+The qualified three-outcome fixture records entry cost `9`, payout `10`,
+after-cost profit `1`, worst orphan loss `0.2`, reserved capital `9.2`, and
+profit after the orphan guard `0.8`, strictly above minimum profit `0.5`.
+The equality fixture sets minimum profit to `0.8` and is rejected with
+`orphan_guard_failure`. Eight concurrent writers converge, a changed retry
+conflicts, every persistence stage rolls back atomically, restart reconstruction
+matches the canonical digest, and forged or mutated evidence is rejected.
+Migration 93 passed empty `93 -> 92 -> 93`; the retained graph refused rollback.
+
+Repository-wide race tests (4,599 tests in 124 packages), build, vet, lint,
+format, and reachable-vulnerability checks passed. Pinned Node 22.23.2 passed
+162 frontend tests, lint, and production build; `npm audit --omit=dev` retains
+one low-severity Windows-only development-server advisory in esbuild. The
+isolated production verifier passed fresh `1 -> 93`, health, authenticated
+read-only API smoke, `93 -> 60` rollback, schema-60 backup/restore, reapply to
+93, and post-reapply health. Licensed inputs, independent review, shared
+migration, runtime capital reservation, scheduling, deployment, venue routing,
+and live trading remain `BLOCKED_EXTERNAL`.
