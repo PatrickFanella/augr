@@ -253,18 +253,18 @@ func (r *CopyTradingRepo) ListInstrumentMappings(ctx context.Context, provider, 
 	return items, rows.Err()
 }
 
-const copySubscriptionSelect = `SELECT id,leader_id,source_id,legacy_strategy_id,origin_type,origin_id,status,is_paper,method,capital_budget::double precision,cash_buffer_pct::double precision,top_n,min_source_weight::double precision,max_position_weight::double precision,max_turnover_pct::double precision,min_price::double precision,min_avg_dollar_volume::double precision,max_spread_bps,stock_allowlist,stock_blocklist,created_by,created_at,updated_at,stopped_at FROM copy_subscriptions`
+const copySubscriptionSelect = `SELECT id,leader_id,source_id,legacy_strategy_id,origin_type,origin_id,status,is_paper,method,capital_budget::double precision,cash_buffer_pct::double precision,top_n,min_source_weight::double precision,max_position_weight::double precision,max_turnover_pct::double precision,min_price::double precision,min_avg_dollar_volume::double precision,max_spread_bps,max_quote_age_seconds,allowed_sessions,stock_allowlist,stock_blocklist,created_by,created_at,updated_at,stopped_at FROM copy_subscriptions`
 
 func scanCopySubscription(row pgx.Row) (*domain.CopySubscription, error) {
 	var item domain.CopySubscription
-	if err := row.Scan(&item.ID, &item.LeaderID, &item.SourceID, &item.LegacyStrategyID, &item.OriginType, &item.OriginID, &item.Status, &item.IsPaper, &item.Method, &item.CapitalBudget, &item.CashBufferPct, &item.TopN, &item.MinSourceWeight, &item.MaxPositionWeight, &item.MaxTurnoverPct, &item.MinPrice, &item.MinAvgDollarVolume, &item.MaxSpreadBPS, &item.StockAllowlist, &item.StockBlocklist, &item.CreatedBy, &item.CreatedAt, &item.UpdatedAt, &item.StoppedAt); err != nil {
+	if err := row.Scan(&item.ID, &item.LeaderID, &item.SourceID, &item.LegacyStrategyID, &item.OriginType, &item.OriginID, &item.Status, &item.IsPaper, &item.Method, &item.CapitalBudget, &item.CashBufferPct, &item.TopN, &item.MinSourceWeight, &item.MaxPositionWeight, &item.MaxTurnoverPct, &item.MinPrice, &item.MinAvgDollarVolume, &item.MaxSpreadBPS, &item.MaxQuoteAgeSeconds, &item.AllowedSessions, &item.StockAllowlist, &item.StockBlocklist, &item.CreatedBy, &item.CreatedAt, &item.UpdatedAt, &item.StoppedAt); err != nil {
 		return nil, err
 	}
 	return &item, nil
 }
 
 func (r *CopyTradingRepo) CreateSubscription(ctx context.Context, s *domain.CopySubscription) error {
-	return r.pool.QueryRow(ctx, `INSERT INTO copy_subscriptions (id,leader_id,source_id,legacy_strategy_id,origin_type,origin_id,status,is_paper,method,capital_budget,cash_buffer_pct,top_n,min_source_weight,max_position_weight,max_turnover_pct,min_price,min_avg_dollar_volume,max_spread_bps,stock_allowlist,stock_blocklist,created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) RETURNING created_at,updated_at`, s.ID, s.LeaderID, s.SourceID, s.LegacyStrategyID, s.OriginType, s.OriginID, s.Status, s.IsPaper, s.Method, s.CapitalBudget, s.CashBufferPct, s.TopN, s.MinSourceWeight, s.MaxPositionWeight, s.MaxTurnoverPct, s.MinPrice, s.MinAvgDollarVolume, s.MaxSpreadBPS, s.StockAllowlist, s.StockBlocklist, s.CreatedBy).Scan(&s.CreatedAt, &s.UpdatedAt)
+	return r.pool.QueryRow(ctx, `INSERT INTO copy_subscriptions (id,leader_id,source_id,legacy_strategy_id,origin_type,origin_id,status,is_paper,method,capital_budget,cash_buffer_pct,top_n,min_source_weight,max_position_weight,max_turnover_pct,min_price,min_avg_dollar_volume,max_spread_bps,max_quote_age_seconds,allowed_sessions,stock_allowlist,stock_blocklist,created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23) RETURNING created_at,updated_at`, s.ID, s.LeaderID, s.SourceID, s.LegacyStrategyID, s.OriginType, s.OriginID, s.Status, s.IsPaper, s.Method, s.CapitalBudget, s.CashBufferPct, s.TopN, s.MinSourceWeight, s.MaxPositionWeight, s.MaxTurnoverPct, s.MinPrice, s.MinAvgDollarVolume, s.MaxSpreadBPS, s.MaxQuoteAgeSeconds, s.AllowedSessions, s.StockAllowlist, s.StockBlocklist, s.CreatedBy).Scan(&s.CreatedAt, &s.UpdatedAt)
 }
 
 func (r *CopyTradingRepo) GetSubscription(ctx context.Context, id uuid.UUID) (*domain.CopySubscription, error) {
@@ -325,14 +325,14 @@ func (r *CopyTradingRepo) CountSubscriptions(ctx context.Context, filter reposit
 }
 
 func (r *CopyTradingRepo) UpdateSubscription(ctx context.Context, s *domain.CopySubscription) error {
-	return r.pool.QueryRow(ctx, `UPDATE copy_subscriptions SET status=$2,method=$3,capital_budget=$4,cash_buffer_pct=$5,top_n=$6,min_source_weight=$7,max_position_weight=$8,max_turnover_pct=$9,min_price=$10,min_avg_dollar_volume=$11,max_spread_bps=$12,stock_allowlist=$13,stock_blocklist=$14,stopped_at=$15,updated_at=NOW() WHERE id=$1 RETURNING updated_at`, s.ID, s.Status, s.Method, s.CapitalBudget, s.CashBufferPct, s.TopN, s.MinSourceWeight, s.MaxPositionWeight, s.MaxTurnoverPct, s.MinPrice, s.MinAvgDollarVolume, s.MaxSpreadBPS, s.StockAllowlist, s.StockBlocklist, s.StoppedAt).Scan(&s.UpdatedAt)
+	return r.pool.QueryRow(ctx, `UPDATE copy_subscriptions SET status=$2,method=$3,capital_budget=$4,cash_buffer_pct=$5,top_n=$6,min_source_weight=$7,max_position_weight=$8,max_turnover_pct=$9,min_price=$10,min_avg_dollar_volume=$11,max_spread_bps=$12,max_quote_age_seconds=$13,allowed_sessions=$14,stock_allowlist=$15,stock_blocklist=$16,stopped_at=$17,updated_at=NOW() WHERE id=$1 RETURNING updated_at`, s.ID, s.Status, s.Method, s.CapitalBudget, s.CashBufferPct, s.TopN, s.MinSourceWeight, s.MaxPositionWeight, s.MaxTurnoverPct, s.MinPrice, s.MinAvgDollarVolume, s.MaxSpreadBPS, s.MaxQuoteAgeSeconds, s.AllowedSessions, s.StockAllowlist, s.StockBlocklist, s.StoppedAt).Scan(&s.UpdatedAt)
 }
 
-const copyIntentSelect = `SELECT id,subscription_id,origin_type,origin_id,source_observation_id,pipeline_run_id,instrument_key,ticker,side,target_weight::double precision,target_value::double precision,attributed_current_value::double precision,requested_notional::double precision,executable_price::double precision,calculation_version,calculation,policy_status,policy_reasons,risk_status,risk_reasons,order_id,status,created_at,updated_at FROM copy_trade_intents`
+const copyIntentSelect = `SELECT id,subscription_id,origin_type,origin_id,source_observation_id,pipeline_run_id,instrument_key,ticker,side,target_weight::double precision,target_value::double precision,attributed_current_value::double precision,requested_notional::double precision,executable_price::double precision,quote_gate_version,decision_quote_snapshot_id,decision_bid::text,decision_ask::text,decision_spread_bps::text,decision_available_at,decision_at,decision_market_status,decision_session_status,calculation_version,calculation,policy_status,policy_reasons,risk_status,risk_reasons,order_id,status,created_at,updated_at FROM copy_trade_intents`
 
 func scanCopyIntent(row pgx.Row) (*domain.CopyTradeIntent, error) {
 	var item domain.CopyTradeIntent
-	if err := row.Scan(&item.ID, &item.SubscriptionID, &item.OriginType, &item.OriginID, &item.SourceObservationID, &item.PipelineRunID, &item.InstrumentKey, &item.Ticker, &item.Side, &item.TargetWeight, &item.TargetValue, &item.AttributedCurrentValue, &item.RequestedNotional, &item.ExecutablePrice, &item.CalculationVersion, &item.Calculation, &item.PolicyStatus, &item.PolicyReasons, &item.RiskStatus, &item.RiskReasons, &item.OrderID, &item.Status, &item.CreatedAt, &item.UpdatedAt); err != nil {
+	if err := row.Scan(&item.ID, &item.SubscriptionID, &item.OriginType, &item.OriginID, &item.SourceObservationID, &item.PipelineRunID, &item.InstrumentKey, &item.Ticker, &item.Side, &item.TargetWeight, &item.TargetValue, &item.AttributedCurrentValue, &item.RequestedNotional, &item.ExecutablePrice, &item.QuoteGateVersion, &item.DecisionQuoteSnapshotID, &item.DecisionBid, &item.DecisionAsk, &item.DecisionSpreadBPS, &item.DecisionAvailableAt, &item.DecisionAt, &item.DecisionMarketStatus, &item.DecisionSessionStatus, &item.CalculationVersion, &item.Calculation, &item.PolicyStatus, &item.PolicyReasons, &item.RiskStatus, &item.RiskReasons, &item.OrderID, &item.Status, &item.CreatedAt, &item.UpdatedAt); err != nil {
 		return nil, err
 	}
 	return &item, nil
@@ -348,7 +348,7 @@ func (r *CopyTradingRepo) CreateIntent(ctx context.Context, intent *domain.CopyT
 	if intent.RiskReasons == nil {
 		intent.RiskReasons = []string{}
 	}
-	err := r.pool.QueryRow(ctx, `INSERT INTO copy_trade_intents (id,subscription_id,origin_type,origin_id,source_observation_id,pipeline_run_id,instrument_key,ticker,side,target_weight,target_value,attributed_current_value,requested_notional,executable_price,calculation_version,calculation,policy_status,policy_reasons,risk_status,risk_reasons,order_id,status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) ON CONFLICT (subscription_id,source_observation_id,instrument_key,calculation_version) DO NOTHING RETURNING created_at,updated_at`, intent.ID, intent.SubscriptionID, intent.OriginType, intent.OriginID, intent.SourceObservationID, intent.PipelineRunID, intent.InstrumentKey, intent.Ticker, intent.Side, intent.TargetWeight, intent.TargetValue, intent.AttributedCurrentValue, intent.RequestedNotional, intent.ExecutablePrice, intent.CalculationVersion, intent.Calculation, intent.PolicyStatus, intent.PolicyReasons, intent.RiskStatus, intent.RiskReasons, intent.OrderID, intent.Status).Scan(&intent.CreatedAt, &intent.UpdatedAt)
+	err := r.pool.QueryRow(ctx, `INSERT INTO copy_trade_intents (id,subscription_id,origin_type,origin_id,source_observation_id,pipeline_run_id,instrument_key,ticker,side,target_weight,target_value,attributed_current_value,requested_notional,executable_price,quote_gate_version,decision_quote_snapshot_id,decision_bid,decision_ask,decision_spread_bps,decision_available_at,decision_at,decision_market_status,decision_session_status,calculation_version,calculation,policy_status,policy_reasons,risk_status,risk_reasons,order_id,status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31) ON CONFLICT (subscription_id,source_observation_id,instrument_key,calculation_version) DO NOTHING RETURNING created_at,updated_at`, intent.ID, intent.SubscriptionID, intent.OriginType, intent.OriginID, intent.SourceObservationID, intent.PipelineRunID, intent.InstrumentKey, intent.Ticker, intent.Side, intent.TargetWeight, intent.TargetValue, intent.AttributedCurrentValue, intent.RequestedNotional, intent.ExecutablePrice, intent.QuoteGateVersion, intent.DecisionQuoteSnapshotID, nullIfEmpty(intent.DecisionBid), nullIfEmpty(intent.DecisionAsk), nullIfEmpty(intent.DecisionSpreadBPS), intent.DecisionAvailableAt, intent.DecisionAt, nullIfEmpty(intent.DecisionMarketStatus), nullIfEmpty(intent.DecisionSessionStatus), intent.CalculationVersion, intent.Calculation, intent.PolicyStatus, intent.PolicyReasons, intent.RiskStatus, intent.RiskReasons, intent.OrderID, intent.Status).Scan(&intent.CreatedAt, &intent.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
 	}
@@ -384,4 +384,11 @@ func copyRepoNotFound(entity string, err error) error {
 		return fmt.Errorf("copy %s: %w", entity, repository.ErrNotFound)
 	}
 	return fmt.Errorf("postgres: get copy %s: %w", entity, err)
+}
+
+func nullIfEmpty(value string) any {
+	if value == "" {
+		return nil
+	}
+	return value
 }

@@ -21,7 +21,7 @@ type ThirteenFFetcher interface {
 }
 
 type PriceProvider interface {
-	Snapshots(ctx context.Context, tickers []string) (map[string]PriceSnapshot, error)
+	Snapshots(ctx context.Context, tickers []string, asOf time.Time) (map[string]PriceSnapshot, error)
 }
 
 type PaperOrderRequest struct {
@@ -266,8 +266,9 @@ func (s *Service) Preview(ctx context.Context, subscriptionID uuid.UUID) (*Previ
 		tickers = append(tickers, mapping.Ticker)
 	}
 	prices := map[string]PriceSnapshot{}
+	decisionAt := s.deps.Now().UTC().Truncate(time.Microsecond)
 	if s.deps.Prices != nil && len(tickers) > 0 {
-		prices, err = s.deps.Prices.Snapshots(ctx, tickers)
+		prices, err = s.deps.Prices.Snapshots(ctx, tickers, decisionAt)
 		if err != nil {
 			return nil, fmt.Errorf("copy trading prices: %w", err)
 		}
@@ -279,7 +280,7 @@ func (s *Service) Preview(ctx context.Context, subscriptionID uuid.UUID) (*Previ
 			return nil, err
 		}
 	}
-	preview := Build13FTarget(TargetInput{Subscription: *subscription, Observation: *observation, Snapshot: *snapshot, Mappings: mappings, Prices: prices, Positions: positions})
+	preview := Build13FTarget(TargetInput{Subscription: *subscription, Observation: *observation, Snapshot: *snapshot, Mappings: mappings, Prices: prices, Positions: positions, DecisionAt: decisionAt})
 	if subscription.Status == domain.CopySubscriptionDraft {
 		subscription.Status = domain.CopySubscriptionPreviewed
 		if err := s.deps.Repo.UpdateSubscription(ctx, subscription); err != nil {

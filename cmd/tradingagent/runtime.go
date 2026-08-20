@@ -343,6 +343,8 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 	polymarketWatchedRepo := pgrepo.NewPolymarketWatchedMarketsRepo(db.Pool)
 	polymarketResolvedRepo := pgrepo.NewPolymarketResolvedMarketsRepo(db.Pool)
 	copyTradingRepo := pgrepo.NewCopyTradingRepo(db.Pool)
+	instrumentRepo := pgrepo.NewInstrumentRepo(db.Pool)
+	quoteSnapshotRepo := pgrepo.NewQuoteSnapshotRepo(db.Pool)
 	riskBreakerRepo := pgrepo.NewRiskBreakerRepo(db.Pool)
 	riskBreaker := risk.NewDrawdownBreaker(risk.DrawdownBreakerConfig{}, riskBreakerRepo)
 	reportArtifactRepo := pgrepo.NewReportArtifactRepo(db.Pool)
@@ -665,7 +667,12 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 			Runs:       runRepo,
 			Positions:  positionRepo,
 			EDGAR:      edgarProvider,
-			Prices:     copytrading.OHLCVPriceProvider{Source: dataService},
+			Prices: copytrading.CanonicalQuoteProvider{
+				Instruments: instrumentRepo, Quotes: quoteSnapshotRepo,
+				Liquidity:     copytrading.OHLCVPriceProvider{Source: dataService},
+				AliasProvider: "legacy_augr_stock", QuoteProvider: "alpaca",
+				Venue: "alpaca", ObservationNamespace: "quotes/alpaca",
+			},
 			Executor: copytrading.NewOrderManagerExecutor(copytrading.OrderManagerExecutorDeps{
 				Broker: strategyRunner.localPaperBroker, Risk: riskEngine, Positions: positionRepo,
 				Orders: orderRepo, Trades: tradeRepo, FinancialLifecycle: db, Audit: auditLogRepo,
