@@ -60,7 +60,7 @@ settlement, broker route, deployment, or live trade.
   convergence, semantic change, and no promotion/ledger mutation surface.
 - [x] Bind exact OVR-603 case/summary, OVR-301 manifest/hypothesis, account, and
   reporting window evidence.
-- [ ] Commit and push the domain slice after focused race tests.
+- [x] Commit and push the domain slice after focused race tests.
 
 ## Task 2: Schema 100 and retained qualification
 
@@ -73,22 +73,22 @@ settlement, broker route, deployment, or live trade.
   nonempty rollback refusal, and empty `100 -> 99 -> 100`.
 - [x] Retain one incomplete report with explicit infrastructure unknown and one
   complete-with-estimates report; preserve exact actual/estimated subtotals.
-- [ ] Commit and push persistence after focused/database race tests.
+- [x] Commit and push persistence after focused/database race tests.
 
 ## Task 3: Closure
 
-- [ ] Add inspection/recovery/rollback runbook evidence with exact IDs/digests
+- [x] Add inspection/recovery/rollback runbook evidence with exact IDs/digests
   and explicit authority/external-source limits.
-- [ ] Run repository-wide backend/static and pinned frontend gates, diff review,
+- [x] Run repository-wide backend/static and pinned frontend gates, diff review,
   and isolated kill-switched schema-100 health/API/rollback/backup/restore/reapply.
-- [ ] Commit/push verified slices, fetch, and prove `0 0` before OVR-607.
+- [x] Commit/push verified slices, fetch, and prove `0 0` before OVR-607.
 
 ## Acceptance evidence to record
 
-- [ ] Every required category is actual, estimated, or explicitly unknown.
-- [ ] Actual model and ledger economics are independently reconstructed;
+- [x] Every required category is actual, estimated, or explicitly unknown.
+- [x] Actual model and ledger economics are independently reconstructed;
   estimated amounts retain methodology; unknown never becomes zero.
-- [ ] Cost evidence cannot mutate promotion, ledger, deployment, scheduler,
+- [x] Cost evidence cannot mutate promotion, ledger, deployment, scheduler,
   risk, allocation, settlement, provider, intent, order, or trade state.
-- [ ] Local qualification is `VERIFIED_LOCAL`; external acquisition, shared
+- [x] Local qualification is `VERIFIED_LOCAL`; external acquisition, shared
   migration, cutover, deployment, and financial mutations are `BLOCKED_EXTERNAL`.
