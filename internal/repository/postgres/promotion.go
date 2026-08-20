@@ -17,6 +17,8 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/economicid"
 	"github.com/PatrickFanella/get-rich-quick/internal/promotion"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
+	"github.com/PatrickFanella/get-rich-quick/internal/robustness"
+	"github.com/PatrickFanella/get-rich-quick/internal/strategycatalog"
 )
 
 type PromotionRepo struct {
@@ -25,6 +27,22 @@ type PromotionRepo struct {
 }
 
 func NewPromotionRepo(pool *pgxpool.Pool) *PromotionRepo { return &PromotionRepo{pool: pool} }
+
+var _ promotion.Store = (*PromotionRepo)(nil)
+
+func (repo *PromotionRepo) GetDeployment(ctx context.Context, id uuid.UUID) (*strategycatalog.Deployment, error) {
+	if repo == nil || repo.pool == nil {
+		return nil, fmt.Errorf("postgres: promotion repository is required")
+	}
+	return NewStrategyCatalogRepo(repo.pool).GetStrategyDeployment(ctx, id)
+}
+
+func (repo *PromotionRepo) GetAssessment(ctx context.Context, id uuid.UUID) (*robustness.Assessment, error) {
+	if repo == nil || repo.pool == nil {
+		return nil, fmt.Errorf("postgres: promotion repository is required")
+	}
+	return NewRobustnessRepo(repo.pool).GetAssessment(ctx, id)
+}
 
 func (repo *PromotionRepo) RegisterPolicy(ctx context.Context, value *promotion.Policy) (*promotion.Policy, error) {
 	if repo == nil || repo.pool == nil || value == nil {
@@ -229,6 +247,76 @@ func (repo *PromotionRepo) verifyEvent(ctx context.Context, value *promotion.Dec
 		return fmt.Errorf("postgres: normalized promotion lifecycle event does not reconstruct")
 	}
 	return nil
+}
+
+func (repo *PromotionRepo) ListDeploymentDecisions(ctx context.Context, deploymentID uuid.UUID, limit, offset int) ([]*promotion.Decision, error) {
+	return repo.listDecisions(ctx, `SELECT id FROM promotion_retirement_decisions WHERE deployment_id=$1 ORDER BY created_at,id LIMIT $2 OFFSET $3`, deploymentID, limit, offset)
+}
+
+func (repo *PromotionRepo) ListVersionDecisions(ctx context.Context, versionID uuid.UUID, limit, offset int) ([]*promotion.Decision, error) {
+	return repo.listDecisions(ctx, `SELECT id FROM promotion_retirement_decisions WHERE version_id=$1 ORDER BY created_at,id LIMIT $2 OFFSET $3`, versionID, limit, offset)
+}
+
+func (repo *PromotionRepo) ListAssessmentDecisions(ctx context.Context, assessmentID uuid.UUID, limit, offset int) ([]*promotion.Decision, error) {
+	return repo.listDecisions(ctx, `SELECT id FROM promotion_retirement_decisions WHERE assessment_id=$1 ORDER BY created_at,id LIMIT $2 OFFSET $3`, assessmentID, limit, offset)
+}
+
+func (repo *PromotionRepo) ListFamilyDecisions(ctx context.Context, familyID uuid.UUID, limit, offset int) ([]*promotion.Decision, error) {
+	return repo.listDecisions(ctx, `SELECT id FROM promotion_retirement_decisions WHERE family_id=$1 ORDER BY created_at,id LIMIT $2 OFFSET $3`, familyID, limit, offset)
+}
+
+func (repo *PromotionRepo) listDecisions(ctx context.Context, query string, parent uuid.UUID, limit, offset int) ([]*promotion.Decision, error) {
+	if repo == nil || repo.pool == nil || parent == uuid.Nil || limit <= 0 || limit > 1000 || offset < 0 {
+		return nil, fmt.Errorf("postgres: list promotion decisions: valid parent and pagination are required")
+	}
+	rows, err := repo.pool.Query(ctx, query, parent, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	ids := make([]uuid.UUID, 0)
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	values := make([]*promotion.Decision, 0, len(ids))
+	for _, id := range ids {
+		value, err := repo.GetDecision(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		values = append(values, value)
+	}
+	return values, nil
+}
+
+// ProjectDeploymentState derives the serialized chain head. No writable
+// current-state pointer exists.
+func (repo *PromotionRepo) ProjectDeploymentState(ctx context.Context, deploymentID uuid.UUID) (string, uuid.UUID, error) {
+	if repo == nil || repo.pool == nil || deploymentID == uuid.Nil {
+		return "", uuid.Nil, fmt.Errorf("postgres: deployment identity is required")
+	}
+	var state string
+	var head *uuid.UUID
+	err := repo.pool.QueryRow(ctx, `SELECT COALESCE(head.next_state,deployment.state),head.id FROM strategy_deployments deployment
+		LEFT JOIN LATERAL (SELECT decision.id,decision.next_state FROM promotion_retirement_decisions decision WHERE decision.deployment_id=deployment.id AND
+			NOT EXISTS(SELECT 1 FROM promotion_retirement_decisions child WHERE child.prior_decision_id=decision.id) LIMIT 1) head ON true WHERE deployment.id=$1`, deploymentID).Scan(&state, &head)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", uuid.Nil, repository.ErrNotFound
+	}
+	if err != nil {
+		return "", uuid.Nil, err
+	}
+	if head == nil {
+		return state, uuid.Nil, nil
+	}
+	return state, *head, nil
 }
 
 func (repo *PromotionRepo) stage(name string) error {

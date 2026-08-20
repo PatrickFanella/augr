@@ -101,15 +101,15 @@ Out of scope:
 
 ## Task 3: Repository, service, recovery, and qualification
 
-- [ ] Reload exact deployment/assessment parents, register policy, evaluate,
+- [x] Reload exact deployment/assessment parents, register policy, evaluate,
   atomically append the decision/event, and reconstruct normalized rows.
-- [ ] List history only by explicit deployment, version, assessment, or family;
+- [x] List history only by explicit deployment, version, assessment, or family;
   expose a deterministic state projection but no best/current candidate query.
-- [ ] Prove eight-writer convergence, serialized competing writers, restart,
+- [x] Prove eight-writer convergence, serialized competing writers, restart,
   every-child interruption rollback, changed retry conflict, and clean replay.
 - [ ] Retain approved, held, and retired local decisions with cross-mode and AI/
   UI/scheduler authority separation.
-- [ ] Add a runbook for policy review, gate inspection, transition projection,
+- [x] Add a runbook for policy review, gate inspection, transition projection,
   failure preservation, rollback, and explicit non-activation boundaries.
 - [ ] Apply fresh `1 -> 81`, retain a complete decision chain, prove nonempty
   rollback refusal, and separately rehearse empty `81 -> 80 -> 81`.

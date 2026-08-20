@@ -60,6 +60,10 @@ func newPromotionRepositoryFixture(t *testing.T) promotionRepositoryFixture {
 func TestPromotionRepositoryRoundTripConcurrentConvergenceAndRollbackRefusal(t *testing.T) {
 	fixture := newPromotionRepositoryFixture(t)
 	ctx := context.Background()
+	state, head, err := fixture.repo.ProjectDeploymentState(ctx, fixture.deployment.ID())
+	if err != nil || state != strategycatalog.DeploymentProposed || head.String() != "00000000-0000-0000-0000-000000000000" {
+		t.Fatalf("initial projection=%s/%s err=%v", state, head, err)
+	}
 	var wait sync.WaitGroup
 	errs := make(chan error, 8)
 	for range 8 {
@@ -77,12 +81,62 @@ func TestPromotionRepositoryRoundTripConcurrentConvergenceAndRollbackRefusal(t *
 	if err != nil || !bytes.Equal(loaded.CanonicalBytes(), fixture.decision.CanonicalBytes()) {
 		t.Fatalf("loaded=%v err=%v", loaded, err)
 	}
+	held, err := promotion.NewDecision(promotion.DecisionInput{Deployment: fixture.deployment, Assessment: fixture.robustness.assessment, Policy: fixture.policy, PriorDecision: fixture.decision})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.repo.RecordDecision(ctx, held); err != nil {
+		t.Fatal(err)
+	}
+	state, head, err = fixture.repo.ProjectDeploymentState(ctx, fixture.deployment.ID())
+	if err != nil || state != promotion.StateShadow || head != held.ID() {
+		t.Fatalf("projection=%s/%s err=%v", state, head, err)
+	}
+	byDeployment, err := fixture.repo.ListDeploymentDecisions(ctx, fixture.deployment.ID(), 10, 0)
+	if err != nil || len(byDeployment) != 2 {
+		t.Fatalf("deployment decisions=%d err=%v", len(byDeployment), err)
+	}
+	for name, list := range map[string]func() ([]*promotion.Decision, error){
+		"version": func() ([]*promotion.Decision, error) {
+			return fixture.repo.ListVersionDecisions(ctx, fixture.decision.VersionID(), 10, 0)
+		},
+		"assessment": func() ([]*promotion.Decision, error) {
+			return fixture.repo.ListAssessmentDecisions(ctx, fixture.decision.AssessmentID(), 10, 0)
+		},
+		"family": func() ([]*promotion.Decision, error) {
+			return fixture.repo.ListFamilyDecisions(ctx, fixture.decision.FamilyID(), 10, 0)
+		},
+	} {
+		values, err := list()
+		if err != nil || len(values) != 2 {
+			t.Fatalf("%s decisions=%d err=%v", name, len(values), err)
+		}
+	}
 	pool := fixture.robustness.evaluation.experiment.strategy.pool
 	if _, err := pool.Exec(ctx, `UPDATE promotion_decision_observed_gates SET state=state WHERE decision_id=$1`, fixture.decision.ID()); err == nil || !strings.Contains(err.Error(), "append-only") {
 		t.Fatalf("mutation error=%v", err)
 	}
 	if _, err := pool.Exec(ctx, repositoryMigrationSQL(t, "000081_promotion_retirement_evaluator.down.sql")); err == nil || !strings.Contains(err.Error(), "cannot roll back migration 81") {
 		t.Fatalf("nonempty rollback error=%v", err)
+	}
+}
+
+func TestPromotionRepositoryRejectsCompetingInitialDecisionFork(t *testing.T) {
+	fixture := newPromotionRepositoryFixture(t)
+	ctx := context.Background()
+	if _, err := fixture.repo.RecordDecision(ctx, fixture.decision); err != nil {
+		t.Fatal(err)
+	}
+	alternativePolicy, _ := promotion.NewPolicy(promotion.PolicyInput{Version: "promotion-policy-v1@competing", RequiredGates: []string{"overall_robustness"}, FailureAction: promotion.ActionRetire})
+	if _, err := fixture.repo.RegisterPolicy(ctx, alternativePolicy); err != nil {
+		t.Fatal(err)
+	}
+	alternative, err := promotion.NewDecision(promotion.DecisionInput{Deployment: fixture.deployment, Assessment: fixture.robustness.assessment, Policy: alternativePolicy})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.repo.RecordDecision(ctx, alternative); err == nil {
+		t.Fatal("competing initial decision fork succeeded")
 	}
 }
 
