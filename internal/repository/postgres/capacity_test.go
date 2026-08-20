@@ -6,11 +6,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"os"
 	"strings"
 	"sync"
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/capacity"
 	"github.com/PatrickFanella/get-rich-quick/internal/capital"
@@ -172,5 +174,51 @@ func TestCapacityMigrationEmptyRollbackAndReapply(t *testing.T) {
 		if _, err := base.evaluation.experiment.strategy.pool.Exec(ctx, repositoryMigrationSQL(t, migration)); err != nil {
 			t.Fatalf("%s: %v", migration, err)
 		}
+	}
+}
+
+func TestCapacityRetainedQualification(t *testing.T) {
+	databaseURL := os.Getenv("CAPACITY_V1_QUALIFICATION_DB_URL")
+	if databaseURL == "" {
+		t.Skip("set CAPACITY_V1_QUALIFICATION_DB_URL to a dedicated empty schema-87 database")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	var version, existing int
+	if err = pool.QueryRow(ctx, `SELECT version FROM schema_migrations WHERE NOT dirty`).Scan(&version); err != nil || version != 87 {
+		t.Fatalf("version=%d err=%v", version, err)
+	}
+	if err = pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM capacity_v1_contracts)+(SELECT count(*) FROM capacity_v1_comparisons)`).Scan(&existing); err != nil || existing != 0 {
+		t.Fatalf("not empty=%d/%v", existing, err)
+	}
+	families := []capacity.FamilyKind{capacity.FamilyPassive, capacity.FamilyWheel, capacity.FamilyMomentum, capacity.FamilyTrend, capacity.FamilyDefinedRisk}
+	contracts := make([]*capacity.Contract, 5)
+	repo := NewCapacityRepo(pool)
+	for i, family := range families {
+		contracts[i] = capacityTestContract(t, family, family == capacity.FamilyDefinedRisk)
+		if _, err = repo.RegisterContract(ctx, contracts[i]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	policy, _ := capital.NewPolicy(capital.ReviewedPolicyV1Input())
+	comparison, err := capacity.NewComparison(policy, contracts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = repo.RecordComparison(ctx, comparison); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("comparison=%s sha=%s", comparison.ID(), comparison.Digest())
+	for _, family := range comparison.Families() {
+		t.Logf("family=%s minimum_available=%t minimum_tier=%s", family.Family, family.MinimumViableAvailable, family.MinimumViableTier)
+	}
+	var contractCount, comparisonCount, familyCount, tierCount int
+	err = pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM capacity_v1_contracts),(SELECT count(*) FROM capacity_v1_comparisons),(SELECT count(*) FROM capacity_v1_families),(SELECT count(*) FROM capacity_v1_tiers)`).Scan(&contractCount, &comparisonCount, &familyCount, &tierCount)
+	if err != nil || contractCount != 5 || comparisonCount != 1 || familyCount != 5 || tierCount != 30 {
+		t.Fatalf("counts=%d/%d/%d/%d err=%v", contractCount, comparisonCount, familyCount, tierCount, err)
 	}
 }
