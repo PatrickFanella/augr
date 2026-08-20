@@ -64,13 +64,14 @@ allocation, settlement, broker route, deployment, or live trade.
 
 ## Task 2: Schema 101 and retained qualification
 
-- [ ] Persist immutable briefs, sections, facts, incidents, blockers, and exact
+- [x] Persist immutable briefs, sections, facts, incidents, blockers, and exact
   parent references with database reconstruction.
-- [ ] Prove eight-writer convergence, changed daily conflict, every-stage
+- [x] Prove eight-writer convergence, changed daily conflict, every-stage
   rollback, restart, append-only behavior, direct-SQL forgery rejection,
   nonempty rollback refusal, and empty `101 -> 100 -> 101`.
-- [ ] Retain one healthy brief and one attention brief showing halted exposure,
-  unknown infrastructure cost, and independent safe-work eligibility.
+- [x] Retain one baseline brief that honestly surfaces unavailable performance
+  and one attention brief showing halted exposure, unknown infrastructure cost,
+  and independent safe-work eligibility.
 - [ ] Commit and push persistence after focused/database race tests.
 
 ## Task 3: Closure
