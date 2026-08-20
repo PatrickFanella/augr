@@ -182,6 +182,11 @@ func Assess(input AssessmentInput) (*Assessment, error) {
 		assessment.Reason = ReasonAdmitted
 		return sealAssessment(assessment, input)
 	}
+	if input.State.maintenanceRequirement.GreaterThan(input.State.equity) {
+		assessment.Decision = DecisionRejected
+		assessment.Reason = ReasonMaintenanceBreach
+		return sealAssessment(assessment, input)
+	}
 	if input.Binding.Profile == domain.MarginProfileCash && input.Direction == ExposureIncreaseLong {
 		if input.ProposedNotional.GreaterThan(input.State.cash) {
 			assessment.Decision = DecisionRejected
@@ -195,12 +200,6 @@ func Assess(input AssessmentInput) (*Assessment, error) {
 			return sealAssessment(assessment, input)
 		}
 	}
-	if input.State.maintenanceRequirement.GreaterThan(input.State.equity) ||
-		assessment.PostMaintenanceRequirement.GreaterThan(input.State.equity) {
-		assessment.Decision = DecisionRejected
-		assessment.Reason = ReasonMaintenanceBreach
-		return sealAssessment(assessment, input)
-	}
 	if assessment.RequestedInitialMargin.GreaterThan(assessment.InitialMarginHeadroom) {
 		assessment.Decision = DecisionRejected
 		assessment.Reason = ReasonInsufficientBuyingPower
@@ -209,6 +208,11 @@ func Assess(input AssessmentInput) (*Assessment, error) {
 	if input.ProposedNotional.GreaterThan(assessment.GrossHeadroom) {
 		assessment.Decision = DecisionRejected
 		assessment.Reason = ReasonGrossExposureBreach
+		return sealAssessment(assessment, input)
+	}
+	if assessment.PostMaintenanceRequirement.GreaterThan(input.State.equity) {
+		assessment.Decision = DecisionRejected
+		assessment.Reason = ReasonMaintenanceBreach
 		return sealAssessment(assessment, input)
 	}
 	assessment.Decision = DecisionAdmitted
