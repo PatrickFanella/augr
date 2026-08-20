@@ -333,24 +333,28 @@ func (manifest *Manifest) ID() uuid.UUID {
 	}
 	return manifest.id
 }
+
 func (manifest *Manifest) Digest() string {
 	if manifest == nil {
 		return ""
 	}
 	return manifest.digest
 }
+
 func (manifest *Manifest) CanonicalBytes() json.RawMessage {
 	if manifest == nil {
 		return nil
 	}
 	return append(json.RawMessage(nil), manifest.bytes...)
 }
+
 func (manifest *Manifest) DecisionCutoff() time.Time {
 	if manifest == nil {
 		return time.Time{}
 	}
 	return parseTime(manifest.canonical.DecisionCutoff)
 }
+
 func (manifest *Manifest) Partitions() []Partition {
 	if manifest == nil {
 		return nil
@@ -378,23 +382,28 @@ func aggregateObservationHash(values []Observation) string {
 func partitionInputKey(value PartitionInput) string {
 	return string(value.Kind) + "\x00" + value.Provider + "\x00" + value.Namespace + "\x00" + value.RequestSHA256 + "\x00" + value.Revision
 }
+
 func observationInputKey(value ObservationInput) string {
 	return formatTime(value.AvailableAt) + "\x00" + formatTime(value.EffectiveAt) + "\x00" + value.SourceKey + "\x00" + value.Revision
 }
+
 func validKind(value Kind) bool {
 	index := sort.Search(len(reviewedKinds()), func(index int) bool { return reviewedKinds()[index] >= value })
 	kinds := reviewedKinds()
 	return index < len(kinds) && kinds[index] == value
 }
+
 func canonicalRequired(value string) bool {
 	return value != "" && value == strings.TrimSpace(value) && len(value) <= 512
 }
+
 func canonicalToken(value string) bool  { return value == strings.TrimSpace(value) && len(value) <= 512 }
 func formatTime(value time.Time) string { return value.Format(canonicalLayout) }
 func parseTime(value string) time.Time {
 	parsed, _ := time.Parse(canonicalLayout, value)
 	return parsed
 }
+
 func minMaxTime(start, end, value string) (string, string) {
 	if value < start {
 		start = value
@@ -424,9 +433,10 @@ func cloneString(value *string) *string {
 	if value == nil {
 		return nil
 	}
-	copy := *value
-	return &copy
+	cloned := *value
+	return &cloned
 }
+
 func cloneObservationInputs(values []ObservationInput) []ObservationInput {
 	result := append([]ObservationInput(nil), values...)
 	for index := range result {
@@ -439,6 +449,7 @@ func cloneObservationInputs(values []ObservationInput) []ObservationInput {
 	}
 	return result
 }
+
 func clonePartitionInputs(values []PartitionInput) []PartitionInput {
 	result := append([]PartitionInput(nil), values...)
 	for index := range result {
@@ -446,6 +457,7 @@ func clonePartitionInputs(values []PartitionInput) []PartitionInput {
 	}
 	return result
 }
+
 func clonePartition(value Partition) Partition {
 	value.Observations = append([]Observation(nil), value.Observations...)
 	for index := range value.Observations {

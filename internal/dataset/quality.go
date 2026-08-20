@@ -321,18 +321,21 @@ func (result *QualityResult) ID() uuid.UUID {
 	}
 	return result.id
 }
+
 func (result *QualityResult) Digest() string {
 	if result == nil {
 		return ""
 	}
 	return result.digest
 }
+
 func (result *QualityResult) CanonicalBytes() json.RawMessage {
 	if result == nil {
 		return nil
 	}
 	return append(json.RawMessage(nil), result.bytes...)
 }
+
 func (result *QualityResult) ManifestID() uuid.UUID {
 	if result == nil {
 		return uuid.Nil
@@ -340,19 +343,23 @@ func (result *QualityResult) ManifestID() uuid.UUID {
 	value, _ := uuid.Parse(result.canonical.ManifestID)
 	return value
 }
+
 func (result *QualityResult) PolicyVersion() string {
 	if result == nil {
 		return ""
 	}
 	return result.canonical.PolicyVersion
 }
+
 func (result *QualityResult) Quarantined() bool { return result != nil && result.canonical.Quarantined }
+
 func (result *QualityResult) Checks() []CheckResult {
 	if result == nil {
 		return nil
 	}
 	return append([]CheckResult(nil), result.canonical.Checks...)
 }
+
 func (result *QualityResult) Findings() []Finding {
 	if result == nil {
 		return nil
@@ -378,8 +385,8 @@ func normalizeInstrumentWindows(values []InstrumentWindow) (map[uuid.UUID][]Inst
 		}
 		seen[key] = struct{}{}
 		if value.ValidTo != nil {
-			copy := *value.ValidTo
-			value.ValidTo = &copy
+			cloned := *value.ValidTo
+			value.ValidTo = &cloned
 		}
 		result[value.InstrumentID] = append(result[value.InstrumentID], value)
 	}
@@ -437,6 +444,7 @@ func kindIncluded(values []Kind, want Kind) bool {
 	}
 	return false
 }
+
 func validCheckResult(value CheckResult) bool {
 	return value.Key == hashBytes([]byte(value.PartitionContentSHA256+"\x00"+string(value.Check))) && sha256Pattern.MatchString(value.Key) && sha256Pattern.MatchString(value.PartitionContentSHA256) && validKind(value.Kind) &&
 		(value.Status == CheckPassed || value.Status == CheckFailed || value.Status == CheckNotAssessed) && (value.Severity == SeverityHigh || value.Severity == SeverityCritical) &&

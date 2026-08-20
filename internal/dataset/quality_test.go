@@ -85,7 +85,8 @@ func TestQualityEvaluatorRequiresCorporateActionAssessmentForBars(t *testing.T) 
 	policy, _ := NewPolicy(ReviewedPolicyV1Input())
 	partition := manifest.Partitions()[0]
 	validTo := manifestCutoff.Add(time.Hour)
-	quality := QualityInput{Policy: policy, Manifest: manifest,
+	quality := QualityInput{
+		Policy: policy, Manifest: manifest,
 		InstrumentWindows: []InstrumentWindow{{InstrumentID: manifestInstrument, ValidFrom: manifestCutoff.Add(-24 * time.Hour), ValidTo: &validTo, EvidenceSHA256: manifestHash("window")}},
 		Sessions:          []SessionEvidence{{PartitionContentSHA256: partition.ContentSHA256, ExpectedEffectiveAt: []time.Time{manifestCutoff.Add(-2 * time.Hour), manifestCutoff.Add(-time.Hour)}, EvidenceSHA256: manifestHash("sessions")}},
 	}

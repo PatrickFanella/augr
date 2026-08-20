@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -210,6 +211,87 @@ func TestDatasetRepoRejectsChangedPolicyRetry(t *testing.T) {
 	if _, err := fixture.repo.RegisterDatasetPolicy(fixture.ctx, &changed); !errors.Is(err, repository.ErrIdempotencyConflict) {
 		t.Fatalf("changed policy retry error=%v", err)
 	}
+}
+
+func TestDatasetRepoRetainedQualification(t *testing.T) {
+	databaseURL := os.Getenv("DATASET_QUALIFICATION_DB_URL")
+	if databaseURL == "" {
+		t.Skip("set DATASET_QUALIFICATION_DB_URL to a dedicated schema-76 database")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	var schema string
+	if err := pool.QueryRow(ctx, `SELECT current_schema()`).Scan(&schema); err != nil || schema != "public" {
+		t.Fatalf("qualification schema=%q err=%v", schema, err)
+	}
+	var existing int
+	if err := pool.QueryRow(ctx, `SELECT
+		(SELECT count(*) FROM dataset_quality_policy_artifacts)+
+		(SELECT count(*) FROM dataset_manifests)+
+		(SELECT count(*) FROM dataset_quality_results)`).Scan(&existing); err != nil || existing != 0 {
+		t.Fatalf("qualification database is not dataset-empty: count=%d err=%v", existing, err)
+	}
+	instrumentID := uuid.MustParse("30100000-0000-4000-8000-000000000001")
+	if _, err := pool.Exec(ctx, `INSERT INTO instruments(
+		id,identity_key,asset_class,primary_venue,currency,tick_size,lot_size,multiplier,settlement_method,status
+	) VALUES($1,$2,'equity','qualification','USD',0.01,1,1,'physical','active')`, instrumentID, "figi:ovr301-retained-golden"); err != nil {
+		t.Fatal(err)
+	}
+	policy, err := dataset.NewPolicy(dataset.ReviewedPolicyV1Input())
+	if err != nil {
+		t.Fatal(err)
+	}
+	createdAt := time.Date(2026, 8, 20, 23, 0, 0, 123456000, time.UTC)
+	artifact, err := policy.NewArtifact(createdAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest := datasetRepositoryManifest(t, instrumentID)
+	clean := datasetRepositoryQuality(t, policy, manifest, instrumentID, false)
+	quarantined := datasetRepositoryQuality(t, policy, manifest, instrumentID, true)
+	repo := NewDatasetRepo(pool)
+	if _, err := repo.RegisterDatasetPolicy(ctx, artifact); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.RecordDatasetManifest(ctx, manifest, createdAt); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.RecordDatasetQualityResult(ctx, clean, createdAt); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.RecordDatasetQualityResult(ctx, quarantined, createdAt); err != nil {
+		t.Fatal(err)
+	}
+	restarted := NewDatasetRepo(pool)
+	loaded, err := restarted.GetDatasetManifest(ctx, manifest.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	recomputed := datasetRepositoryQuality(t, policy, loaded, instrumentID, false)
+	if recomputed.ID() != clean.ID() || recomputed.Digest() != clean.Digest() {
+		t.Fatal("retained clean quality result did not reproduce")
+	}
+	if _, err := restarted.GetDatasetQualityResult(ctx, clean.ID()); err != nil {
+		t.Fatal(err)
+	}
+	var policies, manifests, partitions, observations, results, checks, findings int
+	if err := pool.QueryRow(ctx, `SELECT
+		(SELECT count(*) FROM dataset_quality_policy_artifacts),
+		(SELECT count(*) FROM dataset_manifests),
+		(SELECT count(*) FROM dataset_manifest_partitions),
+		(SELECT count(*) FROM dataset_manifest_observations),
+		(SELECT count(*) FROM dataset_quality_results),
+		(SELECT count(*) FROM dataset_quality_checks),
+		(SELECT count(*) FROM dataset_quality_findings)`).Scan(
+		&policies, &manifests, &partitions, &observations, &results, &checks, &findings); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("retained policy=%s manifest=%s clean=%s quarantined=%s counts=%d/%d/%d/%d/%d/%d/%d",
+		artifact.Version, manifest.ID(), clean.ID(), quarantined.ID(), policies, manifests, partitions, observations, results, checks, findings)
 }
 
 func datasetRepositoryManifest(t *testing.T, instrumentID uuid.UUID) *dataset.Manifest {

@@ -242,36 +242,42 @@ func (policy *Policy) Schema() string {
 	}
 	return policy.schema
 }
+
 func (policy *Policy) Version() string {
 	if policy == nil {
 		return ""
 	}
 	return policy.version
 }
+
 func (policy *Policy) Digest() string {
 	if policy == nil {
 		return ""
 	}
 	return policy.digest
 }
+
 func (policy *Policy) ID() uuid.UUID {
 	if policy == nil {
 		return uuid.Nil
 	}
 	return policy.artifactID
 }
+
 func (policy *Policy) CanonicalBytes() json.RawMessage {
 	if policy == nil {
 		return nil
 	}
 	return append(json.RawMessage(nil), policy.canonicalBytes...)
 }
+
 func (policy *Policy) Kinds() []Kind {
 	if policy == nil {
 		return nil
 	}
 	return append([]Kind(nil), policy.kinds...)
 }
+
 func (policy *Policy) Rules() []CheckRule {
 	if policy == nil {
 		return nil
