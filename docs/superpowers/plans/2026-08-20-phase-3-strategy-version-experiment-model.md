@@ -93,13 +93,13 @@ Out of scope:
 
 ## Task 1: Strategy family and immutable version domain
 
-- [ ] Add `internal/strategycatalog/family.go` with bounded slug/name/thesis,
+- [x] Add `internal/strategycatalog/family.go` with bounded slug/name/thesis,
   asset-class vocabulary, deterministic identity, canonical bytes, restore,
   validation, and clone-safe getters.
-- [ ] Add `internal/strategycatalog/version.go` with compiler/source/config/
+- [x] Add `internal/strategycatalog/version.go` with compiler/source/config/
   decision/data-contract identity, deterministic ordering, exact hashes,
   canonical bytes, restore, and validation.
-- [ ] Prove reordered inputs converge, noncanonical config is rejected, config
+- [x] Prove reordered inputs converge, noncanonical config is rejected, config
   editing creates a new identity, source/compiler/data-contract changes create
   new identities, and tampering cannot restore.
 - [ ] Commit and push the family/version slice after focused race tests.
