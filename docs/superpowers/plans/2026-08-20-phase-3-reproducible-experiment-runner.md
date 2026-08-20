@@ -111,21 +111,21 @@ Out of scope:
 
 ## Task 2: Deterministic runner and fail-closed orchestration
 
-- [ ] Load and validate the exact experiment/version/manifest/quality/simulation/
+- [x] Load and validate the exact experiment/version/manifest/quality/simulation/
   capital/account/reference graph before executing a program.
-- [ ] Validate every plan step against pinned manifest evidence and the declared
+- [x] Validate every plan step against pinned manifest evidence and the declared
   window; reject undeclared source hashes, future availability, duplicates,
   invalid order, missing instrument/venue mechanics, and nondeterministic
   program identity.
-- [ ] Build deterministic OVR-203 intent/order aggregates and evaluate every
+- [x] Build deterministic OVR-203 intent/order aggregates and evaluate every
   executable step through the existing OVR-204 common simulation venue.
-- [ ] Persist raw-first fills and all transitions through existing repositories,
+- [x] Persist raw-first fills and all transitions through existing repositories,
   reload completed lifecycles, and derive step/outcome hashes only from reloaded
   evidence.
-- [ ] Emit deterministic completed result or explicit failed attempt evidence;
+- [x] Emit deterministic completed result or explicit failed attempt evidence;
   context cancellation and injected failures never create a partial completed
   result.
-- [ ] Commit and push the runner slice after golden and negative-path races.
+- [x] Commit and push the runner slice after golden and negative-path races.
 
 ## Task 3: Migration 78 append-only run evidence
 

@@ -55,6 +55,7 @@ type StepInput struct {
 type PlanInput struct {
 	ExperimentID    uuid.UUID
 	ProgramID       uuid.UUID
+	AccountID       uuid.UUID
 	ManifestID      uuid.UUID
 	ManifestSHA256  string
 	EvaluationStart time.Time
@@ -91,6 +92,7 @@ type planCanonical struct {
 	Schema          string                         `json:"schema"`
 	ExperimentID    string                         `json:"experiment_id"`
 	ProgramID       string                         `json:"program_id"`
+	AccountID       string                         `json:"account_id"`
 	ManifestID      string                         `json:"manifest_id"`
 	ManifestSHA256  string                         `json:"manifest_sha256"`
 	EvaluationStart string                         `json:"evaluation_start"`
@@ -110,7 +112,7 @@ type Plan struct {
 var decimalPattern = regexp.MustCompile(`^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$`)
 
 func NewPlan(input PlanInput) (*Plan, error) {
-	if input.ExperimentID == uuid.Nil || input.ProgramID == uuid.Nil || input.ManifestID == uuid.Nil ||
+	if input.ExperimentID == uuid.Nil || input.ProgramID == uuid.Nil || input.AccountID == uuid.Nil || input.ManifestID == uuid.Nil ||
 		!digestPattern.MatchString(input.ManifestSHA256) || !canonicalTime(input.EvaluationStart) ||
 		!canonicalTime(input.EvaluationEnd) || !input.EvaluationStart.Before(input.EvaluationEnd) ||
 		(input.Mode != strategycatalog.ExperimentPaperScored && input.Mode != strategycatalog.ExperimentPaperStress) ||
@@ -159,7 +161,7 @@ func NewPlan(input PlanInput) (*Plan, error) {
 		steps[index] = step
 	}
 	canonical := planCanonical{
-		Schema: PlanSchemaV1, ExperimentID: input.ExperimentID.String(), ProgramID: input.ProgramID.String(),
+		Schema: PlanSchemaV1, ExperimentID: input.ExperimentID.String(), ProgramID: input.ProgramID.String(), AccountID: input.AccountID.String(),
 		ManifestID: input.ManifestID.String(), ManifestSHA256: input.ManifestSHA256, EvaluationStart: formatTime(input.EvaluationStart),
 		EvaluationEnd: formatTime(input.EvaluationEnd), Seed: input.Seed, Mode: input.Mode, Steps: steps,
 	}
@@ -210,6 +212,10 @@ func PlanFromCanonical(id uuid.UUID, digest string, raw []byte) (*Plan, error) {
 	if err != nil {
 		return nil, err
 	}
+	accountID, err := uuid.Parse(c.AccountID)
+	if err != nil {
+		return nil, err
+	}
 	manifestID, err := uuid.Parse(c.ManifestID)
 	if err != nil {
 		return nil, err
@@ -234,7 +240,7 @@ func PlanFromCanonical(id uuid.UUID, digest string, raw []byte) (*Plan, error) {
 		}
 		inputs[i] = StepInput{PartitionContentSHA256: s.PartitionContentSHA256, ObservationSourceKey: s.ObservationSourceKey, ObservationContentSHA256: s.ObservationContentSHA256, AvailableAt: available, Decision: s.Decision, Action: s.Action, RejectionCode: s.RejectionCode, Intent: intent}
 	}
-	plan, err := NewPlan(PlanInput{ExperimentID: experimentID, ProgramID: programID, ManifestID: manifestID, ManifestSHA256: c.ManifestSHA256, EvaluationStart: parseTime(c.EvaluationStart), EvaluationEnd: parseTime(c.EvaluationEnd), Seed: c.Seed, Mode: c.Mode, Steps: inputs})
+	plan, err := NewPlan(PlanInput{ExperimentID: experimentID, ProgramID: programID, AccountID: accountID, ManifestID: manifestID, ManifestSHA256: c.ManifestSHA256, EvaluationStart: parseTime(c.EvaluationStart), EvaluationEnd: parseTime(c.EvaluationEnd), Seed: c.Seed, Mode: c.Mode, Steps: inputs})
 	if err != nil {
 		return nil, err
 	}
@@ -278,6 +284,14 @@ func (p *Plan) ProgramID() uuid.UUID {
 		return uuid.Nil
 	}
 	id, _ := uuid.Parse(p.canonical.ProgramID)
+	return id
+}
+
+func (p *Plan) AccountID() uuid.UUID {
+	if p == nil {
+		return uuid.Nil
+	}
+	id, _ := uuid.Parse(p.canonical.AccountID)
 	return id
 }
 
@@ -328,7 +342,7 @@ func (p *Plan) IntentID(sequence int) uuid.UUID {
 	if p == nil || sequence < 0 || sequence >= len(p.canonical.Steps) || p.canonical.Steps[sequence].Intent == nil {
 		return uuid.Nil
 	}
-	return economicid.DeterministicUUID("experiment-intent", p.id.String(), fmt.Sprint(sequence), hashBytes(p.canonical.Steps[sequence].Decision))
+	return economicid.DeterministicUUID("execution-intent", p.AccountID().String(), p.IntentIdempotencyKey(sequence))
 }
 
 func (p *Plan) OrderID(sequence int) uuid.UUID {
@@ -336,7 +350,69 @@ func (p *Plan) OrderID(sequence int) uuid.UUID {
 	if intent == uuid.Nil {
 		return uuid.Nil
 	}
-	return economicid.DeterministicUUID("experiment-order", intent.String())
+	return economicid.DeterministicUUID("execution-order", intent.String(), p.OrderIdempotencyKey(sequence))
+}
+
+func (p *Plan) IntentIdempotencyKey(sequence int) string {
+	if p == nil || sequence < 0 || sequence >= len(p.canonical.Steps) || p.canonical.Steps[sequence].Intent == nil {
+		return ""
+	}
+	return "experiment/" + p.id.String() + "/step/" + fmt.Sprint(sequence) + "/decision/" + hashBytes(p.canonical.Steps[sequence].Decision)
+}
+
+func (p *Plan) OrderIdempotencyKey(sequence int) string {
+	if p.IntentID(sequence) == uuid.Nil {
+		return ""
+	}
+	return "experiment/" + p.id.String() + "/step/" + fmt.Sprint(sequence) + "/order"
+}
+
+func (p *Plan) EvaluationStart() time.Time {
+	if p == nil {
+		return time.Time{}
+	}
+	return parseTime(p.canonical.EvaluationStart)
+}
+
+func (p *Plan) EvaluationEnd() time.Time {
+	if p == nil {
+		return time.Time{}
+	}
+	return parseTime(p.canonical.EvaluationEnd)
+}
+
+func (p *Plan) Seed() int64 {
+	if p == nil {
+		return 0
+	}
+	return p.canonical.Seed
+}
+
+func (p *Plan) Steps() []StepInput {
+	if p == nil {
+		return nil
+	}
+	result := make([]StepInput, len(p.canonical.Steps))
+	for i, step := range p.canonical.Steps {
+		result[i] = StepInput{
+			PartitionContentSHA256:   step.PartitionContentSHA256,
+			ObservationSourceKey:     step.ObservationSourceKey,
+			ObservationContentSHA256: step.ObservationContentSHA256,
+			AvailableAt:              parseTime(step.AvailableAt), Decision: append(json.RawMessage(nil), step.Decision...),
+			Action: step.Action, RejectionCode: step.RejectionCode,
+		}
+		if step.Intent != nil {
+			instrumentID, _ := uuid.Parse(step.Intent.InstrumentID)
+			contractID, _ := uuid.Parse(step.Intent.VenueContractID)
+			result[i].Intent = &IntentSpecInput{
+				InstrumentID: instrumentID, VenueContractID: contractID, Side: step.Intent.Side,
+				OrderType: step.Intent.OrderType, TimeInForce: step.Intent.TimeInForce,
+				Quantity: step.Intent.Quantity, LimitPrice: cloneString(step.Intent.LimitPrice), StopPrice: cloneString(step.Intent.StopPrice),
+				DecisionAt: parseTime(step.Intent.DecisionAt), RouteAt: parseTime(step.Intent.RouteAt),
+			}
+		}
+	}
+	return result
 }
 
 func canonicalJSONObject(raw json.RawMessage) (json.RawMessage, error) {

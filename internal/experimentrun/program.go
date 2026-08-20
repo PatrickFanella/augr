@@ -76,6 +76,7 @@ type Program interface {
 
 type ProgramInput struct {
 	ExperimentID    uuid.UUID
+	AccountID       uuid.UUID
 	ManifestID      uuid.UUID
 	ManifestSHA256  string
 	EvaluationStart string
