@@ -85,14 +85,14 @@ Out of scope:
 
 ## Task 1: Policy, selection, and lifecycle engine
 
-- [ ] Add immutable Wheel V1 policy, canonical restoration, and exact decimal/
+- [x] Add immutable Wheel V1 policy, canonical restoration, and exact decimal/
   time/evidence validation.
-- [ ] Add quality-screen and deterministic put/call candidate selection.
-- [ ] Add cash, collateral, premiums, costs, shares, marks, dividends, expiry,
+- [x] Add quality-screen and deterministic put/call candidate selection.
+- [x] Add cash, collateral, premiums, costs, shares, marks, dividends, expiry,
   assignment, call-away, capped-upside, and total-return transitions.
-- [ ] Prove input-order invariance, threshold edges, stale/missing evidence,
+- [x] Prove input-order invariance, threshold edges, stale/missing evidence,
   naked-risk refusal, assignment/dividend entitlement, cap, costs, and replay.
-- [ ] Commit and push the engine slice after focused races.
+- [x] Commit and push the engine slice after focused races.
 
 ## Task 2: OVR-303 adapter and strategy-version qualification
 
