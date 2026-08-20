@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/shopspring/decimal"
 
+	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution/lifecycle"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution/venue"
 	"github.com/PatrickFanella/get-rich-quick/internal/instrument"
@@ -599,12 +600,22 @@ type venueAdapterRepositoryFixture struct {
 func newVenueAdapterRepositoryFixture(t *testing.T, key string) venueAdapterRepositoryFixture {
 	t.Helper()
 	ctx, pool := newVenueAdapterIntegrationPool(t)
-	account, err := NewAccountRepo(pool).GetByID(ctx, uuid.MustParse("00000000-0000-4000-8000-000000000064"))
+	baseTime := time.Date(2026, 8, 15, 23, 0, 0, 123456000, time.UTC)
+	suffix := uuid.NewString()
+	account, err := domain.NewAccount(domain.AccountInput{
+		Name: "Kalshi venue adapter " + key, Environment: domain.AccountEnvironmentPaperScored,
+		Venue: "kalshi", ExternalAccountID: "paper-" + suffix, BaseCurrency: "USD",
+		StorageNamespace: "paper_scored/kalshi-venue-" + suffix,
+		StartingCapital:  decimal.NewFromInt(100000), BuyingPowerMultiplier: decimal.NewFromInt(1),
+		MarginProfile: domain.MarginProfileCash, CreatedBy: "integration-test",
+		CreationMetadata: json.RawMessage(`{"fixture":"venue-adapter"}`), CreatedAt: baseTime.Add(-time.Hour),
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	baseTime := time.Date(2026, 8, 15, 23, 0, 0, 123456000, time.UTC)
-	suffix := uuid.NewString()
+	if err := NewAccountRepo(pool).Create(ctx, account); err != nil {
+		t.Fatal(err)
+	}
 	reference, err := instrument.NewInstrument(instrument.InstrumentInput{
 		IdentityKey: "kalshi:venue-adapter:" + suffix, AssetClass: instrument.AssetClassPredictionContract,
 		PrimaryVenue: "kalshi", Currency: "USD", TickSize: decimal.RequireFromString("0.01"),
