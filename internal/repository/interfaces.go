@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/accountingrecon"
+	"github.com/PatrickFanella/get-rich-quick/internal/capital"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution/lifecycle"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution/venue"
@@ -83,6 +84,15 @@ type ExecutionLifecycleRepository interface {
 type SimulationPolicyRepository interface {
 	RegisterSimulationPolicy(context.Context, *simulation.PolicyArtifact) (*simulation.PolicyArtifact, error)
 	GetSimulationPolicyByVersion(context.Context, string) (*simulation.PolicyArtifact, error)
+}
+
+// CapitalPolicyRepository registers immutable capital/margin artifacts and
+// binds one explicit account to one exact reviewed tier/profile identity.
+type CapitalPolicyRepository interface {
+	RegisterCapitalPolicy(context.Context, *capital.PolicyArtifact) (*capital.PolicyArtifact, error)
+	GetCapitalPolicyByVersion(context.Context, string) (*capital.PolicyArtifact, error)
+	BindCapitalPolicy(context.Context, *capital.Binding) (*capital.Binding, error)
+	GetCapitalBinding(context.Context, uuid.UUID) (*capital.Binding, error)
 }
 
 // VenuePolicyRepository registers only reviewed immutable venue-adapter

@@ -393,6 +393,16 @@ func (policy *Policy) Profile(name domain.MarginProfile) (Profile, bool) {
 	return Profile{}, false
 }
 
+// SamePolicyArtifactPayload compares semantic artifact identity and excludes
+// only local persistence time.
+func SamePolicyArtifactPayload(left, right *PolicyArtifact) bool {
+	if left == nil || right == nil {
+		return false
+	}
+	return left.ID == right.ID && left.Schema == right.Schema && left.Version == right.Version &&
+		left.SHA256 == right.SHA256 && bytes.Equal(left.CanonicalBytes, right.CanonicalBytes)
+}
+
 func validateProfile(profile Profile) error {
 	if !profile.Name.IsValid() {
 		return fmt.Errorf("profile name %q is invalid", profile.Name)
