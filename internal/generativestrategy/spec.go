@@ -514,6 +514,13 @@ func (s *Spec) FamilyID() uuid.UUID {
 	return uuid.MustParse(s.canonical.FamilyID)
 }
 
+func (s *Spec) FamilyDigest() string {
+	if s == nil {
+		return ""
+	}
+	return s.canonical.FamilySHA256
+}
+
 func (s *Spec) RequiredDatasetKinds() []dataset.Kind {
 	if s == nil {
 		return nil

@@ -175,3 +175,17 @@ func (r *Receipt) VersionID() uuid.UUID {
 	}
 	return uuid.MustParse(r.canonical.VersionID)
 }
+
+func (r *Receipt) SpecDigest() string {
+	if r == nil {
+		return ""
+	}
+	return r.canonical.SpecSHA256
+}
+
+func (r *Receipt) VersionDigest() string {
+	if r == nil {
+		return ""
+	}
+	return r.canonical.VersionSHA256
+}
