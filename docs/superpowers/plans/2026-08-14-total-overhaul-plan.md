@@ -1381,6 +1381,13 @@ execution proceeds to OVR-602.
 | OVR-704 | OVR-703 | Portfolio paper run | Combined allocation improves or preserves risk-adjusted evidence versus the best single sleeve. |
 | OVR-705 | OVR-704 | Architecture readiness review | System can accept deposits, resize safely, run unattended, brake, restart, and reconcile. |
 
+**2026-08-20 local execution note:** OVR-701 now has a reproducible golden
+replay/restart campaign. OVR-702 through OVR-705 have content-addressed,
+fail-closed assessment contracts and synthetic evaluator qualification, but no
+real elapsed campaign evidence. They remain **BLOCKED_EXTERNAL** pending an
+authorized 30-day shadow run, 60–90 day scored-paper run, portfolio paper run,
+and evidence-linked readiness review. Synthetic duration is not acceptance.
+
 ## Test and verification contract
 
 ### Required layers
