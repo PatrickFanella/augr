@@ -62,11 +62,11 @@ settlement of a real position, or live trade is authorized.
 
 ## Task 1: Domain, catalog, and deterministic effects
 
-- [ ] Implement strict job/occurrence/lease/effect value objects and canonical
+- [x] Implement strict job/occurrence/lease/effect value objects and canonical
   identities with semantic retry conflict detection.
-- [ ] Inventory every automation and strategy/backtest financial job and fail a
+- [x] Inventory every automation and strategy/backtest financial job and fail a
   catalog coverage test when registration drifts without classification.
-- [ ] Implement OVR-203 intent/order and settlement effect-key bridges; prove
+- [x] Implement OVR-203 intent/order and settlement effect-key bridges; prove
   permutation convergence, changed-payload conflicts, timezone/DST stability,
   manual request idempotency, and no random retry identity.
 - [ ] Commit and push the domain slice after focused race tests.
