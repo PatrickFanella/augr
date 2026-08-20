@@ -33,13 +33,7 @@ func TestResearchWorkflowRetainedQualification(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The synthetic qualification graph exercises OVR-602 itself. Its immutable
-	// parent artifacts are validated by the domain constructors; this dedicated
-	// database intentionally omits their independently qualified persistence.
-	if _, err = pool.Exec(ctx, `ALTER TABLE research_hypotheses DISABLE TRIGGER ALL`); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _, _ = pool.Exec(context.Background(), `ALTER TABLE research_hypotheses ENABLE TRIGGER ALL`) })
+	seedResearchWorkflowParents(t, ctx, pool, fixture)
 	repo := NewResearchWorkflowRepo(pool)
 	for _, failed := range []string{"hypothesis", "sources", "searches", "tests", "critic", "findings", "checks"} {
 		repo.afterStage = func(stage string) error {
@@ -86,9 +80,6 @@ func TestResearchWorkflowRetainedQualification(t *testing.T) {
 	if _, loadedReject, loadErr := repo.GetWorkflow(ctx, fixture.Hypothesis.ID(), fixture.RejectCritic.ID(), fixture.Parents); loadErr != nil || loadedReject.Recommendation() != "reject" {
 		t.Fatalf("rejection=%v/%v", loadedReject, loadErr)
 	}
-	if _, err = pool.Exec(ctx, `ALTER TABLE research_hypotheses ENABLE TRIGGER ALL`); err != nil {
-		t.Fatal(err)
-	}
 	if _, err = pool.Exec(ctx, `UPDATE research_critic_checks SET check_state=check_state WHERE critic_id=$1`, fixture.ReadyCritic.ID()); err == nil || !strings.Contains(err.Error(), "append-only") {
 		t.Fatalf("append-only=%v", err)
 	}
@@ -104,4 +95,61 @@ func TestResearchWorkflowRetainedQualification(t *testing.T) {
 		t.Fatalf("nonempty rollback=%v", err)
 	}
 	t.Logf("hypothesis=%s sha=%s ready_critic=%s sha=%s reject_critic=%s sha=%s", fixture.Hypothesis.ID(), fixture.Hypothesis.Digest(), fixture.ReadyCritic.ID(), fixture.ReadyCritic.Digest(), fixture.RejectCritic.ID(), fixture.RejectCritic.Digest())
+}
+
+func seedResearchWorkflowParents(t *testing.T, ctx context.Context, pool *pgxpool.Pool, fixture researchqualification.Fixture) {
+	t.Helper()
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Release()
+	if _, err = conn.Exec(ctx, `SET session_replication_role='replica'`); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = conn.Exec(context.Background(), `SET session_replication_role='origin'`) }()
+	created := "2026-08-20 12:00:00+00"
+	family := fixture.StrategyFamily
+	_, err = conn.Exec(ctx, `WITH j AS (SELECT convert_from($4::bytea,'UTF8')::jsonb v) INSERT INTO strategy_families(id,schema_name,slug,name,thesis,asset_classes,sha256,canonical_bytes,canonical_json,created_at) SELECT $1,j.v->>'schema',j.v->>'slug',j.v->>'name',j.v->>'thesis',j.v->'asset_classes',$2,$4,j.v,$3::timestamptz FROM j`, family.ID(), family.Digest(), created, family.CanonicalBytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	version := fixture.Parents.Version
+	_, err = conn.Exec(ctx, `WITH j AS (SELECT convert_from($5::bytea,'UTF8')::jsonb v) INSERT INTO strategy_versions(id,schema_name,family_id,compiler_kind,compiler_version,source_commit,source_tree_sha256,config_schema,config_bytes,config,decision_contract,required_kind_count,sha256,canonical_bytes,canonical_json,created_at) SELECT $1,j.v->>'schema',(j.v->>'family_id')::uuid,j.v->>'compiler_kind',j.v->>'compiler_version',j.v->>'source_commit',j.v->>'source_tree_sha256',j.v->>'config_schema',$4,j.v->'config',j.v->>'decision_contract',jsonb_array_length(j.v->'required_dataset_kinds'),$2,$5,j.v,$3::timestamptz FROM j`, version.ID(), version.Digest(), created, version.Config(), version.CanonicalBytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest := fixture.Parents.Manifest
+	_, err = conn.Exec(ctx, `WITH j AS (SELECT convert_from($4::bytea,'UTF8')::jsonb v) INSERT INTO dataset_manifests(id,schema_name,decision_cutoff,partition_count,observation_count,sha256,canonical_bytes,canonical_json,created_at) SELECT $1,j.v->>'schema',(j.v->>'decision_cutoff')::timestamptz,(j.v->>'partition_count')::int,(j.v->>'observation_count')::int,$2,$4,j.v,$3::timestamptz FROM j`, manifest.ID(), manifest.Digest(), created, manifest.CanonicalBytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy := fixture.Parents.RobustnessPolicy
+	_, err = conn.Exec(ctx, `WITH j AS (SELECT convert_from($4::bytea,'UTF8')::jsonb v) INSERT INTO robustness_policy_artifacts(id,schema_name,version,fold_count,purge_seconds,embargo_seconds,bootstrap_algorithm,bootstrap_seed,bootstrap_iterations,confidence_level,family_wise_alpha,multiple_testing_correction,max_largest_positive_share,max_top_decile_positive_share,max_perturbation_degradation,perturbation_count,decimal_scale,sha256,canonical_bytes,canonical_json,created_at) SELECT $1,j.v->>'schema',j.v->>'version',(j.v->>'fold_count')::int,(j.v->>'purge_seconds')::bigint,(j.v->>'embargo_seconds')::bigint,j.v->>'bootstrap_algorithm',(j.v->>'bootstrap_seed')::numeric,(j.v->>'bootstrap_iterations')::int,j.v->>'confidence_level',j.v->>'family_wise_alpha',j.v->>'multiple_testing_correction',j.v->>'max_largest_positive_share',j.v->>'max_top_decile_positive_share',j.v->>'max_perturbation_degradation',jsonb_array_length(j.v->'required_perturbations'),(j.v->>'decimal_scale')::int,$2,$4,j.v,$3::timestamptz FROM j`, policy.ID(), policy.Digest(), created, policy.CanonicalBytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	robustFamily := fixture.Parents.RobustnessFamily
+	_, err = conn.Exec(ctx, `WITH j AS (SELECT convert_from($4::bytea,'UTF8')::jsonb v) INSERT INTO robustness_search_families(id,schema_name,name,hypothesis_sha256,candidate_count,sha256,canonical_bytes,canonical_json,created_at) SELECT $1,j.v->>'schema',j.v->>'name',j.v->>'hypothesis_sha256',jsonb_array_length(j.v->'candidate_version_ids'),$2,$4,j.v,$3::timestamptz FROM j`, robustFamily.ID(), robustFamily.Digest(), created, robustFamily.CanonicalBytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assessment := fixture.Parents.Assessment
+	_, err = conn.Exec(ctx, `WITH j AS (SELECT convert_from($4::bytea,'UTF8')::jsonb v) INSERT INTO statistical_robustness_assessments(id,schema_name,state,family_id,family_sha256,policy_id,policy_sha256,mode,candidate_count,sha256,canonical_bytes,canonical_json,created_at) SELECT $1,j.v->>'schema',j.v->>'state',(j.v->>'family_id')::uuid,j.v->>'family_sha256',(j.v->>'policy_id')::uuid,j.v->>'policy_sha256',j.v->>'mode',jsonb_array_length(j.v->'candidates'),$2,$4,j.v,$3::timestamptz FROM j`, assessment.ID(), assessment.Digest(), created, assessment.CanonicalBytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec := fixture.Parents.Spec
+	_, err = conn.Exec(ctx, `WITH j AS (SELECT convert_from($3::bytea,'UTF8')::jsonb v) INSERT INTO generated_strategy_specs(id,schema_name,family_id,family_sha256,spec_key,input_count,instrument_count,prohibition_count,property_count,example_count,normalized_row_count,sha256,canonical_bytes,canonical_json) SELECT $1,j.v->>'schema',(j.v->>'family_id')::uuid,j.v->>'family_sha256',j.v->>'spec_key',jsonb_array_length(j.v->'inputs'),jsonb_array_length(j.v->'universe'->'instruments'),jsonb_array_length(j.v->'prohibited_behaviors'),jsonb_array_length(j.v->'property_tests'),jsonb_array_length(j.v->'example_tests'),jsonb_array_length(j.v->'inputs')+jsonb_array_length(j.v->'universe'->'instruments')+jsonb_array_length(j.v->'prohibited_behaviors')+jsonb_array_length(j.v->'property_tests')+jsonb_array_length(j.v->'example_tests'),$2,$3,j.v FROM j`, spec.ID(), spec.Digest(), spec.CanonicalBytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt := fixture.Parents.Receipt
+	_, err = conn.Exec(ctx, `WITH j AS (SELECT convert_from($3::bytea,'UTF8')::jsonb v) INSERT INTO generated_strategy_compilation_receipts(id,schema_name,state,family_id,family_sha256,spec_id,spec_sha256,version_id,version_sha256,compiler_kind,compiler_version,source_commit,source_tree_sha256,config_schema,decision_contract,config_sha256,sha256,canonical_bytes,canonical_json) SELECT $1,j.v->>'schema',j.v->>'state',(j.v->>'family_id')::uuid,j.v->>'family_sha256',(j.v->>'spec_id')::uuid,j.v->>'spec_sha256',(j.v->>'version_id')::uuid,j.v->>'version_sha256',j.v->>'compiler_kind',j.v->>'compiler_version',j.v->>'source_commit',j.v->>'source_tree_sha256',j.v->>'config_schema',j.v->>'decision_contract',j.v->>'config_sha256',$2,$3,j.v FROM j`, receipt.ID(), receipt.Digest(), receipt.CanonicalBytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = conn.Exec(ctx, `SET session_replication_role='origin'`); err != nil {
+		t.Fatal(err)
+	}
 }

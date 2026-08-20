@@ -22,6 +22,7 @@ import (
 
 type Fixture struct {
 	Parents        researchworkflow.Parents
+	StrategyFamily *strategycatalog.Family
 	Hypothesis     *researchworkflow.Hypothesis
 	ReadyCritic    *researchworkflow.Critic
 	RejectCritic   *researchworkflow.Critic
@@ -88,7 +89,7 @@ func Build() (Fixture, error) {
 	if err != nil {
 		return Fixture{}, err
 	}
-	return Fixture{parents, hypothesis, ready, reject, conflict}, nil
+	return Fixture{parents, generated.Family, hypothesis, ready, reject, conflict}, nil
 }
 
 func critic(h *researchworkflow.Hypothesis, key string, reject bool, assessmentDigest, versionDigest string) (*researchworkflow.Critic, error) {
