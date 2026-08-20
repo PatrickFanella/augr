@@ -115,19 +115,19 @@ Out of scope:
 - [ ] Reject scored quarantine, unknown/missing/mismatched evidence, non-UTC or
   sub-microsecond windows, invalid ranges, mutable canonical state, and implicit
   legacy inputs.
-- [ ] Commit and push the experiment slice after focused race tests.
+- [x] Commit and push the experiment slice after focused race tests.
 
 ## Task 3: Proposed deployment and legacy mapping domain
 
-- [ ] Add `internal/strategycatalog/deployment.go` for exact version/account/
+- [x] Add `internal/strategycatalog/deployment.go` for exact version/account/
   capital-binding/budget/schedule/timezone/risk-policy assignments. Lock state to
   `proposed` and activation authority to the future promotion evaluator.
-- [ ] Add `internal/strategycatalog/legacy.go` for explicit
+- [x] Add `internal/strategycatalog/legacy.go` for explicit
   `legacy_unvalidated` snapshot mappings only; require an exact legacy-row
   SHA-256 and expose no validation/promotion conversion.
-- [ ] Add deterministic registration/declaration/proposal lifecycle evidence
+- [x] Add deterministic registration/declaration/proposal lifecycle evidence
   without general transition authority.
-- [ ] Prove assignment changes create new identities and no domain constructor
+- [x] Prove assignment changes create new identities and no domain constructor
   can claim active/approved/completed state.
 - [ ] Commit and push the deployment/legacy slice after focused race tests.
 
