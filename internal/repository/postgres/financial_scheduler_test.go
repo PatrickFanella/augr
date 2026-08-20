@@ -180,6 +180,42 @@ func TestFinancialSchedulerRetainedQualification(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	runnerOccurrence, _ := financialscheduler.NewOccurrence(financialscheduler.OccurrenceInput{JobKey: "portfolio_allocator", ScheduleRevision: "allocator-v1", Trigger: financialscheduler.TriggerScheduled, DueAt: due.Add(2 * time.Minute)})
+	runnerA, _ := financialscheduler.NewRunner(NewFinancialSchedulerRepo(pool), uuid.MustParse("60400000-0000-4000-8000-000000000021"), 5*time.Second, 100*time.Millisecond)
+	runnerB, _ := financialscheduler.NewRunner(NewFinancialSchedulerRepo(pool), uuid.MustParse("60400000-0000-4000-8000-000000000022"), 5*time.Second, 100*time.Millisecond)
+	intentEffect, _ := financialscheduler.NewEffect(financialscheduler.EffectInput{OccurrenceID: runnerOccurrence.ID, Kind: financialscheduler.EffectIntent, BusinessKey: "account/strategy/slot", PayloadSHA256: strings.Repeat("1", 64)})
+	orderEffect, _ := financialscheduler.NewEffect(financialscheduler.EffectInput{OccurrenceID: runnerOccurrence.ID, Kind: financialscheduler.EffectOrder, BusinessKey: "account/strategy/slot", PayloadSHA256: strings.Repeat("2", 64)})
+	settlementEffect, _ := financialscheduler.NewEffect(financialscheduler.EffectInput{OccurrenceID: runnerOccurrence.ID, Kind: financialscheduler.EffectSettlement, BusinessKey: "account/strategy/slot", PayloadSHA256: strings.Repeat("3", 64)})
+	accountID := uuid.MustParse("60400000-0000-4000-8000-000000000030")
+	intentID := economicid.DeterministicUUID("execution-intent", accountID.String(), intentEffect.IntentIdempotencyKey())
+	orderID := economicid.DeterministicUUID("execution-order", intentID.String(), orderEffect.OrderIdempotencyKey())
+	if intentID == uuid.Nil || orderID == uuid.Nil || settlementEffect.SettlementIdempotencyKey() == "" {
+		t.Fatal("financial effect bridges did not produce exact downstream identities")
+	}
+	started := make(chan struct{})
+	release := make(chan struct{})
+	job := func(jobCtx context.Context, session *financialscheduler.Session) error {
+		close(started)
+		<-release
+		for _, claimed := range []*financialscheduler.Effect{intentEffect, orderEffect, settlementEffect} {
+			if _, claimErr := session.ClaimEffect(jobCtx, claimed); claimErr != nil {
+				return claimErr
+			}
+		}
+		return nil
+	}
+	runnerDone := make(chan error, 1)
+	go func() { _, runErr := runnerA.Run(ctx, runnerOccurrence, job); runnerDone <- runErr }()
+	<-started
+	secondResult, secondErr := runnerB.Run(ctx, runnerOccurrence, job)
+	if !errors.Is(secondErr, financialscheduler.ErrOccurrenceNotAcquired) || secondResult.Executed {
+		t.Fatalf("second runner=%+v/%v", secondResult, secondErr)
+	}
+	close(release)
+	if runErr := <-runnerDone; runErr != nil {
+		t.Fatal(runErr)
+	}
+
 	forgedID := economicid.DeterministicUUID("financial-job-lease-event", takeoverOccurrence.ID.String(), "4", "renewed", second.Lease.OwnerID.String(), "99")
 	_, err = pool.Exec(ctx, `INSERT INTO financial_job_lease_events(id,occurrence_id,sequence,event_kind,owner_id,fence_token,occurred_at,lease_expires_at) VALUES($1,$2,4,'renewed',$3,99,date_trunc('microseconds',clock_timestamp()),date_trunc('microseconds',clock_timestamp())+interval '5 seconds')`, forgedID, takeoverOccurrence.ID, second.Lease.OwnerID)
 	if err == nil || !strings.Contains(err.Error(), "renewal is not authorized") {
@@ -193,7 +229,7 @@ func TestFinancialSchedulerRetainedQualification(t *testing.T) {
 	}
 
 	var definitions, occurrences, events, effects int
-	if err := pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM financial_job_definitions),(SELECT count(*) FROM financial_job_occurrences),(SELECT count(*) FROM financial_job_lease_events),(SELECT count(*) FROM financial_job_effect_claims)`).Scan(&definitions, &occurrences, &events, &effects); err != nil || definitions != len(financialscheduler.Catalog()) || occurrences != 2 || events != 5 || effects != 2 {
+	if err := pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM financial_job_definitions),(SELECT count(*) FROM financial_job_occurrences),(SELECT count(*) FROM financial_job_lease_events),(SELECT count(*) FROM financial_job_effect_claims)`).Scan(&definitions, &occurrences, &events, &effects); err != nil || definitions != len(financialscheduler.Catalog()) || occurrences != 3 || events != 7 || effects != 5 {
 		t.Fatalf("counts=%d/%d/%d/%d err=%v", definitions, occurrences, events, effects, err)
 	}
 	t.Logf("occurrence=%s sha=%s intent_effect=%s takeover=%s settlement_effect=%s", occurrence.ID, occurrence.SHA256, effect.ID, takeoverOccurrence.ID, settlement.ID)

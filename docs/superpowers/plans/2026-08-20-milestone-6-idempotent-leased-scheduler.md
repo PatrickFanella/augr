@@ -82,13 +82,13 @@ settlement of a real position, or live trade is authorized.
 - [x] Prove injected rollback at every graph stage, eight-writer convergence,
   direct-SQL forgery rejection, nonempty rollback refusal, and empty
   `98 -> 97 -> 98`.
-- [ ] Commit and push the persistence slice after focused/database races.
+- [x] Commit and push the persistence slice after focused/database races.
 
 ## Task 3: Runner qualification and closure
 
-- [ ] Add a lease-renewing runner whose job context is cancelled on lost fence
+- [x] Add a lease-renewing runner whose job context is cancelled on lost fence
   and whose financial mutation interface requires a current effect claim.
-- [ ] Qualify two independent runners against exact synthetic OVR-203 intent/
+- [x] Qualify two independent runners against exact synthetic OVR-203 intent/
   order and settlement writers; one scheduled occurrence must retain exactly
   one intent, one order, and one settlement effect across races, crash/restart,
   timeout, delayed stale owner, and takeover.
