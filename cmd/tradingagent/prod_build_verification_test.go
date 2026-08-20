@@ -145,9 +145,10 @@ func TestReleaseGateIncludesProductionVerificationAndPinnedPromtool(t *testing.T
 		`go test -count=1 ./cmd/... ./internal/... ./migrations/...`,
 		`go vet ./cmd/... ./internal/... ./migrations/...`,
 		`golangci-lint run ./cmd/... ./internal/... ./migrations/...`,
-		`npm --prefix web test`,
-		`npm --prefix web run lint`,
-		`npm --prefix web run build`,
+		`mise exec node@22.23.2 -- ./node_modules/.bin/vitest --run --pool=threads --maxWorkers=1`,
+		`mise exec node@22.23.2 -- ./node_modules/.bin/eslint .`,
+		`mise exec node@22.23.2 -- ./node_modules/.bin/tsc -b`,
+		`mise exec node@22.23.2 -- ./node_modules/.bin/vite build`,
 		`docker compose -f docker-compose.nuc.yml config --quiet`,
 		`docker compose -f docker-compose.nuc.yml -f deploy/docker-compose.nuc.rollback.yml config --quiet`,
 		`MIGRATION_DOWN_STEPS=2 docker compose -f docker-compose.nuc.yml -f deploy/docker-compose.nuc.migrate-down.yml config --quiet`,
@@ -166,6 +167,9 @@ func TestReleaseGateIncludesProductionVerificationAndPinnedPromtool(t *testing.T
 	}
 	if strings.Contains(script, `prom/prometheus:v3.3.0`) {
 		t.Fatal("release-gate.sh uses a mutable Prometheus tag")
+	}
+	if strings.Contains(script, `npm --prefix web`) {
+		t.Fatal("release-gate.sh uses the ambient frontend runtime")
 	}
 
 	candidateIdx := strings.Index(script, `candidate_commit=$(git rev-parse HEAD)`)
