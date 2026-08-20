@@ -100,11 +100,11 @@ Out of scope:
   V1 version and immutable typed scenario evidence.
 - [x] Translate engine open/close decisions to exact OVR-303 plan steps while
   preserving non-order lifecycle events in the wheel report.
-- [ ] Reject program-input evidence mismatch, unrecognized instruments/venue
+- [x] Reject program-input evidence mismatch, unrecognized instruments/venue
   contracts, reordered/partial evidence, invalid capital state, and mode drift.
-- [ ] Prove scored/stress deterministic plans, plan replay equality, capital and
+- [x] Prove scored/stress deterministic plans, plan replay equality, capital and
   common simulation enforcement, and no direct provider/runtime path.
-- [ ] Commit and push the adapter slice after focused races.
+- [x] Commit and push the adapter slice after focused races.
 
 ## Task 3: Migration 83 and append-only evidence
 
