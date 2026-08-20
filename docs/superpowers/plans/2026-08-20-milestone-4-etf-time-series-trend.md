@@ -100,11 +100,11 @@ Out of scope:
 
 ## Task 4: Operations and qualification
 
-- [ ] Add a runbook for source/signal inspection, volatility/weight replay,
+- [x] Add a runbook for source/signal inspection, volatility/weight replay,
   turnover/cost reconciliation, failure/recovery, and rollback.
-- [ ] Retain local all-long, mixed long/cash, all-cash, volatility-cap,
+- [x] Retain local all-long, mixed long/cash, all-cash, volatility-cap,
   turnover-cap, and multi-rebalance scenarios with exact IDs/hashes/counts.
-- [ ] Prove eight-writer convergence, restart, every-stage rollback, normalized
+- [x] Prove eight-writer convergence, restart, every-stage rollback, normalized
   forgery rejection, nonempty rollback refusal, and empty `85 -> 84 -> 85`.
 - [ ] Run focused/database races, all backend and pinned frontend gates, diff
   review, and isolated kill-switched schema-85 health/API/rollback/reapply.

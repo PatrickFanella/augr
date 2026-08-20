@@ -18,3 +18,13 @@ func TestBuildTrendRunnerFixtureScoredAndStress(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildRetainedScenarios(t *testing.T) {
+	fixture, err := BuildRetainedScenarios()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fixture.Scenarios) != 5 || len(fixture.Reports) != 5 || len(fixture.Reports["turnover_multi"].Rebalances()) != 3 {
+		t.Fatalf("retained scenarios=%d reports=%d", len(fixture.Scenarios), len(fixture.Reports))
+	}
+}
