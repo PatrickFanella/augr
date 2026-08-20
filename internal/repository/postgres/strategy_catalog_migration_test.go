@@ -109,6 +109,35 @@ func TestStrategyCatalogMigrationRejectsForgedAndMutableFamily(t *testing.T) {
 	}
 }
 
+func TestStrategyCatalogMigrationRejectsNoncanonicalConfigBytes(t *testing.T) {
+	ctx := context.Background()
+	pool := newStrategyCatalogMigrationPool(t)
+	family, evidence := migrationFamily(t)
+	if err := insertMigrationFamily(ctx, pool, family, evidence); err != nil {
+		t.Fatal(err)
+	}
+	_, err := pool.Exec(ctx, `WITH identity AS (
+		SELECT strategy_version_identity($1::text,'go-native','strategy-compiler-v1',$2,$3,
+			'momentum-config-v1','{"lookback":1e3}','trade-intent-v1','["bars"]') AS value
+	), envelope AS (
+		SELECT value,encode(digest(convert_to(value,'UTF8'),'sha256'),'hex') AS sha FROM identity
+	) INSERT INTO strategy_versions(
+		id,schema_name,family_id,compiler_kind,compiler_version,source_commit,source_tree_sha256,
+		config_schema,config_bytes,config,decision_contract,required_kind_count,sha256,canonical_bytes,canonical_json,created_at
+	) SELECT economic_deterministic_uuid('strategy-version','strategy-version-v1@sha256:'||sha),
+		'strategy-version-v1',$1,'go-native','strategy-compiler-v1',$2,$3,'momentum-config-v1',
+		convert_to('{"lookback":1e3}','UTF8'),'{"lookback":1e3}'::jsonb,'trade-intent-v1',1,sha,
+		convert_to(value,'UTF8'),value::jsonb,$4 FROM envelope`, family.ID(), strings.Repeat("a", 40), strings.Repeat("b", 64),
+		time.Date(2026, 8, 20, 20, 0, 0, 123456000, time.UTC))
+	if err == nil {
+		t.Fatal("direct SQL accepted noncanonical exponent config bytes")
+	}
+	var versions int
+	if countErr := pool.QueryRow(ctx, `SELECT count(*) FROM strategy_versions`).Scan(&versions); countErr != nil || versions != 0 {
+		t.Fatalf("forged version rows=%d err=%v", versions, countErr)
+	}
+}
+
 func migrationFamily(t *testing.T) (*strategycatalog.Family, *strategycatalog.LifecycleEvidence) {
 	t.Helper()
 	family, err := strategycatalog.NewFamily(strategycatalog.FamilyInput{

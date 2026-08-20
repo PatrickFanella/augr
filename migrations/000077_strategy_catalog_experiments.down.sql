@@ -21,6 +21,7 @@ DROP FUNCTION validate_research_experiment();
 DROP FUNCTION validate_strategy_version_graph();
 DROP FUNCTION validate_strategy_family();
 DROP FUNCTION strategy_legacy_snapshot_sha(UUID);
+DROP FUNCTION strategy_canonical_json(JSONB);
 DROP FUNCTION strategy_lifecycle_identity(TEXT,TEXT,TEXT,TEXT,TEXT);
 DROP FUNCTION strategy_legacy_mapping_identity(TEXT,TEXT,TEXT);
 DROP FUNCTION strategy_deployment_identity(TEXT,TEXT,TEXT,TEXT,TEXT,TEXT,TEXT,TEXT);

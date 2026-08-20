@@ -50,6 +50,27 @@ CREATE FUNCTION strategy_legacy_snapshot_sha(target UUID) RETURNS TEXT AS $$
   SELECT encode(digest(convert_to(to_jsonb(s)::TEXT,'UTF8'),'sha256'),'hex') FROM strategies s WHERE s.id=target;
 $$ LANGUAGE sql STABLE STRICT;
 
+CREATE FUNCTION strategy_canonical_json(value JSONB) RETURNS TEXT AS $$
+DECLARE kind TEXT := jsonb_typeof(value); result TEXT;
+BEGIN
+  CASE kind
+    WHEN 'null' THEN RETURN 'null';
+    WHEN 'boolean' THEN RETURN value::TEXT;
+    WHEN 'number' THEN RETURN value::TEXT;
+    WHEN 'string' THEN RETURN dataset_json_string(value #>> '{}');
+    WHEN 'array' THEN
+      SELECT '['||COALESCE(string_agg(strategy_canonical_json(item),',' ORDER BY ordinal),'')||']' INTO result
+        FROM jsonb_array_elements(value) WITH ORDINALITY rows(item,ordinal);
+      RETURN result;
+    WHEN 'object' THEN
+      SELECT '{'||COALESCE(string_agg(dataset_json_string(key)||':'||strategy_canonical_json(item),',' ORDER BY key COLLATE "C"),'')||'}'
+        INTO result FROM jsonb_each(value) rows(key,item);
+      RETURN result;
+    ELSE RAISE EXCEPTION 'unsupported strategy config JSON kind';
+  END CASE;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE STRICT;
+
 CREATE TABLE strategy_families (
   id UUID PRIMARY KEY,
   schema_name TEXT NOT NULL CHECK(schema_name='strategy-family-v1'),
@@ -79,7 +100,8 @@ CREATE TABLE strategy_versions (
   required_kind_count INTEGER NOT NULL CHECK(required_kind_count>0),
   sha256 TEXT NOT NULL CHECK(sha256 ~ '^[0-9a-f]{64}$'), canonical_bytes BYTEA NOT NULL,
   canonical_json JSONB NOT NULL CHECK(jsonb_typeof(canonical_json)='object'), created_at TIMESTAMPTZ NOT NULL CHECK(created_at=date_trunc('microseconds',created_at)),
-  CHECK(config=convert_from(config_bytes,'UTF8')::JSONB), CHECK(canonical_json=convert_from(canonical_bytes,'UTF8')::JSONB),
+  CHECK(config=convert_from(config_bytes,'UTF8')::JSONB), CHECK(convert_from(config_bytes,'UTF8')=strategy_canonical_json(config)),
+  CHECK(canonical_json=convert_from(canonical_bytes,'UTF8')::JSONB),
   CHECK(sha256=encode(digest(canonical_bytes,'sha256'),'hex')),
   CHECK(id=economic_deterministic_uuid('strategy-version',schema_name||'@sha256:'||sha256))
 );

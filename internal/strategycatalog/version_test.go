@@ -62,14 +62,17 @@ func TestVersionDatasetKindsReorderWithoutIdentityChange(t *testing.T) {
 func TestVersionRejectsNoncanonicalOrInvalidIdentity(t *testing.T) {
 	valid := validVersionInput()
 	for name, mutate := range map[string]func(*VersionInput){
-		"family":          func(value *VersionInput) { value.FamilyID = uuid.Nil },
-		"compiler":        func(value *VersionInput) { value.CompilerKind = " compiler" },
-		"source commit":   func(value *VersionInput) { value.SourceCommit = "main" },
-		"tree digest":     func(value *VersionInput) { value.SourceTreeSHA256 = strings.Repeat("z", 64) },
-		"config array":    func(value *VersionInput) { value.Config = json.RawMessage(`[]`) },
-		"config spacing":  func(value *VersionInput) { value.Config = json.RawMessage(`{ "lookback":252,"rebalance":"monthly"}`) },
-		"config ordering": func(value *VersionInput) { value.Config = json.RawMessage(`{"rebalance":"monthly","lookback":252}`) },
-		"no kinds":        func(value *VersionInput) { value.RequiredDatasetKinds = nil },
+		"family":               func(value *VersionInput) { value.FamilyID = uuid.Nil },
+		"compiler":             func(value *VersionInput) { value.CompilerKind = " compiler" },
+		"source commit":        func(value *VersionInput) { value.SourceCommit = "main" },
+		"tree digest":          func(value *VersionInput) { value.SourceTreeSHA256 = strings.Repeat("z", 64) },
+		"config array":         func(value *VersionInput) { value.Config = json.RawMessage(`[]`) },
+		"config spacing":       func(value *VersionInput) { value.Config = json.RawMessage(`{ "lookback":252,"rebalance":"monthly"}`) },
+		"config ordering":      func(value *VersionInput) { value.Config = json.RawMessage(`{"rebalance":"monthly","lookback":252}`) },
+		"config exponent":      func(value *VersionInput) { value.Config = json.RawMessage(`{"lookback":1e3}`) },
+		"config negative zero": func(value *VersionInput) { value.Config = json.RawMessage(`{"lookback":-0}`) },
+		"nested negative zero": func(value *VersionInput) { value.Config = json.RawMessage(`{"thresholds":[{"value":-0.0}]}`) },
+		"no kinds":             func(value *VersionInput) { value.RequiredDatasetKinds = nil },
 		"duplicate kind": func(value *VersionInput) {
 			value.RequiredDatasetKinds = []dataset.Kind{dataset.KindBars, dataset.KindBars}
 		},

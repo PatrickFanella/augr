@@ -1014,6 +1014,33 @@ is locally code-complete, and dependency-order execution proceeds to OVR-301.
 | OVR-305 | OVR-304 | Walk-forward, perturbation, bootstrap, and multiple-testing gates | Generated variants cannot win by unadjusted search alone. |
 | OVR-306 | OVR-305 | Promotion and retirement evaluator | Status transitions are policy results with evidence links. |
 
+OVR-301 and OVR-302 are complete locally as additive evidence boundaries.
+Schema 76 records immutable point-in-time dataset manifests and explicit
+quality results without fetching, selecting, or repairing source evidence.
+Schema 77 records immutable strategy families and content-addressed versions;
+declared experiments pin exact manifest, quality, simulation, capital,
+account, evaluation-window, and seed evidence; deployment assignments remain
+inert `proposed` rows; legacy mappings remain `legacy_unvalidated`. Neither
+migration adds a current pointer, scheduler, writer grant, execution path, or
+legacy backfill/cutover.
+
+Fresh `1 -> 77` qualification retained one family, two configuration-derived
+versions, scored and quarantined-stress declarations, one proposed deployment,
+one explicit legacy mapping, and matching lifecycle evidence. Nonempty rollback
+refused while preserving the retained digest aggregate, and a separate empty
+database passed `77 -> 76 -> 77`. Focused/database races, standard build/race/
+vet/lint/format/vulnerability gates, all 162 frontend tests, frontend audit and
+production build, and a kill-switched schema-77 health smoke passed. The broad
+database-enabled all-package run passed 4,885 tests and retained nine known
+legacy failures in older automation, backtest, migration-fixture, and order-
+lifecycle assumptions; no OVR-301/302 package failed. The smoke kept live
+trading and scheduling disabled, omitted credentials, returned healthy database
+and Redis status on all three health routes, preserved every catalog row/hash,
+and shut down with zero in-flight runs. OVR-301/302 are **VERIFIED_LOCAL** only:
+shared migration, licensed production datasets, protected runner integration,
+experiment execution, promotion, activation, deployment, and cutover remain
+**BLOCKED_EXTERNAL**. Dependency-order execution proceeds to OVR-303.
+
 ### Milestone 4 — Deterministic strategy program
 
 | ID | Depends on | Work | Acceptance |

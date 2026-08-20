@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -18,7 +19,10 @@ const (
 	versionDomain   = "strategy-version"
 )
 
-var sourceCommitPattern = regexp.MustCompile(`^(?:[0-9a-f]{40}|[0-9a-f]{64})$`)
+var (
+	sourceCommitPattern = regexp.MustCompile(`^(?:[0-9a-f]{40}|[0-9a-f]{64})$`)
+	negativeZeroPattern = regexp.MustCompile(`^-0(?:\.0+)?$`)
+)
 
 type VersionInput struct {
 	FamilyID             uuid.UUID
@@ -221,6 +225,9 @@ func canonicalConfig(raw json.RawMessage) (json.RawMessage, error) {
 	if err := requireJSONEOF(decoder); err != nil {
 		return nil, err
 	}
+	if !canonicalConfigNumbers(value) {
+		return nil, fmt.Errorf("strategy version config numbers must use canonical non-exponent notation")
+	}
 	encoded, err := json.Marshal(value)
 	if err != nil {
 		return nil, err
@@ -229,6 +236,29 @@ func canonicalConfig(raw json.RawMessage) (json.RawMessage, error) {
 		return nil, fmt.Errorf("strategy version config must use canonical JSON")
 	}
 	return append(json.RawMessage(nil), encoded...), nil
+}
+
+func canonicalConfigNumbers(value any) bool {
+	switch typed := value.(type) {
+	case map[string]any:
+		for _, child := range typed {
+			if !canonicalConfigNumbers(child) {
+				return false
+			}
+		}
+	case []any:
+		for _, child := range typed {
+			if !canonicalConfigNumbers(child) {
+				return false
+			}
+		}
+	case json.Number:
+		number := string(typed)
+		if strings.ContainsAny(number, "eE") || negativeZeroPattern.MatchString(number) {
+			return false
+		}
+	}
+	return true
 }
 
 func reviewedDatasetKinds() map[dataset.Kind]struct{} {

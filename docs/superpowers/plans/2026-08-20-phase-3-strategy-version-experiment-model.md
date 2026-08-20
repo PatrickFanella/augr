@@ -147,7 +147,7 @@ Out of scope:
   pointer, writer grant, scheduler, or legacy backfill.
 - [x] Add lock-first empty-only rollback and bump `RequiredSchemaVersion` to 77
   only after isolated migration tests pass.
-- [ ] Commit and push the migration slice after focused real-PostgreSQL races.
+- [x] Commit and push the migration slice after focused real-PostgreSQL races.
 
 ## Task 5: PostgreSQL repository and restart replay
 
@@ -173,13 +173,13 @@ Out of scope:
 - [x] Apply migrations `1 -> 77` to a fresh loopback database and retain the
   golden catalog. Prove config edit yields a second version, exact reload,
   nonempty rollback refusal, and separate empty `77 -> 76 -> 77`.
-- [ ] Run focused and repository-wide backend races/build/vet/lint/format/
+- [x] Run focused and repository-wide backend races/build/vet/lint/format/
   vulnerability gates, pinned Node 22 frozen install/audit/tests/lint/build,
   and `git diff --check`.
-- [ ] Run one isolated kill-switched schema-77 health smoke with live trading
+- [x] Run one isolated kill-switched schema-77 health smoke with live trading
   and all schedulers false, no credentials, evidence counts unchanged, and zero
   in-flight shutdown.
-- [ ] Complete a final diff review with no unresolved P0/P1, commit verified
+- [x] Complete a final diff review with no unresolved P0/P1, commit verified
   slices, push/fetch, and prove `0 0` divergence before OVR-303.
 
 ## Acceptance evidence to record after implementation
@@ -196,6 +196,6 @@ Out of scope:
   experiment automatically.
 - [x] Migration 77 is additive, append-only, empty-only reversible, and leaves
   legacy runtime behavior and data untouched.
-- [ ] Local qualification is labeled `VERIFIED_LOCAL`; shared migration,
+- [x] Local qualification is labeled `VERIFIED_LOCAL`; shared migration,
   production data, experiment execution, promotion, activation, and cutover
   remain `BLOCKED_EXTERNAL`.
