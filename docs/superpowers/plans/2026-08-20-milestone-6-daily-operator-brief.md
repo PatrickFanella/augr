@@ -60,7 +60,7 @@ allocation, settlement, broker route, deployment, or live trade.
   convergence, semantic change, and no mutation/notification surface.
 - [x] Bind exact OVR-304 evaluation, OVR-603 summary, OVR-207 reconciliation,
   OVR-605 assessment, and OVR-606 cost report evidence.
-- [ ] Commit and push the domain slice after focused race tests.
+- [x] Commit and push the domain slice after focused race tests.
 
 ## Task 2: Schema 101 and retained qualification
 
@@ -72,23 +72,23 @@ allocation, settlement, broker route, deployment, or live trade.
 - [x] Retain one baseline brief that honestly surfaces unavailable performance
   and one attention brief showing halted exposure, unknown infrastructure cost,
   and independent safe-work eligibility.
-- [ ] Commit and push persistence after focused/database race tests.
+- [x] Commit and push persistence after focused/database race tests.
 
 ## Task 3: Closure
 
-- [ ] Add inspection/recovery/rollback runbook evidence with exact IDs/digests
+- [x] Add inspection/recovery/rollback runbook evidence with exact IDs/digests
   and explicit notification/acknowledgement/authority limits.
-- [ ] Run repository-wide backend/static and pinned frontend gates, diff review,
+- [x] Run repository-wide backend/static and pinned frontend gates, diff review,
   and isolated kill-switched schema-101 health/API/rollback/backup/restore/reapply.
-- [ ] Commit/push verified slices, fetch, and prove `0 0` before Milestone 7.
+- [x] Commit/push verified slices, fetch, and prove `0 0` before Milestone 7.
 
 ## Acceptance evidence to record
 
-- [ ] One brief explains performance, decisions, drift, risk, costs, admissions,
+- [x] One brief explains performance, decisions, drift, risk, costs, admissions,
   and required attention from exact retained evidence.
-- [ ] Unknown, unavailable, failed, drifting, and halted facts remain visible as
+- [x] Unknown, unavailable, failed, drifting, and halted facts remain visible as
   deterministic open incidents and are never automatically acknowledged.
-- [ ] The brief/inbox cannot notify, mutate incidents, flatten/cancel, clear
+- [x] The brief/inbox cannot notify, mutate incidents, flatten/cancel, clear
   brakes, alter risk, review/promote, schedule, allocate, settle, or trade.
-- [ ] Local qualification is `VERIFIED_LOCAL`; delivery, shared migration,
+- [x] Local qualification is `VERIFIED_LOCAL`; delivery, shared migration,
   cutover, deployment, and all operational mutations are `BLOCKED_EXTERNAL`.
