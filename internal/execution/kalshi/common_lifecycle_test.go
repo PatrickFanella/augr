@@ -285,12 +285,49 @@ func TestPlanKalshiExecutedOrderIsEvidenceOnlyAfterExactFills(t *testing.T) {
 	}
 	fixture.context.Aggregate = fills.Aggregate
 	executed := fixture.orderFact(t, "executed", "12.50", "0.00")
-	result, err := PlanOrderResult(fixture.context, venue.ObservationOrderSnapshot, executed)
+	result, err := PlanOrderResult(fixture.context, venue.ObservationSubmitResponse, executed)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if result.Aggregate.State != lifecycle.StateFilled || len(result.Steps) != 1 || result.Steps[0].Transition != nil || result.Steps[0].Observation.MappedOutcome != venue.OutcomeFillNotice {
 		t.Fatalf("executed = %#v", result)
+	}
+}
+
+func TestPlanKalshiPartialRestingThenCancelAndFOKNoFillCancel(t *testing.T) {
+	fixture := newKalshiResultFixture(t, "yes", "12.50")
+	partial, err := PlanFillResults(fixture.context, []CommonFillFact{fixture.fillFact(t, "fill-partial", "5.00", "0.37", "0.63", "0.08", 1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture.context.Aggregate = partial.Aggregate
+	resting := fixture.orderFact(t, "resting", "5.00", "7.50")
+	restingResult, err := PlanOrderResult(fixture.context, venue.ObservationSubmitResponse, resting)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restingResult.Aggregate.State != lifecycle.StatePartiallyFilled || restingResult.Steps[0].Transition != nil || restingResult.Steps[0].Observation.MappedOutcome != venue.OutcomeNoChange {
+		t.Fatalf("resting partial = %#v", restingResult)
+	}
+	fixture.context.Aggregate = restingResult.Aggregate
+	canceled := fixture.orderFact(t, "canceled", "5.00", "7.50")
+	canceledResult, err := PlanOrderResult(fixture.context, venue.ObservationCancelResponse, canceled)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if canceledResult.Aggregate.State != lifecycle.StateCancelled || canceledResult.Steps[0].Transition == nil {
+		t.Fatalf("IOC-style partial cancel = %#v", canceledResult)
+	}
+
+	fok := newKalshiResultFixture(t, "yes", "12.50")
+	fok.context.Aggregate.Order.TimeInForce = lifecycle.TimeInForceFOK
+	fokCanceled := fok.orderFact(t, "canceled", "0.00", "12.50")
+	fokResult, err := PlanOrderResult(fok.context, venue.ObservationSubmitResponse, fokCanceled)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fokResult.Aggregate.State != lifecycle.StateCancelled || len(fokResult.Aggregate.Fills) != 0 {
+		t.Fatalf("FOK no-fill cancel = %#v", fokResult)
 	}
 }
 
@@ -347,7 +384,14 @@ func (fixture kalshiResultFixture) orderFact(t *testing.T, status, filled, remai
 	if outcome == "no" {
 		yesPrice, noPrice = "0.63", "0.37"
 	}
-	raw := json.RawMessage(fmt.Sprintf(`{"order_id":"external-1","client_order_id":%q,"ticker":%q,"side":%q,"action":%q,"outcome_side":%q,"book_side":%q,"type":"limit","status":%q,"yes_price_dollars":%q,"no_price_dollars":%q,"fill_count_fp":%q,"remaining_count_fp":%q,"initial_count_fp":%q,"created_time":%q,"last_update_time":%q,"subaccount_number":7,"exchange_index":0}`, fixture.context.Aggregate.Order.ClientOrderID, fixture.context.VenueContract.ContractID, outcome, fixture.context.Aggregate.Order.Side, outcome, book, status, yesPrice, noPrice, filled, remaining, fixture.context.Aggregate.Order.Quantity.StringFixed(2), fixture.now.Format(time.RFC3339Nano), fixture.now.Add(3*time.Second).Format(time.RFC3339Nano)))
+	updateOffset := 3 * time.Second
+	if status == "canceled" {
+		updateOffset = 4 * time.Second
+	}
+	if status == "executed" {
+		updateOffset = 5 * time.Second
+	}
+	raw := json.RawMessage(fmt.Sprintf(`{"order_id":"external-1","client_order_id":%q,"ticker":%q,"side":%q,"action":%q,"outcome_side":%q,"book_side":%q,"type":"limit","status":%q,"yes_price_dollars":%q,"no_price_dollars":%q,"fill_count_fp":%q,"remaining_count_fp":%q,"initial_count_fp":%q,"created_time":%q,"last_update_time":%q,"subaccount_number":7,"exchange_index":0}`, fixture.context.Aggregate.Order.ClientOrderID, fixture.context.VenueContract.ContractID, outcome, fixture.context.Aggregate.Order.Side, outcome, book, status, yesPrice, noPrice, filled, remaining, fixture.context.Aggregate.Order.Quantity.StringFixed(2), fixture.now.Format(time.RFC3339Nano), fixture.now.Add(updateOffset).Format(time.RFC3339Nano)))
 	var order CommonOrder
 	if err := decodeOneJSON(raw, &order); err != nil {
 		t.Fatal(err)
