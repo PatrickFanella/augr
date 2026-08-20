@@ -556,8 +556,9 @@ func kalshiPolicyDefinition() policyDefinition {
 	return policyDefinition{
 		Provider: ProviderKalshi, Venue: "kalshi", APIRevision: "trade-api-v2",
 		EndpointFamilies: []string{
+			"/historical/fills", "/historical/orders",
 			"/portfolio/events/orders", "/portfolio/events/orders/{order_id}",
-			"/portfolio/fills", "/portfolio/fills/historical", "/portfolio/orders", "/portfolio/orders/historical",
+			"/portfolio/fills", "/portfolio/orders",
 		},
 		MaxClientOrderIDLength: 64,
 		RetryLookup: retryLookupPolicy{

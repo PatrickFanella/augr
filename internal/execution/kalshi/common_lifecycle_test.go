@@ -143,8 +143,8 @@ func TestKalshiCommonLifecycleClientUsesV2EndpointsAndPaginatesRecovery(t *testi
 	}
 	want := []string{
 		"POST /portfolio/events/orders", "GET /portfolio/orders?limit=1000&subaccount=7", "GET /portfolio/orders?cursor=next&limit=1000&subaccount=7",
-		"GET /portfolio/orders/historical?limit=1000&subaccount=7", "GET /portfolio/fills?cursor=&limit=1000&order_id=external-1&subaccount=7&ticker=KX-TEST",
-		"GET /portfolio/fills?cursor=fills-next&limit=1000&order_id=external-1&subaccount=7&ticker=KX-TEST", "GET /portfolio/fills/historical?cursor=&limit=1000&order_id=external-1&subaccount=7&ticker=KX-TEST",
+		"GET /historical/orders?limit=1000&subaccount=7", "GET /portfolio/fills?cursor=&limit=1000&order_id=external-1&subaccount=7&ticker=KX-TEST",
+		"GET /portfolio/fills?cursor=fills-next&limit=1000&order_id=external-1&subaccount=7&ticker=KX-TEST", "GET /historical/fills?cursor=&limit=1000&order_id=external-1&subaccount=7&ticker=KX-TEST",
 		"DELETE /portfolio/events/orders/external-1?exchange_index=0&subaccount=7",
 	}
 	if !reflect.DeepEqual(transport.calls, want) {

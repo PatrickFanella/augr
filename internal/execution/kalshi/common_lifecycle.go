@@ -243,7 +243,7 @@ func (c *CommonLifecycleClient) FindByClientOrderID(ctx context.Context, clientO
 		return nil, fmt.Errorf("kalshi common lifecycle: valid client id and subaccount are required")
 	}
 	var matches []*CommonOrderFact
-	for _, path := range []string{"/portfolio/orders", "/portfolio/orders/historical"} {
+	for _, path := range []string{"/portfolio/orders", "/historical/orders"} {
 		facts, err := c.scanOrders(ctx, path, subaccount)
 		if err != nil {
 			return nil, err
@@ -307,7 +307,7 @@ func (c *CommonLifecycleClient) ListFills(ctx context.Context, orderID, ticker s
 		return nil, fmt.Errorf("kalshi common lifecycle: valid order, ticker, and subaccount are required")
 	}
 	var facts []*CommonFillFact
-	for _, path := range []string{"/portfolio/fills", "/portfolio/fills/historical"} {
+	for _, path := range []string{"/portfolio/fills", "/historical/fills"} {
 		query := url.Values{"cursor": {""}, "limit": {"1000"}, "order_id": {orderID}, "ticker": {ticker}, "subaccount": {fmt.Sprint(subaccount)}}
 		seen := map[string]bool{}
 		for {

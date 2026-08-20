@@ -93,7 +93,7 @@ func (repo *LedgerRepo) RecordEconomicSourceEvent(ctx context.Context, event *le
 		id, account_id, source, source_namespace, source_event_id, source_revision,
 		observed_at, raw_payload, payload_sha256, payload, created_at
 	) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::JSONB,$11)
-	ON CONFLICT (account_id, source, source_namespace, source_event_id) DO NOTHING
+	ON CONFLICT DO NOTHING
 	RETURNING id`,
 		event.ID,
 		event.AccountID,

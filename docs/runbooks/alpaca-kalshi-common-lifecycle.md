@@ -81,7 +81,8 @@ exact decimal strings; binary floating point is not used.
   `/v2/orders:by_client_order_id`. A definitive request/auth failure and context
   cancellation remain errors.
 - Kalshi: after a duplicate or ambiguous submit, scan the current order pages
-  and, only after a complete current miss, the reviewed historical order pages.
+  at `/portfolio/orders` and, only after a complete current miss, the reviewed
+  `/historical/orders` pages.
   Exactly one matching client ID must exist. Zero unresolved matches and more
   than one match are reconciliation incidents. Rate-limit, cooldown,
   request/auth, and context-cancellation errors remain visible.
@@ -119,7 +120,7 @@ order with the previous final activity ID as page token. A repeated token,
 malformed page, wrong order/client/symbol/side, impossible cumulative/leaves
 total, correction, or bust stops recovery.
 
-Kalshi scans every current fill page and then every reviewed historical fill
+Kalshi scans every `/portfolio/fills` page and then every `/historical/fills`
 page using order ID, ticker, and subaccount. An empty cursor terminates a family;
 a repeated cursor is an error. `fill_id`, not `trade_id`, is the economic source
 identity. Each fill must match order ID, ticker, outcome, action, book side,
