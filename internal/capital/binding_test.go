@@ -81,7 +81,7 @@ func TestBindingRejectsAccountPolicyTierAndProfileMismatch(t *testing.T) {
 		"currency": func(account *domain.Account, _ *decimal.Decimal, _ *domain.MarginProfile) {
 			account.BaseCurrency = "EUR"
 		},
-		"starting tier mismatch": func(account *domain.Account, tier *decimal.Decimal, _ *domain.MarginProfile) {
+		"starting tier mismatch": func(_ *domain.Account, tier *decimal.Decimal, _ *domain.MarginProfile) {
 			*tier = decimal.NewFromInt(25_000)
 		},
 		"unknown tier": func(account *domain.Account, tier *decimal.Decimal, _ *domain.MarginProfile) {

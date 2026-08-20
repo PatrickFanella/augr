@@ -1089,8 +1089,10 @@ func (r historyPositionRepo) GetByStrategy(context.Context, uuid.UUID, repositor
 
 type metricPositionRepo struct{ count int }
 
-func (m metricPositionRepo) Create(context.Context, *domain.Position) error            { return nil }
+func (m metricPositionRepo) Create(context.Context, *domain.Position) error { return nil }
+
 func (m metricPositionRepo) CreateAlpacaOwned(context.Context, *domain.Position) error { return nil }
+
 func (m metricPositionRepo) Get(context.Context, uuid.UUID) (*domain.Position, error) {
 	return nil, repository.ErrNotFound
 }

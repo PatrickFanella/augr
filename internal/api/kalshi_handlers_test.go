@@ -76,6 +76,7 @@ func TestHandleGetKalshiSummaryMissingDeps(t *testing.T) {
 type kalshiSummaryStrategyRepoStub struct{ count int }
 
 func (s *kalshiSummaryStrategyRepoStub) Create(context.Context, *domain.Strategy) error { return nil }
+
 func (s *kalshiSummaryStrategyRepoStub) Get(context.Context, uuid.UUID) (*domain.Strategy, error) {
 	return nil, repository.ErrNotFound
 }
@@ -90,8 +91,11 @@ func (s *kalshiSummaryStrategyRepoStub) Count(_ context.Context, filter reposito
 	}
 	return s.count, nil
 }
+
 func (s *kalshiSummaryStrategyRepoStub) Update(context.Context, *domain.Strategy) error { return nil }
-func (s *kalshiSummaryStrategyRepoStub) Delete(context.Context, uuid.UUID) error        { return nil }
+
+func (s *kalshiSummaryStrategyRepoStub) Delete(context.Context, uuid.UUID) error { return nil }
+
 func (s *kalshiSummaryStrategyRepoStub) UpdateThesis(context.Context, uuid.UUID, json.RawMessage) error {
 	return nil
 }
@@ -105,7 +109,9 @@ type kalshiSummaryWatchedRepoStub struct{ markets []domain.KalshiWatchedMarket }
 func (s *kalshiSummaryWatchedRepoStub) Upsert(context.Context, *domain.KalshiWatchedMarket) error {
 	return nil
 }
+
 func (s *kalshiSummaryWatchedRepoStub) SetEnabled(context.Context, string, bool) error { return nil }
+
 func (s *kalshiSummaryWatchedRepoStub) ListEnabled(context.Context) ([]domain.KalshiWatchedMarket, error) {
 	return s.markets, nil
 }

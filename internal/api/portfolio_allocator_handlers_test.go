@@ -34,6 +34,7 @@ type portfolioDiagnosticsRunRepo struct {
 }
 
 func (s *portfolioDiagnosticsRunRepo) Create(context.Context, *domain.PipelineRun) error { return nil }
+
 func (s *portfolioDiagnosticsRunRepo) GetByID(context.Context, uuid.UUID) (*domain.PipelineRun, error) {
 	return nil, repository.ErrNotFound
 }

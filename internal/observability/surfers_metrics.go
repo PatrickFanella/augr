@@ -52,7 +52,9 @@ func (m *SurfersMetrics) IncBreakerTripped(scope, reason string) {
 func (m *SurfersMetrics) SetFillRate(strategy string, rate float64) {
 	m.fillRate.WithLabelValues(strategy).Set(rate)
 }
+
 func (m *SurfersMetrics) IncGhostFill(strategy string) { m.ghostFills.WithLabelValues(strategy).Inc() }
+
 func (m *SurfersMetrics) LastRecorderLag() float64 {
 	return math.Float64frombits(m.recorderLagValue.Load())
 }
