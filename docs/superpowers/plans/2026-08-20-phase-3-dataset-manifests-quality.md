@@ -95,7 +95,7 @@ Out of scope:
 - [x] Reject unknown kinds/checks/statuses, duplicate policy rows, mutable
   canonical state, non-UTC/non-microsecond timestamps, and changed-version
   reuse.
-- [ ] Commit and push the policy slice after focused race tests.
+- [x] Commit and push the policy slice after focused race tests.
 
 ## Task 2: Immutable point-in-time manifest graph
 
@@ -111,7 +111,7 @@ Out of scope:
   lookahead/time-order violations.
 - [x] Add deterministic reordering, tamper, boundary-time, correction, mixed-kind,
   and legacy-unavailable regression tests.
-- [ ] Commit and push the manifest slice after focused race tests.
+- [x] Commit and push the manifest slice after focused race tests.
 
 ## Task 3: Deterministic quality evaluator
 
@@ -126,25 +126,25 @@ Out of scope:
 - [x] Produce deterministic check results/findings, canonical bytes, digest,
   UUID, and restore/validate helpers. Prove input reordering does not change
   output and tampering cannot persist.
-- [ ] Commit and push the evaluator slice after focused race tests.
+- [x] Commit and push the evaluator slice after focused race tests.
 
 ## Task 4: Migration 76 append-only evidence graph
 
-- [ ] Add `000076_dataset_manifests_quality.up.sql` with policy artifacts,
+- [x] Add `000076_dataset_manifests_quality.up.sql` with policy artifacts,
   manifests, manifest partitions, observations, quality results, check results,
   and findings.
-- [ ] Repeat parent scope on every child and use deferred constraint triggers to
+- [x] Repeat parent scope on every child and use deferred constraint triggers to
   reconstruct contiguous sequences, derived bounds/counts, canonical JSON,
   digests, deterministic IDs, check/finding counts, and quarantine state.
-- [ ] Add append-only mutation rejection, source/instrument foreign keys where
+- [x] Add append-only mutation rejection, source/instrument foreign keys where
   authoritative, exact numeric bounds, canonical UTC microseconds, and indexes
   for manifest/policy lookup. Do not grant writers or create current pointers.
-- [ ] Add an empty-only down migration that locks first, refuses any evidence,
+- [x] Add an empty-only down migration that locks first, refuses any evidence,
   and leaves all legacy data/instrument/quote tables untouched.
-- [ ] Add migration source and real PostgreSQL tests for direct-SQL forged IDs,
+- [x] Add migration source and real PostgreSQL tests for direct-SQL forged IDs,
   child scope, counts, time/lookahead, decimal facts, correction lineage,
   canonical bytes, mutation, nonempty rollback, and empty `76 -> 75 -> 76`.
-- [ ] Bump `RequiredSchemaVersion` only after the isolated migration suite passes.
+- [x] Bump `RequiredSchemaVersion` only after the isolated migration suite passes.
 - [ ] Commit and push the migration slice after focused race tests.
 
 ## Task 5: PostgreSQL repository and restart replay

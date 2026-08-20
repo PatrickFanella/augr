@@ -154,7 +154,8 @@ func Evaluate(input QualityInput) (*QualityResult, error) {
 }
 
 func evaluateCheck(partition Partition, rule CheckRule, windows map[uuid.UUID][]InstrumentWindow, sessions map[string]SessionEvidence, assessments map[string]ExternalAssessment) (CheckResult, []Finding) {
-	key := partition.ContentSHA256 + "\x00" + string(rule.Code)
+	scopeKey := partition.ContentSHA256 + "\x00" + string(rule.Code)
+	key := hashBytes([]byte(scopeKey))
 	result := CheckResult{Key: key, PartitionContentSHA256: partition.ContentSHA256, Kind: partition.Kind, Check: rule.Code, Required: rule.Required, Status: CheckPassed, Severity: rule.Severity}
 	switch rule.Code {
 	case CheckSessionCoverage:
@@ -213,7 +214,7 @@ func evaluateCheck(partition Partition, rule CheckRule, windows map[uuid.UUID][]
 			return result, []Finding{newFinding(result, "instrument_window_not_assessed", missingEvidence)}
 		}
 	case CheckCorporateActions, CheckProviderSpotCompare:
-		assessment, ok := assessments[key]
+		assessment, ok := assessments[scopeKey]
 		if !ok {
 			return notAssessed(result)
 		}
@@ -292,7 +293,7 @@ func QualityResultFromCanonical(id uuid.UUID, digest string, raw []byte) (*Quali
 		if index > 0 && canonical.Findings[index-1].Key >= finding.Key {
 			return nil, fmt.Errorf("dataset quality findings are not canonically ordered")
 		}
-		checkKey := finding.PartitionContentSHA256 + "\x00" + string(finding.Check)
+		checkKey := hashBytes([]byte(finding.PartitionContentSHA256 + "\x00" + string(finding.Check)))
 		check, checkOK := checkByKey[checkKey]
 		expectedKey := hashBytes([]byte(checkKey + "\x00" + finding.Code + "\x00" + strings.Join(finding.Evidence, "\x00")))
 		if _, duplicate := seenFindings[finding.Key]; duplicate || !checkOK || check.Status == CheckPassed ||
@@ -437,7 +438,7 @@ func kindIncluded(values []Kind, want Kind) bool {
 	return false
 }
 func validCheckResult(value CheckResult) bool {
-	return value.Key == value.PartitionContentSHA256+"\x00"+string(value.Check) && sha256Pattern.MatchString(value.PartitionContentSHA256) && validKind(value.Kind) &&
+	return value.Key == hashBytes([]byte(value.PartitionContentSHA256+"\x00"+string(value.Check))) && sha256Pattern.MatchString(value.Key) && sha256Pattern.MatchString(value.PartitionContentSHA256) && validKind(value.Kind) &&
 		(value.Status == CheckPassed || value.Status == CheckFailed || value.Status == CheckNotAssessed) && (value.Severity == SeverityHigh || value.Severity == SeverityCritical) &&
 		(value.EvidenceSHA256 == "" || sha256Pattern.MatchString(value.EvidenceSHA256))
 }
