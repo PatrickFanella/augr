@@ -24,41 +24,41 @@ capital movement, broker route, production state change, or live trading.
 
 ## OVR-702 — 30-day shadow campaign
 
-- [ ] Define two-candidate admission, exact UTC interval, daily completeness,
+- [x] Define two-candidate admission, exact UTC interval, daily completeness,
   critical-defect, executable-data, simulated-fill, and slippage-divergence
   evidence requirements.
-- [ ] Provide a read-only assessor that rejects intervals under 30 elapsed days,
+- [x] Provide a read-only assessor that rejects intervals under 30 elapsed days,
   missing days, fewer than two candidates, unknown slippage, or any critical
   defect.
-- [ ] Prove the assessor with synthetic pass/fail fixtures without claiming the
+- [x] Prove the assessor with synthetic pass/fail fixtures without claiming the
   synthetic pass is a real 30-day run.
 - [ ] Start or adopt a real run only with separately authorized scheduler,
   provider, deployment, and retained-data scope.
 
 ## OVR-703 — 60–90 day scored-paper campaign
 
-- [ ] Require exact OVR-702 evidence plus 60–90 elapsed days, full after-cost
+- [x] Require exact OVR-702 evidence plus 60–90 elapsed days, full after-cost
   attribution, sample-size/statistical evidence, and immutable candidate
   outcomes.
-- [ ] Accept either at least one positive after-cost candidate or an honest
+- [x] Accept either at least one positive after-cost candidate or an honest
   all-candidates-rejected terminal result.
-- [ ] Reject synthetic duration, missing costs, hidden candidates, and unlimited
+- [x] Reject synthetic duration, missing costs, hidden candidates, and unlimited
   paper margin as promotion evidence.
 
 ## OVR-704 — portfolio paper campaign
 
-- [ ] Require exact OVR-703 outcomes and compare a combined allocation with the
+- [x] Require exact OVR-703 outcomes and compare a combined allocation with the
   best eligible single sleeve over the same retained interval and cost basis.
-- [ ] Require the combined allocation to improve or preserve risk-adjusted
+- [x] Require the combined allocation to improve or preserve risk-adjusted
   evidence; otherwise retain a rejected result.
-- [ ] Keep allocation evidence separate from authority to move capital or trade.
+- [x] Keep allocation evidence separate from authority to move capital or trade.
 
 ## OVR-705 — architecture readiness review
 
-- [ ] Review deposits, resizing, unattended operation, brake behavior, restart,
+- [x] Review deposits, resizing, unattended operation, brake behavior, restart,
   reconciliation, daily explanations, and every unresolved blocker against
   exact retained evidence.
-- [ ] Return `ready`, `not_ready`, or `blocked`; never infer readiness from unit
+- [x] Return `ready`, `not_ready`, or `blocked`; never infer readiness from unit
   tests, synthetic duration, a container health check, or source inspection.
 - [ ] Re-run the full release gate and produce a final local/external boundary.
 
