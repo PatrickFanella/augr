@@ -215,6 +215,18 @@ func TestNewAPIServerSchemaMatchSucceeds(t *testing.T) {
 	if sched != nil {
 		t.Fatalf("newAPIServer() scheduler = %v, want nil when scheduler disabled", sched)
 	}
+	smokeServer, smokeSched, smokeCleanup, err := newAPIServer(
+		context.Background(), config.Config{Environment: "smoke"}, slogDiscardLogger(),
+	)
+	if err != nil {
+		t.Fatalf("newAPIServer(smoke) error = %v", err)
+	}
+	if smokeServer == nil || smokeCleanup == nil {
+		t.Fatal("newAPIServer(smoke) did not construct server and cleanup")
+	}
+	if smokeSched != nil {
+		t.Fatalf("newAPIServer(smoke) scheduler = %v, want nil when scheduler disabled", smokeSched)
+	}
 	if cleanup == nil {
 		t.Fatal("newAPIServer() cleanup = nil, want non-nil")
 	}
@@ -232,6 +244,7 @@ func TestNewAPIServerSchemaMatchSucceeds(t *testing.T) {
 	}
 
 	cleanup()
+	smokeCleanup()
 	if !closed.Load() {
 		t.Fatal("runtime cleanup did not close db on matching schema")
 	}

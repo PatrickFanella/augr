@@ -486,19 +486,21 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 		runner := newSmokeRunner(runRepo, snapshotRepo, decisionRepo, eventRepo, logger)
 		strategyRunner := newSmokeStrategyRunner(runner, runRepo, decisionRepo, orderRepo, positionRepo, tradeRepo, auditLogRepo, eventRepo, riskEngine, db, notificationManager, tradeDecisionRecorder, logger)
 		deps.Runner = strategyRunner
-		sched = scheduler.NewScheduler(
-			strategyRepo,
-			pipeline,
-			riskEngine,
-			logger,
-			scheduler.WithJobTimeout(cfg.Features.SchedulerJobTimeout),
-			scheduler.WithMetrics(appMetrics),
-			scheduler.WithDisabledMarketTypes(disabledStrategyMarketTypes(cfg)...),
-			scheduler.WithStrategyExecution(func(ctx context.Context, strategy domain.Strategy) error {
-				_, err := strategyRunner.RunStrategy(ctx, strategy)
-				return err
-			}),
-		)
+		if cfg.Features.EnableScheduler {
+			sched = scheduler.NewScheduler(
+				strategyRepo,
+				pipeline,
+				riskEngine,
+				logger,
+				scheduler.WithJobTimeout(cfg.Features.SchedulerJobTimeout),
+				scheduler.WithMetrics(appMetrics),
+				scheduler.WithDisabledMarketTypes(disabledStrategyMarketTypes(cfg)...),
+				scheduler.WithStrategyExecution(func(ctx context.Context, strategy domain.Strategy) error {
+					_, err := strategyRunner.RunStrategy(ctx, strategy)
+					return err
+				}),
+			)
+		}
 	} else {
 		// Global rate limiter: 50 req/min shared across all providers.
 		globalDataLimiter := data.NewRateLimiter(50, time.Minute)
