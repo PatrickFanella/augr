@@ -43,6 +43,7 @@ cat >"$scan_dir/reviewed.tsv" <<'EOF'
 generic-api-key	docs/Augr Trading Research/01 Synthesis/Final Combined Automated Trading Synthesis.md	976	f2d478f69c5614efaf7e5636e4d7e9402a85fa68
 generic-api-key	internal/config/validate_test.go	148	c15f824cf884e5f2f59b2fed1457751a132edbb8
 generic-api-key	internal/config/validate_test.go	39	c15f824cf884e5f2f59b2fed1457751a132edbb8
+generic-api-key	internal/domain/account_test.go	103	b32d39282087d8b765942e1b1f76f92f2311f28b
 generic-api-key	internal/execution/binance/client_test.go	55	d10c03f415ecb5be1ec05a0c562f08d85014e302
 EOF
 
