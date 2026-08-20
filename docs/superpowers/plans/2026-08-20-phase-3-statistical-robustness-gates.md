@@ -100,28 +100,28 @@ Out of scope:
 
 ## Task 1: Policy, folds, scenarios, and canonical assessment domain
 
-- [ ] Add immutable robustness-policy and search-family identities.
-- [ ] Add strict candidate, ordered fold, baseline, and named perturbation
+- [x] Add immutable robustness-policy and search-family identities.
+- [x] Add strict candidate, ordered fold, baseline, and named perturbation
   inputs bound to exact OVR-304 report identities.
-- [ ] Add canonical assessment, statistic, and gate states with exact threshold,
+- [x] Add canonical assessment, statistic, and gate states with exact threshold,
   value, availability, reason, sample, and lineage fields.
-- [ ] Prove restoration, clone safety, stable identities, semantic-order rules,
+- [x] Prove restoration, clone safety, stable identities, semantic-order rules,
   tamper rejection, and scored/stress separation.
 - [ ] Commit and push the domain slice after focused races.
 
 ## Task 2: Deterministic statistical calculations
 
-- [ ] Validate fold count/order, train/test/purge/embargo geometry, same-window
+- [x] Validate fold count/order, train/test/purge/embargo geometry, same-window
   scenario pairing, required perturbations, mode, frequency, and evidence pins.
-- [ ] Implement locked deterministic bootstrap draws, percentile confidence
+- [x] Implement locked deterministic bootstrap draws, percentile confidence
   bounds, one-sided empirical nonpositive probability, and explicit short/
   constant/extreme-sample handling.
-- [ ] Compute largest-period/top-decile positive-return concentration and
+- [x] Compute largest-period/top-decile positive-return concentration and
   perturbation mean degradation without using training or legacy metrics.
-- [ ] Apply deterministic family-wide Holm-Bonferroni correction and persist
+- [x] Apply deterministic family-wide Holm-Bonferroni correction and persist
   raw/adjusted probabilities plus fold/bootstrap/concentration/perturbation/
   adjusted-significance/overall gates.
-- [ ] Cover positive/negative/constant returns, insufficient samples, clustered
+- [x] Cover positive/negative/constant returns, insufficient samples, clustered
   winners, boundary thresholds, candidate-order convergence, and search-family
   expansion that invalidates an otherwise unadjusted winner.
 - [ ] Commit and push the calculator slice after focused races.
