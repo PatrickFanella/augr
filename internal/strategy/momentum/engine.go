@@ -208,6 +208,7 @@ func applyRebalance(policy *Policy, state *engineState, event rebalanceCanonical
 	}
 	costRate := decimal.RequireFromString(policy.canonical.CostBPS).Div(decimal.NewFromInt(10000))
 	trades := []Trade{}
+	actualNotional := decimal.Zero
 	tradeSide := func(side string) error {
 		for _, item := range ranked {
 			m := item.member
@@ -220,8 +221,14 @@ func applyRebalance(policy *Policy, state *engineState, event rebalanceCanonical
 				price = decimal.RequireFromString(m.Bid)
 			}
 			notional := delta.Abs()
-			cost := notional.Mul(costRate)
 			quantity := notional.Div(price)
+			lotSize := decimal.RequireFromString(m.LotSize)
+			quantity = quantity.Div(lotSize).Floor().Mul(lotSize)
+			notional = quantity.Mul(price)
+			cost := notional.Mul(costRate)
+			if !quantity.IsPositive() {
+				continue
+			}
 			if side == "sell" {
 				if quantity.GreaterThan(state.quantities[m.InstrumentID]) {
 					quantity = state.quantities[m.InstrumentID]
@@ -234,12 +241,18 @@ func applyRebalance(policy *Policy, state *engineState, event rebalanceCanonical
 				required := notional.Add(cost)
 				if required.GreaterThan(state.cash) {
 					notional = state.cash.Div(decimal.NewFromInt(1).Add(costRate))
-					cost = notional.Mul(costRate)
 					quantity = notional.Div(price)
+					quantity = quantity.Div(lotSize).Floor().Mul(lotSize)
+					notional = quantity.Mul(price)
+					cost = notional.Mul(costRate)
+				}
+				if !quantity.IsPositive() {
+					continue
 				}
 				state.quantities[m.InstrumentID] = state.quantities[m.InstrumentID].Add(quantity)
 				state.cash = state.cash.Sub(notional).Sub(cost)
 			}
+			actualNotional = actualNotional.Add(notional)
 			state.totalCost = state.totalCost.Add(cost)
 			trades = append(trades, Trade{InstrumentID: m.InstrumentID, VenueContractID: m.VenueContractID, Side: side, Quantity: q(quantity), Price: q(price), Notional: q(notional), Cost: q(cost), EvidenceSHA256: m.EvidenceSHA256})
 		}
@@ -247,7 +260,7 @@ func applyRebalance(policy *Policy, state *engineState, event rebalanceCanonical
 	}
 	_ = tradeSide("sell")
 	_ = tradeSide("buy")
-	applied := desiredTurnover.Mul(scale)
+	applied := actualNotional.Div(equity).Div(decimal.NewFromInt(2))
 	state.cumulativeTurnover = state.cumulativeTurnover.Add(applied)
 	endingEquity := state.cash
 	holdings := []Holding{}

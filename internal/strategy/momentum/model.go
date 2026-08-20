@@ -19,6 +19,7 @@ type MemberInput struct {
 	MembershipEffectiveAt, MembershipAvailableAt      time.Time
 	HistoryDays                                       int
 	LookbackPrice, SkipPrice, Bid, Ask                string
+	LotSize                                           string
 	ROIC, DebtToAssets, FreeCashFlow, Volatility      string
 	PartitionContentSHA256, SourceKey, EvidenceSHA256 string
 	AvailableAt                                       time.Time
@@ -50,6 +51,7 @@ type memberCanonical struct {
 	SkipPrice              string `json:"skip_price"`
 	Bid                    string `json:"bid"`
 	Ask                    string `json:"ask"`
+	LotSize                string `json:"lot_size"`
 	ROIC                   string `json:"roic"`
 	DebtToAssets           string `json:"debt_to_assets"`
 	FreeCashFlow           string `json:"free_cash_flow"`
@@ -100,13 +102,13 @@ func NewScenario(input ScenarioInput) (*Scenario, error) {
 		sort.Slice(members, func(i, j int) bool { return members[i].InstrumentID.String() < members[j].InstrumentID.String() })
 		canonicalMembers := make([]memberCanonical, len(members))
 		for memberIndex, member := range members {
-			if member.InstrumentID == uuid.Nil || member.VenueContractID == uuid.Nil || !canonicalTime(member.MembershipEffectiveAt) || member.MembershipEffectiveAt.After(source.OccurredAt) || !canonicalTime(member.MembershipAvailableAt) || member.MembershipAvailableAt.After(source.OccurredAt) || member.HistoryDays < 0 || !positive(member.LookbackPrice) || !positive(member.SkipPrice) || !positive(member.Bid) || !positive(member.Ask) || decimal.RequireFromString(member.Ask).LessThan(decimal.RequireFromString(member.Bid)) || !ratio(member.ROIC) || !ratio(member.DebtToAssets) || !validDecimal(member.FreeCashFlow) || !positive(member.Volatility) || !digestPattern.MatchString(member.PartitionContentSHA256) || member.SourceKey == "" || !digestPattern.MatchString(member.EvidenceSHA256) || !canonicalTime(member.AvailableAt) || member.AvailableAt.After(source.OccurredAt) {
+			if member.InstrumentID == uuid.Nil || member.VenueContractID == uuid.Nil || !canonicalTime(member.MembershipEffectiveAt) || member.MembershipEffectiveAt.After(source.OccurredAt) || !canonicalTime(member.MembershipAvailableAt) || member.MembershipAvailableAt.After(source.OccurredAt) || member.HistoryDays < 0 || !positive(member.LookbackPrice) || !positive(member.SkipPrice) || !positive(member.Bid) || !positive(member.Ask) || !positive(member.LotSize) || decimal.RequireFromString(member.Ask).LessThan(decimal.RequireFromString(member.Bid)) || !ratio(member.ROIC) || !ratio(member.DebtToAssets) || !validDecimal(member.FreeCashFlow) || !positive(member.Volatility) || !digestPattern.MatchString(member.PartitionContentSHA256) || member.SourceKey == "" || !digestPattern.MatchString(member.EvidenceSHA256) || !canonicalTime(member.AvailableAt) || member.AvailableAt.After(source.OccurredAt) {
 				return nil, fmt.Errorf("momentum member %d/%d is invalid", index, memberIndex)
 			}
 			if memberIndex > 0 && members[memberIndex-1].InstrumentID == member.InstrumentID {
 				return nil, fmt.Errorf("momentum universe member is duplicated")
 			}
-			canonicalMembers[memberIndex] = memberCanonical{InstrumentID: member.InstrumentID.String(), VenueContractID: member.VenueContractID.String(), MembershipEffectiveAt: formatTime(member.MembershipEffectiveAt), MembershipAvailableAt: formatTime(member.MembershipAvailableAt), HistoryDays: member.HistoryDays, LookbackPrice: member.LookbackPrice, SkipPrice: member.SkipPrice, Bid: member.Bid, Ask: member.Ask, ROIC: member.ROIC, DebtToAssets: member.DebtToAssets, FreeCashFlow: member.FreeCashFlow, Volatility: member.Volatility, PartitionContentSHA256: member.PartitionContentSHA256, SourceKey: member.SourceKey, EvidenceSHA256: member.EvidenceSHA256, AvailableAt: formatTime(member.AvailableAt)}
+			canonicalMembers[memberIndex] = memberCanonical{InstrumentID: member.InstrumentID.String(), VenueContractID: member.VenueContractID.String(), MembershipEffectiveAt: formatTime(member.MembershipEffectiveAt), MembershipAvailableAt: formatTime(member.MembershipAvailableAt), HistoryDays: member.HistoryDays, LookbackPrice: member.LookbackPrice, SkipPrice: member.SkipPrice, Bid: member.Bid, Ask: member.Ask, LotSize: member.LotSize, ROIC: member.ROIC, DebtToAssets: member.DebtToAssets, FreeCashFlow: member.FreeCashFlow, Volatility: member.Volatility, PartitionContentSHA256: member.PartitionContentSHA256, SourceKey: member.SourceKey, EvidenceSHA256: member.EvidenceSHA256, AvailableAt: formatTime(member.AvailableAt)}
 		}
 		rebalances[index] = rebalanceCanonical{Sequence: index, OccurredAt: formatTime(source.OccurredAt), BenchmarkTrend: source.BenchmarkTrend, BenchmarkVolatility: source.BenchmarkVolatility, BenchmarkEvidenceID: source.BenchmarkEvidenceID.String(), BenchmarkEvidenceSHA256: source.BenchmarkEvidenceSHA256, Members: canonicalMembers}
 		last = source.OccurredAt
@@ -129,7 +131,7 @@ func ScenarioFromCanonical(id uuid.UUID, digest string, raw []byte, policy *Poli
 	for i, r := range canonical.Rebalances {
 		members := make([]MemberInput, len(r.Members))
 		for j, m := range r.Members {
-			members[j] = MemberInput{InstrumentID: uuid.MustParse(m.InstrumentID), VenueContractID: uuid.MustParse(m.VenueContractID), MembershipEffectiveAt: parseTime(m.MembershipEffectiveAt), MembershipAvailableAt: parseTime(m.MembershipAvailableAt), HistoryDays: m.HistoryDays, LookbackPrice: m.LookbackPrice, SkipPrice: m.SkipPrice, Bid: m.Bid, Ask: m.Ask, ROIC: m.ROIC, DebtToAssets: m.DebtToAssets, FreeCashFlow: m.FreeCashFlow, Volatility: m.Volatility, PartitionContentSHA256: m.PartitionContentSHA256, SourceKey: m.SourceKey, EvidenceSHA256: m.EvidenceSHA256, AvailableAt: parseTime(m.AvailableAt)}
+			members[j] = MemberInput{InstrumentID: uuid.MustParse(m.InstrumentID), VenueContractID: uuid.MustParse(m.VenueContractID), MembershipEffectiveAt: parseTime(m.MembershipEffectiveAt), MembershipAvailableAt: parseTime(m.MembershipAvailableAt), HistoryDays: m.HistoryDays, LookbackPrice: m.LookbackPrice, SkipPrice: m.SkipPrice, Bid: m.Bid, Ask: m.Ask, LotSize: m.LotSize, ROIC: m.ROIC, DebtToAssets: m.DebtToAssets, FreeCashFlow: m.FreeCashFlow, Volatility: m.Volatility, PartitionContentSHA256: m.PartitionContentSHA256, SourceKey: m.SourceKey, EvidenceSHA256: m.EvidenceSHA256, AvailableAt: parseTime(m.AvailableAt)}
 		}
 		rebalances[i] = RebalanceInput{OccurredAt: parseTime(r.OccurredAt), BenchmarkTrend: r.BenchmarkTrend, BenchmarkVolatility: r.BenchmarkVolatility, BenchmarkEvidenceID: uuid.MustParse(r.BenchmarkEvidenceID), BenchmarkEvidenceSHA256: r.BenchmarkEvidenceSHA256, Members: members}
 	}

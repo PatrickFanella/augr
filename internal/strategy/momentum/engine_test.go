@@ -126,7 +126,7 @@ func momentumScenarioInput(policy *Policy) ScenarioInput {
 }
 
 func momentumMember(at time.Time, sequence, salt int, lookback, skip, bid, ask, roic, vol string) MemberInput {
-	return MemberInput{InstrumentID: momentumID(fmt.Sprintf("instrument-%d", salt)), VenueContractID: momentumID(fmt.Sprintf("contract-%d", salt)), MembershipEffectiveAt: at.Add(-24 * time.Hour), MembershipAvailableAt: at, HistoryDays: 300, LookbackPrice: lookback, SkipPrice: skip, Bid: bid, Ask: ask, ROIC: roic, DebtToAssets: "0.3", FreeCashFlow: "100", Volatility: vol, PartitionContentSHA256: strings.Repeat("1", 64), SourceKey: fmt.Sprintf("momentum-%d-%d", sequence, salt), EvidenceSHA256: strings.Repeat(string(rune('3'+salt)), 64), AvailableAt: at}
+	return MemberInput{InstrumentID: momentumID(fmt.Sprintf("instrument-%d", salt)), VenueContractID: momentumID(fmt.Sprintf("contract-%d", salt)), MembershipEffectiveAt: at.Add(-24 * time.Hour), MembershipAvailableAt: at, HistoryDays: 300, LookbackPrice: lookback, SkipPrice: skip, Bid: bid, Ask: ask, LotSize: "1", ROIC: roic, DebtToAssets: "0.3", FreeCashFlow: "100", Volatility: vol, PartitionContentSHA256: strings.Repeat("1", 64), SourceKey: fmt.Sprintf("momentum-%d-%d", sequence, salt), EvidenceSHA256: strings.Repeat(string(rune('3'+salt)), 64), AvailableAt: at}
 }
 
 func momentumID(value string) uuid.UUID {

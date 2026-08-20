@@ -88,9 +88,9 @@ Out of scope:
 - [x] Derive bull/bear/sideways regimes and per-regime/transition metrics.
 - [x] Bind an exact OVR-302 version and translate engine trades to ordered
   OVR-303 intents with exact manifest evidence and capital notional.
-- [ ] Prove scored/stress replay, cap edges, multi-rebalance convergence, regime
+- [x] Prove scored/stress replay, cap edges, multi-rebalance convergence, regime
   transitions, common capital/simulation enforcement, and no runtime path.
-- [ ] Commit and push the execution/adapter slice after focused races.
+- [x] Commit and push the execution/adapter slice after focused races.
 
 ## Task 3: Migration 84 and append-only evidence
 

@@ -364,7 +364,7 @@ func preflightCapital(graph *EvidenceGraph, plan *Plan, steps []StepInput, mater
 		if quantity.IsNegative() {
 			direction = capital.ExposureIncreaseShort
 		}
-		proposedNotional, err := capitalAssessmentNotional(step, *inst, *contract, price)
+		proposedNotional, err := capitalAssessmentNotional(step, *inst, *contract, price, graph.CapitalPolicy.Scale())
 		if err != nil {
 			return nil, fmt.Errorf("experiment step %d capital notional: %w", sequence, err)
 		}
@@ -385,8 +385,8 @@ func preflightCapital(graph *EvidenceGraph, plan *Plan, steps []StepInput, mater
 	return assessments, nil
 }
 
-func capitalAssessmentNotional(step StepInput, inst instrument.Instrument, contract instrument.VenueContract, price decimal.Decimal) (decimal.Decimal, error) {
-	executionNotional := decimal.RequireFromString(step.Intent.Quantity).Mul(price).Mul(contract.Multiplier)
+func capitalAssessmentNotional(step StepInput, inst instrument.Instrument, contract instrument.VenueContract, price decimal.Decimal, scale int32) (decimal.Decimal, error) {
+	executionNotional := decimal.RequireFromString(step.Intent.Quantity).Mul(price).Mul(contract.Multiplier).RoundCeil(scale)
 	if inst.AssetClass != instrument.AssetClassOption {
 		return executionNotional, nil
 	}
