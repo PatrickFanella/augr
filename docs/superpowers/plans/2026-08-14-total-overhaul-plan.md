@@ -1139,6 +1139,21 @@ Milestone 4 OVR-401.
 | OVR-405 | OVR-202, OVR-203, OVR-303 | Defined-risk options baseline | Multi-leg fill and orphan-risk assumptions are explicit. |
 | OVR-406 | OVR-304, OVR-401–OVR-405 | Compare candidates at all capital tiers | Capacity and minimum viable capital are reported per family. |
 
+**OVR-401 local completion addendum (2026-08-20):** Migration 82 and the
+`internal/benchmark` boundary now bind each admitted evaluation to an immutable
+experiment-declared passive benchmark, exact manifest/instrument/source curve,
+and explicit cash series. The deterministic report derives after-cost strategy,
+benchmark, and cash returns plus opportunity-cost and terminal-wealth
+differences; PostgreSQL independently reconstructs the graph and arithmetic.
+Retained schema `augr_ovr401_qual_20260820` contains one declaration, six
+observations, and one report. Concurrent convergence, restart, recovery,
+forgery, append-only, nonempty rollback, empty `82 -> 81 -> 82`, all backend
+and pinned-frontend gates, and isolated production-image fresh-82 health/API/
+rollback-60/backup-restore/reapply smoke passed. This is **VERIFIED_LOCAL**
+only; real benchmark data/review, shared migration, runtime adoption,
+allocation, scheduling, deployment, and production activation remain
+**BLOCKED_EXTERNAL**. Dependency-order execution proceeds to OVR-402.
+
 ### Milestone 5 — Copy and event-market repair
 
 | ID | Depends on | Work | Acceptance |

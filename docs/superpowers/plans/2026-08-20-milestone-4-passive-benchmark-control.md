@@ -98,26 +98,60 @@ Out of scope:
   benchmark instrument; expose no best/latest/winner query.
 - [x] Prove eight-writer convergence, restart reload, every-stage interruption
   rollback, changed retry conflict, normalized forgery rejection, and replay.
-- [ ] Retain a local benchmark declaration/report and record exact IDs/hashes,
+- [x] Retain a local benchmark declaration/report and record exact IDs/hashes,
   row counts, return values, and authority separation.
-- [ ] Add a runbook for declaration review, evidence inspection, report replay,
+- [x] Add a runbook for declaration review, evidence inspection, report replay,
   failures, rollback, and explicit non-activation boundaries.
-- [ ] Apply fresh `1 -> 82`, retain evidence, prove nonempty rollback refusal,
+- [x] Apply fresh `1 -> 82`, retain evidence, prove nonempty rollback refusal,
   and separately rehearse empty `82 -> 81 -> 82`.
-- [ ] Run focused/database races, backend and pinned frontend gates, diff review,
+- [x] Run focused/database races, backend and pinned frontend gates, diff review,
   and isolated kill-switched schema-82 health/API/rollback/reapply smoke.
-- [ ] Commit/push verified slices, fetch, and prove `0 0` divergence before
+- [x] Commit/push verified slices, fetch, and prove `0 0` divergence before
   OVR-402.
 
 ## Acceptance evidence to record
 
-- [ ] Every evaluation admitted to OVR-401 reports opportunity cost against an
+- [x] Every evaluation admitted to OVR-401 reports opportunity cost against an
   experiment-declared benchmark and explicit cash control.
-- [ ] Benchmark identity, curve, cash series, manifest, window, and source
+- [x] Benchmark identity, curve, cash series, manifest, window, and source
   evidence are exact and reproducible; substitution or partial evidence fails.
-- [ ] Reports are append-only, restart-safe, independently reconstructed, and
+- [x] Reports are append-only, restart-safe, independently reconstructed, and
   do not select, promote, schedule, allocate, deploy, or execute.
-- [ ] AI/UI/operator recommendations cannot bypass deterministic derivation.
-- [ ] Local qualification is `VERIFIED_LOCAL`; real benchmark data, independent
+- [x] AI/UI/operator recommendations cannot bypass deterministic derivation.
+- [x] Local qualification is `VERIFIED_LOCAL`; real benchmark data, independent
   review, shared migration, strategy/runtime adoption, and production activation
   remain `BLOCKED_EXTERNAL`.
+
+## Qualification record — 2026-08-20
+
+- `VERIFIED_LOCAL`: retained isolated schema `augr_ovr401_qual_20260820`
+  contains declaration `2a67bc1d-294b-ad4d-88ab-791d010fac44`
+  (`f2f676d65a4bc0ae6d7314046dcae55b8b8942674198bd6909b92eade3da6e66`)
+  and report `aed8cbe3-6bfd-517d-625a-84ae06d3ff7c`
+  (`1e82d44857854f3e09535fae17c45643d2f663a6b60eb13f0b81c58ab3413625`).
+- The report binds evaluation `0cb25923-2ffe-dd7d-91f7-06bf3a80e7de`,
+  experiment `7fbf9b4c-44a2-75e7-ac7d-544f5a13e46a`, manifest
+  `e3d60e30-1355-0370-2fd3-0f1eecd7fda8`, and benchmark instrument
+  `496e937a-39aa-4684-b5f8-1bdd735c7d2a`. Retained normalized counts are
+  `1/6/1` declaration/observation/report rows.
+- Derived returns are strategy `0.006000000000`, benchmark `0.005000000000`,
+  and cash `0.000005000010`; opportunity costs are benchmark
+  `-0.001000000000` and cash `-0.005994999990`. No caller supplied these
+  values, a pass/fail status, a winner, or a lifecycle action.
+- Eight-writer convergence, exact restart reload, every-stage rollback,
+  normalized forgery rejection, append-only refusal, curve/source/parent
+  substitution rejection, and nonempty migration refusal passed. Empty real
+  PostgreSQL rehearsal passed `82 -> 81 -> 82`.
+- All 4,519 Go race-tested cases passed. Backend build, vet, golangci-lint,
+  gofumpt, and govulncheck passed with zero reachable vulnerabilities. Pinned
+  Node `22.23.2` frozen install, high-severity audit, 162 tests, lint, and build
+  passed; one low-severity Windows-only esbuild development-server advisory
+  remains. One initial full frontend run exposed a transient risk-console test
+  failure; its isolated rerun and the complete 162-test rerun passed.
+- The isolated production image passed fresh migrations `1 -> 82`, schema
+  verification, authenticated read-only API health, rollback to 60,
+  backup/restore, reapplication through 82, and restarted health with scheduler,
+  live trading, provider automation, and benchmark runtime adoption disabled.
+- `BLOCKED_EXTERNAL`: real benchmark selection and data, independent review,
+  shared migration, runtime adoption, candidate comparison, allocation,
+  scheduling, deployment, and production activation.
