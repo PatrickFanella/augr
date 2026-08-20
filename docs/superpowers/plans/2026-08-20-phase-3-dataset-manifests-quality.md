@@ -158,11 +158,11 @@ Out of scope:
 - [x] Add one retained golden graph covering bars, quotes, a correction, session
   facts, instrument validity, a clean result, and one separately quarantined
   perturbation. Restart/recompute must reproduce all IDs and hashes.
-- [ ] Commit and push the repository slice after focused real-PostgreSQL races.
+- [x] Commit and push the repository slice after focused real-PostgreSQL races.
 
 ## Task 6: Documentation, qualification, review, and synchronization
 
-- [ ] Add a runbook covering manifest construction, exact inspection SQL,
+- [x] Add a runbook covering manifest construction, exact inspection SQL,
   quality codes, quarantine response, preservation, license/retention facts,
   legacy-unpinned boundaries, empty-only rollback, and no-cutover status.
 - [ ] Apply migrations `1 -> 76` to a fresh loopback-only database, retain the
