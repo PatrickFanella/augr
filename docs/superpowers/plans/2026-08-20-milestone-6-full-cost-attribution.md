@@ -64,14 +64,14 @@ settlement, broker route, deployment, or live trade.
 
 ## Task 2: Schema 100 and retained qualification
 
-- [ ] Persist immutable reports, lines, evidence, methods, totals, and
+- [x] Persist immutable reports, lines, evidence, methods, totals, and
   completeness with database reconstruction and exact parent checks.
-- [ ] Verify model provenance and ledger fee/rebate actuals in PostgreSQL;
+- [x] Verify model provenance and ledger fee/rebate actuals in PostgreSQL;
   reject forged amounts, parents, categories, statuses, and totals.
-- [ ] Prove eight-writer convergence, changed retry conflict, every-stage
+- [x] Prove eight-writer convergence, changed retry conflict, every-stage
   rollback, restart, append-only behavior, direct-SQL forgery rejection,
   nonempty rollback refusal, and empty `100 -> 99 -> 100`.
-- [ ] Retain one incomplete report with explicit infrastructure unknown and one
+- [x] Retain one incomplete report with explicit infrastructure unknown and one
   complete-with-estimates report; preserve exact actual/estimated subtotals.
 - [ ] Commit and push persistence after focused/database race tests.
 
