@@ -1,13 +1,17 @@
 package migrations_test
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/capital"
+	"github.com/PatrickFanella/get-rich-quick/internal/domain"
+	postgresrepo "github.com/PatrickFanella/get-rich-quick/internal/repository/postgres"
 )
 
 func TestCapitalMarginPolicyMigrationDefinesLockedImmutableBoundary(t *testing.T) {
@@ -134,5 +138,99 @@ func TestCapitalMarginPolicyMigrationAcceptsOnlyReviewedArtifactAndRefusesNonemp
 	if _, err := pool.Exec(ctx, readMigrationFile(t, "000074_capital_margin_profiles.down.sql")); err == nil ||
 		!strings.Contains(err.Error(), "cannot roll back migration 74") {
 		t.Fatalf("nonempty rollback error = %v", err)
+	}
+}
+
+func TestCapitalMarginPolicyMigrationSerializesConcurrentAccountCreation(t *testing.T) {
+	ctx, pool, _ := newVenueAdapterMigrationPool(t)
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, readMigrationFile(t, "000074_capital_margin_profiles.up.sql")); err != nil {
+		t.Fatalf("apply migration 74 in transaction: %v", err)
+	}
+	account, err := domain.NewAccount(domain.AccountInput{
+		Name: "migration 74 concurrent account", Environment: domain.AccountEnvironmentPaperScored,
+		Venue: "internal", BaseCurrency: "USD", StorageNamespace: "paper_scored/migration-74-concurrent",
+		StartingCapital: decimal.NewFromInt(500), BuyingPowerMultiplier: decimal.NewFromInt(2),
+		MarginProfile: domain.MarginProfileRegT, CreatedBy: "migration-74-test",
+		CreationMetadata: json.RawMessage(`{"fixture":"migration-74-concurrency"}`),
+		CreatedAt:        time.Date(2026, 8, 20, 17, 0, 0, 123456000, time.UTC),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- postgresrepo.NewAccountRepo(pool).Create(ctx, account) }()
+	select {
+	case err := <-done:
+		t.Fatalf("account creation escaped migration lock: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatalf("serialized account creation: %v", err)
+	}
+	var accounts, bindings int
+	if err := pool.QueryRow(ctx, `SELECT
+		(SELECT COUNT(*) FROM accounts WHERE id=$1),
+		(SELECT COUNT(*) FROM account_capital_policy_bindings WHERE account_id=$1)`, account.ID).Scan(&accounts, &bindings); err != nil {
+		t.Fatal(err)
+	}
+	if accounts != 1 || bindings != 0 {
+		t.Fatalf("serialized graph = accounts:%d bindings:%d", accounts, bindings)
+	}
+}
+
+func TestCapitalMarginPolicyRollbackSerializesConcurrentArtifactInsert(t *testing.T) {
+	ctx, pool, _ := newVenueAdapterMigrationPool(t)
+	if _, err := pool.Exec(ctx, readMigrationFile(t, "000074_capital_margin_profiles.up.sql")); err != nil {
+		t.Fatalf("apply migration 74: %v", err)
+	}
+	policy, err := capital.NewPolicy(capital.ReviewedPolicyV1Input())
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifact, err := policy.NewArtifact(time.Date(2026, 8, 20, 17, 0, 0, 123456000, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, readMigrationFile(t, "000074_capital_margin_profiles.down.sql")); err != nil {
+		t.Fatalf("stage migration 74 rollback: %v", err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, insertErr := pool.Exec(ctx, `INSERT INTO capital_margin_policy_artifacts (
+			id, schema_name, policy_version, sha256, canonical_bytes, canonical_json, created_at
+		) VALUES ($1,$2,$3,$4,$5,convert_from($5,'UTF8')::JSONB,$6)`, artifact.ID, artifact.Schema,
+			artifact.Version, artifact.SHA256, []byte(artifact.CanonicalBytes), artifact.CreatedAt)
+		done <- insertErr
+	}()
+	select {
+	case err := <-done:
+		t.Fatalf("artifact insert escaped rollback lock: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err == nil {
+		t.Fatal("artifact inserted after schema-74 rollback")
+	}
+	var artifactTable *string
+	if err := pool.QueryRow(ctx, `SELECT to_regclass(current_schema() || '.capital_margin_policy_artifacts')::TEXT`).Scan(&artifactTable); err != nil {
+		t.Fatal(err)
+	}
+	if artifactTable != nil {
+		t.Fatalf("artifact table survived rollback: %s", *artifactTable)
 	}
 }
