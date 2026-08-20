@@ -2,6 +2,7 @@ package evaluation
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -250,6 +251,24 @@ func TestReportExtremeBoundedDecimalsMakeOverflowExplicit(t *testing.T) {
 	}
 }
 
+func TestServiceReloadsResultAndPersistsExactReport(t *testing.T) {
+	input := validReportInput(t)
+	store := &evaluationStore{result: input.Result}
+	service, err := NewService(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resultID := input.Result.ID()
+	input.Result = nil
+	report, err := service.Evaluate(context.Background(), Request{ResultID: resultID, ReportInput: input})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if store.loaded != resultID || store.policy == nil || store.report == nil || report.ID() != store.report.ID() {
+		t.Fatalf("service calls loaded=%s policy=%v report=%v", store.loaded, store.policy, store.report)
+	}
+}
+
 func validReportInput(t *testing.T) ReportInput {
 	t.Helper()
 	plan, err := evaluationPlan(strategycatalog.ExperimentPaperScored)
@@ -326,3 +345,25 @@ func inputReportBytes(t *testing.T, input ReportInput) []byte {
 }
 
 func text(value string) *string { return &value }
+
+type evaluationStore struct {
+	result *experimentrun.Result
+	loaded uuid.UUID
+	policy *Policy
+	report *Report
+}
+
+func (store *evaluationStore) GetResult(_ context.Context, id uuid.UUID) (*experimentrun.Result, error) {
+	store.loaded = id
+	return store.result, nil
+}
+
+func (store *evaluationStore) RegisterPolicy(_ context.Context, value *Policy) (*Policy, error) {
+	store.policy = value
+	return value, nil
+}
+
+func (store *evaluationStore) RecordEvaluation(_ context.Context, value *Report) (*Report, error) {
+	store.report = value
+	return value, nil
+}

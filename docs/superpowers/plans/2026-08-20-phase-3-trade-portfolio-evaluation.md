@@ -115,7 +115,7 @@ Out of scope:
   policy assumption, input sample, metric value, and availability statement.
 - [x] Prove canonical restoration, clone safety, semantic reorder divergence,
   tamper rejection, mode separation, and stable hashes.
-- [ ] Commit and push the domain slice after focused races.
+- [x] Commit and push the domain slice after focused races.
 
 ## Task 2: Deterministic trade and portfolio calculations
 
@@ -131,34 +131,34 @@ Out of scope:
 - [x] Cover empty/short series, zero denominators, all-win/all-loss/breakeven,
   unrecovered drawdown, missing observed slippage, irregular time, and extreme
   but bounded decimals without NaN or silent zero substitution.
-- [ ] Commit and push the calculator slice after focused races.
+- [x] Commit and push the calculator slice after focused races.
 
 ## Task 3: Migration 79 append-only evaluation evidence
 
-- [ ] Add policy artifacts, evaluation reports, ordered observations, ordered
+- [x] Add policy artifacts, evaluation reports, ordered observations, ordered
   closed trades/source fills, open-lot summaries, metric values, and explicit
   availability rows.
-- [ ] Reconstruct canonical bytes, deterministic IDs/hashes, counts/order,
+- [x] Reconstruct canonical bytes, deterministic IDs/hashes, counts/order,
   parent result/plan/experiment/account/manifest/mode pins, policy assumptions,
   metric sections, and child completeness in deferred constraints.
-- [ ] Reject mutation/deletion, child omission/reordering, forged metrics,
+- [x] Reject mutation/deletion, child omission/reordering, forged metrics,
   mismatched result/mode/account, changed retries, and unsupported availability
   claims.
-- [ ] Add no best/current pointer, lifecycle status, promotion field,
+- [x] Add no best/current pointer, lifecycle status, promotion field,
   scheduler, writer grant, legacy backfill, or runtime trigger.
-- [ ] Add lock-first empty-only rollback and bump `RequiredSchemaVersion` to 79
+- [x] Add lock-first empty-only rollback and bump `RequiredSchemaVersion` to 79
   only after isolated real-PostgreSQL tests pass.
 - [ ] Commit and push the migration slice after focused database races.
 
 ## Task 4: PostgreSQL repository, service, and recovery
 
-- [ ] Add atomic policy/report registration, exact normalized reload, and
+- [x] Add atomic policy/report registration, exact normalized reload, and
   explicit result/experiment listing without selection.
-- [ ] Revalidate all cross-aggregate pins and normalized ordered children rather
+- [x] Revalidate all cross-aggregate pins and normalized ordered children rather
   than trusting canonical JSON alone.
-- [ ] Prove identical/eight-writer convergence, changed retry conflict,
+- [x] Prove identical/eight-writer convergence, changed retry conflict,
   interruption, injected rollback at every child stage, and restart reload.
-- [ ] Prove a fresh-database calculation reproduces every input, metric,
+- [x] Prove a fresh-database calculation reproduces every input, metric,
   availability state, report ID, and SHA-256.
 - [ ] Commit and push the repository/recovery slice after database races.
 

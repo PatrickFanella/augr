@@ -63,7 +63,7 @@ type Policy struct {
 }
 
 func NewPolicy(input PolicyInput) (*Policy, error) {
-	if !canonicalText(input.Version, 128) || !oneOf(input.Frequency, "daily", "weekly", "monthly") || input.PeriodsPerYear <= 0 || input.PeriodsPerYear > 100000 ||
+	if !canonicalText(input.Version, 128) || !oneOf(input.Frequency, "minute", "daily", "weekly", "monthly") || input.PeriodsPerYear <= 0 || input.PeriodsPerYear > 1000000 ||
 		input.ReturnKind != "simple" || input.CashConvention != "explicit_per_period" || input.LotMethod != "fifo" ||
 		input.RecoveryDefinition != "first_equity_at_or_above_prior_peak" || input.DecimalScale < 6 || input.DecimalScale > 18 {
 		return nil, fmt.Errorf("evaluation policy is invalid")
@@ -660,6 +660,8 @@ func validateFrequency(policy *Policy, observations []observationCanonical) erro
 		prior, current := parseTime(observations[index-1].ObservedAt), parseTime(observations[index].ObservedAt)
 		valid := false
 		switch policy.Frequency() {
+		case "minute":
+			valid = current.Equal(prior.Add(time.Minute))
 		case "daily":
 			valid = current.Equal(prior.Add(24 * time.Hour))
 		case "weekly":
