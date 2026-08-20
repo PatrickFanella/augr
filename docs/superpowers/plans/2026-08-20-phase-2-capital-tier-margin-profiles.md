@@ -294,18 +294,18 @@ Out of scope:
   artifact and binding interfaces only.
 - Create migration 74 up/down SQL and migration tests. Bump the required schema
   only after isolated migration tests pass.
-- Create `docs/runbooks/capital-tier-margin-profiles.md` and update ADR-018 plus
+- Create `docs/runbooks/capital-margin-policy.md` and update ADR-018 plus
   the total overhaul plan after implementation evidence exists.
 
 ## Task 1: RED policy and artifact contract
 
-- [ ] Test exact tier/profile vocabulary, canonical ordering, fixed decimals,
+- [x] Test exact tier/profile vocabulary, canonical ordering, fixed decimals,
   version/digest/UUID identity, defensive copies, and round-trip restoration.
-- [ ] Test every missing, duplicate, extra, unknown, negative, over-scale,
+- [x] Test every missing, duplicate, extra, unknown, negative, over-scale,
   inconsistent, or unbounded finite field fails closed.
-- [ ] Test the fixed v1 builder produces the reviewed canonical bytes and no
+- [x] Test the fixed v1 builder produces the reviewed canonical bytes and no
   hidden default can change identity.
-- [ ] Implement the minimum policy/artifact contract.
+- [x] Implement the minimum policy/artifact contract.
 
 Run:
 
@@ -315,13 +315,13 @@ go test -count=1 ./internal/capital -run 'Policy|Artifact'
 
 ## Task 2: RED account binding contract
 
-- [ ] Test all six scored tiers against cash, Reg-T-like, and portfolio-style
+- [x] Test all six scored tiers against cash, Reg-T-like, and portfolio-style
   matching accounts.
-- [ ] Test stress/unlimited isolation and reject scored unlimited, stress finite,
+- [x] Test stress/unlimited isolation and reject scored unlimited, stress finite,
   zero finite multiplier, wrong evidence/namespace/currency, and shadow/live.
-- [ ] Test deterministic identity, defensive copies, exact replay, and every
+- [x] Test deterministic identity, defensive copies, exact replay, and every
   changed account/policy/tier/profile fact.
-- [ ] Implement the minimum binding contract.
+- [x] Implement the minimum binding contract.
 
 Run:
 
@@ -331,20 +331,20 @@ go test -count=1 ./internal/capital -run 'Binding|Tier'
 
 ## Task 3: RED exact margin assessment
 
-- [ ] Test state derivation from an exact empty and nonempty OVR-104 projection,
+- [x] Test state derivation from an exact empty and nonempty OVR-104 projection,
   long/short/gross/maintenance calculations, and deterministic output.
-- [ ] Reject missing/duplicate/wrong instruments, mismatched projection/account/
+- [x] Reject missing/duplicate/wrong instruments, mismatched projection/account/
   currency/payload, caller-authored totals, and every non-equity/ETF or mixed
   unsupported portfolio.
-- [ ] Test cash long admission/rejection, cash short rejection, Reg-T long/short,
+- [x] Test cash long admission/rejection, cash short rejection, Reg-T long/short,
   portfolio-style haircuts, gross limit, maintenance deficiency, reserve,
   exposure reduction, and stress-unbounded results.
-- [ ] Test exact boundary equality, upward rounding, very small/large decimals,
+- [x] Test exact boundary equality, upward rounding, very small/large decimals,
   changed cents, and no float conversion.
-- [ ] Test malformed state, gross mismatch, cross-currency, policy/binding/account
+- [x] Test malformed state, gross mismatch, cross-currency, policy/binding/account
   mismatch, unknown direction, zero entry, and invalid reduction fail closed.
-- [ ] Test canonical bytes/hash and stable decision/reason vocabulary.
-- [ ] Implement the pure assessment engine.
+- [x] Test canonical bytes/hash and stable decision/reason vocabulary.
+- [x] Implement the pure assessment engine.
 
 Run:
 
@@ -354,14 +354,14 @@ go test -race -count=1 ./internal/capital -run 'Assess|Margin|BuyingPower'
 
 ## Task 4: RED six-tier and stress replay matrix
 
-- [ ] Prove exactly seven ordered invocations with the same scenario identity,
+- [x] Prove exactly seven ordered invocations with the same scenario identity,
   dates, market input digest, simulation policy, and seed.
-- [ ] Prove normal rejections remain labeled results and errors stop the matrix
+- [x] Prove normal rejections remain labeled results and errors stop the matrix
   without returning a partial success claim.
-- [ ] Prove a proportional replay runs at all six scored tiers while an absolute
+- [x] Prove a proportional replay runs at all six scored tiers while an absolute
   over-capacity replay rejects smaller tiers and admits larger tiers.
-- [ ] Prove stress is structurally excluded from scored aggregation and hashes.
-- [ ] Implement the matrix harness.
+- [x] Prove stress is structurally excluded from scored aggregation and hashes.
+- [x] Implement the matrix harness.
 
 Run:
 
@@ -371,23 +371,23 @@ go test -race -count=1 ./internal/capital -run 'Matrix|Replay'
 
 ## Task 5: Migration 74 and PostgreSQL repository
 
-- [ ] Add source-shape RED tests for artifact/binding tables, canonical-byte
+- [x] Add source-shape RED tests for artifact/binding tables, canonical-byte
   reconstruction, append-only triggers, deterministic IDs, account agreement,
   complete lock sets, no grants/activation, and empty-only rollback.
-- [ ] Add direct PostgreSQL tests for forged bytes/JSON/hash/version/UUID,
+- [x] Add direct PostgreSQL tests for forged bytes/JSON/hash/version/UUID,
   missing/extra tiers or profiles, invalid decimals, mismatched accounts,
   scored/stress contamination, changed identity reuse, mutation, and deletion.
-- [ ] Add repository tests for exact register/load/reconstruct/bind/reload,
+- [x] Add repository tests for exact register/load/reconstruct/bind/reload,
   idempotency conflict, eight-writer convergence, and changed-payload races.
-- [ ] Create the six scored Reg-T and one stress/unlimited rehearsal accounts
+- [x] Create the six scored Reg-T and one stress/unlimited rehearsal accounts
   explicitly through the existing OVR-101 account repository. Prove every
   account has its own opening capital flow and immutable namespace/profile;
   migration 74 itself creates none.
-- [ ] Race migration up with an account/binding attempt and migration down with
+- [x] Race migration up with an account/binding attempt and migration down with
   artifact/binding insert; prove serial lock behavior and no orphan facts.
-- [ ] Prove nonempty downgrade refuses and empty `74 -> 73 -> 74` preserves
+- [x] Prove nonempty downgrade refuses and empty `74 -> 73 -> 74` preserves
   schema 73 exactly.
-- [ ] Bump `RequiredSchemaVersion` only after the isolated suite passes.
+- [x] Bump `RequiredSchemaVersion` only after the isolated suite passes.
 
 Run:
 
@@ -399,15 +399,15 @@ DB_URL="$AUGR_PHASE2_DB_URL" go test -race -count=1 \
 
 ## Task 6: Common simulation golden replay
 
-- [ ] Build one canonical scenario whose capital assessment is performed before
+- [x] Build one canonical scenario whose capital assessment is performed before
   route, then run the existing OVR-204 backtest and paper adapters unchanged.
-- [ ] Prove their lifecycle transitions, fills, economics, and simulation outcome
+- [x] Prove their lifecycle transitions, fills, economics, and simulation outcome
   hashes match within the same account mode and capital profile.
-- [ ] Prove a rejected assessment creates no routed order, fill, normalization,
+- [x] Prove a rejected assessment creates no routed order, fill, normalization,
   ledger transaction, or simulation outcome.
-- [ ] Prove changing only tier/profile changes capital evidence while unchanged
+- [x] Prove changing only tier/profile changes capital evidence while unchanged
   quote/fill inputs remain byte-identical after admission.
-- [ ] Persist/reload the policy, binding, and admitted lifecycle through real
+- [x] Persist/reload the policy, binding, and admitted lifecycle through real
   PostgreSQL; restart and replay without duplication.
 
 Run:
@@ -421,15 +421,15 @@ DB_URL="$AUGR_PHASE2_DB_URL" go test -race -count=1 \
 
 ## Task 7: Qualification, documentation, review, and synchronization
 
-- [ ] Document policy semantics, approximation limits, binding inspection,
+- [x] Document policy semantics, approximation limits, binding inspection,
   scored/stress isolation, replay matrix usage, incident reasons, empty-only
   rollback, and the no-cutover boundary.
-- [ ] Apply migrations `1 -> 74` to a dedicated loopback-only database, create
+- [x] Apply migrations `1 -> 74` to a dedicated loopback-only database, create
   six explicit scored Reg-T accounts and one explicit stress/unlimited account,
   retain one policy plus all seven bindings, reload all
   evidence, prove nonempty rollback refusal, and prove empty `74 -> 73 -> 74`
   separately.
-- [ ] Run focused races and repository-wide gates:
+- [x] Run focused races and repository-wide gates:
 
   ```bash
   go test -race -count=1 ./internal/capital ./internal/simulation \
@@ -445,31 +445,62 @@ DB_URL="$AUGR_PHASE2_DB_URL" go test -race -count=1 \
   govulncheck ./...
   ```
 
-- [ ] Run pinned Node 22 frontend install/test/lint/build gates; classify inherited
+- [x] Run pinned Node 22 frontend install/test/lint/build gates; classify inherited
   dependency advisories separately.
-- [ ] Start the rebuilt binary only with the global kill switch active, live
+- [x] Start the rebuilt binary only with the global kill switch active, live
   trading and scheduler false, no provider credentials, isolated schema-74
   PostgreSQL, and isolated Redis. Check all health routes, stop cleanly, and
   prove retained evidence unchanged.
-- [ ] Obtain independent final diff approval with no unresolved P0/P1.
-- [ ] Commit verified slices, push `codex/augr-overhaul`, fetch, prove local and
+- [x] Obtain independent final diff approval with no unresolved P0/P1.
+- [x] Commit verified slices, push `codex/augr-overhaul`, fetch, prove local and
   remote hashes equal with `0 0` divergence, then begin OVR-207.
 
 ## Acceptance evidence to record after implementation
 
-- [ ] One exact content-addressed policy defines all six tiers and four profile
+- [x] One exact content-addressed policy defines all six tiers and four profile
   semantics and reconstructs independently in Go and PostgreSQL.
-- [ ] Account bindings are immutable, replay-safe, and cannot mix scored and
+- [x] Account bindings are immutable, replay-safe, and cannot mix scored and
   stress evidence or reinterpret zero buying power.
-- [ ] Cash, Reg-T-like, portfolio-style, and stress/unlimited assessments use
+- [x] Cash, Reg-T-like, portfolio-style, and stress/unlimited assessments use
   exact decimals and stable admitted/rejected evidence without claiming broker
   parity.
-- [ ] The same deterministic replay scenario runs at `$500` through `$5m` plus
+- [x] The same deterministic replay scenario runs at `$500` through `$5m` plus
   stress, retaining valid tier-specific capacity outcomes.
-- [ ] Backtest and internal paper produce identical downstream OVR-204 outcomes
+- [x] Backtest and internal paper produce identical downstream OVR-204 outcomes
   after the same admitted assessment; rejection produces no order/economics.
-- [ ] Migration 74 is additive, immutable, empty-only reversible, and activates
+- [x] Migration 74 is additive, immutable, empty-only reversible, and activates
   no runtime path or grant.
-- [ ] Focused races, real PostgreSQL, full backend/frontend gates, kill-switched
+- [x] Focused races, real PostgreSQL, full backend/frontend gates, kill-switched
   startup, independent review, commits, push, and synchronization are recorded
   honestly with inherited failures separate.
+
+## Closure evidence (2026-08-20)
+
+- Implementation is split across commits `1d09985` through `d7f03e1`, following
+  the reviewed plan in `14fc20c`. The runtime fixes ensure both the normal and
+  smoke schedulers, as well as automation, remain stopped when
+  `ENABLE_SCHEDULER=false`.
+- A dedicated loopback PostgreSQL database applied migrations `1 -> 74` and
+  retained one exact policy, seven explicit accounts, seven bindings, and seven
+  opening-capital flows. Nonempty rollback refused with evidence intact. A
+  separate empty database completed `74 -> 73 -> 74`.
+- Focused capital/simulation/backtest/paper races passed 522 tests. Focused real
+  PostgreSQL race suites passed 10 tests. Repository-wide `task test:race`,
+  `task build`, `task vet`, `task lint`, and `task fmt:check` passed.
+- `govulncheck ./...` reports no called vulnerabilities after updating the Go
+  dependency graph. Pinned Node `v22.23.2` install, 162 frontend tests, lint,
+  and production build passed. Non-breaking lockfile updates removed all seven
+  high-severity npm findings; one low-severity transitive `esbuild` Windows
+  development-server advisory remains because the compatible dependency graph
+  still selects `0.27.4`. The qualified Linux production build does not invoke
+  that development server.
+- The rebuilt app started only against isolated schema-74 PostgreSQL and Redis,
+  with the global kill switch active, live trading and schedulers disabled,
+  paper/dry-run modes enabled, and no provider credentials. `/health`,
+  `/healthz`, and `/api/v1/health` all reported database and Redis healthy. A
+  clean interrupt completed shutdown and retained row counts remained
+  `1|7|7|7`.
+- Independent final review found no unresolved P0/P1 findings.
+- Evidence status: **VERIFIED_LOCAL**. No shared or production database was
+  migrated, no provider or broker was called, and no deployment or cutover was
+  performed.

@@ -2,7 +2,7 @@
 title: "Runbooks"
 description: "Operational procedures for common incidents, controls, and interventions in get-rich-quick."
 status: "canonical"
-updated: "2026-04-03"
+updated: "2026-08-20"
 tags: [runbooks, operations]
 ---
 
@@ -36,6 +36,7 @@ These runbooks are for operators and contributors handling a running system, an 
 ## Routine operator tasks
 
 - [Adding a new strategy](add-strategy.md)
+- [Capital-tier and margin-policy evidence](capital-margin-policy.md)
 - [Polymarket live activation](polymarket-live-activation.md)
 
 ## Notes on scope
