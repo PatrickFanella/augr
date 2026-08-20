@@ -53,6 +53,13 @@ func TestRobustnessRepositoryRoundTripAndConcurrentConvergence(t *testing.T) {
 			t.Fatalf("%s list=%v", name, values)
 		}
 	}
+	pool := fixture.evaluation.experiment.strategy.pool
+	if _, err := pool.Exec(ctx, `UPDATE robustness_gates SET state=state WHERE assessment_id=$1`, fixture.assessment.ID()); err == nil || !strings.Contains(err.Error(), "append-only") {
+		t.Fatalf("gate mutation error=%v", err)
+	}
+	if _, err := pool.Exec(ctx, repositoryMigrationSQL(t, "000080_statistical_robustness_assessments.down.sql")); err == nil || !strings.Contains(err.Error(), "cannot roll back migration 80") {
+		t.Fatalf("nonempty rollback error=%v", err)
+	}
 }
 
 func TestRobustnessRepositoryRollsBackEveryAssessmentStage(t *testing.T) {

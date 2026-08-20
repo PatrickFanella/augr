@@ -107,7 +107,7 @@ Out of scope:
   value, availability, reason, sample, and lineage fields.
 - [x] Prove restoration, clone safety, stable identities, semantic-order rules,
   tamper rejection, and scored/stress separation.
-- [ ] Commit and push the domain slice after focused races.
+- [x] Commit and push the domain slice after focused races.
 
 ## Task 2: Deterministic statistical calculations
 
@@ -124,34 +124,34 @@ Out of scope:
 - [x] Cover positive/negative/constant returns, insufficient samples, clustered
   winners, boundary thresholds, candidate-order convergence, and search-family
   expansion that invalidates an otherwise unadjusted winner.
-- [ ] Commit and push the calculator slice after focused races.
+- [x] Commit and push the calculator slice after focused races.
 
 ## Task 3: Migration 80 append-only robustness evidence
 
-- [ ] Add policy, search-family, assessment, candidate, fold/scenario report,
+- [x] Add policy, search-family, assessment, candidate, fold/scenario report,
   statistic, correction, and gate tables.
-- [ ] Reconstruct canonical bytes, IDs/hashes, ordered counts, exact OVR-304
+- [x] Reconstruct canonical bytes, IDs/hashes, ordered counts, exact OVR-304
   parents, fold geometry, scenario completeness, calculations, and corrected
   family population in deferred constraints and normalized reload.
-- [ ] Reject mutation/deletion, omission/reordering, forged statistics/gates,
+- [x] Reject mutation/deletion, omission/reordering, forged statistics/gates,
   cross-mode/report/window families, changed retries, and incomplete correction
   populations.
-- [ ] Add no best/current pointer, promotion/retirement status, scheduler,
+- [x] Add no best/current pointer, promotion/retirement status, scheduler,
   provider writer, runtime trigger, legacy backfill, or execution grant.
-- [ ] Add lock-first empty-only rollback and bump `RequiredSchemaVersion` to 80
+- [x] Add lock-first empty-only rollback and bump `RequiredSchemaVersion` to 80
   only after isolated real-PostgreSQL migration tests pass.
-- [ ] Commit and push the migration slice after focused database races.
+- [x] Commit and push the migration slice after focused database races.
 
 ## Task 4: Repository, service, recovery, and qualification
 
-- [ ] Add exact parent reload, atomic policy/family/assessment registration,
+- [x] Add exact parent reload, atomic policy/family/assessment registration,
   normalized reconstruction, and explicit family/candidate/report listing.
-- [ ] Prove identical/eight-writer convergence, changed retry conflict, restart,
+- [x] Prove identical/eight-writer convergence, changed retry conflict, restart,
   interruption and rollback at every child stage, and clean-database replay.
 - [ ] Retain scored/stress families plus an unadjusted winner that fails after
   family expansion, stable perturbations, degraded perturbations, concentrated
   returns, unavailable statistics, and threshold boundaries.
-- [ ] Add a runbook covering fold design, leakage prevention, perturbations,
+- [x] Add a runbook covering fold design, leakage prevention, perturbations,
   uncertainty, correction interpretation, preservation, no-promotion response,
   and rollback.
 - [ ] Apply fresh `1 -> 80`, retain a complete family, prove nonempty rollback
