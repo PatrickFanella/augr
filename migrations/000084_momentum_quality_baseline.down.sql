@@ -1,0 +1,4 @@
+LOCK TABLE momentum_v1_regimes,momentum_v1_holdings,momentum_v1_trades,momentum_v1_ranks,momentum_v1_rebalances,momentum_v1_reports,momentum_v1_universe_members,momentum_v1_source_rebalances,momentum_v1_scenarios,momentum_v1_policies IN ACCESS EXCLUSIVE MODE;
+DO $$ BEGIN IF EXISTS(SELECT 1 FROM momentum_v1_reports) OR EXISTS(SELECT 1 FROM momentum_v1_scenarios) OR EXISTS(SELECT 1 FROM momentum_v1_policies) THEN RAISE EXCEPTION 'cannot roll back migration 84 while momentum v1 evidence exists'; END IF; END $$;
+DROP TABLE momentum_v1_regimes,momentum_v1_holdings,momentum_v1_trades,momentum_v1_ranks,momentum_v1_rebalances,momentum_v1_reports,momentum_v1_universe_members,momentum_v1_source_rebalances,momentum_v1_scenarios,momentum_v1_policies;
+DROP FUNCTION reject_momentum_v1_mutation(); DROP FUNCTION validate_momentum_v1_report(); DROP FUNCTION validate_momentum_v1_scenario();

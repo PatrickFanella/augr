@@ -94,19 +94,19 @@ Out of scope:
 
 ## Task 3: Migration 84 and append-only evidence
 
-- [ ] Add policy, scenario, universe/source, rebalance, rank, target, trade,
+- [x] Add policy, scenario, universe/source, rebalance, rank, target, trade,
   holding, regime, and report tables.
-- [ ] Independently reconstruct canonical bytes/IDs/hashes, exact parents,
+- [x] Independently reconstruct canonical bytes/IDs/hashes, exact parents,
   chronology, eligibility/rank, turnover scaling, state continuity, costs,
   returns, and regime aggregates.
-- [ ] Reject mutation/deletion, gaps/forks, changed retry, forgery, partial
+- [x] Reject mutation/deletion, gaps/forks, changed retry, forgery, partial
   universe/evidence, unknown references, negative cash/weights, and over-cap
   turnover.
-- [ ] Add no provider writer, scheduler/runtime trigger, promotion/allocation
+- [x] Add no provider writer, scheduler/runtime trigger, promotion/allocation
   mutation, execution grant, UI authority, or legacy backfill.
-- [ ] Add empty-only rollback and bump `RequiredSchemaVersion` to 84 only after
+- [x] Add empty-only rollback and bump `RequiredSchemaVersion` to 84 only after
   real PostgreSQL migration races pass.
-- [ ] Commit and push the persistence slice.
+- [x] Commit and push the persistence slice.
 
 ## Task 4: Operations and qualification
 
