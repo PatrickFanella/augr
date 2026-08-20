@@ -102,6 +102,19 @@ func TestVenueAdapterPersistentRehearsal(t *testing.T) {
 		Route:      kalshi.CommonRouteFacts{Subaccount: 0, ExchangeIndex: 0},
 		ReceivedAt: kalshiFixture.base.baseTime.Add(20 * time.Second),
 	}
+	kalshiSubmit := kalshiPostgresSubmitFact(
+		t, kalshiContext, "persistent-kalshi-order-"+suffix,
+		kalshiFixture.aggregate.Order.Quantity, decimal.Zero,
+	)
+	kalshiSubmitResult, err := kalshi.PlanSubmitResult(kalshiContext, kalshiSubmit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := venue.PersistResult(
+		ctx, newPostgresVenueResultStore(pool), kalshiFixture.base.account.ID, kalshiSubmitResult,
+	); err != nil {
+		t.Fatal(err)
+	}
 	kalshiFact := kalshiPostgresFillFact(t, kalshiContext,
 		"persistent-kalshi-order-"+suffix, "persistent-kalshi-fill-"+suffix,
 		kalshiFixture.aggregate.Order.Quantity, kalshiFixture.base.baseTime.Add(10*time.Second))
