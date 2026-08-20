@@ -2,6 +2,7 @@ package evidenceprogram
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"fmt"
 	"testing"
 	"time"
@@ -122,5 +123,54 @@ func TestAssessmentsAreDeterministicAndHaveNoMutationSurface(t *testing.T) {
 	copyBytes[0] = 'x'
 	if bytes.Equal(copyBytes, first.CanonicalBytes()) {
 		t.Fatal("canonical bytes alias mutable storage")
+	}
+}
+
+func TestAssessmentsReconstructThroughExactParentChain(t *testing.T) {
+	shadow := qualifiedShadow(t)
+	loadedShadow, err := AssessmentFromCanonical(shadow.ID(), shadow.Digest(), shadow.CanonicalBytes(), nil)
+	if err != nil || !bytes.Equal(loadedShadow.CanonicalBytes(), shadow.CanonicalBytes()) {
+		t.Fatalf("shadow reload=%v err=%v", loadedShadow, err)
+	}
+	start, end := interval(60)
+	paper, err := AssessPaper(PaperInput{Shadow: shadow, StartedAt: start, EndedAt: end, Parents: []EvidenceRef{ref("cost_report", 2)}, Candidates: []CandidatePaper{{"alpha", 120, "0.004", true, true, true}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	loadedPaper, err := AssessmentFromCanonical(paper.ID(), paper.Digest(), paper.CanonicalBytes(), []*Assessment{loadedShadow})
+	if err != nil || !bytes.Equal(loadedPaper.CanonicalBytes(), paper.CanonicalBytes()) {
+		t.Fatalf("paper reload=%v err=%v", loadedPaper, err)
+	}
+	portfolio, err := AssessPortfolio(PortfolioInput{Paper: paper, StartedAt: start, EndedAt: end, CombinedRiskAdjusted: "1.05", BestSingleRiskAdjusted: "1", SameInterval: true, SameCostBasis: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	loadedPortfolio, err := AssessmentFromCanonical(portfolio.ID(), portfolio.Digest(), portfolio.CanonicalBytes(), []*Assessment{loadedPaper})
+	if err != nil || !bytes.Equal(loadedPortfolio.CanonicalBytes(), portfolio.CanonicalBytes()) {
+		t.Fatalf("portfolio reload=%v err=%v", loadedPortfolio, err)
+	}
+	capabilities := make([]Capability, len(requiredCapabilities))
+	for index, name := range requiredCapabilities {
+		capabilities[index] = Capability{Name: name, Passed: true, Evidence: ref("qualification", byte(index+10))}
+	}
+	readiness, err := AssessReadiness(ReadinessInput{Portfolio: portfolio, Capabilities: capabilities})
+	if err != nil {
+		t.Fatal(err)
+	}
+	loadedReadiness, err := AssessmentFromCanonical(readiness.ID(), readiness.Digest(), readiness.CanonicalBytes(), []*Assessment{loadedPortfolio})
+	if err != nil || !bytes.Equal(loadedReadiness.CanonicalBytes(), readiness.CanonicalBytes()) {
+		t.Fatalf("readiness reload=%v err=%v", loadedReadiness, err)
+	}
+}
+
+func TestAssessmentReconstructionRejectsForgedOutcomeAndParent(t *testing.T) {
+	shadow := qualifiedShadow(t)
+	forged := bytes.Replace(shadow.CanonicalBytes(), []byte(`"outcome":"qualified"`), []byte(`"outcome":"held"`), 1)
+	if _, err := AssessmentFromCanonical(shadow.ID(), fmt.Sprintf("%x", sha256.Sum256(forged)), forged, nil); err == nil {
+		t.Fatal("forged outcome reconstructed")
+	}
+	paper := qualifiedPaper(t)
+	if _, err := AssessmentFromCanonical(paper.ID(), paper.Digest(), paper.CanonicalBytes(), []*Assessment{qualifiedPaper(t)}); err == nil {
+		t.Fatal("wrong parent campaign reconstructed")
 	}
 }

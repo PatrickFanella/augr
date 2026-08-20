@@ -4,6 +4,7 @@
 package evidenceprogram
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -115,6 +116,26 @@ type Record struct {
 	Campaign       string
 	Outcome        Outcome
 	Blockers       []string
+	Parents        []EvidenceRef
+}
+
+type shadowFacts struct {
+	DailyComplete bool              `json:"daily_complete"`
+	Candidates    []CandidateShadow `json:"candidates"`
+}
+
+type paperFacts struct {
+	Candidates        []CandidatePaper `json:"candidates"`
+	PositiveCandidate bool             `json:"positive_candidate"`
+}
+
+type portfolioFacts struct {
+	Combined, Best              string
+	SameInterval, SameCostBasis bool
+}
+
+type readinessFacts struct {
+	Capabilities []Capability `json:"capabilities"`
 }
 
 func AssessShadow(input ShadowInput) (*Assessment, error) {
@@ -153,10 +174,7 @@ func AssessShadow(input ShadowInput) (*Assessment, error) {
 			blockers = append(blockers, candidate.Key+":slippage_unknown")
 		}
 	}
-	facts, _ := json.Marshal(struct {
-		DailyComplete bool              `json:"daily_complete"`
-		Candidates    []CandidateShadow `json:"candidates"`
-	}{input.DailyComplete, candidates})
+	facts, _ := json.Marshal(shadowFacts{input.DailyComplete, candidates})
 	return build("shadow_30_day", input.StartedAt, input.EndedAt, OutcomeQualified, OutcomeHeld, facts, blockers, parents)
 }
 
@@ -210,10 +228,7 @@ func AssessPaper(input PaperInput) (*Assessment, error) {
 	if positive {
 		outcome = OutcomeQualified
 	}
-	facts, _ := json.Marshal(struct {
-		Candidates        []CandidatePaper `json:"candidates"`
-		PositiveCandidate bool             `json:"positive_candidate"`
-	}{candidates, positive})
+	facts, _ := json.Marshal(paperFacts{candidates, positive})
 	return build("scored_paper_60_90_day", input.StartedAt, input.EndedAt, outcome, OutcomeHeld, facts, blockers, parents)
 }
 
@@ -244,10 +259,7 @@ func AssessPortfolio(input PortfolioInput) (*Assessment, error) {
 	if combined.GreaterThanOrEqual(best) {
 		outcome = OutcomeQualified
 	}
-	facts, _ := json.Marshal(struct {
-		Combined, Best              string
-		SameInterval, SameCostBasis bool
-	}{input.CombinedRiskAdjusted, input.BestSingleRiskAdjusted, input.SameInterval, input.SameCostBasis})
+	facts, _ := json.Marshal(portfolioFacts{input.CombinedRiskAdjusted, input.BestSingleRiskAdjusted, input.SameInterval, input.SameCostBasis})
 	return build("portfolio_paper", input.StartedAt, input.EndedAt, outcome, OutcomeHeld, facts, blockers, parents)
 }
 
@@ -289,9 +301,7 @@ func AssessReadiness(input ReadinessInput) (*Assessment, error) {
 			blockers = append(blockers, name+":not_passed")
 		}
 	}
-	facts, _ := json.Marshal(struct {
-		Capabilities []Capability `json:"capabilities"`
-	}{capabilities})
+	facts, _ := json.Marshal(readinessFacts{capabilities})
 	return build("architecture_readiness", time.Time{}, time.Time{}, OutcomeReady, failure, facts, blockers, parents)
 }
 
@@ -325,7 +335,111 @@ func (a *Assessment) Reference() EvidenceRef {
 }
 
 func (a *Assessment) Record() Record {
-	return Record{a.id, a.digest, append([]byte(nil), a.raw...), a.value.Campaign, a.value.Outcome, append([]string(nil), a.value.Blockers...)}
+	return Record{a.id, a.digest, append([]byte(nil), a.raw...), a.value.Campaign, a.value.Outcome, append([]string(nil), a.value.Blockers...), append([]EvidenceRef(nil), a.value.Parents...)}
+}
+
+// AssessmentFromCanonical reconstructs an assessment through its authoritative
+// assessor. Assessment parents must be supplied for dependency campaigns;
+// arbitrary non-assessment evidence remains bound by exact reference.
+func AssessmentFromCanonical(id uuid.UUID, digest string, raw json.RawMessage, assessmentParents []*Assessment) (*Assessment, error) {
+	var value canonical
+	if id == uuid.Nil || len(digest) != 64 || hash(raw) != digest || json.Unmarshal(raw, &value) != nil || value.Schema != SchemaV1 {
+		return nil, fmt.Errorf("invalid canonical milestone evidence assessment")
+	}
+	normalizedParents, err := normalizeParents(value.Parents)
+	if err != nil || !evidenceRefsEqual(normalizedParents, value.Parents) {
+		return nil, fmt.Errorf("canonical milestone evidence parents are invalid")
+	}
+	start, end, err := canonicalInterval(value)
+	if err != nil {
+		return nil, err
+	}
+	var rebuilt *Assessment
+	switch value.Campaign {
+	case "shadow_30_day":
+		var facts shadowFacts
+		if len(assessmentParents) != 0 || json.Unmarshal(value.Facts, &facts) != nil {
+			return nil, fmt.Errorf("invalid canonical shadow facts")
+		}
+		rebuilt, err = AssessShadow(ShadowInput{StartedAt: start, EndedAt: end, DailyComplete: facts.DailyComplete, Candidates: facts.Candidates, Parents: value.Parents})
+	case "scored_paper_60_90_day":
+		var facts paperFacts
+		parent, other, parentErr := exactAssessmentParent(value.Parents, assessmentParents, "shadow_30_day")
+		if parentErr != nil || json.Unmarshal(value.Facts, &facts) != nil {
+			return nil, fmt.Errorf("invalid canonical paper facts or parent")
+		}
+		rebuilt, err = AssessPaper(PaperInput{Shadow: parent, StartedAt: start, EndedAt: end, Candidates: facts.Candidates, Parents: other})
+	case "portfolio_paper":
+		var facts portfolioFacts
+		parent, other, parentErr := exactAssessmentParent(value.Parents, assessmentParents, "scored_paper_60_90_day")
+		if parentErr != nil || json.Unmarshal(value.Facts, &facts) != nil {
+			return nil, fmt.Errorf("invalid canonical portfolio facts or parent")
+		}
+		rebuilt, err = AssessPortfolio(PortfolioInput{Paper: parent, StartedAt: start, EndedAt: end, CombinedRiskAdjusted: facts.Combined, BestSingleRiskAdjusted: facts.Best, SameInterval: facts.SameInterval, SameCostBasis: facts.SameCostBasis, Parents: other})
+	case "architecture_readiness":
+		var facts readinessFacts
+		parent, other, parentErr := exactAssessmentParent(value.Parents, assessmentParents, "portfolio_paper")
+		if parentErr != nil || json.Unmarshal(value.Facts, &facts) != nil {
+			return nil, fmt.Errorf("invalid canonical readiness facts or parent")
+		}
+		rebuilt, err = AssessReadiness(ReadinessInput{Portfolio: parent, Capabilities: facts.Capabilities, Parents: other})
+	default:
+		return nil, fmt.Errorf("unknown milestone evidence campaign")
+	}
+	if err != nil || rebuilt.ID() != id || rebuilt.Digest() != digest || !bytes.Equal(rebuilt.CanonicalBytes(), raw) {
+		return nil, fmt.Errorf("canonical milestone evidence assessment does not reconstruct")
+	}
+	return rebuilt, nil
+}
+
+func canonicalInterval(value canonical) (time.Time, time.Time, error) {
+	if value.Campaign == "architecture_readiness" {
+		if value.StartedAt != "" || value.EndedAt != "" {
+			return time.Time{}, time.Time{}, fmt.Errorf("readiness assessment cannot declare an interval")
+		}
+		return time.Time{}, time.Time{}, nil
+	}
+	start, startErr := time.Parse("2006-01-02T15:04:05.000000Z", value.StartedAt)
+	end, endErr := time.Parse("2006-01-02T15:04:05.000000Z", value.EndedAt)
+	if startErr != nil || endErr != nil {
+		return time.Time{}, time.Time{}, fmt.Errorf("canonical milestone evidence interval is invalid")
+	}
+	return start, end, nil
+}
+
+func exactAssessmentParent(refs []EvidenceRef, values []*Assessment, campaign string) (*Assessment, []EvidenceRef, error) {
+	if len(values) != 1 || values[0] == nil || values[0].Campaign() != campaign {
+		return nil, nil, fmt.Errorf("exact %s parent is required", campaign)
+	}
+	want := values[0].Reference()
+	other := make([]EvidenceRef, 0, len(refs)-1)
+	found := false
+	for _, ref := range refs {
+		if ref.Kind == campaign {
+			if found || ref != want {
+				return nil, nil, fmt.Errorf("assessment parent reference mismatch")
+			}
+			found = true
+			continue
+		}
+		other = append(other, ref)
+	}
+	if !found {
+		return nil, nil, fmt.Errorf("assessment parent reference is missing")
+	}
+	return values[0], other, nil
+}
+
+func evidenceRefsEqual(left, right []EvidenceRef) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
 }
 
 func normalizeParents(values []EvidenceRef) ([]EvidenceRef, error) {
