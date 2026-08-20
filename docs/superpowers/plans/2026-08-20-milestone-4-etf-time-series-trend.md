@@ -66,13 +66,13 @@ Out of scope:
 
 ## Task 1: Policy, scenario, signal, and sizing engine
 
-- [ ] Add immutable policy/scenario canonical objects with exact restoration.
-- [ ] Validate ordered point-in-time ETF membership, horizon anchors,
+- [x] Add immutable policy/scenario canonical objects with exact restoration.
+- [x] Validate ordered point-in-time ETF membership, horizon anchors,
   volatility, quote, lot-size, and manifest evidence.
-- [ ] Derive weighted multi-horizon signals and capped volatility-scaled targets.
-- [ ] Prove horizon/threshold/cap edges, stable input-order replay, missing/stale/
+- [x] Derive weighted multi-horizon signals and capped volatility-scaled targets.
+- [x] Prove horizon/threshold/cap edges, stable input-order replay, missing/stale/
   revised evidence refusal, cash-only behavior, and deterministic replay.
-- [ ] Commit and push the signal/sizing slice after focused races.
+- [x] Commit and push the signal/sizing slice after focused races.
 
 ## Task 2: Rebalance, costs, and OVR-303 adapter
 
