@@ -1,0 +1,14 @@
+LOCK TABLE prediction_book_fee_recorders IN ACCESS EXCLUSIVE MODE;
+DO $$ BEGIN IF EXISTS(SELECT 1 FROM prediction_book_fee_recorders) THEN RAISE EXCEPTION 'cannot roll back prediction recorder with retained evidence'; END IF; END; $$;
+DROP FUNCTION reject_prediction_recorder_mutation() CASCADE;
+DROP FUNCTION validate_prediction_recorder_graph() CASCADE;
+DROP FUNCTION validate_prediction_recorder_nested_row() CASCADE;
+DROP FUNCTION validate_prediction_recorder_row() CASCADE;
+DROP FUNCTION validate_prediction_recorder_evidence() CASCADE;
+DROP FUNCTION validate_prediction_recorder_parent() CASCADE;
+DROP TABLE prediction_recorded_fills;
+DROP TABLE prediction_recorded_replays;
+DROP TABLE prediction_recorded_fee_policies;
+DROP TABLE prediction_recorded_book_levels;
+DROP TABLE prediction_recorded_books;
+DROP TABLE prediction_book_fee_recorders;
