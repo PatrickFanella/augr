@@ -52,6 +52,9 @@ capital movement, broker route, production state change, or live trading.
   all-candidates-rejected terminal result.
 - [x] Reject synthetic duration, missing costs, hidden candidates, and unlimited
   paper margin as promotion evidence.
+- [x] Persist the exact assessment and parent graph append-only; recursively
+  reconstruct its outcome after restart and expose a strict local operator
+  command without creating scheduling or execution authority.
 
 ## OVR-704 — portfolio paper campaign
 
@@ -60,6 +63,8 @@ capital movement, broker route, production state change, or live trading.
 - [x] Require the combined allocation to improve or preserve risk-adjusted
   evidence; otherwise retain a rejected result.
 - [x] Keep allocation evidence separate from authority to move capital or trade.
+- [x] Persist and reconstruct the exact portfolio comparison and expose a strict
+  dependency-bound local operator command.
 
 ## OVR-705 — architecture readiness review
 
@@ -69,6 +74,8 @@ capital movement, broker route, production state change, or live trading.
 - [x] Return `ready`, `not_ready`, or `blocked`; never infer readiness from unit
   tests, synthetic duration, a container health check, or source inspection.
 - [x] Re-run the full release gate and produce a final local/external boundary.
+- [x] Persist and recursively reconstruct the readiness review with all seven
+  exact capability references and expose read-only inspection by identity.
 
 ## Completion rule
 

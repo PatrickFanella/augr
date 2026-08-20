@@ -4,9 +4,10 @@
 
 The locally executable golden replay/restart campaign is `VERIFIED_LOCAL`.
 OVR-702 through OVR-705 do not yet have real elapsed campaign evidence and are
-`BLOCKED_EXTERNAL`. The code in `internal/evidenceprogram` and the schema-102
-repository qualify their fail-closed assessment and durable evidence machinery;
-they do not qualify elapsed time, external observations, or deployment.
+`BLOCKED_EXTERNAL`. The code in `internal/evidenceprogram`, the schema-102
+campaign repository, and the schema-103 assessment repository qualify their
+fail-closed durable evidence machinery; they do not qualify elapsed time,
+external observations, or deployment.
 
 The complete local gate passed on commit
 `fa70660471fd0e918548b29379eb9dbd0acdb9b0`. It included repository backend
@@ -75,7 +76,7 @@ started by local qualification.
 
 ### Local shadow evidence command
 
-`augr-evidence` is the narrow schema-102 operator path. It refuses a database
+`augr-evidence` is the narrow schema-103 operator path. It refuses a database
 whose migration version is not exactly the runtime requirement, resolves the
 benchmark and strategy-version digests from PostgreSQL instead of trusting
 caller-supplied hashes, and emits the canonical artifact identity and bytes as
@@ -130,6 +131,34 @@ go run ./cmd/augr-evidence shadow-assess \
 available for an explicitly scoped local database. Do not put credentials in a
 committed command file or campaign artifact.
 
+Every `shadow-assess` result is retained append-only. Once a real qualified
+shadow assessment exists, the remaining dependency-ordered commands accept
+strict single-value JSON and bind their exact retained assessment parent:
+
+```bash
+go run ./cmd/augr-evidence paper-assess --input scored-paper.json
+go run ./cmd/augr-evidence portfolio-assess --input portfolio-paper.json
+go run ./cmd/augr-evidence readiness-assess --input readiness.json
+go run ./cmd/augr-evidence assessment-get \
+  --assessment-id 00000000-0000-0000-0000-000000000000
+```
+
+`paper-assess` requires `shadow_assessment_id`, exact `started_at`/`ended_at`,
+candidate observations and after-cost expectancy, complete-cost/statistical/
+margin flags, and other exact evidence parents. `portfolio-assess` requires the
+retained paper assessment, same interval/cost-basis declarations, and combined
+versus best-single risk-adjusted evidence. `readiness-assess` requires the
+retained portfolio assessment and exact evidence for all seven named
+capabilities. Held and rejected outcomes are retained honestly; the command
+does not force a pass.
+
+Schema 103 normalizes every assessment parent and blocker, verifies
+content-addressed identity, requires any assessment parent to exist with its
+exact campaign and digest, rejects updates/deletes, and refuses non-empty
+rollback. Repository reload recursively reconstructs every outcome and blocker
+through the original assessor, so structurally valid but semantically forged
+canonical JSON does not reload.
+
 ## OVR-703 scored-paper assessment
 
 `AssessPaper` binds the exact qualified shadow assessment and accepts only
@@ -176,6 +205,7 @@ live-activation decision after real shadow/scored-paper evidence exists.
 ```bash
 go test -race -count=2 ./internal/evidenceprogram
 go test -race -count=1 ./internal/repository/postgres -run '^TestShadowCampaignRepository'
+go test -race -count=1 ./internal/repository/postgres -run '^TestMilestoneEvidenceRepository'
 go test -race -count=1 ./cmd/augr-evidence
 go vet ./internal/evidenceprogram
 ./scripts/golden-replay-campaign.sh
@@ -185,10 +215,10 @@ go vet ./internal/evidenceprogram
 ## Authority boundary
 
 - `VERIFIED_LOCAL`: deterministic assessment construction, content addressing,
-  exact benchmark/version parent binding, append-only schema-102 persistence,
-  atomic and concurrent repository behavior, restart reconstruction, stable
-  blockers, honest rejection, race/static tests, and the OVR-701 replay/restart
-  campaign.
+  exact benchmark/version parent binding, append-only schema-102 campaign and
+  schema-103 assessment persistence, atomic and concurrent repository behavior,
+  semantic restart reconstruction, stable blockers, honest rejection,
+  race/static tests, and the OVR-701 replay/restart campaign.
 - `BLOCKED_EXTERNAL`: real 30-day shadow run, real 60–90 day scored-paper run,
   portfolio paper run, retained capability review, provider/deployment soak,
   shared migration, scheduler adoption, capital mutation, broker routing,

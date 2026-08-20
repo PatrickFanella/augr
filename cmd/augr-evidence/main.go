@@ -39,6 +39,31 @@ type recordInput struct {
 	Source     evidenceprogram.EvidenceRef `json:"source"`
 }
 
+type paperInput struct {
+	ShadowAssessmentID uuid.UUID                        `json:"shadow_assessment_id"`
+	StartedAt          time.Time                        `json:"started_at"`
+	EndedAt            time.Time                        `json:"ended_at"`
+	Candidates         []evidenceprogram.CandidatePaper `json:"candidates"`
+	Parents            []evidenceprogram.EvidenceRef    `json:"parents"`
+}
+
+type portfolioInput struct {
+	PaperAssessmentID      uuid.UUID                     `json:"paper_assessment_id"`
+	StartedAt              time.Time                     `json:"started_at"`
+	EndedAt                time.Time                     `json:"ended_at"`
+	CombinedRiskAdjusted   string                        `json:"combined_risk_adjusted"`
+	BestSingleRiskAdjusted string                        `json:"best_single_risk_adjusted"`
+	SameInterval           bool                          `json:"same_interval"`
+	SameCostBasis          bool                          `json:"same_cost_basis"`
+	Parents                []evidenceprogram.EvidenceRef `json:"parents"`
+}
+
+type readinessInput struct {
+	PortfolioAssessmentID uuid.UUID                     `json:"portfolio_assessment_id"`
+	Capabilities          []evidenceprogram.Capability  `json:"capabilities"`
+	Parents               []evidenceprogram.EvidenceRef `json:"parents"`
+}
+
 type candidateDayInput struct {
 	Key                string `json:"key"`
 	CriticalDefects    int    `json:"critical_defects"`
@@ -64,14 +89,17 @@ type shadowBackend interface {
 	GetCampaign(context.Context, uuid.UUID) (*evidenceprogram.ShadowCampaign, error)
 	RegisterDay(context.Context, *evidenceprogram.ShadowDay) error
 	ListDays(context.Context, *evidenceprogram.ShadowCampaign) ([]*evidenceprogram.ShadowDay, error)
+	RecordAssessment(context.Context, *evidenceprogram.Assessment) error
+	GetAssessment(context.Context, uuid.UUID) (*evidenceprogram.Assessment, error)
 	Close()
 }
 
 type postgresShadowBackend struct {
-	db         *postgresrepo.DB
-	benchmarks *postgresrepo.BenchmarkRepo
-	strategies *postgresrepo.StrategyCatalogRepo
-	campaigns  *postgresrepo.ShadowCampaignRepo
+	db          *postgresrepo.DB
+	benchmarks  *postgresrepo.BenchmarkRepo
+	strategies  *postgresrepo.StrategyCatalogRepo
+	campaigns   *postgresrepo.ShadowCampaignRepo
+	assessments *postgresrepo.MilestoneEvidenceRepo
 }
 
 func openPostgresBackend(ctx context.Context, databaseURL string) (shadowBackend, error) {
@@ -91,6 +119,7 @@ func openPostgresBackend(ctx context.Context, databaseURL string) (shadowBackend
 	return &postgresShadowBackend{
 		db: db, benchmarks: postgresrepo.NewBenchmarkRepo(db.Pool),
 		strategies: postgresrepo.NewStrategyCatalogRepo(db.Pool), campaigns: postgresrepo.NewShadowCampaignRepo(db.Pool),
+		assessments: postgresrepo.NewMilestoneEvidenceRepo(db.Pool),
 	}, nil
 }
 
@@ -126,6 +155,14 @@ func (b *postgresShadowBackend) ListDays(ctx context.Context, campaign *evidence
 	return b.campaigns.ListDays(ctx, campaign)
 }
 
+func (b *postgresShadowBackend) RecordAssessment(ctx context.Context, value *evidenceprogram.Assessment) error {
+	return b.assessments.RecordAssessment(ctx, value)
+}
+
+func (b *postgresShadowBackend) GetAssessment(ctx context.Context, id uuid.UUID) (*evidenceprogram.Assessment, error) {
+	return b.assessments.GetAssessment(ctx, id)
+}
+
 func (b *postgresShadowBackend) Close() { b.db.Close() }
 
 type backendOpener func(context.Context, string) (shadowBackend, error)
@@ -139,14 +176,15 @@ func main() {
 
 func run(ctx context.Context, args []string, stdin io.Reader, stdout io.Writer, open backendOpener) error {
 	if len(args) == 0 {
-		return errors.New("usage: augr-evidence <shadow-start|shadow-record-day|shadow-assess> [flags]")
+		return errors.New("usage: augr-evidence <shadow-start|shadow-record-day|shadow-assess|paper-assess|portfolio-assess|readiness-assess|assessment-get> [flags]")
 	}
 	command := args[0]
 	flags := flag.NewFlagSet(command, flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	databaseURL := flags.String("db-url", firstSet(os.Getenv("DB_URL"), os.Getenv("DATABASE_URL")), "schema-102 PostgreSQL connection URL")
+	databaseURL := flags.String("db-url", firstSet(os.Getenv("DB_URL"), os.Getenv("DATABASE_URL")), "schema-103 PostgreSQL connection URL")
 	inputPath := flags.String("input", "-", "JSON input path, or - for stdin")
 	campaignID := flags.String("campaign-id", "", "shadow campaign UUID")
+	assessmentID := flags.String("assessment-id", "", "milestone assessment UUID")
 	if err := flags.Parse(args[1:]); err != nil {
 		return fmt.Errorf("augr-evidence: parse %s flags: %w", command, err)
 	}
@@ -165,8 +203,8 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout io.Writer, 
 	var output artifactOutput
 	switch command {
 	case "shadow-start":
-		if *campaignID != "" {
-			return errors.New("augr-evidence: shadow-start does not accept --campaign-id")
+		if *campaignID != "" || *assessmentID != "" {
+			return errors.New("augr-evidence: shadow-start does not accept --campaign-id or --assessment-id")
 		}
 		var input startInput
 		if err = decodeInput(*inputPath, stdin, &input); err != nil {
@@ -174,6 +212,9 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout io.Writer, 
 		}
 		output, err = startCampaign(ctx, backend, input)
 	case "shadow-record-day":
+		if *assessmentID != "" {
+			return errors.New("augr-evidence: shadow-record-day does not accept --assessment-id")
+		}
 		if *campaignID != "" {
 			return errors.New("augr-evidence: shadow-record-day takes campaign_id from its JSON input")
 		}
@@ -183,6 +224,9 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout io.Writer, 
 		}
 		output, err = recordDay(ctx, backend, input)
 	case "shadow-assess":
+		if *assessmentID != "" {
+			return errors.New("augr-evidence: shadow-assess does not accept --assessment-id")
+		}
 		if *inputPath != "-" {
 			return errors.New("augr-evidence: shadow-assess does not accept --input")
 		}
@@ -191,6 +235,40 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout io.Writer, 
 			return fmt.Errorf("augr-evidence: valid --campaign-id is required: %w", parseErr)
 		}
 		output, err = assessCampaign(ctx, backend, id)
+	case "paper-assess":
+		var input paperInput
+		if err = requireJSONInput(*campaignID, *assessmentID, *inputPath, stdin, &input); err != nil {
+			return err
+		}
+		output, err = assessPaper(ctx, backend, input)
+	case "portfolio-assess":
+		var input portfolioInput
+		if err = requireJSONInput(*campaignID, *assessmentID, *inputPath, stdin, &input); err != nil {
+			return err
+		}
+		output, err = assessPortfolio(ctx, backend, input)
+	case "readiness-assess":
+		var input readinessInput
+		if err = requireJSONInput(*campaignID, *assessmentID, *inputPath, stdin, &input); err != nil {
+			return err
+		}
+		output, err = assessReadiness(ctx, backend, input)
+	case "assessment-get":
+		if *inputPath != "-" {
+			return errors.New("augr-evidence: assessment-get does not accept --input")
+		}
+		if *campaignID != "" {
+			return errors.New("augr-evidence: assessment-get does not accept --campaign-id")
+		}
+		id, parseErr := uuid.Parse(*assessmentID)
+		if parseErr != nil {
+			return fmt.Errorf("augr-evidence: valid --assessment-id is required: %w", parseErr)
+		}
+		assessment, loadErr := backend.GetAssessment(ctx, id)
+		if loadErr != nil {
+			return fmt.Errorf("augr-evidence: load assessment: %w", loadErr)
+		}
+		output = assessmentOutput(assessment)
 	default:
 		return fmt.Errorf("augr-evidence: unknown command %q", command)
 	}
@@ -265,10 +343,73 @@ func assessCampaign(ctx context.Context, backend shadowBackend, id uuid.UUID) (a
 	if err != nil {
 		return artifactOutput{}, fmt.Errorf("augr-evidence: build shadow assessment: %w", err)
 	}
+	return recordAssessment(ctx, backend, assessment)
+}
+
+func assessPaper(ctx context.Context, backend shadowBackend, input paperInput) (artifactOutput, error) {
+	shadow, err := backend.GetAssessment(ctx, input.ShadowAssessmentID)
+	if err != nil {
+		return artifactOutput{}, fmt.Errorf("augr-evidence: load shadow assessment: %w", err)
+	}
+	assessment, err := evidenceprogram.AssessPaper(evidenceprogram.PaperInput{
+		Shadow: shadow, StartedAt: input.StartedAt, EndedAt: input.EndedAt,
+		Candidates: input.Candidates, Parents: input.Parents,
+	})
+	if err != nil {
+		return artifactOutput{}, fmt.Errorf("augr-evidence: build paper assessment: %w", err)
+	}
+	return recordAssessment(ctx, backend, assessment)
+}
+
+func assessPortfolio(ctx context.Context, backend shadowBackend, input portfolioInput) (artifactOutput, error) {
+	paper, err := backend.GetAssessment(ctx, input.PaperAssessmentID)
+	if err != nil {
+		return artifactOutput{}, fmt.Errorf("augr-evidence: load paper assessment: %w", err)
+	}
+	assessment, err := evidenceprogram.AssessPortfolio(evidenceprogram.PortfolioInput{
+		Paper: paper, StartedAt: input.StartedAt, EndedAt: input.EndedAt,
+		CombinedRiskAdjusted: input.CombinedRiskAdjusted, BestSingleRiskAdjusted: input.BestSingleRiskAdjusted,
+		SameInterval: input.SameInterval, SameCostBasis: input.SameCostBasis, Parents: input.Parents,
+	})
+	if err != nil {
+		return artifactOutput{}, fmt.Errorf("augr-evidence: build portfolio assessment: %w", err)
+	}
+	return recordAssessment(ctx, backend, assessment)
+}
+
+func assessReadiness(ctx context.Context, backend shadowBackend, input readinessInput) (artifactOutput, error) {
+	portfolio, err := backend.GetAssessment(ctx, input.PortfolioAssessmentID)
+	if err != nil {
+		return artifactOutput{}, fmt.Errorf("augr-evidence: load portfolio assessment: %w", err)
+	}
+	assessment, err := evidenceprogram.AssessReadiness(evidenceprogram.ReadinessInput{
+		Portfolio: portfolio, Capabilities: input.Capabilities, Parents: input.Parents,
+	})
+	if err != nil {
+		return artifactOutput{}, fmt.Errorf("augr-evidence: build readiness assessment: %w", err)
+	}
+	return recordAssessment(ctx, backend, assessment)
+}
+
+func recordAssessment(ctx context.Context, backend shadowBackend, assessment *evidenceprogram.Assessment) (artifactOutput, error) {
+	if err := backend.RecordAssessment(ctx, assessment); err != nil {
+		return artifactOutput{}, fmt.Errorf("augr-evidence: record assessment: %w", err)
+	}
+	return assessmentOutput(assessment), nil
+}
+
+func assessmentOutput(assessment *evidenceprogram.Assessment) artifactOutput {
 	return artifactOutput{
-		Kind: "shadow_30_day", ID: assessment.ID(), SHA256: assessment.Digest(),
+		Kind: assessment.Campaign(), ID: assessment.ID(), SHA256: assessment.Digest(),
 		Outcome: string(assessment.Outcome()), Blockers: assessment.Blockers(), Canonical: assessment.CanonicalBytes(),
-	}, nil
+	}
+}
+
+func requireJSONInput(campaignID, assessmentID, path string, stdin io.Reader, target any) error {
+	if campaignID != "" || assessmentID != "" {
+		return errors.New("augr-evidence: assessment command takes its parent identity from JSON input")
+	}
+	return decodeInput(path, stdin, target)
 }
 
 func decodeInput(path string, stdin io.Reader, target any) error {

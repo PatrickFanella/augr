@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -15,11 +16,12 @@ import (
 )
 
 type fakeShadowBackend struct {
-	benchmark evidenceprogram.EvidenceRef
-	versions  map[uuid.UUID]string
-	campaign  *evidenceprogram.ShadowCampaign
-	days      []*evidenceprogram.ShadowDay
-	closed    bool
+	benchmark   evidenceprogram.EvidenceRef
+	versions    map[uuid.UUID]string
+	campaign    *evidenceprogram.ShadowCampaign
+	days        []*evidenceprogram.ShadowDay
+	assessments map[uuid.UUID]*evidenceprogram.Assessment
+	closed      bool
 }
 
 func (b *fakeShadowBackend) BenchmarkReference(_ context.Context, id uuid.UUID) (evidenceprogram.EvidenceRef, error) {
@@ -58,6 +60,22 @@ func (b *fakeShadowBackend) ListDays(context.Context, *evidenceprogram.ShadowCam
 	return append([]*evidenceprogram.ShadowDay(nil), b.days...), nil
 }
 
+func (b *fakeShadowBackend) RecordAssessment(_ context.Context, value *evidenceprogram.Assessment) error {
+	if b.assessments == nil {
+		b.assessments = map[uuid.UUID]*evidenceprogram.Assessment{}
+	}
+	b.assessments[value.ID()] = value
+	return nil
+}
+
+func (b *fakeShadowBackend) GetAssessment(_ context.Context, id uuid.UUID) (*evidenceprogram.Assessment, error) {
+	value := b.assessments[id]
+	if value == nil {
+		return nil, errors.New("assessment not found")
+	}
+	return value, nil
+}
+
 func (b *fakeShadowBackend) Close() { b.closed = true }
 
 func newFakeShadowBackend() *fakeShadowBackend {
@@ -67,6 +85,7 @@ func newFakeShadowBackend() *fakeShadowBackend {
 			uuid.MustParse("70200000-0000-4000-8000-000000000002"): strings.Repeat("b", 64),
 			uuid.MustParse("70200000-0000-4000-8000-000000000003"): strings.Repeat("c", 64),
 		},
+		assessments: map[uuid.UUID]*evidenceprogram.Assessment{},
 	}
 }
 
@@ -124,6 +143,54 @@ func TestShadowCommandStartRecordAndAssess(t *testing.T) {
 	assessed := runWithBackend(t, backend, []string{"shadow-assess", "--db-url", "postgres://local", "--campaign-id", started.ID.String()}, "")
 	if assessed.Kind != "shadow_30_day" || assessed.Outcome != string(evidenceprogram.OutcomeHeld) || len(assessed.Blockers) == 0 {
 		t.Fatalf("assessment output=%+v", assessed)
+	}
+	if backend.assessments[assessed.ID] == nil {
+		t.Fatal("shadow assessment was not retained")
+	}
+}
+
+func TestShadowCommandPersistsDependentAssessmentChain(t *testing.T) {
+	backend := newFakeShadowBackend()
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	shadow, err := evidenceprogram.AssessShadow(evidenceprogram.ShadowInput{
+		StartedAt: start, EndedAt: start.Add(30 * 24 * time.Hour), DailyComplete: true,
+		Parents: []evidenceprogram.EvidenceRef{{Kind: "shadow_campaign", ID: uuid.New(), SHA256: strings.Repeat("a", 64)}},
+		Candidates: []evidenceprogram.CandidateShadow{
+			{Key: "alpha", ObservedDays: 30, ExecutableSamples: 10, SimulatedFills: 8, SlippageKnown: true, SlippageDivergence: "0.001"},
+			{Key: "beta", ObservedDays: 30, ExecutableSamples: 9, SimulatedFills: 7, SlippageKnown: true, SlippageDivergence: "-0.001"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend.assessments[shadow.ID()] = shadow
+	paperJSON := `{"shadow_assessment_id":"` + shadow.ID().String() + `","started_at":"2026-01-01T00:00:00Z","ended_at":"2026-03-02T00:00:00Z","candidates":[{"key":"alpha","observations":120,"after_cost_expectancy":"0.004","costs_complete":true,"statistically_honest":true,"margin_bounded":true}],"parents":[{"kind":"cost_report","id":"70300000-0000-4000-8000-000000000001","sha256":"` + strings.Repeat("b", 64) + `"}]}`
+	paper := runWithBackend(t, backend, []string{"paper-assess", "--db-url", "postgres://local"}, paperJSON)
+	if paper.Outcome != string(evidenceprogram.OutcomeQualified) {
+		t.Fatalf("paper=%+v", paper)
+	}
+	portfolioJSON := `{"paper_assessment_id":"` + paper.ID.String() + `","started_at":"2026-01-01T00:00:00Z","ended_at":"2026-03-02T00:00:00Z","combined_risk_adjusted":"1.05","best_single_risk_adjusted":"1","same_interval":true,"same_cost_basis":true,"parents":[]}`
+	portfolio := runWithBackend(t, backend, []string{"portfolio-assess", "--db-url", "postgres://local"}, portfolioJSON)
+	if portfolio.Outcome != string(evidenceprogram.OutcomeQualified) {
+		t.Fatalf("portfolio=%+v", portfolio)
+	}
+	capabilityNames := []string{"accept_deposits", "resize_safely", "run_unattended", "brake", "restart", "reconcile", "daily_explanation"}
+	capabilities := make([]map[string]any, len(capabilityNames))
+	for index, name := range capabilityNames {
+		capabilities[index] = map[string]any{"name": name, "passed": true, "evidence": map[string]any{"kind": "qualification", "id": fmt.Sprintf("70400000-0000-4000-8000-%012x", index+1), "sha256": fmt.Sprintf("%064x", index+1)}}
+	}
+	capabilityJSON, err := json.Marshal(capabilities)
+	if err != nil {
+		t.Fatal(err)
+	}
+	readinessJSON := `{"portfolio_assessment_id":"` + portfolio.ID.String() + `","capabilities":` + string(capabilityJSON) + `,"parents":[]}`
+	readiness := runWithBackend(t, backend, []string{"readiness-assess", "--db-url", "postgres://local"}, readinessJSON)
+	if readiness.Outcome != string(evidenceprogram.OutcomeReady) {
+		t.Fatalf("readiness=%+v", readiness)
+	}
+	loaded := runWithBackend(t, backend, []string{"assessment-get", "--db-url", "postgres://local", "--assessment-id", readiness.ID.String()}, "")
+	if loaded.ID != readiness.ID || loaded.SHA256 != readiness.SHA256 {
+		t.Fatalf("loaded=%+v readiness=%+v", loaded, readiness)
 	}
 }
 

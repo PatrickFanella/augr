@@ -16,8 +16,9 @@ This distinction matters:
   qualification evidence exists for OVR-001 through OVR-701.
 - OVR-702 now also has schema-102 persistence and a local operator command, but
   no real elapsed campaign.
-- OVR-703 through OVR-705 have fail-closed pure assessors, not completed real
-  campaigns.
+- OVR-703 through OVR-705 have fail-closed assessors, schema-103 persistence,
+  recursive semantic reconstruction, and local operator commands, but not
+  completed real campaigns.
 - The current application runtime does not import or construct the new account,
   ledger, execution-lifecycle, research, reconciliation, promotion, financial
   scheduler, supervisor, cost-attribution, or operator-brief repositories. The
@@ -82,9 +83,9 @@ means the broader plan acceptance still needs runtime or elapsed evidence.
 | 607 | Schema 101 daily brief/inbox | Proven | Delivery and current runtime integration absent |
 | 701 | Golden replay/restart campaign and release gate | Proven | Local deterministic campaign complete |
 | 702 | Schema 102 campaign/day graph, PostgreSQL qualification, and `augr-evidence` | Proven | Real 30-day elapsed run has not started |
-| 703 | Fail-closed scored-paper assessor | Proven | Real 60–90 day scored-paper run absent |
-| 704 | Fail-closed portfolio assessor | Proven | Real comparable portfolio paper run absent |
-| 705 | Fail-closed readiness assessor | Proven | Evidence-linked architecture review absent |
+| 703 | Fail-closed assessor, schema-103 persistence, and operator command | Proven | Real 60–90 day scored-paper run absent |
+| 704 | Fail-closed assessor, schema-103 persistence, and operator command | Proven | Real comparable portfolio paper run absent |
+| 705 | Fail-closed assessor, schema-103 persistence, and operator command | Proven | Real evidence-linked architecture review absent |
 
 ## Definition-of-complete audit
 
@@ -123,12 +124,10 @@ it does not remove the requirement to complete the real evidence program.
 
 ## Next dependency-ordered work
 
-1. Provide durable, operator-usable evidence graphs for OVR-703 through OVR-705
-   instead of pure aggregate assessors.
-2. Add a local runtime adoption plan for the account/ledger/execution/research/
+1. Add a local runtime adoption plan for the account/ledger/execution/research/
    scheduler/supervisor boundaries, with disabled-by-default cutover flags and
    end-to-end tests on the disposable local database.
-3. Separately authorize candidate selection, provider inputs, scheduler use,
+2. Separately authorize candidate selection, provider inputs, scheduler use,
    and retention before starting OVR-702. Elapsed time and real observations
    must not be synthesized.
 
