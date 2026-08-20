@@ -165,13 +165,13 @@ Out of scope:
 - [x] Add a runbook covering manifest construction, exact inspection SQL,
   quality codes, quarantine response, preservation, license/retention facts,
   legacy-unpinned boundaries, empty-only rollback, and no-cutover status.
-- [ ] Apply migrations `1 -> 76` to a fresh loopback-only database, retain the
+- [x] Apply migrations `1 -> 76` to a fresh loopback-only database, retain the
   golden policy/manifests/results, reload/recompute, and prove nonempty rollback
   refusal. Prove empty `76 -> 75 -> 76` in a separate database.
-- [ ] Run focused race suites, repository-wide backend tests/build/vet/lint/
+- [x] Run focused race suites, repository-wide backend tests/build/vet/lint/
   format/vulnerability gates, pinned Node 22 frontend install/audit/test/lint/
   build, and `git diff --check`.
-- [ ] Run only a kill-switched isolated local health smoke with live trading and
+- [x] Run only a kill-switched isolated local health smoke with live trading and
   schedulers false, no provider credentials, schema-76 PostgreSQL, and isolated
   Redis; prove evidence unchanged and stop cleanly.
 - [ ] Obtain independent final diff approval with no unresolved P0/P1.
@@ -180,16 +180,16 @@ Out of scope:
 
 ## Acceptance evidence to record after implementation
 
-- [ ] Every manifest and quality result is deterministic, immutable,
+- [x] Every manifest and quality result is deterministic, immutable,
   content-addressed, and reconstructable in Go and PostgreSQL.
-- [ ] Effective, published, observed, and available-at time remain distinct;
+- [x] Effective, published, observed, and available-at time remain distinct;
   future-available or unknown-availability evidence cannot pass.
-- [ ] Required uniqueness, ordering, coverage, quote, quantity, instrument,
+- [x] Required uniqueness, ordering, coverage, quote, quantity, instrument,
   corporate-action, and provider-comparison checks pass, fail, or remain
   explicitly not assessed; material defects quarantine rather than repair.
-- [ ] Legacy float/mutable caches are not promoted or backfilled, and no current
+- [x] Legacy float/mutable caches are not promoted or backfilled, and no current
   experiment/runtime path is activated.
-- [ ] Migration 76 is additive, append-only, empty-only reversible, creates no
+- [x] Migration 76 is additive, append-only, empty-only reversible, creates no
   writer grant/current pointer, and preserves every prior table.
 - [ ] Focused races, real PostgreSQL, full backend/frontend gates, kill-switched
   startup, independent review, commits, push, and synchronization are recorded

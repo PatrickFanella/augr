@@ -205,6 +205,7 @@ CREATE TABLE dataset_manifest_partitions (
     canonical_json JSONB NOT NULL CHECK (jsonb_typeof(canonical_json)='object'),
     PRIMARY KEY(manifest_id,sequence),
     UNIQUE(manifest_id,content_sha256),
+    UNIQUE(manifest_id,kind,provider,namespace,request_sha256,revision),
     CHECK (manifest_decision_cutoff=date_trunc('microseconds',manifest_decision_cutoff)),
     CHECK (effective_start=date_trunc('microseconds',effective_start) AND effective_end=date_trunc('microseconds',effective_end)),
     CHECK (observed_start=date_trunc('microseconds',observed_start) AND observed_end=date_trunc('microseconds',observed_end)),
@@ -349,6 +350,11 @@ BEGIN
     m.partition_count=(SELECT count(*) FROM dataset_manifest_partitions WHERE manifest_id=m.id) AND
     m.observation_count=(SELECT count(*) FROM dataset_manifest_observations WHERE manifest_id=m.id) AND
     (SELECT COALESCE(min(sequence),0)=0 AND COALESCE(max(sequence),-1)=m.partition_count-1 FROM dataset_manifest_partitions WHERE manifest_id=m.id) AND
+    NOT EXISTS (SELECT 1 FROM dataset_manifest_partitions current_partition JOIN dataset_manifest_partitions prior_partition
+      ON prior_partition.manifest_id=current_partition.manifest_id AND prior_partition.sequence=current_partition.sequence-1
+      WHERE current_partition.manifest_id=m.id AND
+      (prior_partition.kind,prior_partition.provider COLLATE "C",prior_partition.namespace COLLATE "C",prior_partition.request_sha256,prior_partition.revision COLLATE "C") >=
+      (current_partition.kind,current_partition.provider COLLATE "C",current_partition.namespace COLLATE "C",current_partition.request_sha256,current_partition.revision COLLATE "C")) AND
     NOT EXISTS (SELECT 1 FROM dataset_manifest_partitions p WHERE p.manifest_id=m.id AND p.manifest_decision_cutoff<>m.decision_cutoff) AND
     NOT EXISTS (SELECT 1 FROM dataset_manifest_observations o JOIN dataset_manifest_partitions p ON p.manifest_id=o.manifest_id AND p.sequence=o.partition_sequence
       WHERE o.manifest_id=m.id AND (o.manifest_decision_cutoff<>m.decision_cutoff OR o.partition_content_sha256<>p.content_sha256)) AND
@@ -356,9 +362,17 @@ BEGIN
       (SELECT COALESCE(min(sequence),0)<>0 OR COALESCE(max(sequence),-1)<>p.row_count-1 OR min(effective_at)<>p.effective_start OR max(effective_at)<>p.effective_end OR
         min(observed_at)<>p.observed_start OR max(observed_at)<>p.observed_end OR min(available_at)<>p.available_start OR max(available_at)<>p.available_end
        FROM dataset_manifest_observations o WHERE o.manifest_id=m.id AND o.partition_sequence=p.sequence))) AND
+    NOT EXISTS (SELECT 1 FROM dataset_manifest_observations current_observation JOIN dataset_manifest_observations prior_observation
+      ON prior_observation.manifest_id=current_observation.manifest_id AND prior_observation.partition_sequence=current_observation.partition_sequence AND
+      prior_observation.sequence=current_observation.sequence-1 WHERE current_observation.manifest_id=m.id AND
+      (prior_observation.available_at,prior_observation.effective_at,prior_observation.source_key COLLATE "C",prior_observation.revision COLLATE "C") >=
+      (current_observation.available_at,current_observation.effective_at,current_observation.source_key COLLATE "C",current_observation.revision COLLATE "C")) AND
     NOT EXISTS (SELECT 1 FROM dataset_manifest_observations correction WHERE correction.manifest_id=m.id AND correction.correction_of<>'' AND NOT EXISTS (
       SELECT 1 FROM dataset_manifest_observations original WHERE original.manifest_id=correction.manifest_id AND original.partition_sequence=correction.partition_sequence AND
-      original.source_key=correction.correction_of AND original.correction_of='' AND original.available_at<correction.available_at)) AND
+      original.source_key=correction.correction_of AND original.sequence=(SELECT max(candidate.sequence) FROM dataset_manifest_observations candidate
+        WHERE candidate.manifest_id=correction.manifest_id AND candidate.partition_sequence=correction.partition_sequence AND
+        candidate.source_key=correction.correction_of AND candidate.sequence<correction.sequence) AND
+      original.correction_of='' AND original.available_at<correction.available_at)) AND
     m.canonical_bytes=convert_to(dataset_manifest_identity(to_char(m.decision_cutoff AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),m.partition_count,m.observation_count,partitions_text),'UTF8');
   IF NOT FOUND THEN RAISE EXCEPTION 'dataset manifest graph does not reconstruct'; END IF;
   RETURN NULL;
@@ -373,17 +387,35 @@ BEGIN
   SELECT '[' || COALESCE(string_agg(convert_from(canonical_bytes,'UTF8'),',' ORDER BY sequence),'') || ']' INTO findings_text FROM dataset_quality_findings WHERE result_id=target;
   PERFORM 1 FROM dataset_quality_results r WHERE r.id=target AND
     r.check_count=(SELECT count(*) FROM dataset_quality_checks WHERE result_id=r.id) AND r.finding_count=(SELECT count(*) FROM dataset_quality_findings WHERE result_id=r.id) AND
+    r.check_count=(SELECT count(*) FROM dataset_manifest_partitions p CROSS JOIN (VALUES
+      ('bid_ask'),('content_integrity'),('corporate_action_reconciliation'),('correction_lineage'),('instrument_validity'),('monotonic_time'),
+      ('nonnegative_depth'),('nonnegative_volume'),('no_lookahead'),('provider_spot_comparison'),('session_coverage'),('unique_source_identity')
+    ) AS policy_checks(check_code) WHERE p.manifest_id=r.manifest_id AND dataset_check_applies(p.kind,policy_checks.check_code)) AND
     (SELECT COALESCE(min(sequence),0)=0 AND COALESCE(max(sequence),-1)=r.check_count-1 FROM dataset_quality_checks WHERE result_id=r.id) AND
     (r.finding_count=0 OR (SELECT min(sequence)=0 AND max(sequence)=r.finding_count-1 FROM dataset_quality_findings WHERE result_id=r.id)) AND
+    NOT EXISTS (SELECT 1 FROM dataset_quality_checks current_check JOIN dataset_quality_checks prior_check
+      ON prior_check.result_id=current_check.result_id AND prior_check.sequence=current_check.sequence-1
+      WHERE current_check.result_id=r.id AND prior_check.check_key>=current_check.check_key) AND
+    NOT EXISTS (SELECT 1 FROM dataset_quality_findings current_finding JOIN dataset_quality_findings prior_finding
+      ON prior_finding.result_id=current_finding.result_id AND prior_finding.sequence=current_finding.sequence-1
+      WHERE current_finding.result_id=r.id AND prior_finding.finding_key>=current_finding.finding_key) AND
     NOT EXISTS (SELECT 1 FROM dataset_quality_checks c WHERE c.result_id=r.id AND (c.policy_version,c.manifest_id) IS DISTINCT FROM (r.policy_version,r.manifest_id)) AND
     NOT EXISTS (SELECT 1 FROM dataset_quality_checks c WHERE c.result_id=r.id AND NOT EXISTS (
       SELECT 1 FROM dataset_manifest_partitions p WHERE p.manifest_id=r.manifest_id AND p.content_sha256=c.partition_content_sha256 AND p.kind=c.kind)) AND
+    NOT EXISTS (SELECT 1 FROM dataset_manifest_partitions p CROSS JOIN (VALUES
+      ('bid_ask'),('content_integrity'),('corporate_action_reconciliation'),('correction_lineage'),('instrument_validity'),('monotonic_time'),
+      ('nonnegative_depth'),('nonnegative_volume'),('no_lookahead'),('provider_spot_comparison'),('session_coverage'),('unique_source_identity')
+    ) AS policy_checks(check_code) WHERE p.manifest_id=r.manifest_id AND dataset_check_applies(p.kind,policy_checks.check_code) AND NOT EXISTS (
+      SELECT 1 FROM dataset_quality_checks c WHERE c.result_id=r.id AND c.partition_content_sha256=p.content_sha256 AND c.kind=p.kind AND c.check_code=policy_checks.check_code)) AND
     NOT EXISTS (SELECT 1 FROM dataset_quality_findings f WHERE f.result_id=r.id AND (f.policy_version,f.manifest_id) IS DISTINCT FROM (r.policy_version,r.manifest_id)) AND
     r.quarantined=EXISTS(SELECT 1 FROM dataset_quality_checks c WHERE c.result_id=r.id AND (c.status='failed' OR c.required AND c.status='not_assessed')) AND
     NOT EXISTS (SELECT 1 FROM dataset_quality_checks c WHERE c.result_id=r.id AND c.status<>'passed' AND NOT EXISTS (
       SELECT 1 FROM dataset_quality_findings f WHERE f.result_id=c.result_id AND f.partition_content_sha256=c.partition_content_sha256 AND f.check_code=c.check_code)) AND
     NOT EXISTS (SELECT 1 FROM dataset_quality_findings f WHERE f.result_id=r.id AND NOT EXISTS (
       SELECT 1 FROM dataset_quality_checks c WHERE c.result_id=f.result_id AND c.partition_content_sha256=f.partition_content_sha256 AND c.check_code=f.check_code AND c.status<>'passed' AND c.severity=f.severity)) AND
+    NOT EXISTS (SELECT 1 FROM dataset_quality_findings f CROSS JOIN LATERAL jsonb_array_elements_text(f.evidence) WITH ORDINALITY AS current_evidence(item,ordinal)
+      JOIN LATERAL jsonb_array_elements_text(f.evidence) WITH ORDINALITY AS prior_evidence(item,ordinal)
+      ON prior_evidence.ordinal=current_evidence.ordinal-1 WHERE f.result_id=r.id AND prior_evidence.item COLLATE "C">current_evidence.item COLLATE "C") AND
     r.canonical_bytes=convert_to(dataset_quality_identity(r.policy_version,r.manifest_id::TEXT,r.quarantined,r.check_count,r.finding_count,checks_text,findings_text),'UTF8');
   IF NOT FOUND THEN RAISE EXCEPTION 'dataset quality graph does not reconstruct'; END IF;
   RETURN NULL;

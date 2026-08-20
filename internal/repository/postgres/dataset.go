@@ -3,6 +3,8 @@ package postgres
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -340,6 +342,37 @@ func (repo *DatasetRepo) verifyManifestChildren(ctx context.Context, manifest *d
 
 func (repo *DatasetRepo) verifyQualityChildren(ctx context.Context, result *dataset.QualityResult) error {
 	checks, findings := result.Checks(), result.Findings()
+	manifest, err := repo.GetDatasetManifest(ctx, result.ManifestID())
+	if err != nil {
+		return fmt.Errorf("postgres: reload dataset quality manifest: %w", err)
+	}
+	artifact, err := repo.getDatasetPolicy(ctx, result.PolicyVersion())
+	if err != nil {
+		return fmt.Errorf("postgres: reload dataset quality policy: %w", err)
+	}
+	policy, err := dataset.PolicyFromArtifact(*artifact)
+	if err != nil {
+		return fmt.Errorf("postgres: reconstruct dataset quality policy: %w", err)
+	}
+	expectedChecks := make(map[string]struct{})
+	for _, partition := range manifest.Partitions() {
+		for _, rule := range policy.Rules() {
+			if !datasetRuleIncludesKind(rule, partition.Kind) {
+				continue
+			}
+			scope := partition.ContentSHA256 + "\x00" + string(rule.Code)
+			digest := sha256.Sum256([]byte(scope))
+			expectedChecks[hex.EncodeToString(digest[:])] = struct{}{}
+		}
+	}
+	if len(checks) != len(expectedChecks) {
+		return fmt.Errorf("postgres: dataset quality check coverage is incomplete")
+	}
+	for _, check := range checks {
+		if _, ok := expectedChecks[check.Key]; !ok {
+			return fmt.Errorf("postgres: dataset quality check is outside manifest policy scope")
+		}
+	}
 	if err := verifyDatasetChildBytes(ctx, repo.pool, `SELECT canonical_bytes FROM dataset_quality_checks WHERE result_id=$1 ORDER BY sequence`, result.ID(), checks); err != nil {
 		return fmt.Errorf("postgres: dataset quality check graph: %w", err)
 	}
@@ -347,6 +380,15 @@ func (repo *DatasetRepo) verifyQualityChildren(ctx context.Context, result *data
 		return fmt.Errorf("postgres: dataset quality finding graph: %w", err)
 	}
 	return nil
+}
+
+func datasetRuleIncludesKind(rule dataset.CheckRule, kind dataset.Kind) bool {
+	for _, candidate := range rule.Kinds {
+		if candidate == kind {
+			return true
+		}
+	}
+	return false
 }
 
 func verifyDatasetChildBytes[T any](ctx context.Context, pool *pgxpool.Pool, query string, id uuid.UUID, want []T) error {

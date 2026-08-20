@@ -2,6 +2,8 @@ package migrations_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -11,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/dataset"
+	"github.com/PatrickFanella/get-rich-quick/internal/economicid"
 )
 
 func TestDatasetEvidenceMigrationDefinesLockedAppendOnlyGraph(t *testing.T) {
@@ -153,6 +156,94 @@ func TestDatasetEvidenceMigrationCyclesEmptyAndRefusesPolicyRollback(t *testing.
 	}
 	if _, err := pool.Exec(ctx, readMigrationFile(t, "000076_dataset_manifests_quality.down.sql")); err == nil || !strings.Contains(err.Error(), "cannot roll back migration 76") {
 		t.Fatalf("nonempty policy rollback error = %v", err)
+	}
+}
+
+func TestDatasetEvidenceMigrationRejectsMissingApplicableQualityCheck(t *testing.T) {
+	ctx, pool := newDatasetMigrationPool(t)
+	policy, err := dataset.NewPolicy(dataset.ReviewedPolicyV1Input())
+	if err != nil {
+		t.Fatal(err)
+	}
+	createdAt := time.Date(2026, 8, 20, 21, 8, 0, 123456000, time.UTC)
+	artifact, err := policy.NewArtifact(createdAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest := migrationDatasetManifest(t)
+	quality, err := dataset.Evaluate(dataset.QualityInput{Policy: policy, Manifest: manifest})
+	if err != nil {
+		t.Fatal(err)
+	}
+	checks := quality.Checks()
+	omit := -1
+	for index, check := range checks {
+		if check.Status == dataset.CheckPassed {
+			omit = index
+			break
+		}
+	}
+	if omit < 0 {
+		t.Fatal("quality fixture has no passed check to omit")
+	}
+	checks = append(checks[:omit:omit], checks[omit+1:]...)
+	forgedCanonical := struct {
+		Schema        string                `json:"schema"`
+		PolicyVersion string                `json:"policy_version"`
+		ManifestID    string                `json:"manifest_id"`
+		Quarantined   bool                  `json:"quarantined"`
+		CheckCount    int                   `json:"check_count"`
+		FindingCount  int                   `json:"finding_count"`
+		Checks        []dataset.CheckResult `json:"checks"`
+		Findings      []dataset.Finding     `json:"findings"`
+	}{dataset.QualityResultSchemaV1, quality.PolicyVersion(), manifest.ID().String(), quality.Quarantined(), len(checks), len(quality.Findings()), checks, quality.Findings()}
+	forgedBytes, err := json.Marshal(forgedCanonical)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digestBytes := sha256.Sum256(forgedBytes)
+	digest := hex.EncodeToString(digestBytes[:])
+	resultID := economicid.DeterministicUUID("dataset-quality-result", dataset.QualityResultSchemaV1+"@sha256:"+digest)
+
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, `INSERT INTO dataset_quality_policy_artifacts(
+		id,schema_name,policy_version,sha256,canonical_bytes,canonical_json,created_at
+	) VALUES($1,$2,$3,$4,$5,convert_from($5,'UTF8')::JSONB,$6)`, artifact.ID, artifact.Schema,
+		artifact.Version, artifact.SHA256, []byte(artifact.CanonicalBytes), artifact.CreatedAt); err != nil {
+		t.Fatal(err)
+	}
+	insertDatasetManifest(t, ctx, tx, manifest, createdAt)
+	if _, err := tx.Exec(ctx, `INSERT INTO dataset_quality_results(
+		id,schema_name,policy_version,manifest_id,quarantined,check_count,finding_count,sha256,canonical_bytes,canonical_json,created_at
+	) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,convert_from($9,'UTF8')::JSONB,$10)`, resultID, dataset.QualityResultSchemaV1,
+		quality.PolicyVersion(), manifest.ID(), quality.Quarantined(), len(checks), len(quality.Findings()), digest, forgedBytes, createdAt); err != nil {
+		t.Fatal(err)
+	}
+	for sequence, check := range checks {
+		checkBytes, _ := json.Marshal(check)
+		if _, err := tx.Exec(ctx, `INSERT INTO dataset_quality_checks(
+			result_id,policy_version,manifest_id,sequence,check_key,partition_content_sha256,kind,check_code,required,status,severity,evidence_sha256,canonical_bytes,canonical_json
+		) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,convert_from($13,'UTF8')::JSONB)`, resultID, quality.PolicyVersion(), manifest.ID(),
+			sequence, check.Key, check.PartitionContentSHA256, check.Kind, check.Check, check.Required, check.Status, check.Severity, check.EvidenceSHA256, checkBytes); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for sequence, finding := range quality.Findings() {
+		findingBytes, _ := json.Marshal(finding)
+		evidenceBytes, _ := json.Marshal(finding.Evidence)
+		if _, err := tx.Exec(ctx, `INSERT INTO dataset_quality_findings(
+			result_id,policy_version,manifest_id,sequence,finding_key,partition_content_sha256,check_code,finding_code,severity,evidence,canonical_bytes,canonical_json
+		) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,convert_from($11,'UTF8')::JSONB)`, resultID, quality.PolicyVersion(), manifest.ID(), sequence,
+			finding.Key, finding.PartitionContentSHA256, finding.Check, finding.Code, finding.Severity, string(evidenceBytes), findingBytes); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tx.Commit(ctx); err == nil || !strings.Contains(err.Error(), "quality graph does not reconstruct") {
+		t.Fatalf("missing applicable check commit error = %v", err)
 	}
 }
 

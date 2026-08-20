@@ -185,6 +185,12 @@ restore boundary. Runtime rollback does not require dropping schema 76 because
 no dataset scheduler, current pointer, experiment runner, or read cutover is
 activated.
 
+The `golang-migrate` CLI records a failed nonempty down attempt as dirty version
+75 even though PostgreSQL rolls the transactional schema change back. After
+confirming the refusal text, schema-76 tables, and retained hashes are intact,
+an authorized operator may restore migration metadata with `migrate force 76`.
+Never force the version merely to conceal an unexpected migration failure.
+
 ## Current limits and no-cutover status
 
 - Existing legacy historical caches and backtests remain visibly unpinned.
