@@ -1383,10 +1383,16 @@ execution proceeds to OVR-602.
 
 **2026-08-20 local execution note:** OVR-701 now has a reproducible golden
 replay/restart campaign. OVR-702 through OVR-705 have content-addressed,
-fail-closed assessment contracts and synthetic evaluator qualification, but no
-real elapsed campaign evidence. They remain **BLOCKED_EXTERNAL** pending an
-authorized 30-day shadow run, 60–90 day scored-paper run, portfolio paper run,
-and evidence-linked readiness review. Synthetic duration is not acceptance.
+fail-closed assessment contracts and synthetic evaluator qualification. OVR-702
+also has a deterministic campaign/day model and append-only schema-102
+repository bound to the exact OVR-401 report and distinct strategy versions;
+its local PostgreSQL qualification covers interruption rollback, concurrent
+convergence, restart reconstruction, conflict handling, immutability, rollback
+refusal, and derivation of a qualified assessment from 30 complete fixture days.
+There is still no real elapsed campaign evidence. OVR-702 through OVR-705 remain
+**BLOCKED_EXTERNAL** pending an authorized 30-day shadow run, 60–90 day
+scored-paper run, portfolio paper run, and evidence-linked readiness review.
+Synthetic duration is not acceptance.
 
 ## Test and verification contract
 

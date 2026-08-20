@@ -32,6 +32,14 @@ capital movement, broker route, production state change, or live trading.
   defect.
 - [x] Prove the assessor with synthetic pass/fail fixtures without claiming the
   synthetic pass is a real 30-day run.
+- [x] Define an immutable campaign/day evidence graph bound to the exact
+  OVR-401 benchmark report and two to sixteen distinct OVR-302 strategy
+  versions, with deterministic identities and exact UTC day sequencing.
+- [x] Persist that graph append-only at schema 102; prove interruption rollback,
+  eight-writer convergence, restart reconstruction, stable conflict handling,
+  normalized-child immutability, non-empty migration rollback refusal, and a
+  complete 30-day local fixture against PostgreSQL without treating it as an
+  elapsed campaign.
 - [ ] Start or adopt a real run only with separately authorized scheduler,
   provider, deployment, and retained-data scope.
 
