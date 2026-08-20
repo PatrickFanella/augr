@@ -52,47 +52,76 @@ steps only for newly selected filing evidence; it cannot execute or promote.
 
 ## Task 1: Manifest-bound manager and filing model
 
-- [ ] Validate exact manifest membership for selection and filing evidence.
-- [ ] Select top-N eligible managers using only selection-cutoff evidence and
+- [x] Validate exact manifest membership for selection and filing evidence.
+- [x] Select top-N eligible managers using only selection-cutoff evidence and
   deterministic tie-breaking.
-- [ ] Validate original/amendment publication chronology and ownership chains.
-- [ ] Prove late selection, unmanifested evidence, score ties, orphan/cross-
+- [x] Validate original/amendment publication chronology and ownership chains.
+- [x] Prove late selection, unmanifested evidence, score ties, orphan/cross-
   manager amendments, and input permutation fail or converge correctly.
-- [ ] Commit and push the evidence slice.
+- [x] Commit and push the evidence slice.
 
 ## Task 2: Point-in-time replay and OVR-303 adapter
 
-- [ ] Select filings independently at each decision time without future
+- [x] Select filings independently at each decision time without future
   amendments rewriting history.
-- [ ] Retain selected, unchanged, and no-filing decisions with exact reasons.
-- [ ] Emit one canonical OVR-303 no-op step per newly selected filing and bind
+- [x] Retain selected, unchanged, and no-filing decisions with exact reasons.
+- [x] Emit one canonical OVR-303 no-op step per newly selected filing and bind
   exact manifest observation identity and decision JSON.
-- [ ] Prove report-period ordering, publication boundary equality, late original
+- [x] Prove report-period ordering, publication boundary equality, late original
   and amendment behavior, manager isolation, restart determinism, and no-lookahead.
-- [ ] Commit and push the replay slice.
+- [x] Commit and push the replay slice.
 
 ## Task 3: Migration 91 and retained qualification
 
-- [ ] Persist immutable replay/manager/decision/step identity and normalized
+- [x] Persist immutable replay/manager/decision/step identity and normalized
   rows with PostgreSQL reconstruction guards.
-- [ ] Prove eight-writer convergence, changed retry conflict, every-stage atomic
+- [x] Prove eight-writer convergence, changed retry conflict, every-stage atomic
   rollback, forgery rejection, append-only evidence, nonempty rollback refusal,
   and empty `91 -> 90 -> 91`.
-- [ ] Retain multiple managers, originals, a later amendment, pre-publication
+- [x] Retain multiple managers, originals, a later amendment, pre-publication
   decisions, and post-publication decisions proving history is not rewritten.
-- [ ] Add an inspection/recovery/rollback runbook with exact IDs and digests.
-- [ ] Run focused/database races, all backend/static and pinned frontend gates,
+- [x] Add an inspection/recovery/rollback runbook with exact IDs and digests.
+- [x] Run focused/database races, all backend/static and pinned frontend gates,
   diff review, and isolated kill-switched schema-91 health/API/rollback/reapply.
-- [ ] Commit/push verified slices, fetch, and prove `0 0` before OVR-505.
+- [x] Commit/push verified slices, fetch, and prove `0 0` before OVR-505.
 
 ## Acceptance evidence to record
 
-- [ ] Manager selection uses only evidence available at its declared cutoff.
-- [ ] Every replay decision uses only a filing version available at that time;
+- [x] Manager selection uses only evidence available at its declared cutoff.
+- [x] Every replay decision uses only a filing version available at that time;
   later amendments never rewrite earlier decisions.
-- [ ] The OVR-303 adapter binds exact OVR-301 manifest evidence and remains
+- [x] The OVR-303 adapter binds exact OVR-301 manifest evidence and remains
   no-op research output.
-- [ ] Local qualification is `VERIFIED_LOCAL`; licensed historical source
+- [x] Local qualification is `VERIFIED_LOCAL`; licensed historical source
   acquisition, independent review, shared migration, runtime adoption,
   promotion, scheduling, deployment, broker routing, and live trading remain
   `BLOCKED_EXTERNAL`.
+
+## Qualification record
+
+OVR-504 is complete locally in commits `051e04a` and `fc5579b`, with the
+isolated-verifier correction in `c7e47ce`. Retained database
+`augr_ovr504_qual_20260820_v2` is clean schema 91 and contains manifest
+`b4fb186f-9a75-3379-411e-2142084487f6`, replay
+`6316e44e-9434-3a7f-82c5-24162ab83f45`, and canonical SHA-256
+`0a9749dbcbe580b2a64fa36cbaa17c205923437ebf4c71a32ae75adb3e54c28a`.
+Its normalized graph has three candidates, four filings, two selected managers,
+ten decisions, and four no-op research steps. The decision history retains
+pre-filing no-op rows, original Q1 selections, unchanged rows, a later Q1
+amendment, and a still-later Q2 original without rewriting earlier decisions.
+
+Eight concurrent writers converged, a changed calendar conflicted, every
+injected stage rolled back atomically, restart reconstruction passed, and
+forgery plus mutation failed closed. A retained graph refused downgrade, while
+`augr_ovr504_empty_20260820` passed `91 -> 90 -> 91`. Repository-wide gates
+passed 4,591 race-tested cases across 120 packages, build, vet, lint, formatter,
+and symbol-level vulnerability scanning with zero reachable vulnerabilities.
+Pinned Node 22.23.2 passed all 162 frontend tests, lint, and production build;
+the audit retains one known low-severity Windows-only esbuild development-server
+advisory. The exact synchronized `c7e47ce` production-image verifier passed
+fresh `1 -> 91`, health, authenticated read-only API, `91 -> 60`, backup/restore,
+`60 -> 91`, and post-reapply health, using only disposable project networks.
+
+This evidence is **VERIFIED_LOCAL**. Licensed historical acquisition,
+independent review, shared migration, runtime adoption, promotion, scheduling,
+deployment, broker routing, and live trading remain **BLOCKED_EXTERNAL**.

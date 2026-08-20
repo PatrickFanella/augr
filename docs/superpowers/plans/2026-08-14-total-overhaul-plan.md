@@ -1266,6 +1266,25 @@ lifecycle adoption, shared migration, independent review, scheduling,
 deployment, broker routing, and live trading remain **BLOCKED_EXTERNAL**.
 Dependency-order execution proceeds to OVR-504.
 
+OVR-504 is complete locally as schema 91. One immutable OVR-301 manifest now
+drives cutoff-safe manager ranking and a decision-by-decision 13F replay whose
+originals and amendments are eligible only after publication availability.
+The retained replay has three candidates, four filings, two managers, ten
+explicit decisions, and four OVR-303 no-op research steps. Its history proves
+that a later high-score manager cannot enter the cutoff selection and that a
+later amendment or report period cannot rewrite an earlier decision. Eight-
+writer convergence, changed-retry conflict, stage rollback, restart,
+forgery/append-only enforcement, nonempty rollback refusal, empty
+`91 -> 90 -> 91`, repository-wide backend/static and pinned frontend gates,
+and isolated production-image fresh-91 health/API/rollback-60/backup-restore/
+reapply passed. The verifier now provisions and removes its monitoring network
+inside the disposable Compose project instead of depending on host state.
+These results are **VERIFIED_LOCAL** only. Synthetic fixtures do not establish
+licensed historical acquisition, independent review, shared migration, runtime
+adoption, promotion, scheduling, deployment, broker routing, or live trading;
+those remain **BLOCKED_EXTERNAL**. Dependency-order execution proceeds to
+OVR-505.
+
 ### Milestone 6 — AI workbench and autonomy
 
 | ID | Depends on | Work | Acceptance |
