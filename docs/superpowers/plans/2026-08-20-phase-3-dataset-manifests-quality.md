@@ -115,15 +115,15 @@ Out of scope:
 
 ## Task 3: Deterministic quality evaluator
 
-- [ ] Add `internal/dataset/quality.go`. Evaluate one validated manifest against
+- [x] Add `internal/dataset/quality.go`. Evaluate one validated manifest against
   one exact policy and injected expected-session plus instrument-validity facts.
-- [ ] Compute uniqueness, monotonic time, no-lookahead, missing-session,
+- [x] Compute uniqueness, monotonic time, no-lookahead, missing-session,
   bid/ask, nonnegative volume/depth, identifier-window, declared corporate-action
   reconciliation, and declared provider-spot-comparison checks.
-- [ ] Treat missing required external comparison/session/instrument evidence as
+- [x] Treat missing required external comparison/session/instrument evidence as
   `not_assessed`, never pass. Material failures and required not-assessed checks
   set `quarantined=true`.
-- [ ] Produce deterministic check results/findings, canonical bytes, digest,
+- [x] Produce deterministic check results/findings, canonical bytes, digest,
   UUID, and restore/validate helpers. Prove input reordering does not change
   output and tampering cannot persist.
 - [ ] Commit and push the evaluator slice after focused race tests.
