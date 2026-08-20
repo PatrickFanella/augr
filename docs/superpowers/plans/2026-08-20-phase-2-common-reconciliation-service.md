@@ -390,7 +390,7 @@ DB_URL="$AUGR_PHASE2_DB_URL" go test -race -count=1 \
   one policy, one stable Alpaca run, one stable Kalshi run, and explicit drift
   incidents; reload and recompute all evidence; prove nonempty rollback refusal.
 - [x] In a separate empty database, prove `75 -> 74 -> 75`.
-- [ ] Run focused races and repository-wide gates:
+- [x] Run focused races and repository-wide gates:
 
   ```bash
   go test -race -count=1 ./internal/venuerecon ./internal/execution/...
@@ -405,9 +405,9 @@ DB_URL="$AUGR_PHASE2_DB_URL" go test -race -count=1 \
   govulncheck ./...
   ```
 
-- [ ] Run pinned Node 22 install/audit/test/lint/build; report the residual
+- [x] Run pinned Node 22 install/audit/test/lint/build; report the residual
   low-severity transitive Windows development-server advisory separately.
-- [ ] Start the rebuilt binary with the global kill switch active, live trading
+- [x] Start the rebuilt binary with the global kill switch active, live trading
   and schedulers false, no provider credentials, isolated schema-75 PostgreSQL,
   and isolated Redis. Check all health routes, stop cleanly, and prove retained
   evidence unchanged.
