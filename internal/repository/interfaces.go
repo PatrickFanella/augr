@@ -18,6 +18,7 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/ledger"
 	"github.com/PatrickFanella/get-rich-quick/internal/marketdata"
 	"github.com/PatrickFanella/get-rich-quick/internal/simulation"
+	"github.com/PatrickFanella/get-rich-quick/internal/strategycatalog"
 	"github.com/PatrickFanella/get-rich-quick/internal/venuerecon"
 )
 
@@ -148,6 +149,22 @@ type DatasetRepository interface {
 	GetDatasetManifest(context.Context, uuid.UUID) (*dataset.Manifest, error)
 	RecordDatasetQualityResult(context.Context, *dataset.QualityResult, time.Time) (*dataset.QualityResult, error)
 	GetDatasetQualityResult(context.Context, uuid.UUID) (*dataset.QualityResult, error)
+}
+
+// StrategyCatalogRepository persists immutable families, versions, declared
+// experiments, inert deployment proposals, and explicit unvalidated legacy
+// mappings. It does not execute, approve, promote, or activate them.
+type StrategyCatalogRepository interface {
+	RegisterStrategyFamily(context.Context, *strategycatalog.Family) (*strategycatalog.Family, error)
+	GetStrategyFamily(context.Context, uuid.UUID) (*strategycatalog.Family, error)
+	RegisterStrategyVersion(context.Context, *strategycatalog.Version) (*strategycatalog.Version, error)
+	GetStrategyVersion(context.Context, uuid.UUID) (*strategycatalog.Version, error)
+	DeclareResearchExperiment(context.Context, *strategycatalog.Experiment) (*strategycatalog.Experiment, error)
+	GetResearchExperiment(context.Context, uuid.UUID) (*strategycatalog.Experiment, error)
+	ProposeStrategyDeployment(context.Context, *strategycatalog.Deployment) (*strategycatalog.Deployment, error)
+	GetStrategyDeployment(context.Context, uuid.UUID) (*strategycatalog.Deployment, error)
+	MapLegacyStrategyFamily(context.Context, *strategycatalog.LegacyMapping) (*strategycatalog.LegacyMapping, error)
+	GetLegacyStrategyFamilyMapping(context.Context, uuid.UUID) (*strategycatalog.LegacyMapping, error)
 }
 
 // QuoteSnapshotRepository persists immutable, exact market observations and

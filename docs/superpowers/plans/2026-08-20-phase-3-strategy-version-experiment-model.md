@@ -109,10 +109,10 @@ Out of scope:
 - [x] Add `internal/strategycatalog/experiment.go` with scored/stress modes,
   exact version/manifest/quality/simulation/capital pins, evaluation window,
   seed, dataset-quarantine fact, canonical declaration state, and identity.
-- [ ] Keep cross-aggregate admission in the repository: quality must match the
+- [x] Keep cross-aggregate admission in the repository: quality must match the
   manifest; dataset kinds must satisfy the version contract; exact simulation
   and capital policies must exist; scored/stress evidence class must match.
-- [ ] Reject scored quarantine, unknown/missing/mismatched evidence, non-UTC or
+- [x] Reject scored quarantine, unknown/missing/mismatched evidence, non-UTC or
   sub-microsecond windows, invalid ranges, mutable canonical state, and implicit
   legacy inputs.
 - [x] Commit and push the experiment slice after focused race tests.
@@ -136,11 +136,11 @@ Out of scope:
 - [x] Add family, version, version-kind, experiment, deployment, legacy-mapping,
   and lifecycle-evidence tables with exact foreign keys and repeated parent
   scope where needed.
-- [ ] Reconstruct canonical bytes, counts, sorted children, hashes, deterministic
+- [x] Reconstruct canonical bytes, counts, sorted children, hashes, deterministic
   IDs, family/version scope, experiment evidence matches, capital environment/
   evidence class, deployment account/binding/budget, and locked initial states
   in deferred constraints.
-- [ ] Reject update/delete, direct-SQL forged scope/identity/state, quarantined
+- [x] Reject update/delete, direct-SQL forged scope/identity/state, quarantined
   scored experiments, missing required dataset kinds, and active deployments.
 - [x] Add indexes for family/version lineage, experiment evidence, account
   deployment proposals, and explicit legacy mapping lookup. Add no current
@@ -151,13 +151,13 @@ Out of scope:
 
 ## Task 5: PostgreSQL repository and restart replay
 
-- [ ] Add `internal/repository/postgres/strategy_catalog.go` and a narrow
+- [x] Add `internal/repository/postgres/strategy_catalog.go` and a narrow
   repository interface for atomic registration/declaration/proposal/mapping and
   exact reload.
-- [ ] Validate every cross-aggregate pin inside one transaction. Repository
+- [x] Validate every cross-aggregate pin inside one transaction. Repository
   reload must reconstruct canonical parents and relational children rather than
   trust stored JSON alone.
-- [ ] Prove identical and eight-writer retries converge, stable-family changed
+- [x] Prove identical and eight-writer retries converge, stable-family changed
   payload conflicts, injected stage failures roll back fully, and restart reload
   reproduces every ID/digest.
 - [ ] Retain a golden family with two config-derived versions, one admitted
