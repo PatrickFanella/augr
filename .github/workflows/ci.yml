@@ -75,6 +75,7 @@ jobs:
         run: go test -short -race -count=1 -coverprofile=coverage-unit.out ./...
 
       - name: Upload unit coverage
+        if: github.server_url == 'https://github.com'
         uses: actions/upload-artifact@v4
         with:
           name: coverage-unit
@@ -112,9 +113,14 @@ jobs:
           cache: true
 
       - name: Download unit coverage
+        if: github.server_url == 'https://github.com'
         uses: actions/download-artifact@v4
         with:
           name: coverage-unit
+
+      - name: Regenerate unit coverage for Gitea
+        if: github.server_url != 'https://github.com'
+        run: go test -short -race -count=1 -coverprofile=coverage-unit.out ./...
 
       - name: Run migrations
         run: |
@@ -146,6 +152,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload combined coverage
+        if: github.server_url == 'https://github.com'
         uses: actions/upload-artifact@v4
         with:
           name: coverage
