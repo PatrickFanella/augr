@@ -96,7 +96,7 @@ jobs:
           POSTGRES_PASSWORD: tradingagent
           POSTGRES_DB: tradingagent_test
         ports:
-          - 5432/tcp
+          - 55432:5432
         options: >-
           --health-cmd "pg_isready -U tradingagent"
           --health-interval 10s
@@ -120,15 +120,9 @@ jobs:
         if: github.server_url != 'https://github.com'
         run: go test -short -race -count=1 -coverprofile=coverage-unit.out ./...
 
-      - name: Configure integration database URL
-        run: |
-          if [ "$GITHUB_SERVER_URL" = "https://github.com" ]; then
-            echo "DATABASE_URL=postgres://tradingagent:tradingagent@localhost:${{ job.services.postgres.ports['5432'] }}/tradingagent_test?sslmode=disable" >> "$GITHUB_ENV"
-          else
-            echo "DATABASE_URL=postgres://tradingagent:tradingagent@postgres:5432/tradingagent_test?sslmode=disable" >> "$GITHUB_ENV"
-          fi
-
       - name: Run migrations
+        env:
+          DATABASE_URL: postgres://tradingagent:tradingagent@localhost:55432/tradingagent_test?sslmode=disable
         run: |
           timeout 90 bash -c 'until pg_isready -d "$DATABASE_URL" >/dev/null 2>&1; do sleep 2; done'
           find migrations -maxdepth 1 -type f -name '*.up.sql' -print | sort | while read -r migration; do
@@ -136,6 +130,8 @@ jobs:
           done
 
       - name: Run integration tests
+        env:
+          DATABASE_URL: postgres://tradingagent:tradingagent@localhost:55432/tradingagent_test?sslmode=disable
         run: go test -race -count=1 -run Integration -coverprofile=coverage-integration.out ./...
 
       - name: Merge coverage profiles
