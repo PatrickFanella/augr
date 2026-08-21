@@ -26,6 +26,7 @@ func TestCIWorkflowUsesDynamicMigrationsAndGeneratedSmokeJWTSecret(t *testing.T)
 		`find migrations -maxdepth 1 -type f -name '*.up.sql' -print | sort | while read -r migration; do`,
 		`docker exec -i "$DATABASE_CONTAINER" psql -U tradingagent -d tradingagent_test --single-transaction --set ON_ERROR_STOP=1`,
 		`docker compose exec -T postgres pg_isready -U postgres -d tradingagent`,
+		`&& sleep 5 && docker compose exec -T postgres pg_isready`,
 		`docker compose exec -T postgres psql -U postgres -d tradingagent --single-transaction --set ON_ERROR_STOP=1`,
 		`schema_version=$(find migrations -maxdepth 1 -type f -name '*.up.sql' -printf '%f\n' | sort | tail -1`,
 		`CREATE TABLE schema_migrations (version bigint NOT NULL PRIMARY KEY, dirty boolean NOT NULL)`,
