@@ -27,9 +27,11 @@ func TestCIWorkflowUsesDynamicMigrationsAndGeneratedSmokeJWTSecret(t *testing.T)
 		`docker exec -i "$DATABASE_CONTAINER" psql -U tradingagent -d tradingagent_test --single-transaction --set ON_ERROR_STOP=1`,
 		`docker compose exec -T postgres pg_isready -U postgres -d tradingagent`,
 		`docker compose exec -T postgres psql -U postgres -d tradingagent --single-transaction --set ON_ERROR_STOP=1`,
-		`curl -fsS http://127.0.0.1:8081/healthz`,
-		`SMOKE_BASE_URL: http://127.0.0.1:8081`,
-		`SMOKE_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5434/tradingagent?sslmode=disable`,
+		`app_container=$(docker compose ps -q app)`,
+		`database_container=$(docker compose ps -q postgres)`,
+		`SMOKE_BASE_URL=http://${app_host}:8080`,
+		`SMOKE_DATABASE_URL=postgres://postgres:postgres@${database_host}:5432/tradingagent?sslmode=disable`,
+		`curl -fsS "${SMOKE_BASE_URL}/healthz"`,
 	} {
 		if !strings.Contains(workflow, want) {
 			t.Fatalf("ci.yml missing required content %q", want)
