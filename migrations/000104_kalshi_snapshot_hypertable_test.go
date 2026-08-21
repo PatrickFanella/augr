@@ -7,7 +7,7 @@ import (
 )
 
 func TestKalshiSnapshotHypertableMigration(t *testing.T) {
-	up, err := os.ReadFile("000063_kalshi_snapshot_hypertable.up.sql")
+	up, err := os.ReadFile("000104_kalshi_snapshot_hypertable.up.sql")
 	if err != nil {
 		t.Fatalf("ReadFile(up): %v", err)
 	}
@@ -41,7 +41,7 @@ func TestKalshiSnapshotHypertableMigration(t *testing.T) {
 }
 
 func TestKalshiSnapshotHypertableDownFailsSafeAfterCutover(t *testing.T) {
-	down, err := os.ReadFile("000063_kalshi_snapshot_hypertable.down.sql")
+	down, err := os.ReadFile("000104_kalshi_snapshot_hypertable.down.sql")
 	if err != nil {
 		t.Fatalf("ReadFile(down): %v", err)
 	}

@@ -9,7 +9,7 @@ type: runbook
 
 ## Purpose and safety boundary
 
-Migration 63 creates an empty, one-day-chunk Timescale hypertable for Kalshi
+Migration 104 creates an empty, one-day-chunk Timescale hypertable for Kalshi
 snapshots. It applies compression after seven days and retention after 30 days.
 It does not copy, rename, or delete the existing table. Those destructive
 steps are intentionally operator-controlled.
@@ -22,19 +22,19 @@ claim about full-database restore fidelity.
 
 Never use `VACUUM FULL` or an in-place rewrite for this table. Keep the app
 stopped from the final archive through row-parity verification and deployment
-of the schema-63 image.
+of the schema-104 image.
 
 ## Preconditions
 
 - Explicit approval exists for the archive, cutover, old-table drop, and
   30-day retention window.
-- The exact schema-63 application image is built and its tests pass.
+- The exact schema-104 application image is built and its tests pass.
 - The destination host has enough space for both the compressed archive and an
   isolated restore.
 - `pg_restore -l` succeeds for the archive, and the table-only restore has
   completed with row and timestamp parity.
 - No unrelated deployment is consuming Nuc's remaining disk margin.
-- The old table is a regular PostgreSQL table and the migration-63 staging
+- The old table is a regular PostgreSQL table and the migration-104 staging
   table is an empty Timescale hypertable.
 
 ## Archive the retained window off-host
@@ -71,7 +71,7 @@ ssh almaz 'test -s /mnt/impuls/backups/nuc/augr/RELEASE/kalshi-market-snapshots-
 
 Use the same PostgreSQL and Timescale versions as production. Restore only
 `public.kalshi_market_snapshots` from the full archive into an isolated
-database. Apply migration 63 to a separate empty database, then use the daily
+database. Apply migration 104 to a separate empty database, then use the daily
 restore script against that schema. Require all of the following:
 
 - archived and restored row counts match for every UTC day;
@@ -89,8 +89,9 @@ restore script against that schema. Require all of the following:
    to `kalshi_market_snapshots`.
 3. Finish the current-day daily archive and the final table-only dump. Verify
    catalogs, checksums, sizes, and off-host paths.
-4. Apply migrations 61 through 63 from the reviewed clean worktree. Confirm
-   schema `63`, `dirty=false`, an empty staging hypertable, and both policies.
+4. Starting from clean schema `103`, apply migration 104 from the reviewed
+   clean worktree. Confirm schema `104`, `dirty=false`, an empty staging
+   hypertable, and both policies.
 5. Perform the metadata cutover in one transaction:
 
    ```sql
@@ -117,18 +118,18 @@ restore script against that schema. Require all of the following:
 8. Confirm total row parity with the manifest, timestamp bounds, per-day chunk
    counts, compressed chunk count, both policy jobs, database size, and free
    filesystem space.
-9. Recreate only the app service with the exact schema-63 image and `--no-build`.
+9. Recreate only the app service with the exact schema-104 image and `--no-build`.
    Verify `/healthz`, schema version, the latest Kalshi snapshot query, and one
    capped collector run before ending maintenance.
 
 ## Abort and rollback
 
 - Before the old table is dropped, reverse the two renames in one transaction
-  and revert migration 63.
+  and revert migration 104.
 - After the old table is dropped, keep the app stopped. Recreate the canonical
   table from the checksum-verified table-only archive or repeat the partitioned
-  restore from the daily archives. Do not start a schema-60 or schema-62 image
-  against schema 63.
+  restore from the daily archives. Do not start a schema-103 or earlier image
+  against schema 104.
 - If a checksum, row count, timestamp bound, policy, health check, or disk-space
   gate fails, stop. Preserve both tables when they still exist and preserve all
   off-host archives.
