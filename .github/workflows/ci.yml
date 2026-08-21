@@ -201,6 +201,7 @@ jobs:
           LLM_QUICK_THINK_MODEL=smoke-quick
           LLM_TIMEOUT=30s
           OLLAMA_BASE_URL=http://ollama.invalid/v1
+          OLLAMA_API_KEY=smoke-key
           OLLAMA_MODEL=smoke-model
           ALPHA_VANTAGE_API_KEY=smoke-key
           ALPHA_VANTAGE_RATE_LIMIT_PER_MINUTE=5

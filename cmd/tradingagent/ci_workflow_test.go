@@ -18,6 +18,7 @@ func TestCIWorkflowUsesDynamicMigrationsAndGeneratedSmokeJWTSecret(t *testing.T)
 	for _, want := range []string{
 		`SMOKE_JWT_SECRET=$(python3 -c 'import secrets; print(secrets.token_hex(32))')`,
 		`JWT_SECRET=${SMOKE_JWT_SECRET}`,
+		`OLLAMA_API_KEY=smoke-key`,
 		`COMPOSE_FILE: docker-compose.yml:docker-compose.smoke.yml`,
 		`docker compose up --build -d postgres redis app`,
 		`docker ps --filter publish=55432 --filter ancestor=timescale/timescaledb:2.17.2-pg17`,
