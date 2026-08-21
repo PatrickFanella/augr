@@ -18,6 +18,7 @@ import {
   ChartCandlestick,
   FlaskConical,
   BookOpenText,
+  Layers3,
 } from 'lucide-react'
 import { useTheme } from '@/app/providers/theme-context'
 
@@ -79,6 +80,7 @@ export function CommandPalette() {
     { to: '/backtests', label: 'Backtests', icon: <FlaskConical size={16} /> },
     { to: '/journal', label: 'Decision journal', icon: <BookOpenText size={16} /> },
     { to: '/risk', label: 'Risk', icon: <ShieldAlert size={16} /> },
+    { to: '/overhaul', label: 'Capital & evidence', icon: <Layers3 size={16} /> },
     { to: '/settings', label: 'Settings', icon: <Settings size={16} /> },
   ]
 

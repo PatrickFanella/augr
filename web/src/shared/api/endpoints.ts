@@ -51,10 +51,16 @@ import {
   copyPreviewSchema,
   copyRefreshResultSchema,
   copyRebalanceResultSchema,
+  economicAccountSchema,
+  economicCapitalFlowSchema,
+  economicCapitalSummarySchema,
+  economicLedgerTransactionSchema,
+  milestoneAssessmentSchema,
+  releaseReadinessSchema,
 } from '@/shared/api/schemas'
 import type { ListResponse, PortfolioSummary } from '@/shared/types/api'
 import type { AuthResponse, LoginRequest } from '@/shared/types/auth'
-import type { AgentDecision, AgentEvent, AllocationDecision, AllocatorDiagnostics, AllocatorOpportunity, AllocatorSummary, AutomationHealthResponse, AutomationJobRun, AutomationJobStatus, BacktestConfig, BacktestRun, BreakerResetRequest, BreakerResetResponse, CopyLeader, CopyLeaderDetail, CopyLeaderSource, CopyPreview, CopyRebalanceResult, CopyRefreshResult, CopySubscription, CopyTradeIntent, EventMarketsSummaryResponse, HealthStatusResponse, KillSwitchToggleRequest, KillSwitchToggleResponse, MarketKillSwitchRequest, MarketKillSwitchResponse, OptionSnapshot, Order, OrderDetailResponse, PipelineRun, PolymarketDataStatus, Position, ReplayDecision, ReportArtifact, ReportLatestResponse, RiskBreakersResponse, RiskCockpitSummary, RiskEngineStatus, RunSnapshot, Strategy, StrategyCreateRequest, StrategyRunAcceptedResponse, StrategyUpdateRequest, Trade, TradeDecision, User } from '@/shared/types/domain'
+import type { AgentDecision, AgentEvent, AllocationDecision, AllocatorDiagnostics, AllocatorOpportunity, AllocatorSummary, AutomationHealthResponse, AutomationJobRun, AutomationJobStatus, BacktestConfig, BacktestRun, BreakerResetRequest, BreakerResetResponse, CopyLeader, CopyLeaderDetail, CopyLeaderSource, CopyPreview, CopyRebalanceResult, CopyRefreshResult, CopySubscription, CopyTradeIntent, EconomicAccount, EconomicCapitalFlow, EconomicCapitalSummary, EconomicLedgerTransaction, EventMarketsSummaryResponse, HealthStatusResponse, KillSwitchToggleRequest, KillSwitchToggleResponse, MarketKillSwitchRequest, MarketKillSwitchResponse, MilestoneAssessment, OptionSnapshot, Order, OrderDetailResponse, PipelineRun, PolymarketDataStatus, Position, ReleaseReadiness, ReplayDecision, ReportArtifact, ReportLatestResponse, RiskBreakersResponse, RiskCockpitSummary, RiskEngineStatus, RunSnapshot, Strategy, StrategyCreateRequest, StrategyRunAcceptedResponse, StrategyUpdateRequest, Trade, TradeDecision, User } from '@/shared/types/domain'
 import type { SettingsResponse } from '@/shared/types/settings'
 
 export type StrategyListParams = {
@@ -177,6 +183,34 @@ export function getCurrentUser(signal?: AbortSignal): Promise<User> {
 
 export function getSettings(signal?: AbortSignal): Promise<SettingsResponse> {
   return api.get<SettingsResponse>('/settings', { schema: settingsResponseSchema as never, signal })
+}
+
+export function getReleaseReadiness(signal?: AbortSignal): Promise<ReleaseReadiness> {
+  return api.get<ReleaseReadiness>('/release/readiness', { schema: releaseReadinessSchema as never, signal })
+}
+
+export function getEconomicAccounts(signal?: AbortSignal): Promise<ListResponse<EconomicAccount>> {
+  return api.get<ListResponse<EconomicAccount>>('/economic/accounts?limit=100&offset=0', { schema: listResponseSchema(economicAccountSchema) as never, signal })
+}
+
+export function getEconomicAccount(id: string, signal?: AbortSignal): Promise<EconomicAccount> {
+  return api.get<EconomicAccount>(`/economic/accounts/${encodeURIComponent(id)}`, { schema: economicAccountSchema as never, signal })
+}
+
+export function getEconomicCapitalSummary(id: string, signal?: AbortSignal): Promise<EconomicCapitalSummary> {
+  return api.get<EconomicCapitalSummary>(`/economic/accounts/${encodeURIComponent(id)}/capital-summary`, { schema: economicCapitalSummarySchema as never, signal })
+}
+
+export function getEconomicCapitalFlows(id: string, signal?: AbortSignal): Promise<ListResponse<EconomicCapitalFlow>> {
+  return api.get<ListResponse<EconomicCapitalFlow>>(`/economic/accounts/${encodeURIComponent(id)}/capital-flows?limit=100&offset=0`, { schema: listResponseSchema(economicCapitalFlowSchema) as never, signal })
+}
+
+export function getEconomicLedgerTransaction(id: string, signal?: AbortSignal): Promise<EconomicLedgerTransaction> {
+  return api.get<EconomicLedgerTransaction>(`/economic/ledger-transactions/${encodeURIComponent(id)}`, { schema: economicLedgerTransactionSchema as never, signal })
+}
+
+export function getMilestoneAssessment(id: string, signal?: AbortSignal): Promise<MilestoneAssessment> {
+  return api.get<MilestoneAssessment>(`/evidence/assessments/${encodeURIComponent(id)}`, { schema: milestoneAssessmentSchema as never, signal })
 }
 
 export function getEventMarketsSummary(signal?: AbortSignal): Promise<EventMarketsSummaryResponse> {

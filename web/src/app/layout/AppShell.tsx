@@ -21,6 +21,7 @@ import {
   FlaskConical,
   BookOpenText,
   UsersRound,
+  Layers3,
 } from 'lucide-react';
 
 import { useTheme } from '@/app/providers/theme-context';
@@ -56,6 +57,7 @@ const navGroups = [
     { to: '/events', label: 'Events', icon: Clock },
   ] },
   { label: 'System', items: [
+    { to: '/overhaul', label: 'Capital & evidence', icon: Layers3 },
     { to: '/settings', label: 'Settings', icon: Settings },
   ] },
 ];
