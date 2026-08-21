@@ -14,12 +14,14 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/data"
 	"github.com/PatrickFanella/get-rich-quick/internal/discovery"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
+	"github.com/PatrickFanella/get-rich-quick/internal/evidenceprogram"
 	"github.com/PatrickFanella/get-rich-quick/internal/llm"
 	"github.com/PatrickFanella/get-rich-quick/internal/operations"
 	"github.com/PatrickFanella/get-rich-quick/internal/service"
 	"github.com/PatrickFanella/get-rich-quick/internal/signal"
 	"github.com/PatrickFanella/get-rich-quick/internal/universe"
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
@@ -119,6 +121,9 @@ type Server struct {
 	// Report metrics (optional; nil = no metrics).
 	reportMetrics ReportMetrics
 
+	// Milestone evidence (optional; read-only inspection).
+	milestoneEvidence MilestoneEvidenceSource
+
 	// Services — constructed from deps in NewServer.
 	backtestSvc     *service.BacktestService
 	conversationSvc *service.ConversationService
@@ -138,6 +143,13 @@ type StrategyRunResult struct {
 // StrategyRunner triggers a strategy pipeline run on demand.
 type StrategyRunner interface {
 	RunStrategy(ctx context.Context, strategy domain.Strategy) (*StrategyRunResult, error)
+}
+
+// MilestoneEvidenceSource loads an immutable, recursively revalidated
+// assessment. The HTTP runtime intentionally receives no evidence write
+// authority.
+type MilestoneEvidenceSource interface {
+	GetAssessment(context.Context, uuid.UUID) (*evidenceprogram.Assessment, error)
 }
 
 // ErrStrategyAlreadyRunning is returned by StrategyRunner when a run is
@@ -251,6 +263,9 @@ type Deps struct {
 
 	// Report metrics (optional; nil = no metrics).
 	ReportMetrics ReportMetrics
+
+	// Milestone evidence (optional; read-only inspection only).
+	MilestoneEvidence MilestoneEvidenceSource
 }
 
 // NewServer creates a new API server with all routes and middleware registered.
@@ -381,6 +396,7 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 		kalshiDiscoveryRuns:   deps.KalshiDiscoveryRuns,
 		reportArtifacts:       deps.ReportArtifacts,
 		reportMetrics:         deps.ReportMetrics,
+		milestoneEvidence:     deps.MilestoneEvidence,
 	}
 	// Construct services from the assembled deps.
 	s.backtestSvc = service.NewBacktestService(
@@ -527,6 +543,8 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 			jr.Get("/decisions", s.handleListTradeDecisions)
 			jr.Get("/decisions/{id}", s.handleGetTradeDecision)
 		})
+
+		v1.Get("/evidence/assessments/{id}", s.handleGetMilestoneAssessment)
 
 		// Replay workbench
 		v1.Route("/replay", func(rr chi.Router) {

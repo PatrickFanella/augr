@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/evidenceprogram"
+	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 )
 
 var ErrMilestoneEvidenceConflict = errors.New("postgres: milestone evidence conflict")
@@ -66,7 +67,11 @@ func (r *MilestoneEvidenceRepo) RecordAssessment(ctx context.Context, assessment
 }
 
 func (r *MilestoneEvidenceRepo) GetAssessment(ctx context.Context, id uuid.UUID) (*evidenceprogram.Assessment, error) {
-	return r.getAssessment(ctx, id, map[uuid.UUID]bool{})
+	value, err := r.getAssessment(ctx, id, map[uuid.UUID]bool{})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, repository.ErrNotFound
+	}
+	return value, err
 }
 
 func (r *MilestoneEvidenceRepo) getAssessment(ctx context.Context, id uuid.UUID, loading map[uuid.UUID]bool) (*evidenceprogram.Assessment, error) {

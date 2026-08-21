@@ -348,6 +348,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 	riskBreakerRepo := pgrepo.NewRiskBreakerRepo(db.Pool)
 	riskBreaker := risk.NewDrawdownBreaker(risk.DrawdownBreakerConfig{}, riskBreakerRepo)
 	reportArtifactRepo := pgrepo.NewReportArtifactRepo(db.Pool)
+	milestoneEvidenceRepo := pgrepo.NewMilestoneEvidenceRepo(db.Pool)
 	runRegistry := agent.NewRunContextRegistry()
 
 	riskEngine := risk.NewRiskEngine(
@@ -417,6 +418,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 		JobRunRepo:             jobRunRepo,
 		ReportArtifacts:        reportArtifactRepo,
 		ReportMetrics:          appMetrics,
+		MilestoneEvidence:      milestoneEvidenceRepo,
 		PolymarketClient:       nil,
 		KalshiWatchedRepo:      pgrepo.NewKalshiWatchedMarketsRepo(db.Pool),
 		KalshiSnapshotsRepo:    pgrepo.NewKalshiMarketSnapshotsRepo(db.Pool),

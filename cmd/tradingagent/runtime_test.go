@@ -190,6 +190,7 @@ func TestNewAPIServerSchemaMatchSucceeds(t *testing.T) {
 	var closed atomic.Bool
 	var serverBuilt atomic.Bool
 	var automationWired atomic.Bool
+	var milestoneEvidenceWired atomic.Bool
 	runtimeNewDB = func(context.Context, string) (*pgrepo.DB, error) {
 		return &pgrepo.DB{Pool: pool}, nil
 	}
@@ -202,6 +203,7 @@ func TestNewAPIServerSchemaMatchSucceeds(t *testing.T) {
 	runtimeNewServer = func(_ api.ServerConfig, deps api.Deps, _ *slog.Logger) (*api.Server, error) {
 		serverBuilt.Store(true)
 		automationWired.Store(deps.Automation != nil)
+		milestoneEvidenceWired.Store(deps.MilestoneEvidence != nil)
 		return &api.Server{}, nil
 	}
 
@@ -238,6 +240,9 @@ func TestNewAPIServerSchemaMatchSucceeds(t *testing.T) {
 	}
 	if automationWired.Load() {
 		t.Fatal("runtime wired automation while scheduler was disabled")
+	}
+	if !milestoneEvidenceWired.Load() {
+		t.Fatal("runtime did not wire read-only milestone evidence inspection")
 	}
 	if closed.Load() {
 		t.Fatal("runtime closed db before cleanup on matching schema")

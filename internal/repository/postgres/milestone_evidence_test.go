@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/evidenceprogram"
+	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 )
 
 type milestoneEvidenceFixture struct {
@@ -122,6 +123,13 @@ func TestMilestoneEvidenceRepositoryRollbackConcurrencyAndRestart(t *testing.T) 
 		if err != nil || got.Digest() != want.Digest() || !bytes.Equal(got.CanonicalBytes(), want.CanonicalBytes()) {
 			t.Fatalf("reload %s=%v err=%v", want.Campaign(), got, err)
 		}
+	}
+}
+
+func TestMilestoneEvidenceRepositoryMapsMissingRootOnly(t *testing.T) {
+	fixture := newMilestoneEvidenceFixture(t)
+	if _, err := fixture.repo.GetAssessment(fixture.ctx, uuid.New()); !errors.Is(err, repository.ErrNotFound) {
+		t.Fatalf("GetAssessment missing error = %v, want repository.ErrNotFound", err)
 	}
 }
 

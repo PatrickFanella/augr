@@ -116,6 +116,9 @@ it does not remove the requirement to complete the real evidence program.
   seven Prometheus rules, and reviewed secret-history findings.
 - Schema-102 shadow persistence passed focused PostgreSQL race, recovery,
   concurrency, restart, immutability, conflict, and rollback-refusal tests.
+- Schema-103 milestone persistence and the authenticated read-only runtime API
+  pass focused race, missing/malformed/forgery, recursive reconstruction, and
+  PostgreSQL restart tests. The runtime has no assessment write authority.
 - The local development PostgreSQL database was freshly migrated through
   `102|false`; a real `augr-evidence shadow-start` request with a nonexistent
   benchmark failed before writing, leaving campaign/day counts `0|0`.
@@ -124,9 +127,9 @@ it does not remove the requirement to complete the real evidence program.
 
 ## Next dependency-ordered work
 
-1. Add a local runtime adoption plan for the account/ledger/execution/research/
-   scheduler/supervisor boundaries, with disabled-by-default cutover flags and
-   end-to-end tests on the disposable local database.
+1. Execute R1 of the local runtime-adoption plan: disabled-by-default read-only
+   account/ledger projections, then an HTTP-inaccessible local tier bootstrap
+   and balanced ledger writer with PostgreSQL recovery tests.
 2. Separately authorize candidate selection, provider inputs, scheduler use,
    and retention before starting OVR-702. Elapsed time and real observations
    must not be synthesized.
