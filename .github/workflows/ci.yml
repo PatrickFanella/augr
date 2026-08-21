@@ -223,21 +223,20 @@ jobs:
 
       - name: Run migrations
         run: |
-          DATABASE_URL=postgres://postgres:postgres@localhost:5432/tradingagent?sslmode=disable
-          timeout 90 bash -c 'until pg_isready -d "$0" >/dev/null 2>&1; do sleep 2; done' "$DATABASE_URL"
+          timeout 90 bash -c 'until docker compose exec -T postgres pg_isready -U postgres -d tradingagent >/dev/null 2>&1; do sleep 2; done'
           find migrations -maxdepth 1 -type f -name '*.up.sql' -print | sort | while read -r migration; do
-            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"
+            docker compose exec -T postgres psql -U postgres -d tradingagent --single-transaction --set ON_ERROR_STOP=1 < "$migration"
           done
 
       - name: Wait for API
         run: |
-          timeout 90 bash -c 'until curl -fsS http://127.0.0.1:8080/healthz >/dev/null; do sleep 2; done'
+          timeout 90 bash -c 'until curl -fsS http://127.0.0.1:8081/healthz >/dev/null; do sleep 2; done'
 
       - name: Run smoke test
         env:
           RUN_SMOKE_TEST: "1"
-          SMOKE_BASE_URL: http://127.0.0.1:8080
-          SMOKE_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/tradingagent?sslmode=disable
+          SMOKE_BASE_URL: http://127.0.0.1:8081
+          SMOKE_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5434/tradingagent?sslmode=disable
           SMOKE_JWT_SECRET: ${{ env.SMOKE_JWT_SECRET }}
         run: go test -count=1 -run Smoke ./cmd/tradingagent
 
