@@ -165,6 +165,7 @@ func TestNewAPIServerSchemaAheadFailsFast(t *testing.T) {
 }
 
 func TestNewAPIServerSchemaMatchSucceeds(t *testing.T) {
+	t.Setenv("OVERHAUL_ACCOUNTS_READ_ENABLED", "true")
 	origNewDB := runtimeNewDB
 	origCurrentSchemaVersion := runtimeCurrentSchemaVersion
 	origNewPaperAccountRepo := runtimeNewPaperAccountRepo
@@ -191,6 +192,7 @@ func TestNewAPIServerSchemaMatchSucceeds(t *testing.T) {
 	var serverBuilt atomic.Bool
 	var automationWired atomic.Bool
 	var milestoneEvidenceWired atomic.Bool
+	var economicReadsWired atomic.Bool
 	runtimeNewDB = func(context.Context, string) (*pgrepo.DB, error) {
 		return &pgrepo.DB{Pool: pool}, nil
 	}
@@ -204,6 +206,7 @@ func TestNewAPIServerSchemaMatchSucceeds(t *testing.T) {
 		serverBuilt.Store(true)
 		automationWired.Store(deps.Automation != nil)
 		milestoneEvidenceWired.Store(deps.MilestoneEvidence != nil)
+		economicReadsWired.Store(deps.EconomicAccounts != nil && deps.EconomicLedger != nil)
 		return &api.Server{}, nil
 	}
 
@@ -243,6 +246,9 @@ func TestNewAPIServerSchemaMatchSucceeds(t *testing.T) {
 	}
 	if !milestoneEvidenceWired.Load() {
 		t.Fatal("runtime did not wire read-only milestone evidence inspection")
+	}
+	if !economicReadsWired.Load() {
+		t.Fatal("runtime did not wire enabled read-only economic inspection")
 	}
 	if closed.Load() {
 		t.Fatal("runtime closed db before cleanup on matching schema")

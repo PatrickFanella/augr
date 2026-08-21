@@ -15,6 +15,7 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/discovery"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/evidenceprogram"
+	"github.com/PatrickFanella/get-rich-quick/internal/ledger"
 	"github.com/PatrickFanella/get-rich-quick/internal/llm"
 	"github.com/PatrickFanella/get-rich-quick/internal/operations"
 	"github.com/PatrickFanella/get-rich-quick/internal/service"
@@ -123,6 +124,8 @@ type Server struct {
 
 	// Milestone evidence (optional; read-only inspection).
 	milestoneEvidence MilestoneEvidenceSource
+	economicAccounts  EconomicAccountReader
+	economicLedger    EconomicLedgerReader
 
 	// Services — constructed from deps in NewServer.
 	backtestSvc     *service.BacktestService
@@ -150,6 +153,21 @@ type StrategyRunner interface {
 // authority.
 type MilestoneEvidenceSource interface {
 	GetAssessment(context.Context, uuid.UUID) (*evidenceprogram.Assessment, error)
+}
+
+// EconomicAccountReader is the read-only account/capital surface made
+// available to the HTTP runtime. It intentionally excludes account and flow
+// creation.
+type EconomicAccountReader interface {
+	List(context.Context, int, int) ([]domain.Account, error)
+	GetByID(context.Context, uuid.UUID) (*domain.Account, error)
+	ListCapitalFlows(context.Context, uuid.UUID, int, int) ([]domain.CapitalFlow, error)
+	GetCapitalSummary(context.Context, uuid.UUID) (*domain.AccountCapitalSummary, error)
+}
+
+// EconomicLedgerReader exposes immutable transaction inspection only.
+type EconomicLedgerReader interface {
+	GetByID(context.Context, uuid.UUID) (*ledger.Transaction, error)
 }
 
 // ErrStrategyAlreadyRunning is returned by StrategyRunner when a run is
@@ -266,6 +284,8 @@ type Deps struct {
 
 	// Milestone evidence (optional; read-only inspection only).
 	MilestoneEvidence MilestoneEvidenceSource
+	EconomicAccounts  EconomicAccountReader
+	EconomicLedger    EconomicLedgerReader
 }
 
 // NewServer creates a new API server with all routes and middleware registered.
@@ -397,6 +417,8 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 		reportArtifacts:       deps.ReportArtifacts,
 		reportMetrics:         deps.ReportMetrics,
 		milestoneEvidence:     deps.MilestoneEvidence,
+		economicAccounts:      deps.EconomicAccounts,
+		economicLedger:        deps.EconomicLedger,
 	}
 	// Construct services from the assembled deps.
 	s.backtestSvc = service.NewBacktestService(
@@ -545,6 +567,13 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 		})
 
 		v1.Get("/evidence/assessments/{id}", s.handleGetMilestoneAssessment)
+		v1.Route("/economic", func(er chi.Router) {
+			er.Get("/accounts", s.handleListEconomicAccounts)
+			er.Get("/accounts/{id}", s.handleGetEconomicAccount)
+			er.Get("/accounts/{id}/capital-flows", s.handleListEconomicCapitalFlows)
+			er.Get("/accounts/{id}/capital-summary", s.handleGetEconomicCapitalSummary)
+			er.Get("/ledger-transactions/{id}", s.handleGetEconomicLedgerTransaction)
+		})
 
 		// Replay workbench
 		v1.Route("/replay", func(rr chi.Router) {

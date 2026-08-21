@@ -21,7 +21,7 @@ acquisition, broker routing, capital movement, or a real OVR-702 campaign.
 
 ### R1 — accounts and balanced ledger
 
-- [ ] Add `OVERHAUL_ACCOUNTS_READ_ENABLED=false` and expose read-only scored
+- [x] Add `OVERHAUL_ACCOUNTS_READ_ENABLED=false` and expose read-only scored
   account, capital-tier, and ledger projections.
 - [ ] Add an idempotent local bootstrap command for supported tiers, including
   $500 and $5 million; keep it unavailable from HTTP and disabled in runtime.

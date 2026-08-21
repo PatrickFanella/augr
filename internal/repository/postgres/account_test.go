@@ -51,6 +51,17 @@ func TestAccountRepoCreatesAccountWithOpeningCapital(t *testing.T) {
 	if got.ID != account.ID || !got.StartingCapital.Equal(decimal.NewFromInt(500)) {
 		t.Fatalf("GetByID() = %+v, want account %s with 500 starting capital", got, account.ID)
 	}
+	accounts, err := repo.List(ctx, 500, 0)
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	found := false
+	for _, listed := range accounts {
+		found = found || listed.ID == account.ID
+	}
+	if !found {
+		t.Fatalf("List() did not return created account %s", account.ID)
+	}
 	if string(got.CreationMetadata) != `{"purpose": "small-capital test"}` {
 		t.Fatalf("CreationMetadata = %s, want persisted object", got.CreationMetadata)
 	}

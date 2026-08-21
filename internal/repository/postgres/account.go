@@ -111,6 +111,39 @@ func (r *AccountRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Accoun
 	return account, nil
 }
 
+// List returns economic accounts in stable creation order for read-only
+// operator inspection.
+func (r *AccountRepo) List(ctx context.Context, limit, offset int) ([]domain.Account, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 100
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	rows, err := r.pool.Query(ctx, `SELECT
+		id, name, environment, venue, COALESCE(external_account_id, ''),
+		base_currency, storage_namespace, evidence_class,
+		starting_capital::TEXT, buying_power_multiplier::TEXT,
+		margin_profile, status, created_by, creation_metadata, created_at
+	FROM accounts ORDER BY created_at ASC, id ASC LIMIT $1 OFFSET $2`, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: list accounts: %w", err)
+	}
+	defer rows.Close()
+	accounts := make([]domain.Account, 0)
+	for rows.Next() {
+		account, scanErr := scanEconomicAccount(rows)
+		if scanErr != nil {
+			return nil, fmt.Errorf("postgres: scan account: %w", scanErr)
+		}
+		accounts = append(accounts, *account)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("postgres: list accounts: %w", err)
+	}
+	return accounts, nil
+}
+
 // RecordCapitalFlow appends one economic flow. An identical retry returns the
 // original row; reuse of the key for a different economic payload fails
 // closed.
