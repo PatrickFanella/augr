@@ -78,6 +78,9 @@ const ReplayPage = lazy(() =>
 const CopyTradingPage = lazy(() =>
   import('@/features/copy-trading/CopyTradingPage').then((m) => ({ default: m.CopyTradingPage })),
 )
+const OverhaulPage = lazy(() =>
+  import('@/features/overhaul/OverhaulPage').then((m) => ({ default: m.OverhaulPage })),
+)
 
 const routeFallback = <LoadingState />
 
@@ -109,6 +112,7 @@ export function createAppRouter() {
             { path: '/runs/:id', element: withSuspense(<RunDetailPage />) },
             { path: '/strategies', element: withSuspense(<StrategiesListPage />) },
             { path: '/copy-trading', element: withSuspense(<CopyTradingPage />) },
+            { path: '/overhaul', element: withSuspense(<OverhaulPage />) },
             { path: '/strategies/new', element: withSuspense(<StrategyCreatePage />) },
             { path: '/strategies/:id/edit', element: withSuspense(<StrategyEditPage />) },
             { path: '/strategies/:id', element: withSuspense(<StrategyDetailPage />) },

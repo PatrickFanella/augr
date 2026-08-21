@@ -154,6 +154,76 @@ export function createP0RestHandlers(options: P0MockHandlersOptions = {}) {
       return HttpResponse.json(buildSettings())
     }),
 
+    http.get(endpoint(apiBaseUrl, '/release/readiness'), async ({ request }) => {
+      await applyScenarioDelay(state)
+      const authError = authGuard(request, state)
+      if (authError) return authError
+      const error = scenarioError(state)
+      if (error) return error
+      return HttpResponse.json({
+        release_ready: state.scenario !== 'partial-service-failure',
+        live_trading_enabled: false,
+        capabilities: [
+          { name: 'stocks', mode: 'paper', ready: true, required: true },
+          { name: 'options', mode: 'paper', ready: true, required: true },
+          { name: 'polymarket', mode: 'paper', ready: state.scenario !== 'partial-service-failure', required: true, blockers: state.scenario === 'partial-service-failure' ? ['polymarket data unavailable'] : undefined },
+          { name: 'kalshi', mode: 'paper', ready: true, required: true },
+          { name: 'recovery_drills', mode: 'paper', ready: true, required: true },
+          { name: 'live_execution', mode: 'live', ready: false, required: false, blockers: ['incremental operator activation required'] },
+        ],
+        generated_at: fixtureDate,
+      })
+    }),
+
+    http.get(endpoint(apiBaseUrl, '/economic/accounts'), async ({ request }) => {
+      await applyScenarioDelay(state)
+      const authError = authGuard(request, state)
+      if (authError) return authError
+      const error = scenarioError(state)
+      if (error) return error
+      const data = state.scenario === 'empty-data' ? [] : [{
+        id: '00000000-0000-4000-8000-0000000000a1', name: 'Scored $500', environment: 'paper_scored', venue: 'simulation', base_currency: 'USD', storage_namespace: 'paper-scored-500', evidence_class: 'promotion_eligible', starting_capital: '500.00000000', buying_power_multiplier: '1.00000000', margin_profile: 'cash', status: 'active', created_by: 'augr-economic', creation_metadata: { tier: '500' }, created_at: fixtureDate,
+      }]
+      return HttpResponse.json({ data, total: data.length, limit: 100, offset: 0 })
+    }),
+
+    http.get(endpoint(apiBaseUrl, '/economic/accounts/:id/capital-summary'), async ({ request, params }) => {
+      await applyScenarioDelay(state)
+      const authError = authGuard(request, state)
+      if (authError) return authError
+      const error = scenarioError(state)
+      if (error) return error
+      return HttpResponse.json({ account_id: params.id, currency: 'USD', starting_capital: '500.00000000', deposits: '25.00000000', withdrawals: '10.00000000', net_capital: '515.00000000', flow_count: 3 })
+    }),
+
+    http.get(endpoint(apiBaseUrl, '/economic/accounts/:id/capital-flows'), async ({ request, params }) => {
+      await applyScenarioDelay(state)
+      const authError = authGuard(request, state)
+      if (authError) return authError
+      const error = scenarioError(state)
+      if (error) return error
+      const data = state.scenario === 'empty-data' ? [] : [{ id: '00000000-0000-4000-8000-0000000000b1', account_id: params.id, type: 'deposit', amount: '500.00000000', currency: 'USD', idempotency_key: 'account-opening:fixture', source: 'account_opening', metadata: { reason: 'opening_capital' }, effective_at: fixtureDate, observed_at: fixtureDate, created_at: fixtureDate }]
+      return HttpResponse.json({ data, total: data.length, limit: 100, offset: 0 })
+    }),
+
+    http.get(endpoint(apiBaseUrl, '/evidence/assessments/:id'), async ({ request, params }) => {
+      await applyScenarioDelay(state)
+      const authError = authGuard(request, state)
+      if (authError) return authError
+      const error = scenarioError(state)
+      if (error) return error
+      return HttpResponse.json({ id: params.id, sha256: 'a'.repeat(64), campaign: 'fixture-shadow-campaign', outcome: 'held', blockers: ['30 elapsed days are required'], parents: [], canonical: { schema: 'milestone-7-evidence-assessment-v1', outcome: 'held' } })
+    }),
+
+    http.get(endpoint(apiBaseUrl, '/economic/ledger-transactions/:id'), async ({ request, params }) => {
+      await applyScenarioDelay(state)
+      const authError = authGuard(request, state)
+      if (authError) return authError
+      const error = scenarioError(state)
+      if (error) return error
+      return HttpResponse.json({ id: params.id, account_id: '00000000-0000-4000-8000-0000000000a1', event_type: 'capital.deposit', idempotency_key: 'fixture-ledger', origin_type: 'operator', origin_id: 'fixture', effective_at: fixtureDate, observed_at: fixtureDate, metadata: {}, postings: [{ id: '00000000-0000-4000-8000-0000000000d1', transaction_id: params.id, idempotency_key: 'cash', ledger_account: 'cash', unit_kind: 'currency', unit: 'USD', amount: '25.00000000', metadata: {}, created_at: fixtureDate }, { id: '00000000-0000-4000-8000-0000000000d2', transaction_id: params.id, idempotency_key: 'capital', ledger_account: 'contributed_capital', unit_kind: 'currency', unit: 'USD', amount: '-25.00000000', metadata: {}, created_at: fixtureDate }], created_at: fixtureDate })
+    }),
+
     http.get(endpoint(apiBaseUrl, '/event-markets/summary'), async ({ request }) => {
       await applyScenarioDelay(state)
       const authError = authGuard(request, state)

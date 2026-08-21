@@ -1,7 +1,7 @@
 ---
 title: "Frontend Capability Surface Matrix"
 status: "active"
-updated: "2026-07-12"
+updated: "2026-08-21"
 tags: [frontend, api, operations, safety]
 ---
 
@@ -17,6 +17,10 @@ UI control. Live trading remains disabled.
 | Capability | Current surface | API coverage | Classification | Completion boundary |
 |---|---|---|---|---|
 | Runtime settings and readiness | `/settings` | `GET /settings` | Exposed, read-only | Effective environment, schema, broker mode, LLM readiness, and risk limits are visible. Secret values and mutation are excluded. |
+| Overhaul release readiness | `/overhaul` | `GET /release/readiness` | Exposed, read-only | Required paper capabilities, blockers, generation time, and the separately fenced live-execution state are visible. Readiness does not imply deployment, production promotion, or live authority. |
+| Explicit economic accounts and capital history | `/overhaul` | `GET /economic/accounts`, account detail, capital-summary, and capital-flow routes | Exposed, read-only, server-gated | Exact decimal starting capital, evidence namespace/class, margin profile, append-only deposits and withdrawals, and net capital are independently validated and displayed. Account bootstrap and all capital mutation remain local/runbook-only. |
+| Balanced economic ledger trace | `/overhaul` | `GET /economic/ledger-transactions/{id}` | Exposed, read-only, server-gated | An operator can resolve a known immutable transaction UUID to typed origin, effective/observed times, and signed posting lines. The UI cannot post, alter, or synthesize a transaction. |
+| Milestone evidence reconstruction | `/overhaul` | `GET /evidence/assessments/{id}` | Exposed, read-only | A known persisted assessment UUID resolves to its deterministic campaign outcome, blockers, parent count, SHA-256 digest, and canonical payload. The UI has no assessment-write or campaign-start authority. |
 | Core strategies, runs, events, orders, trades, portfolio, and risk | Existing current-shell routes | Primary operator endpoints | Exposed | These are the validated operator MVP. Mutating actions remain paper-gated or safety-confirmed. |
 | Event-market overview | `/event-markets` | Shared summary and Polymarket feed status | Exposed, read-only | Provider readiness and recorder health are visible without implying live readiness. |
 | Detailed Polymarket/Kalshi operations | None | Account, watched-market, trade, signal, discovery, and provider-specific routes | API-only | Phase 6 unified deterministic evidence, explicitly uncalibrated probability proxies, execution replay, reconciliation, and settlement. Provider-specific mutation controls remain API/runbook-only pending hardened operator workflows. |
@@ -32,6 +36,17 @@ UI control. Live trading remains disabled.
 | Universe and watchlist | None | Universe list, watchlist, refresh, and scan routes | API-only | Refresh/scan consumes data-provider capacity and can affect discovery. Keep it scheduled/API operated pending quota, freshness, and provenance UX. |
 | Market calendars | None | Earnings, economic, filings, analysis, and IPO routes | API-only | Raw provider calendars remain research APIs until normalization, source attribution, timezone, stale-state, and partial-provider behavior are consistent. |
 | Surfers bot operations | None | Separate bot/runtime documented in `docs/surfers-bot.md` | API/runtime-only | It has no authenticated Augr operator contract. Do not add a cosmetic dashboard until ownership, health, commands, and failure semantics are integrated. |
+
+## Total-overhaul adoption boundary
+
+`/overhaul` presents the runtime adoption sequence R0 through R6. R0 evidence
+inspection and R1 economic inspection are the only stages classified as
+available. R2 through R5 are labeled planned because the current application
+does not construct their new repositories or writers. R6 is labeled external
+because real 30–90 day elapsed campaigns require separately authorized
+candidate, provider, scheduler, and retention decisions. These labels are
+contract state, not progress decoration: no frontend control may make a later
+stage appear active merely because its additive domain code or migration exists.
 
 ## Required UI behavior
 
