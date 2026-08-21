@@ -58,7 +58,8 @@ func (repo *DatasetRepo) getDatasetPolicy(ctx context.Context, version string) (
 	var raw []byte
 	err := repo.pool.QueryRow(ctx, `SELECT id,schema_name,policy_version,sha256,canonical_bytes,created_at
 		FROM dataset_quality_policy_artifacts WHERE policy_version=$1`, version).Scan(
-		&artifact.ID, &artifact.Schema, &artifact.Version, &artifact.SHA256, &raw, &artifact.CreatedAt)
+		&artifact.ID, &artifact.Schema, &artifact.Version, &artifact.SHA256, &raw, &artifact.CreatedAt,
+	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, repository.ErrNotFound
 	}

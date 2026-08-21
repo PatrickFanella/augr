@@ -153,7 +153,8 @@ func TestDatasetRepoConcurrentWritersConvergeCompleteGraphs(t *testing.T) {
 		(SELECT count(*) FROM dataset_quality_results WHERE id=$2),
 		(SELECT count(*) FROM dataset_quality_checks WHERE result_id=$2),
 		(SELECT count(*) FROM dataset_quality_findings WHERE result_id=$2)`, fixture.manifest.ID(), fixture.clean.ID()).Scan(
-		&manifests, &partitionRows, &observationRows, &qualityRows, &checkRows, &findingRows); err != nil {
+		&manifests, &partitionRows, &observationRows, &qualityRows, &checkRows, &findingRows,
+	); err != nil {
 		t.Fatal(err)
 	}
 	wantObservations := 0
@@ -287,7 +288,8 @@ func TestDatasetRepoRetainedQualification(t *testing.T) {
 		(SELECT count(*) FROM dataset_quality_results),
 		(SELECT count(*) FROM dataset_quality_checks),
 		(SELECT count(*) FROM dataset_quality_findings)`).Scan(
-		&policies, &manifests, &partitions, &observations, &results, &checks, &findings); err != nil {
+		&policies, &manifests, &partitions, &observations, &results, &checks, &findings,
+	); err != nil {
 		t.Fatal(err)
 	}
 	t.Logf("retained policy=%s manifest=%s clean=%s quarantined=%s counts=%d/%d/%d/%d/%d/%d/%d",

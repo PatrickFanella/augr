@@ -59,7 +59,8 @@ func (repo *VenueReconciliationRepo) getPolicy(ctx context.Context, version stri
 	var raw []byte
 	err := repo.pool.QueryRow(ctx, `SELECT id,schema_name,policy_version,sha256,canonical_bytes,created_at
 		FROM venue_reconciliation_policy_artifacts WHERE policy_version=$1`, version).Scan(
-		&artifact.ID, &artifact.Schema, &artifact.Version, &artifact.SHA256, &raw, &artifact.CreatedAt)
+		&artifact.ID, &artifact.Schema, &artifact.Version, &artifact.SHA256, &raw, &artifact.CreatedAt,
+	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, repository.ErrNotFound
 	}

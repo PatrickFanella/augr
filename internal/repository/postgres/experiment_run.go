@@ -553,7 +553,8 @@ func (repo *ExperimentRunRepo) verifyProgramRow(ctx context.Context, value *expe
 	err := repo.pool.QueryRow(ctx, `SELECT version_id,version_sha256,compiler_kind,compiler_version,source_commit,source_tree_sha256,
 		decision_contract,adapter_kind,adapter_version,adapter_sha256,runner_contract FROM experiment_programs WHERE id=$1`, value.ID()).Scan(
 		&versionID, &versionSHA, &compilerKind, &compilerVersion, &sourceCommit, &sourceTreeSHA, &decisionContract,
-		&adapterKind, &adapterVersion, &adapterSHA, &runnerContract)
+		&adapterKind, &adapterVersion, &adapterSHA, &runnerContract,
+	)
 	if err != nil {
 		return fmt.Errorf("postgres: load normalized experiment program %s: %w", value.ID(), err)
 	}
@@ -667,7 +668,8 @@ func (repo *ExperimentRunRepo) verifyResultRows(ctx context.Context, value *expe
 		transition_count,fill_count,trim_scale(filled_quantity)::text,trim_scale(fee_total)::text FROM experiment_run_results WHERE id=$1`, value.ID()).Scan(
 		&experimentID, &programID, &planID, &accountID, &manifestID, &qualityID, &simulationVersion, &capitalVersion, &mode,
 		&metrics.StepCount, &metrics.NoopCount, &metrics.RejectedCount, &metrics.IntentCount, &metrics.OrderCount,
-		&metrics.TransitionCount, &metrics.FillCount, &quantity, &fees)
+		&metrics.TransitionCount, &metrics.FillCount, &quantity, &fees,
+	)
 	if err != nil {
 		return fmt.Errorf("postgres: load normalized experiment result %s: %w", value.ID(), err)
 	}

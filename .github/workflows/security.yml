@@ -44,14 +44,20 @@ jobs:
           fetch-depth: 0
 
       - name: TruffleHog secret scan
-        uses: trufflesecurity/trufflehog@main
-        with:
-          extra_args: --only-verified
+        run: |
+          version=3.97.0
+          archive="trufflehog_${version}_linux_amd64.tar.gz"
+          release="https://github.com/trufflesecurity/trufflehog/releases/download/v${version}"
+          curl --fail --silent --show-error --location --output "$archive" "$release/$archive"
+          curl --fail --silent --show-error --location --output checksums.txt "$release/trufflehog_${version}_checksums.txt"
+          grep "  $archive\$" checksums.txt | sha256sum --check --strict -
+          tar --extract --gzip --file "$archive" trufflehog
+          ./trufflehog git "file://$PWD" --only-verified --fail --no-update
 
   docker-scan:
     name: Docker Image Scan
     runs-on: ubuntu-latest
-    if: hashFiles('Dockerfile') != ''
+    if: github.server_url == 'https://github.com'
     steps:
       - uses: actions/checkout@v6
 
@@ -75,7 +81,6 @@ jobs:
   npm-audit:
     name: Frontend Dependency Audit
     runs-on: ubuntu-latest
-    if: hashFiles('web/package-lock.json') != ''
     steps:
       - uses: actions/checkout@v6
 

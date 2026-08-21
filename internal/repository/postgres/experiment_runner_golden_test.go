@@ -265,7 +265,8 @@ func TestExperimentRunnerGoldenResultChildStageRollback(t *testing.T) {
 				(SELECT count(*) FROM experiment_run_transition_ids),
 				(SELECT count(*) FROM experiment_run_fill_ids),
 				(SELECT count(*) FROM experiment_run_attempt_events WHERE type='completed')`).Scan(
-				&parents, &outcomes, &transitions, &fills, &completed); err != nil {
+				&parents, &outcomes, &transitions, &fills, &completed,
+			); err != nil {
 				t.Fatal(err)
 			}
 			if parents != 0 || outcomes != 0 || transitions != 0 || fills != 0 || completed != 0 {

@@ -16,6 +16,7 @@ jobs:
   analyze-go:
     name: Analyze Go
     runs-on: ubuntu-latest
+    if: github.server_url == 'https://github.com'
     steps:
       - uses: actions/checkout@v6
 
@@ -40,7 +41,7 @@ jobs:
   analyze-javascript:
     name: Analyze TypeScript/JavaScript
     runs-on: ubuntu-latest
-    if: hashFiles('web/package.json') != ''
+    if: github.server_url == 'https://github.com'
     steps:
       - uses: actions/checkout@v6
 
