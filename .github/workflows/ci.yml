@@ -120,18 +120,23 @@ jobs:
         if: github.server_url != 'https://github.com'
         run: go test -short -race -count=1 -coverprofile=coverage-unit.out ./...
 
-      - name: Run migrations
-        env:
-          DATABASE_URL: postgres://tradingagent:tradingagent@localhost:55432/tradingagent_test?sslmode=disable
+      - name: Configure integration database URL
         run: |
-          timeout 90 bash -c 'until pg_isready -d "$DATABASE_URL" >/dev/null 2>&1; do sleep 2; done'
+          database_container=$(docker ps --filter publish=55432 --filter ancestor=timescale/timescaledb:2.17.2-pg17 --format '{{.ID}}' | head -1)
+          test -n "$database_container"
+          database_host=$(docker inspect --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$database_container")
+          test -n "$database_host"
+          echo "DATABASE_CONTAINER=$database_container" >> "$GITHUB_ENV"
+          echo "DATABASE_URL=postgres://tradingagent:tradingagent@${database_host}:5432/tradingagent_test?sslmode=disable" >> "$GITHUB_ENV"
+
+      - name: Run migrations
+        run: |
+          timeout 90 bash -c 'until docker exec "$DATABASE_CONTAINER" pg_isready -U tradingagent -d tradingagent_test >/dev/null 2>&1; do sleep 2; done'
           find migrations -maxdepth 1 -type f -name '*.up.sql' -print | sort | while read -r migration; do
-            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"
+            docker exec -i "$DATABASE_CONTAINER" psql -U tradingagent -d tradingagent_test --single-transaction --set ON_ERROR_STOP=1 < "$migration"
           done
 
       - name: Run integration tests
-        env:
-          DATABASE_URL: postgres://tradingagent:tradingagent@localhost:55432/tradingagent_test?sslmode=disable
         run: go test -race -count=1 -run Integration -coverprofile=coverage-integration.out ./...
 
       - name: Merge coverage profiles
