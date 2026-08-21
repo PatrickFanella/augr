@@ -119,6 +119,9 @@ it does not remove the requirement to complete the real evidence program.
 - Schema-103 milestone persistence and the authenticated read-only runtime API
   pass focused race, missing/malformed/forgery, recursive reconstruction, and
   PostgreSQL restart tests. The runtime has no assessment write authority.
+- R1 runtime adoption is local and fail-closed: economic reads are authenticated
+  and disabled by default, while the deterministic six-tier bootstrap and
+  balanced capital-flow operator remain entirely outside HTTP and scheduling.
 - The local development PostgreSQL database was freshly migrated through
   `102|false`; a real `augr-evidence shadow-start` request with a nonexistent
   benchmark failed before writing, leaving campaign/day counts `0|0`.
@@ -127,10 +130,7 @@ it does not remove the requirement to complete the real evidence program.
 
 ## Next dependency-ordered work
 
-1. Execute R1 of the local runtime-adoption plan: disabled-by-default read-only
-   account/ledger projections, then an HTTP-inaccessible local tier bootstrap
-   and balanced ledger writer with PostgreSQL recovery tests.
-2. Separately authorize candidate selection, provider inputs, scheduler use,
+1. Separately authorize candidate selection, provider inputs, scheduler use,
    and retention before starting OVR-702. Elapsed time and real observations
    must not be synthesized.
 

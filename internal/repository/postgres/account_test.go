@@ -80,6 +80,13 @@ func TestAccountRepoCreatesAccountWithOpeningCapital(t *testing.T) {
 		!opening.Amount.Equal(account.StartingCapital) {
 		t.Fatalf("opening flow = %+v, want matching opening deposit", opening)
 	}
+	transaction, err := NewLedgerRepo(pool).GetByOrigin(ctx, account.ID, "capital_flow", opening.ID.String())
+	if err != nil {
+		t.Fatalf("GetByOrigin() error = %v", err)
+	}
+	if len(transaction.Postings) != 2 || !transaction.Postings[0].Amount.Add(transaction.Postings[1].Amount).IsZero() {
+		t.Fatalf("opening ledger transaction is not balanced: %+v", transaction)
+	}
 }
 
 func TestAccountRepoReplaysIdenticalCapitalFlow(t *testing.T) {

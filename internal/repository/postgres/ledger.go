@@ -650,6 +650,19 @@ func (repo *LedgerRepo) GetByID(ctx context.Context, id uuid.UUID) (*ledger.Tran
 	return transaction, nil
 }
 
+// GetByOrigin resolves the immutable transaction produced for an authoritative
+// source event, then reloads and validates its balanced postings.
+func (repo *LedgerRepo) GetByOrigin(ctx context.Context, accountID uuid.UUID, originType, originID string) (*ledger.Transaction, error) {
+	var id uuid.UUID
+	if err := repo.pool.QueryRow(ctx, `SELECT id FROM ledger_transactions WHERE account_id=$1 AND origin_type=$2 AND origin_id=$3`, accountID, originType, originID).Scan(&id); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, repository.ErrNotFound
+		}
+		return nil, fmt.Errorf("postgres: get ledger transaction origin: %w", err)
+	}
+	return repo.GetByID(ctx, id)
+}
+
 func scanLedgerTransaction(row accountRow) (*ledger.Transaction, error) {
 	var transaction ledger.Transaction
 	var metadata []byte

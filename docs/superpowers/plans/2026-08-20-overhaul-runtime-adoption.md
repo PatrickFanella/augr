@@ -23,12 +23,13 @@ acquisition, broker routing, capital movement, or a real OVR-702 campaign.
 
 - [x] Add `OVERHAUL_ACCOUNTS_READ_ENABLED=false` and expose read-only scored
   account, capital-tier, and ledger projections.
-- [ ] Add an idempotent local bootstrap command for supported tiers, including
+- [x] Add an idempotent local bootstrap command for supported tiers, including
   $500 and $5 million; keep it unavailable from HTTP and disabled in runtime.
-- [ ] Add `OVERHAUL_LEDGER_WRITE_ENABLED=false`; permit deposits and withdrawals
-  only through balanced schema-61 postings with immutable account identity.
-- [ ] Prove restart, duplicate-request, concurrent-write, withdrawal, and history
-  preservation behavior against disposable PostgreSQL.
+- [x] Keep capital mutation HTTP-inaccessible; `augr-economic capital-flow`
+  permits explicitly invoked local deposits/withdrawals only through the
+  schema-65 atomic balanced-ledger trigger and returns the validated transaction.
+- [x] Prove restart, duplicate-request, concurrent-write, withdrawal, and history
+  preservation behavior against disposable PostgreSQL and command tests.
 
 ### R2 — execution and reconciliation
 
