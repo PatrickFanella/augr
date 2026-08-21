@@ -241,19 +241,17 @@ jobs:
         run: |
           docker compose up --build -d app
           app_container=$(docker compose ps -q app)
-          database_container=$(docker compose ps -q postgres)
           test -n "$app_container"
-          test -n "$database_container"
-          app_host=$(docker inspect --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$app_container")
-          database_host=$(docker inspect --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$database_container")
-          case "$app_host" in
-            ''|*[!0-9.]*) echo "invalid app container IPv4 address: ${app_host}" >&2; exit 1 ;;
-          esac
-          case "$database_host" in
-            ''|*[!0-9.]*) echo "invalid database container IPv4 address: ${database_host}" >&2; exit 1 ;;
-          esac
-          echo "SMOKE_BASE_URL=http://${app_host}:8080" >> "$GITHUB_ENV"
-          echo "SMOKE_DATABASE_URL=postgres://postgres:postgres@${database_host}:5432/tradingagent?sslmode=disable" >> "$GITHUB_ENV"
+          compose_network=$(docker inspect --format '{{range $name, $_ := .NetworkSettings.Networks}}{{$name}}{{end}}' "$app_container")
+          test -n "$compose_network"
+          if docker inspect "$HOSTNAME" >/dev/null 2>&1; then
+            docker network connect "$compose_network" "$HOSTNAME"
+            echo "SMOKE_BASE_URL=http://app:8080" >> "$GITHUB_ENV"
+            echo "SMOKE_DATABASE_URL=postgres://postgres:postgres@postgres:5432/tradingagent?sslmode=disable" >> "$GITHUB_ENV"
+          else
+            echo "SMOKE_BASE_URL=http://127.0.0.1:8081" >> "$GITHUB_ENV"
+            echo "SMOKE_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5434/tradingagent?sslmode=disable" >> "$GITHUB_ENV"
+          fi
 
       - name: Wait for API
         run: |
