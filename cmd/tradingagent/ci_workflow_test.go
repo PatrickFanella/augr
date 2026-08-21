@@ -18,9 +18,10 @@ func TestCIWorkflowUsesDynamicMigrationsAndGeneratedSmokeJWTSecret(t *testing.T)
 	for _, want := range []string{
 		`SMOKE_JWT_SECRET=$(python3 -c 'import secrets; print(secrets.token_hex(32))')`,
 		`JWT_SECRET=${SMOKE_JWT_SECRET}`,
-		`pg_isready -d "$DATABASE_URL"`,
+		`docker ps --filter publish=55432 --filter ancestor=timescale/timescaledb:2.17.2-pg17`,
+		`docker exec "$DATABASE_CONTAINER" pg_isready -U tradingagent -d tradingagent_test`,
 		`find migrations -maxdepth 1 -type f -name '*.up.sql' -print | sort | while read -r migration; do`,
-		`psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"`,
+		`docker exec -i "$DATABASE_CONTAINER" psql -U tradingagent -d tradingagent_test --single-transaction --set ON_ERROR_STOP=1`,
 		`curl -fsS http://127.0.0.1:8080/healthz`,
 	} {
 		if !strings.Contains(workflow, want) {
