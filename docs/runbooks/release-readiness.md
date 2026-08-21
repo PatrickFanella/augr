@@ -8,8 +8,9 @@ updated: "2026-08-07"
 
 Live trading stays disabled throughout this gate. Query
 `GET /api/v1/release/readiness` with an authenticated operator token. Every
-required paper capability must be ready; `live_execution` remains a separate,
-non-required, blocked capability until a broker/market/strategy/capital-tier
+required paper capability must be ready. Polymarket remains visible as an
+optional, blocked historical capability and is not a release requirement for
+the US deployment. `live_execution` remains a separate, non-required, blocked capability until a broker/market/strategy/capital-tier
 activation is explicitly approved.
 
 Run the automated gate from the repository root:

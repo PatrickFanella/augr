@@ -869,21 +869,19 @@ func (o *JobOrchestrator) completeRun(run *pgrepo.JobRun, job *RegisteredJob, co
 // hydrateFromDB loads historical run stats from the database to restore
 // counters after a server restart.
 func (o *JobOrchestrator) hydrateFromDB() {
-	o.hydrateJobControls()
-	if o.deps.JobRunRepo == nil {
-		return
-	}
-	recoveryAt := time.Now().UTC()
-	const recoveryReason = "automation process restarted before the job persisted a terminal outcome"
-	recoveryCtx, recoveryCancel := context.WithTimeout(context.Background(), jobRunPersistenceTimeout)
-	recovered, recoveryErr := o.deps.JobRunRepo.FailIncomplete(recoveryCtx, recoveryAt, recoveryReason)
-	recoveryCancel()
-	if recoveryErr != nil {
-		o.logger.Error("automation: failed to recover incomplete job runs", slog.Any("error", recoveryErr))
-		o.disableAllJobs()
-		return
-	} else if recovered > 0 {
-		o.logger.Warn("automation: recovered incomplete job runs", slog.Int("runs", recovered))
+	if o.deps.JobRunRepo != nil {
+		recoveryAt := time.Now().UTC()
+		const recoveryReason = "automation process restarted before the job persisted a terminal outcome"
+		recoveryCtx, recoveryCancel := context.WithTimeout(context.Background(), jobRunPersistenceTimeout)
+		recovered, recoveryErr := o.deps.JobRunRepo.FailIncomplete(recoveryCtx, recoveryAt, recoveryReason)
+		recoveryCancel()
+		if recoveryErr != nil {
+			o.logger.Error("automation: failed to recover incomplete job runs", slog.Any("error", recoveryErr))
+			o.disableAllJobs()
+			return
+		} else if recovered > 0 {
+			o.logger.Warn("automation: recovered incomplete job runs", slog.Int("runs", recovered))
+		}
 	}
 	if o.deps.KalshiSettlementGateRepo != nil {
 		if state, err := o.deps.KalshiSettlementGateRepo.Get(context.Background(), "kalshi_settlement"); err == nil {
@@ -899,35 +897,42 @@ func (o *JobOrchestrator) hydrateFromDB() {
 		}
 	}
 
-	summaryCtx, summaryCancel := context.WithTimeout(context.Background(), jobRunPersistenceTimeout)
-	summaries, err := o.deps.JobRunRepo.Summaries(summaryCtx)
-	summaryCancel()
-	if err != nil {
-		o.logger.Warn("automation: failed to hydrate job stats from DB", slog.Any("error", err))
-		o.disableAllJobs()
-		return
+	if o.deps.JobRunRepo != nil {
+		summaryCtx, summaryCancel := context.WithTimeout(context.Background(), jobRunPersistenceTimeout)
+		summaries, err := o.deps.JobRunRepo.Summaries(summaryCtx)
+		summaryCancel()
+		if err != nil {
+			o.logger.Warn("automation: failed to hydrate job stats from DB", slog.Any("error", err))
+			o.disableAllJobs()
+			return
+		}
+
+		for _, s := range summaries {
+			job, ok := o.jobs[s.JobName]
+			if !ok {
+				continue
+			}
+			job.mu.Lock()
+			job.LastRun = s.LastRun
+			job.LastResult = s.LastResult
+			job.LastError = s.LastError
+			job.LastErrorAt = s.LastErrorAt
+			job.RunCount = s.RunCount
+			job.ErrorCount = s.ErrorCount
+			job.ConsecutiveFailures = s.ConsecutiveFailures
+			if shouldDisableAfterHydration(s.ConsecutiveFailures) {
+				job.Enabled = false
+			}
+			job.mu.Unlock()
+		}
+
+		o.logger.Info("automation: hydrated job stats from DB", slog.Int("jobs", len(summaries)))
 	}
 
-	for _, s := range summaries {
-		job, ok := o.jobs[s.JobName]
-		if !ok {
-			continue
-		}
-		job.mu.Lock()
-		job.LastRun = s.LastRun
-		job.LastResult = s.LastResult
-		job.LastError = s.LastError
-		job.LastErrorAt = s.LastErrorAt
-		job.RunCount = s.RunCount
-		job.ErrorCount = s.ErrorCount
-		job.ConsecutiveFailures = s.ConsecutiveFailures
-		if shouldDisableAfterHydration(s.ConsecutiveFailures) {
-			job.Enabled = false
-		}
-		job.mu.Unlock()
-	}
-
-	o.logger.Info("automation: hydrated job stats from DB", slog.Int("jobs", len(summaries)))
+	// Explicit durable operator controls are authoritative over historical
+	// auto-disable state. Hydrate them last, but only after run-state recovery
+	// succeeds, so a storage failure still disables every job fail-closed.
+	o.hydrateJobControls()
 }
 
 func (o *JobOrchestrator) hydrateJobControls() {

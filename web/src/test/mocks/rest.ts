@@ -166,7 +166,7 @@ export function createP0RestHandlers(options: P0MockHandlersOptions = {}) {
         capabilities: [
           { name: 'stocks', mode: 'paper', ready: true, required: true },
           { name: 'options', mode: 'paper', ready: true, required: true },
-          { name: 'polymarket', mode: 'paper', ready: state.scenario !== 'partial-service-failure', required: true, blockers: state.scenario === 'partial-service-failure' ? ['polymarket data unavailable'] : undefined },
+          { name: 'polymarket', mode: 'paper', ready: state.scenario !== 'partial-service-failure', required: false, blockers: state.scenario === 'partial-service-failure' ? ['polymarket data unavailable'] : undefined },
           { name: 'kalshi', mode: 'paper', ready: true, required: true },
           { name: 'recovery_drills', mode: 'paper', ready: true, required: true },
           { name: 'live_execution', mode: 'live', ready: false, required: false, blockers: ['incremental operator activation required'] },

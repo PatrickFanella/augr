@@ -39,8 +39,8 @@ type BuildInput struct {
 }
 
 func BuildReadiness(in BuildInput) ReadinessReport {
-	capability := func(name string, checks map[string]bool) Capability {
-		c := Capability{Name: name, Mode: "paper", Required: true, Ready: true}
+	capability := func(name string, required bool, checks map[string]bool) Capability {
+		c := Capability{Name: name, Mode: "paper", Required: required, Ready: true}
 		for label, ok := range checks {
 			if !ok {
 				c.Ready = false
@@ -52,11 +52,13 @@ func BuildReadiness(in BuildInput) ReadinessReport {
 	}
 	base := map[string]bool{"database unavailable": in.Database, "schema mismatch": in.Schema, "decision journal unavailable": in.DecisionJournal}
 	capabilities := []Capability{
-		capability("stocks", merge(base, map[string]bool{"scheduler unavailable": in.Scheduler})),
-		capability("options", merge(base, map[string]bool{"scheduler unavailable": in.Scheduler, "options data unavailable": in.OptionsData})),
-		capability("polymarket", merge(base, map[string]bool{"polymarket data unavailable": in.PolymarketData, "settlement job unavailable": in.PolymarketSettlement})),
-		capability("kalshi", merge(base, map[string]bool{"kalshi data unavailable": in.KalshiData, "settlement job unavailable": in.KalshiSettlement})),
-		capability("recovery_drills", map[string]bool{"required recovery drills not verified": in.RecoveryDrillsPassed}),
+		capability("stocks", true, merge(base, map[string]bool{"scheduler unavailable": in.Scheduler})),
+		capability("options", true, merge(base, map[string]bool{"scheduler unavailable": in.Scheduler, "options data unavailable": in.OptionsData})),
+		// Polymarket remains visible for historical research, but it is not a
+		// release requirement in deployments where venue access is retired.
+		capability("polymarket", false, merge(base, map[string]bool{"polymarket data unavailable": in.PolymarketData, "settlement job unavailable": in.PolymarketSettlement})),
+		capability("kalshi", true, merge(base, map[string]bool{"kalshi data unavailable": in.KalshiData, "settlement job unavailable": in.KalshiSettlement})),
+		capability("recovery_drills", true, map[string]bool{"required recovery drills not verified": in.RecoveryDrillsPassed}),
 		{Name: "live_execution", Mode: "live", Ready: false, Required: false, Blockers: []string{"incremental operator activation required"}},
 	}
 	ready := true
