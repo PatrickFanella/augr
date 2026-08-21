@@ -230,6 +230,12 @@ jobs:
           find migrations -maxdepth 1 -type f -name '*.up.sql' -print | sort | while read -r migration; do
             docker compose exec -T postgres psql -U postgres -d tradingagent --single-transaction --set ON_ERROR_STOP=1 < "$migration"
           done
+          schema_version=$(find migrations -maxdepth 1 -type f -name '*.up.sql' -printf '%f\n' | sort | tail -1 | sed -E 's/^0*([0-9]+)_.*/\1/')
+          case "$schema_version" in
+            ''|*[!0-9]*) echo "invalid latest schema version: ${schema_version}" >&2; exit 1 ;;
+          esac
+          docker compose exec -T postgres psql -U postgres -d tradingagent --set ON_ERROR_STOP=1 --command \
+            "CREATE TABLE schema_migrations (version bigint NOT NULL PRIMARY KEY, dirty boolean NOT NULL); INSERT INTO schema_migrations (version, dirty) VALUES (${schema_version}, false);"
 
       - name: Configure smoke targets
         run: |

@@ -71,9 +71,11 @@ func TestSmokeEndToEnd(t *testing.T) {
 		"name":          "Smoke Strategy",
 		"ticker":        "SMOKE",
 		"market_type":   "stock",
-		"status":        domain.StrategyStatusActive,
 		"is_paper":      true,
 		"schedule_cron": "",
+		"config": map[string]any{
+			"risk_config": map[string]any{"position_size_pct": 0.5},
+		},
 	}
 	createResp := doSmokeJSONRequest(t, http.MethodPost, baseURL+"/api/v1/strategies", strategyPayload, tokenPair.AccessToken)
 	defer func() {
@@ -97,7 +99,7 @@ func TestSmokeEndToEnd(t *testing.T) {
 		t.Fatalf("saved strategy ticker = %q, want %q", savedStrategy.Ticker, createdStrategy.Ticker)
 	}
 
-	wsConn := openSmokeWebSocket(t, baseURL, createdStrategy.ID)
+	wsConn := openSmokeWebSocket(t, baseURL, createdStrategy.ID, tokenPair.AccessToken)
 	defer func() {
 		_ = wsConn.Close()
 	}()
@@ -106,20 +108,16 @@ func TestSmokeEndToEnd(t *testing.T) {
 	defer func() {
 		_ = runResp.Body.Close()
 	}()
-	if runResp.StatusCode != http.StatusOK {
-		t.Fatalf("manual run status = %d, want %d", runResp.StatusCode, http.StatusOK)
+	if runResp.StatusCode != http.StatusAccepted {
+		t.Fatalf("manual run status = %d, want %d", runResp.StatusCode, http.StatusAccepted)
 	}
-	var runResult apiserver.StrategyRunResult
-	decodeSmokeJSON(t, runResp, &runResult)
-
-	if runResult.Run.Status != domain.PipelineStatusCompleted {
-		t.Fatalf("run status = %q, want %q", runResult.Run.Status, domain.PipelineStatusCompleted)
-	}
-	if runResult.Signal != domain.PipelineSignalBuy {
-		t.Fatalf("run signal = %q, want %q", runResult.Signal, domain.PipelineSignalBuy)
+	var accepted map[string]string
+	decodeSmokeJSON(t, runResp, &accepted)
+	if accepted["status"] != "accepted" || accepted["strategy_id"] != createdStrategy.ID.String() {
+		t.Fatalf("manual run response = %v, want accepted strategy %s", accepted, createdStrategy.ID)
 	}
 
-	eventTypes := readSmokeEvents(t, wsConn, 4)
+	eventTypes, runID := readSmokeEvents(t, wsConn, 4)
 	for _, want := range []apiserver.EventType{
 		apiserver.EventPipelineStart,
 		apiserver.EventSignal,
@@ -130,8 +128,11 @@ func TestSmokeEndToEnd(t *testing.T) {
 			t.Fatalf("websocket events = %v, missing %q", eventTypes, want)
 		}
 	}
+	if runID == uuid.Nil {
+		t.Fatal("websocket events did not identify the pipeline run")
+	}
 
-	savedRun, err := runRepo.Get(ctx, runResult.Run.ID, runResult.Run.TradeDate)
+	savedRun, err := runRepo.GetByID(ctx, runID)
 	if err != nil {
 		t.Fatalf("runRepo.Get() error = %v", err)
 	}
@@ -142,7 +143,7 @@ func TestSmokeEndToEnd(t *testing.T) {
 		t.Fatalf("saved run signal = %q, want %q", savedRun.Signal, domain.PipelineSignalBuy)
 	}
 
-	decisions, err := decisionRepo.GetByRun(ctx, runResult.Run.ID, repository.AgentDecisionFilter{}, 20, 0)
+	decisions, err := decisionRepo.GetByRun(ctx, savedRun.ID, repository.AgentDecisionFilter{}, 20, 0)
 	if err != nil {
 		t.Fatalf("decisionRepo.GetByRun() error = %v", err)
 	}
@@ -153,7 +154,7 @@ func TestSmokeEndToEnd(t *testing.T) {
 		t.Fatalf("decision count = %d, want at least 9", len(decisions))
 	}
 
-	orders, err := orderRepo.GetByRun(ctx, runResult.Run.ID, repository.OrderFilter{}, 10, 0)
+	orders, err := orderRepo.GetByRun(ctx, savedRun.ID, repository.OrderFilter{}, 10, 0)
 	if err != nil {
 		t.Fatalf("orderRepo.GetByRun() error = %v", err)
 	}
@@ -195,7 +196,8 @@ func waitForSmokeHealth(t *testing.T, ctx context.Context, healthURL string) {
 			var health map[string]string
 			decodeErr := json.NewDecoder(resp.Body).Decode(&health)
 			_ = resp.Body.Close()
-			if resp.StatusCode == http.StatusOK && decodeErr == nil && health["status"] == "all-ok" {
+			if resp.StatusCode == http.StatusOK && decodeErr == nil &&
+				health["status"] == "ok" && health["db"] == "ok" && health["redis"] == "ok" {
 				return
 			}
 		}
@@ -203,7 +205,7 @@ func waitForSmokeHealth(t *testing.T, ctx context.Context, healthURL string) {
 		select {
 		case <-time.After(500 * time.Millisecond):
 		case <-ctx.Done():
-			t.Fatalf("timed out waiting for health endpoint %s to return status %q", healthURL, "all-ok")
+			t.Fatalf("timed out waiting for health endpoint %s to report healthy API, database, and Redis", healthURL)
 		}
 	}
 }
@@ -244,7 +246,7 @@ func decodeSmokeJSON(t *testing.T, resp *http.Response, target any) {
 	}
 }
 
-func openSmokeWebSocket(t *testing.T, baseURL string, strategyID uuid.UUID) *websocket.Conn {
+func openSmokeWebSocket(t *testing.T, baseURL string, strategyID uuid.UUID, accessToken string) *websocket.Conn {
 	t.Helper()
 
 	u, err := url.Parse(baseURL)
@@ -257,6 +259,9 @@ func openSmokeWebSocket(t *testing.T, baseURL string, strategyID uuid.UUID) *web
 		u.Scheme = "ws"
 	}
 	u.Path = "/ws"
+	query := u.Query()
+	query.Set("token", accessToken)
+	u.RawQuery = query.Encode()
 
 	conn, _, err := websocket.DefaultDialer.Dial(u.String(), http.Header{
 		"Origin": []string{"http://localhost"},
@@ -275,10 +280,11 @@ func openSmokeWebSocket(t *testing.T, baseURL string, strategyID uuid.UUID) *web
 	return conn
 }
 
-func readSmokeEvents(t *testing.T, conn *websocket.Conn, count int) []apiserver.EventType {
+func readSmokeEvents(t *testing.T, conn *websocket.Conn, count int) ([]apiserver.EventType, uuid.UUID) {
 	t.Helper()
 
 	types := make([]apiserver.EventType, 0, count)
+	var runID uuid.UUID
 	for len(types) < count {
 		if err := conn.SetReadDeadline(time.Now().Add(10 * time.Second)); err != nil {
 			t.Fatalf("SetReadDeadline() error = %v", err)
@@ -290,9 +296,12 @@ func readSmokeEvents(t *testing.T, conn *websocket.Conn, count int) []apiserver.
 		if msg.Type == "" {
 			continue
 		}
+		if msg.RunID != uuid.Nil {
+			runID = msg.RunID
+		}
 		types = append(types, msg.Type)
 	}
-	return types
+	return types, runID
 }
 
 func firstNonEmpty(values ...string) string {

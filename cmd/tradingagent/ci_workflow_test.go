@@ -27,6 +27,8 @@ func TestCIWorkflowUsesDynamicMigrationsAndGeneratedSmokeJWTSecret(t *testing.T)
 		`docker exec -i "$DATABASE_CONTAINER" psql -U tradingagent -d tradingagent_test --single-transaction --set ON_ERROR_STOP=1`,
 		`docker compose exec -T postgres pg_isready -U postgres -d tradingagent`,
 		`docker compose exec -T postgres psql -U postgres -d tradingagent --single-transaction --set ON_ERROR_STOP=1`,
+		`schema_version=$(find migrations -maxdepth 1 -type f -name '*.up.sql' -printf '%f\n' | sort | tail -1`,
+		`CREATE TABLE schema_migrations (version bigint NOT NULL PRIMARY KEY, dirty boolean NOT NULL)`,
 		`app_container=$(docker compose ps -q app)`,
 		`database_container=$(docker compose ps -q postgres)`,
 		`SMOKE_BASE_URL=http://${app_host}:8080`,
