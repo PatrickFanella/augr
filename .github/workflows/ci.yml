@@ -168,6 +168,8 @@ jobs:
   smoke-tests:
     name: Smoke tests
     runs-on: ubuntu-latest
+    env:
+      COMPOSE_FILE: docker-compose.yml:docker-compose.smoke.yml
     needs:
       - changes
       - integration-tests
@@ -219,7 +221,7 @@ jobs:
           EOF
 
       - name: Start docker compose
-        run: docker compose up --build -d
+        run: docker compose up --build -d postgres redis app
 
       - name: Run migrations
         run: |
