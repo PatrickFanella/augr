@@ -32,9 +32,10 @@ func TestCIWorkflowUsesDynamicMigrationsAndGeneratedSmokeJWTSecret(t *testing.T)
 		`CREATE TABLE schema_migrations (version bigint NOT NULL PRIMARY KEY, dirty boolean NOT NULL)`,
 		`docker compose up --build -d app`,
 		`app_container=$(docker compose ps -q app)`,
-		`database_container=$(docker compose ps -q postgres)`,
-		`SMOKE_BASE_URL=http://${app_host}:8080`,
-		`SMOKE_DATABASE_URL=postgres://postgres:postgres@${database_host}:5432/tradingagent?sslmode=disable`,
+		`compose_network=$(docker inspect --format '{{range $name, $_ := .NetworkSettings.Networks}}{{$name}}{{end}}' "$app_container")`,
+		`docker network connect "$compose_network" "$HOSTNAME"`,
+		`SMOKE_BASE_URL=http://app:8080`,
+		`SMOKE_DATABASE_URL=postgres://postgres:postgres@postgres:5432/tradingagent?sslmode=disable`,
 		`curl -fsS "${SMOKE_BASE_URL}/healthz"`,
 	} {
 		if !strings.Contains(workflow, want) {
