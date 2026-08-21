@@ -50,6 +50,10 @@ func Validate(cfg Config) error {
 	validateBrokerCredentials(&errs, "ALPACA_API_KEY", cfg.Brokers.Alpaca.APIKey, "ALPACA_API_SECRET", cfg.Brokers.Alpaca.APISecret)
 	validateBrokerCredentials(&errs, "BINANCE_API_KEY", cfg.Brokers.Binance.APIKey, "BINANCE_API_SECRET", cfg.Brokers.Binance.APISecret)
 
+	if _, err := cfg.Paper.EvaluationProfile(); err != nil {
+		errs = append(errs, err.Error())
+	}
+
 	if cfg.Risk.MaxPositionSizePct <= 0 || cfg.Risk.MaxPositionSizePct > 1 {
 		errs = append(errs, "RISK_MAX_POSITION_SIZE_PCT must be between 0 and 1")
 	}

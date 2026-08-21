@@ -1,0 +1,325 @@
+{
+  "surface": "report",
+  "manifest": {
+    "version": 1,
+    "surface": "report",
+    "title": "Augr Profitability Audit: Why It Has Not Produced a Defensible Edge",
+    "description": "Full audit of profitability, evidence, accounting, execution, risk, LLM decisioning, and practical paths to a profitable system.",
+    "generatedAt": "2026-08-14T21:54:52Z",
+    "sources": [
+      {
+        "id": "pipeline_runs",
+        "label": "Production PostgreSQL — pipeline_runs",
+        "query": {
+          "engine": "PostgreSQL 16 / TimescaleDB",
+          "language": "sql",
+          "executed_at": "2026-08-14T21:10:00Z",
+          "tables_used": ["public.pipeline_runs"],
+          "description": "Pipeline outcomes, daily reliability, signal outcomes, and failure classes.",
+          "sql": "SELECT status, signal, trade_date, error_message FROM public.pipeline_runs;",
+          "metric_definitions": [
+            "Completion rate = completed pipeline runs divided by all pipeline runs.",
+            "HOLD share = completed runs whose final signal is HOLD divided by all completed runs."
+          ]
+        }
+      },
+      {
+        "id": "strategy_inventory",
+        "label": "Production PostgreSQL — strategies and backtests",
+        "query": {
+          "engine": "PostgreSQL 16 / TimescaleDB",
+          "language": "sql",
+          "executed_at": "2026-08-14T21:10:00Z",
+          "tables_used": ["public.strategies", "public.backtest_configs", "public.backtest_runs"],
+          "description": "Strategy inventory, lifecycle state, thesis coverage, backtest configuration, and persisted evidence.",
+          "sql": "SELECT s.id, s.ticker, s.name, s.status, s.is_active, s.active_thesis, bc.id AS backtest_config_id, br.id AS backtest_run_id, br.metrics, br.trade_log, br.simulation_version, br.input_hash FROM public.strategies s LEFT JOIN public.backtest_configs bc ON bc.strategy_id = s.id LEFT JOIN public.backtest_runs br ON br.backtest_config_id = bc.id;",
+          "metric_definitions": ["Backtest coverage = persisted backtest runs divided by configured backtests."]
+        }
+      },
+      {
+        "id": "decision_costs",
+        "label": "Production PostgreSQL — agent_decisions",
+        "query": {
+          "engine": "PostgreSQL 16 / TimescaleDB",
+          "language": "sql",
+          "executed_at": "2026-08-14T21:10:00Z",
+          "tables_used": ["public.agent_decisions"],
+          "description": "Agent-decision volume, token usage, and recorded cost.",
+          "sql": "SELECT count(*) AS decisions, sum(coalesce(prompt_tokens,0)) AS prompt_tokens, sum(coalesce(completion_tokens,0)) AS completion_tokens, sum(coalesce(cost_usd,0)) AS recorded_cost_usd FROM public.agent_decisions;",
+          "metric_definitions": ["Total tokens = prompt tokens plus completion tokens.", "Recorded model cost excludes any cost not written to cost_usd."]
+        }
+      },
+      {
+        "id": "pnl_reconciliation",
+        "label": "Production PostgreSQL — trades and positions",
+        "query": {
+          "engine": "PostgreSQL 16 / TimescaleDB",
+          "language": "sql",
+          "executed_at": "2026-08-14T21:10:00Z",
+          "tables_used": ["public.trades", "public.positions"],
+          "description": "Closed stock cash P&L, closed Kalshi position P&L, and open-position marking coverage.",
+          "sql": "WITH stock AS (SELECT sum(CASE WHEN side='sell' THEN quantity*price ELSE -quantity*price END)-sum(coalesce(fee,0)) AS realized_pnl FROM public.trades WHERE ticker NOT LIKE 'KX%'), kalshi AS (SELECT sum(coalesce(realized_pnl,0)) AS realized_pnl FROM public.positions WHERE closed_at IS NOT NULL), open_kalshi AS (SELECT count(*) AS open_positions, count(*) FILTER (WHERE current_price IS NULL) AS unmarked_positions FROM public.positions WHERE closed_at IS NULL) SELECT stock.realized_pnl AS stock_realized_pnl, kalshi.realized_pnl AS kalshi_realized_pnl, stock.realized_pnl+kalshi.realized_pnl AS known_realized_net, open_kalshi.open_positions, open_kalshi.unmarked_positions FROM stock, kalshi, open_kalshi;",
+          "metric_definitions": ["Known realized net is a narrow arithmetic reconciliation, not a consolidated portfolio return."]
+        }
+      },
+      {"id": "research_synthesis", "label": "Augr Trading Research synthesis", "path": "docs/Augr Trading Research/Final Combined Automated Trading Synthesis.md"},
+      {"id": "strategy_catalog", "label": "Augr Strategy Catalog", "path": "docs/Augr Trading Research/Strategy Catalog.md"},
+      {"id": "validation_plan", "label": "Augr paper-trading validation plan", "path": "docs/paper-trading-validation-plan.md"},
+      {"id": "backtest_code", "label": "Augr backtest metrics implementation", "path": "internal/backtest/metrics.go"},
+      {"id": "paper_code", "label": "Augr paper broker implementation", "path": "internal/execution/paper/broker.go"},
+      {"id": "cboe", "label": "Cboe strategy benchmarks", "href": "https://www.cboe.com/us/indices/benchmark_indices/"},
+      {"id": "cboe_study", "label": "Cboe/Wilshire options benchmark study", "href": "https://cdn.cboe.com/resources/spx/wilshire-options-based-benchmark-indexes-2019.pdf"},
+      {"id": "finra", "label": "FINRA options assignment guidance", "href": "https://www.finra.org/investors/insights/trading-options-understanding-assignment"},
+      {"id": "kalshi_fees", "label": "Kalshi fee schedule — July 2026", "href": "https://kalshi.com/docs/kalshi-fee-schedule.pdf"},
+      {"id": "polymarket_v2", "label": "Polymarket CLOB V2", "href": "https://docs.polymarket.com/v2-migration"},
+      {"id": "polymarket_rebates", "label": "Polymarket maker rebates", "href": "https://docs.polymarket.com/programs/maker-rebates"},
+      {"id": "momentum", "label": "Jegadeesh and Titman momentum evidence", "href": "https://www.nber.org/papers/w7159"},
+      {"id": "value_momentum", "label": "Value and Momentum Everywhere", "href": "https://onlinelibrary.wiley.com/doi/10.1111/jofi.12021"},
+      {"id": "prediction_arb", "label": "Executable prediction-market arbitrage", "href": "https://arxiv.org/abs/2608.00666"},
+      {"id": "audit_synthesis", "label": "Reproducible audit synthesis and reviewed datasets", "path": "docs/reports/2026-08-14-augr-profitability-audit.artifact.json"},
+      {
+        "id": "audit_root_causes",
+        "label": "Audit root-cause synthesis",
+        "query": {
+          "engine": "PostgreSQL",
+          "language": "sql",
+          "description": "Reconstructs the ranked root-cause table from the reviewed audit evidence.",
+          "sql": "SELECT * FROM (VALUES (1,'No validated edge pipeline','171 strategies, 110 configs, 1 backtest, 5 closed campaigns/lots.','Cannot distinguish skill from noise or allocate capital.','Verified'),(2,'Operational unreliability','67.1% failed; LLM-host failures dominate.','Most research never reaches a decision; samples are biased.','Verified'),(3,'Decision architecture collapses to HOLD','99.35% HOLD; no stock BUY final signal.','Capital stays idle while compute accumulates.','Verified'),(4,'LLM narrative treated as signal','40,650 decisions and 184.9M tokens; inconsistent context.','High complexity and cost without calibrated predictive lift.','Verified / likely impact'),(5,'Backtest false comfort','Bar-return win rate/PF; one trade; zero costs.','Weak strategies can look statistically impressive.','Verified'),(6,'Prediction execution is non-economic','0.88 fair probability, fake depth, huge zero-fee fills.','Paper edge cannot survive executable size and fees.','Verified'),(7,'Strategy sprawl and lifecycle conflict','All active; 42 paused; duplicate variants; no theses.','Multiple testing, duplicate exposure, scheduling ambiguity.','Verified'),(8,'Accounting and provenance gaps','No marks, zero fees/costs, incomplete attribution and flow baseline.','Return, alpha, drawdown, and cost cannot be measured.','Verified'),(9,'Paper/live parity gaps','Immediate zero-cost fills; sub-cent and assignment differences.','Paper results overstate realizable performance.','Verified'),(10,'No economic objective','Screens omit benchmark alpha, capacity, cost, and lockup.','Local KPIs can pass while economic value is destroyed.','Verified')) AS t(priority,cause,evidence,impact,confidence);"
+        }
+      },
+      {
+        "id": "audit_strategy_recommendations",
+        "label": "Audit strategy recommendations",
+        "query": {
+          "engine": "PostgreSQL",
+          "language": "sql",
+          "description": "Reconstructs the strategy-priority table produced from internal research and external evidence.",
+          "sql": "SELECT * FROM (VALUES (1.0,'Passive benchmark core','Sets opportunity cost and protects capital.','SPY/VT or agreed benchmark; treat as control.','Market beta and drawdown.'),(2.0,'Quality-filtered wheel','Transparent option-writing structure with public benchmarks.','20–30 delta CSP, 30–45 DTE; 15–25 delta calls after assignment; strict caps.','Short-vol tails, capped upside, assignment.'),(3.0,'Momentum + quality + low volatility','Long empirical record; deterministic and testable.','Monthly 12–1 rank, quality screen, volatility scaling, turnover limits.','Momentum crashes and crowding.'),(4.0,'Time-series trend','Diversifies equity beta and short volatility.','Multi-horizon trend across liquid ETFs/futures with volatility target.','Whipsaw and operational complexity.'),(4.5,'Selected 13F replication','Deterministic disclosure strategy with some academic support and low LLM dependence.','Point-in-time replay, manager selection rule, quote-based fills, multi-session drift control, and cash for omitted/unmapped weight.','45-day delay, incomplete holdings, stale conviction, concentration, and hidden shorts.'),(5.0,'Defined-risk volatility premium','Harvests implied-vs-realized spread with bounded loss.','Put spreads or limited condors only when conservative edge clears costs.','Gap and regime risk.'),(6.0,'Complete-set prediction arbitrage','Structural payoff is more defensible than LLM direction.','Reserve all legs; exact fees/size; positive orphan-leg worst case.','Partial fills and resolution mismatch.'),(7.0,'Maker-first event-market quoting','Targets spread and rebates instead of every event forecast.','Post-only, inventory skew, stale cancel, tiny limits.','Adverse selection and latency.'),(8.0,'Calibrated weather/macro models','External data creates falsifiable probabilities.','Versioned model, Brier score by bucket, timestamps, abstention.','Data revision, drift, wording.')) AS t(priority,strategy,why,implementation,principal_risk);"
+        }
+      },
+      {
+        "id": "audit_roadmap",
+        "label": "Audit 90-day roadmap",
+        "query": {
+          "engine": "PostgreSQL",
+          "language": "sql",
+          "description": "Reconstructs the recommended gated turnaround roadmap.",
+          "sql": "SELECT * FROM (VALUES ('0 — Stop the factory','Days 0–7','Freeze discovery; pause legacy strategies; reconcile Kalshi; remove LLM debate from scheduled hot path.','No new strategy objects; deterministic no-trade fallback; evidence preserved.'),('1 — Fix ledger and simulator','Days 1–21','Unified cash/flow/P&L; marks; costs; partial fills; assignment; sub-cent parity; provider cost.','Every order reconciles; paper/live rule parity tests pass.'),('2 — Build the edge lab','Days 14–45','3–5 baselines; walk-forward and purged OOS; benchmark, regime, multiple-testing, cost sensitivity.','One candidate has positive after-cost OOS expectancy with uncertainty.'),('3 — Shadow live','Days 35–75','Live quotes, no capital; compare fill, latency, staleness, adverse selection.','Fill gap <20% of gross edge; no critical data defect.'),('4 — Tiny-capital pilot','Days 60–90','One sleeve at a time; 0.25%–0.50% portfolio risk; hard drawdown/stale-data stops.','After-cost live expectancy stays positive; reconciliation exact.'),('5 — Scale or stop','Day 90','Scale evidence-backed sleeves; otherwise pivot to analytics or passive core.','Written allocation decision with benchmark and total ownership cost.')) AS t(phase,timing,actions,exit_gate);"
+        }
+      },
+      {"id": "copy_main_design", "label": "Copy-trading design on main, commit 5517405", "path": "git/main@5517405/docs/design/copy-trading.md"},
+      {"id": "copy_main_code", "label": "Copy-trading implementation on main, commit 5517405", "path": "git/main@5517405/internal/copytrading"},
+      {"id": "sec_13f_faq", "label": "SEC Form 13F frequently asked questions", "href": "https://www.sec.gov/rules-regulations/staff-guidance/division-investment-management-frequently-asked-questions/frequently-asked-questions-about-form-13f"},
+      {"id": "copycat_nber", "label": "NBER — Copycat Funds", "href": "https://www.nber.org/papers/w8653"},
+      {
+        "id": "copy_trading_audit_source",
+        "label": "Copy-trading MVP readiness audit",
+        "query": {
+          "engine": "PostgreSQL",
+          "language": "sql",
+          "description": "Reconstructs the code-readiness assessment from main commit 5517405 and the production schema check.",
+          "sql": "SELECT * FROM (VALUES ('Deterministic target construction','Yes','Strong foundation','positive','Keep LLMs outside the order path.'),('Paper-only boundary','Yes','Correct for an unvalidated strategy','positive','Retain until all promotion gates pass.'),('13F disclosure timing','Stored, not gated','Quarter-end holdings may be published 45 days later','high','Enforce maximum publication and ingestion age.'),('Instrument mapping','Manual verified CUSIP mapping','Safe but coverage and corporate-action maintenance are unknown','medium','Measure mapped weight and stale mappings by manager.'),('Price and spread controls','Daily close; spread defaults to zero','Stale-price check absent and spread gate is ineffective','critical','Use quote timestamps, NBBO spread, and stale-data rejection.'),('Turnover and drift','25% one-pass scaling','Residual target drift is not completed on later sessions','critical','Add bounded multi-session reconciliation independent of new filings.'),('Execution realism','Shared immediate-fill paper broker','Fees and slippage remain zero','critical','Use the same cost and partial-fill model required elsewhere.'),('Execution attribution','Backing strategy per subscription','Isolates positions but adds fake strategies and skips generic origin design','medium','Implement copy_subscription execution origin.'),('Historical evaluation','Not implemented','No after-publication return, tracking error, alpha, or cost evidence','critical','Build point-in-time multi-filing replay before activation.'),('Deployed evidence','None; production schema is 62','Migration 63 is on main but not deployed to the audited database','high','Deploy to a clean paper environment and collect observations.'),('Automated tests','6 feature tests; full Go suite passes','Good smoke coverage, insufficient property and integration coverage','medium','Add amendment, concurrency, restart, stale-data, and accounting tests.')) AS t(area,implemented,audit_read,severity,required_before_evaluation);"
+        }
+      }
+    ],
+    "cards": [
+      {"id": "known_net", "dataset": "audit_kpis", "sourceId": "pnl_reconciliation", "description": "Known realized P&L before unrecorded costs; not a consolidated return.", "metrics": [{"label": "Known realized net", "field": "known_realized_net", "format": "currency"}, {"label": "Closed stock campaigns", "field": "closed_stock_campaigns", "format": "number"}, {"label": "Open unmarked Kalshi", "field": "open_unmarked_kalshi", "format": "number"}]},
+      {"id": "completion", "dataset": "audit_kpis", "sourceId": "pipeline_runs", "description": "Share of persisted pipeline runs that completed.", "metrics": [{"label": "Pipeline completion", "field": "pipeline_completion_rate", "format": "percent"}, {"label": "Failed runs", "field": "failed_runs", "format": "compact"}]},
+      {"id": "hold_rate", "dataset": "audit_kpis", "sourceId": "pipeline_runs", "description": "Share of completed runs ending in HOLD.", "metrics": [{"label": "Completed runs ending HOLD", "field": "completed_hold_rate", "format": "percent"}, {"label": "Non-HOLD signals", "field": "non_hold_signals", "format": "number"}]},
+      {"id": "coverage", "dataset": "audit_kpis", "sourceId": "strategy_inventory", "description": "Persisted backtest runs divided by configured backtests.", "metrics": [{"label": "Backtest coverage", "field": "backtest_coverage_rate", "format": "percent"}, {"label": "Persisted runs", "field": "backtest_runs", "format": "number"}]},
+      {"id": "tokens", "dataset": "audit_kpis", "sourceId": "decision_costs", "description": "Tracked agent usage; database-recorded model cost is zero.", "metrics": [{"label": "Agent tokens", "field": "agent_tokens", "format": "compact"}, {"label": "Recorded model cost", "field": "recorded_model_cost", "format": "currency"}]}
+    ],
+    "charts": [
+      {
+        "id": "daily_reliability",
+        "title": "Daily pipeline completion rate",
+        "subtitle": "Reliability recovered after collapse days, but remained 73%–78% during Aug 10–14.",
+        "type": "line",
+        "intent": "trend",
+        "question": "How reliably has the pipeline completed each day?",
+        "rationale": "Twenty daily observations reveal operational shape without implying investment performance.",
+        "dataset": "daily_pipeline",
+        "sourceId": "pipeline_runs",
+        "encodings": {"x": {"field": "trade_date", "type": "temporal", "label": "Trade date"}, "y": {"field": "completion_rate", "type": "quantitative", "format": "percent", "label": "Completion rate"}, "tooltip": [{"field": "runs", "type": "quantitative", "label": "Runs"}, {"field": "failed", "type": "quantitative", "label": "Failed"}]},
+        "referenceLines": [{"axis": "y", "value": 0.95, "label": "Minimum production target", "lineStyle": "dashed", "color": "neutral"}],
+        "valueFormat": "percent",
+        "layout": "full",
+        "palette": {"kind": "sequential", "name": "blue"},
+        "settings": {"showPoints": "always"},
+        "surface": {"surface": "explorer", "viewMode": "both"}
+      },
+      {
+        "id": "failure_reasons",
+        "title": "Pipeline failure classes",
+        "subtitle": "LLM-host connectivity accounts for 85.8% of failures; the Kalshi schema constraint adds 397.",
+        "type": "horizontalBar",
+        "intent": "comparison",
+        "question": "Which failures prevent the system from reaching a decision?",
+        "rationale": "Sorted horizontal bars support direct comparison across long labels.",
+        "dataset": "failure_classes",
+        "sourceId": "pipeline_runs",
+        "encodings": {"x": {"field": "failure_class", "type": "nominal", "label": "Failure class"}, "y": {"field": "failures", "type": "quantitative", "format": "compact", "label": "Failed runs"}, "tooltip": [{"field": "share_of_failures", "type": "quantitative", "format": "percent", "label": "Share"}]},
+        "layout": "full",
+        "palette": {"kind": "sequential", "name": "orange"},
+        "settings": {"sort": "descending", "showValues": true},
+        "surface": {"surface": "explorer", "viewMode": "both"}
+      },
+      {
+        "id": "signal_outcomes",
+        "title": "Completed pipeline signals",
+        "subtitle": "Only 16 of 2,445 completed runs emitted BUY or SELL; HOLD represented 99.35%.",
+        "type": "horizontalBar",
+        "intent": "comparison",
+        "question": "What signals survive the completed pipeline?",
+        "rationale": "Exact category counts expose the decision bottleneck.",
+        "dataset": "signal_outcomes",
+        "sourceId": "pipeline_runs",
+        "encodings": {"x": {"field": "action", "type": "nominal", "label": "Action"}, "y": {"field": "signals", "type": "quantitative", "format": "compact", "label": "Completed signals"}, "tooltip": [{"field": "share", "type": "quantitative", "format": "percent", "label": "Share"}]},
+        "layout": "full",
+        "palette": {"kind": "sequential", "name": "blue"},
+        "settings": {"sort": "descending", "showValues": true},
+        "surface": {"surface": "explorer", "viewMode": "both"}
+      }
+    ],
+    "tables": [
+      {"id": "pnl_table", "title": "Known trade-ledger reconciliation", "subtitle": "Exact closed amounts; open exposure and unrecorded costs prevent a consolidated return.", "dataset": "pnl_rows", "sourceId": "pnl_reconciliation", "layout": "full", "density": "dense", "defaultSort": {"field": "component", "direction": "asc"}, "columns": [{"field": "component", "label": "Component", "type": "text"}, {"field": "amount", "label": "Known amount", "format": "currency"}, {"field": "evidence", "label": "Evidence", "type": "text"}, {"field": "limitation", "label": "Limitation", "type": "text"}]},
+      {"id": "evidence_table", "title": "Evidence maturity", "subtitle": "Breadth of strategy objects with almost no decision-grade validation.", "dataset": "evidence_maturity", "sourceId": "strategy_inventory", "layout": "full", "density": "dense", "defaultSort": {"field": "count", "direction": "desc"}, "columns": [{"field": "evidence_item", "label": "Evidence item", "type": "text"}, {"field": "count", "label": "Count", "format": "number"}, {"field": "decision_use", "label": "Decision use", "type": "text"}, {"field": "audit_read", "label": "Audit interpretation", "type": "text"}]},
+      {"id": "root_causes_table", "title": "Root causes ranked by urgency", "subtitle": "Priority reflects how directly each issue blocks a defensible after-cost edge.", "dataset": "root_causes", "sourceId": "audit_root_causes", "layout": "full", "density": "spacious", "defaultSort": {"field": "priority", "direction": "asc"}, "columns": [{"field": "priority", "label": "Priority", "format": "number"}, {"field": "cause", "label": "Root cause", "type": "text"}, {"field": "evidence", "label": "Evidence", "type": "text"}, {"field": "impact", "label": "Profitability impact", "type": "text"}, {"field": "confidence", "label": "Confidence", "type": "text"}]},
+      {"id": "strategy_table", "title": "Recommended strategy stack", "subtitle": "Research priorities, not promises of profit; all must clear the same after-cost gate.", "dataset": "strategy_stack", "sourceId": "audit_strategy_recommendations", "layout": "full", "density": "spacious", "defaultSort": {"field": "priority", "direction": "asc"}, "columns": [{"field": "priority", "label": "Priority", "format": "number"}, {"field": "strategy", "label": "Strategy", "type": "text"}, {"field": "why", "label": "Why it belongs", "type": "text"}, {"field": "implementation", "label": "Implementation sketch", "type": "text"}, {"field": "principal_risk", "label": "Principal risk", "type": "text"}]},
+      {"id": "roadmap_table", "title": "90-day turnaround plan", "subtitle": "A gated sequence designed to produce evidence before additional complexity.", "dataset": "roadmap", "sourceId": "audit_roadmap", "layout": "full", "density": "spacious", "defaultSort": {"field": "phase", "direction": "asc"}, "columns": [{"field": "phase", "label": "Phase", "type": "text"}, {"field": "timing", "label": "Timing", "type": "text"}, {"field": "actions", "label": "Actions", "type": "text"}, {"field": "exit_gate", "label": "Exit gate", "type": "text"}]},
+      {"id": "copy_trading_table", "title": "Copy-trading MVP readiness", "subtitle": "Code review of main commit 5517405; priority order incorporates severity, and no deployed performance history exists yet.", "dataset": "copy_trading_audit", "sourceId": "copy_trading_audit_source", "layout": "full", "density": "dense", "defaultSort": {"field": "severity_rank", "direction": "asc"}, "columns": [{"field": "severity_rank", "label": "Priority", "format": "number"}, {"field": "area", "label": "Area", "type": "text"}, {"field": "implemented", "label": "Implemented state", "type": "text"}, {"field": "audit_read", "label": "Audit finding", "type": "text"}, {"field": "required_before_evaluation", "label": "Required next step", "type": "text"}]}
+    ],
+    "blocks": [
+      {"id": "title", "type": "markdown", "body": "# Augr Profitability Audit: Why It Has Not Produced a Defensible Edge\n\n**Audit date:** August 14, 2026  \n**Scope:** live paper database, code, prior audits, the complete `docs/Augr Trading Research` synthesis, current exchange mechanics, and empirical strategy research.  \n**Decision:** do not add capital or enable live autonomous execution yet."},
+      {"id": "executive", "type": "markdown", "body": "## Executive Summary\n\n**Augr still has no defensible after-cost edge.** The system generated 171 nominally active strategies and 40,650 agent decisions, consumed 184.9 million tracked tokens, and persisted 7,442 pipeline runs. Yet only one backtest run exists, only three stock campaigns and two Kalshi lots are closed, and 99.35% of completed runs ended in HOLD.\n\n**The visible ledger is barely positive before missing costs.** Known closed results are approximately +$17.86: +$135.50 in SNAL, CCL, and TSCO, offset by −$117.65 on closed Kalshi lots. Ten Kalshi positions lack current marks, every recorded trade fee is zero, and model cost is recorded as zero.\n\n**The new 13F replication MVP is promising infrastructure, not new profitability evidence.** It correctly uses deterministic, paper-only targets and preserves disclosure timing, mapping, and intent provenance. It has no deployed observations or historical performance, and its current price, spread, turnover, execution-cost, and attribution gaps would overstate results.\n\n**Recommendation:** freeze legacy discovery, fix the common ledger and simulator, harden copy trading, and evaluate a small deterministic portfolio: benchmark core, quality-filtered wheel, momentum/trend, selected 13F replication, and tiny prediction-market experiments. LLMs should remain outside every order hot path."},
+      {"id": "kpis", "type": "metric-strip", "cardIds": ["known_net", "completion", "hold_rate", "coverage", "tokens"]},
+      {"id": "meaning", "type": "markdown", "body": "## What ‘Not Profitable’ Actually Means\n\nThere are three questions. **Closed trades:** barely positive before missing costs. **Benchmark outperformance:** unknown because Augr lacks a consolidated time-weighted equity curve, external-flow ledger, current marking, and strategy attribution. **Economic value after all costs:** almost certainly negative because $17.86 cannot cover operating and opportunity costs.\n\nThe correct conclusion is **no defensible profitability**, not proven negative alpha. The sample is too small to estimate an edge, while missing costs and marks bias the visible result upward."},
+      {"id": "pnl", "type": "table", "tableId": "pnl_table"},
+      {"id": "operations", "type": "markdown", "body": "## The Trading Factory Usually Does Not Reach a Tradable Decision\n\nThe pipeline failed on 4,997 of 7,442 runs (67.1%). An unavailable Ollama host caused 4,287 failures; a Kalshi snapshot constraint caused 397; position limits rejected at least 156 after ten stale or unmarked Kalshi positions accumulated. Recent completion recovered to 73%–78%, still below a reasonable 95% production target."},
+      {"id": "daily", "type": "chart", "chartId": "daily_reliability"},
+      {"id": "failures", "type": "chart", "chartId": "failure_reasons"},
+      {"id": "decision", "type": "markdown", "body": "## The Decision Funnel Collapses Into HOLD\n\nOf 2,445 completed runs, 2,429 ended in HOLD, 12 in BUY, and 4 in SELL. The stock side emitted no BUY final signals in the reviewed set. Separately, 71 portfolio opportunities were recorded: 51 rejected, 20 expired, none selected or ordered. This is not proven discipline; it is consistent with disconnected portfolio context, late risk rejection, and no calibrated mapping from confidence to expected return."},
+      {"id": "signals", "type": "chart", "chartId": "signal_outcomes"},
+      {"id": "evidence", "type": "markdown", "body": "## Strategy Breadth Is Masquerading as Evidence\n\nAll 171 strategies have `is_active = true`, even though 42 also have `status = paused`. None has a populated active thesis. Nine WDC variants and other duplicate families create multiple-testing and scheduling ambiguity.\n\nOne hundred ten backtest configs exist, but only one run was persisted. That ORCL test made one round trip: +1.01% over five years while buy-and-hold returned +149.10%. Stored 80% win rate and 401.8 profit factor are bar-return statistics, not closed-trade statistics. One zero-fee trade in a legacy-unversioned simulation is not evidence."},
+      {"id": "evidence_table_block", "type": "table", "tableId": "evidence_table"},
+      {"id": "root", "type": "markdown", "body": "## Root-Cause Audit\n\nThe primary failure is a **research-to-execution governance gap**. Augr’s own synthesis recommends fair value, net edge after costs, sizing, execution, journaling, calibration, and regime control. The running implementation skipped from generated narratives or arbitrary threshold rules to unrealistic paper fills.\n\nVerified findings include pipeline failures, HOLD concentration, sparse backtesting, duplicated lifecycle state, zero thesis coverage, unmarked positions, zero-cost paper defaults, and misleading backtest metrics. Likely—but not directly measurable—is negative economic P&L after operating cost. True consolidated return, exact operating cost, option assignment exposure, and live fill quality remain unresolved because the required data is absent."},
+      {"id": "root_table", "type": "table", "tableId": "root_causes_table"},
+      {"id": "copy_trading", "type": "markdown", "body": "## Copy Trading Improves the Architecture, but It Does Not Yet Add an Edge\n\nThe stock copy-trading MVP on `main` is a meaningful improvement over Augr’s legacy strategy factory. It ingests SEC 13F holdings, creates immutable observations, requires reviewed CUSIP mappings, preserves unmapped and excluded weight as cash, calculates targets deterministically, isolates positions by subscription-backed strategy, routes orders through global risk, and prohibits live trading. The full Go test suite passes.\n\nThe strategy itself remains unvalidated. A 13F is a delayed quarter-end holdings snapshot, not a trade feed. The SEC permits filing up to 45 days after quarter end, and confidential-treatment requests can omit positions for longer; see the [SEC Form 13F FAQ](https://www.sec.gov/rules-regulations/staff-guidance/division-investment-management-frequently-asked-questions/frequently-asked-questions-about-form-13f). Academic copycat research shows disclosed-portfolio replication can sometimes approach the target fund’s return after costs, but that does not establish benchmark alpha for Augr’s selected managers or implementation; see [NBER’s Copycat Funds](https://www.nber.org/papers/w8653).\n\nFour code gaps are profitability-critical. First, the price provider uses the latest daily close and never rejects a stale `ObservedAt`; it supplies no bid/ask spread, so `MaxSpreadBPS` effectively compares against zero. Second, the 25% turnover cap scales only the rebalance triggered by a new filing; automatic sync does not work down residual drift on later sessions. Third, execution reuses the immediate-fill paper broker whose fee and slippage defaults are zero. Fourth, the implementation creates a backing strategy per subscription instead of the generic `copy_subscription` origin envisioned by the design.\n\n**Decision:** retain the feature in paper mode and promote it into the edge lab only after point-in-time multi-filing replay, quote-based execution, multi-session reconciliation, and exact cost/attribution are implemented. Production is still at schema 62, so migration 63 has produced no live paper evidence in the audited database."},
+      {"id": "copy_trading_table_block", "type": "table", "tableId": "copy_trading_table"},
+      {"id": "prediction_failure", "type": "markdown", "body": "## Prediction-Market Failure: Fabricated Edge and Non-Executable Size\n\nLegacy Kalshi decisions reused fair probability 0.88 across unrelated contracts priced $0.003–$0.034, creating apparent 84.5%–87.7% edges. Probability was uncalibrated; volume or open interest stood in for executable depth; the paper broker bought hundreds of thousands of contracts with zero fees and immediate fills.\n\nCurrent [Kalshi fees](https://kalshi.com/docs/kalshi-fee-schedule.pdf) and [Polymarket CLOB V2](https://docs.polymarket.com/v2-migration) mechanics make exact fee lookup, book size, latency, partial fills, capital lockup, and resolution rules mandatory. A recent [executable arbitrage reconstruction](https://arxiv.org/abs/2608.00666) also shows why headline theoretical arbitrage can shrink dramatically when fills are modeled."},
+      {"id": "strategies", "type": "markdown", "body": "## Strategy Recommendations\n\nThe replacement portfolio should be boring at the core and experimental at the edge. Strong candidates are a quality-filtered wheel, cross-sectional momentum plus quality/low volatility, time-series trend, selected 13F replication, defined-risk volatility premium, complete-set prediction arbitrage, maker-first event-market quoting, and calibrated weather/macro models. Momentum persistence is documented by [Jegadeesh and Titman](https://www.nber.org/papers/w7159), and value/momentum evidence spans markets in [Asness, Moskowitz, and Pedersen](https://onlinelibrary.wiley.com/doi/10.1111/jofi.12021).\n\nA research-capital template—not personal investment advice—is 60%–80% passive benchmark core, 10%–20% wheel, 10%–20% momentum/trend, 0%–10% selected 13F replication after validation, and 0%–5% prediction-market experiments. Experimental sleeves must fit inside the total risk budget rather than summing mechanically to more than 100%."},
+      {"id": "strategy_table_block", "type": "table", "tableId": "strategy_table"},
+      {"id": "wheel", "type": "markdown", "body": "## The Wheel: Use It, but Benchmark It Honestly\n\nThe wheel is repeated short-put exposure followed by covered calls after assignment. Premium is not alpha. Cboe’s long-run [PUT, BXM, and BXMD benchmarks](https://www.cboe.com/us/indices/benchmark_indices/) and [options benchmark study](https://cdn.cboe.com/resources/spx/wilshire-options-based-benchmark-indexes-2019.pdf) show lower volatility and drawdown can come with capped upside and bull-market underperformance.\n\n### Deterministic rules\n\n- Use liquid broad ETFs or a tiny approved list of profitable, liquid companies the portfolio will own.\n- Sell 20–30 delta cash-secured puts, usually 30–45 DTE, only when implied volatility clears a conservative realized-volatility forecast.\n- Avoid single-stock earnings; use defined-risk put spreads when gap or capital risk is high.\n- After assignment, sell 15–25 delta calls above the desired exit; never roll indefinitely to hide a loss.\n- Cap each underlying at 5%–10% of capital and total short-volatility exposure at 20%–30%; prohibit naked options and margin-dependent rescues.\n- Model early assignment, dividends, pin risk, taxes, spread, and buying power. Short equity options can be assigned before expiry; see [FINRA](https://www.finra.org/investors/insights/trading-options-understanding-assignment).\n\nReject the sleeve unless after-cost out-of-sample total return, Sortino, expected shortfall, and recovery time are competitive with PUT/BXM/BXMD."},
+      {"id": "prediction", "type": "markdown", "body": "## Prediction-Market Playbook\n\n1. **Complete-set/combinatorial arbitrage:** reserve every leg; include orphan-leg loss in worst-case P&L.\n2. **Exact cross-venue arbitrage:** wording, cutoff, resolution source, collateral, and payout must match; near-matches are basis trades.\n3. **Maker-first market making:** post-only quotes, inventory skew, stale cancels, small limits, fee/rebate lookup per market.\n4. **Calibrated niche models:** versioned data, Brier score by bucket, timestamp checks, and abstention.\n5. **Near-resolution sweeps:** defer; small apparent gains hide dispute, oracle, latency, and resolution tails.\n\nNo event trade passes without fair probability, calibration version, source timestamps, executable size, fees, expected slippage, worst-case partial-fill P&L, capital lockup, and resolution specification."},
+      {"id": "drastic", "type": "markdown", "body": "## Drastic and Creative Options\n\n- **Remove LLM debate from the hot path.** Deterministic scanners qualify candidates; one model explains or reviews them.\n- **Run an inversion tournament.** Compare original signal, inverse, and no-trade under identical out-of-sample costs; never auto-deploy an inverse without confirmation.\n- **Pivot to picks-and-shovels.** Sell reproducible backtest audits, paper/live parity checks, executable-arbitrage alerts, or hosted strategy-readiness reports.\n- **Monetize workflow or maker economics where permitted.** Builder/routing fees or maker rebates require platform, legal, tax, and compliance review.\n- **Stop autonomous prop trading after 90 days if no sleeve clears the gate.** Move capital to benchmarks and retain Augr as research infrastructure."},
+      {"id": "roadmap", "type": "markdown", "body": "## 90-Day Turnaround Plan\n\nProfitability cannot be optimized until Augr can measure it. Freeze discovery, preserve evidence, fix the ledger and simulator, test three to five deterministic candidates with walk-forward and realistic costs, shadow live quotes, and promote only one tiny-capital sleeve at a time."},
+      {"id": "roadmap_table_block", "type": "table", "tableId": "roadmap_table"},
+      {"id": "gates", "type": "markdown", "body": "## Promotion Gates and Kill Criteria\n\nRequire at least 100 independent closed trades or 50 complete slower option cycles; positive after-cost out-of-sample alpha with uncertainty; acceptable drawdown, expected shortfall, skew, recovery, beta, and concentration; paper/live fill gap below 20% of gross edge; total operating cost below 10%–20% of expected gross edge; and exact reconciliation. Prediction arbitrage must remain positive in the worst permitted partial-fill state. Wheel total return must compete with PUT/BXM/BXMD—premium collected is never a KPI.\n\nFor 13F replication, replay at least 20 quarterly filing events across multiple managers using only information available after publication. Report achievable follower return, benchmark alpha, tracking error, turnover, mapping coverage, publication lag, drift, and cost sensitivity. Reject managers whose apparent edge depends on quarter-end look-ahead, confidential omissions, one concentrated winner, or fills at prices unavailable after filing.\n\nPortfolio guardrails: daily loss limit, weekly drawdown pause, per-underlying and short-volatility caps, event calendar, stale-data breaker, and automatic no-trade when provenance is incomplete."},
+      {"id": "caveats", "type": "markdown", "body": "## Caveats, Sources, and Reproducibility\n\nThe audit uses an August 14, 2026 production database snapshot, repository code/documents, current exchange/regulatory material, scholarly research, and a read-only review of copy-trading commit `5517405` on `main`. The +$17.86 is a narrow cross-ledger reconciliation, not a time-weighted return or account statement. Ten open Kalshi positions lack marks; recorded fees and model cost are zero; taxes, financing, data, infrastructure, subscriptions, and engineering time are excluded.\n\nThe copy-trading assessment is code readiness, not performance analysis. The audited production database remains at schema 62 and contains no copy-trading tables, subscriptions, intents, fills, or returns. The complete Go test suite passed in a temporary checkout of `main`; the frontend was inspected but not rebuilt because workspace dependencies were not installed.\n\nNo strategy is guaranteed profitable. Options, prediction markets, and copied securities portfolios can lose the full risk budget. Broker permissions plus legal, tax, platform-terms, investment-adviser/broker-dealer, communications, recordkeeping, privacy, and jurisdictional review are required before any user-facing live copy feature. Sources and exact SQL are available through the report source panel."}
+    ]
+  },
+  "snapshot": {
+    "version": 1,
+    "generatedAt": "2026-08-14T21:54:52Z",
+    "status": "ready",
+    "datasets": {
+      "audit_kpis": [{"known_realized_net": 17.85737865, "closed_stock_campaigns": 3, "open_unmarked_kalshi": 10, "pipeline_completion_rate": 0.3285407148629401, "failed_runs": 4997, "completed_hold_rate": 0.9934560327198364, "non_hold_signals": 16, "backtest_coverage_rate": 0.00909090909090909, "backtest_runs": 1, "agent_tokens": 184855576, "recorded_model_cost": 0}],
+      "daily_pipeline": [
+        {"trade_date": "2026-07-26", "runs": 61, "completed": 59, "failed": 2, "completion_rate": 0.967},
+        {"trade_date": "2026-07-27", "runs": 2266, "completed": 119, "failed": 2147, "completion_rate": 0.053},
+        {"trade_date": "2026-07-28", "runs": 109, "completed": 99, "failed": 10, "completion_rate": 0.908},
+        {"trade_date": "2026-07-29", "runs": 129, "completed": 108, "failed": 21, "completion_rate": 0.837},
+        {"trade_date": "2026-07-30", "runs": 118, "completed": 99, "failed": 19, "completion_rate": 0.839},
+        {"trade_date": "2026-07-31", "runs": 114, "completed": 96, "failed": 18, "completion_rate": 0.842},
+        {"trade_date": "2026-08-01", "runs": 84, "completed": 64, "failed": 20, "completion_rate": 0.762},
+        {"trade_date": "2026-08-02", "runs": 84, "completed": 32, "failed": 52, "completion_rate": 0.381},
+        {"trade_date": "2026-08-03", "runs": 795, "completed": 16, "failed": 779, "completion_rate": 0.020},
+        {"trade_date": "2026-08-04", "runs": 1437, "completed": 126, "failed": 1311, "completion_rate": 0.088},
+        {"trade_date": "2026-08-05", "runs": 241, "completed": 78, "failed": 163, "completion_rate": 0.324},
+        {"trade_date": "2026-08-06", "runs": 52, "completed": 46, "failed": 6, "completion_rate": 0.885},
+        {"trade_date": "2026-08-07", "runs": 67, "completed": 66, "failed": 1, "completion_rate": 0.985},
+        {"trade_date": "2026-08-08", "runs": 110, "completed": 87, "failed": 23, "completion_rate": 0.791},
+        {"trade_date": "2026-08-09", "runs": 66, "completed": 52, "failed": 14, "completion_rate": 0.788},
+        {"trade_date": "2026-08-10", "runs": 318, "completed": 248, "failed": 70, "completion_rate": 0.780},
+        {"trade_date": "2026-08-11", "runs": 307, "completed": 237, "failed": 70, "completion_rate": 0.772},
+        {"trade_date": "2026-08-12", "runs": 333, "completed": 243, "failed": 90, "completion_rate": 0.730},
+        {"trade_date": "2026-08-13", "runs": 365, "completed": 274, "failed": 91, "completion_rate": 0.751},
+        {"trade_date": "2026-08-14", "runs": 386, "completed": 296, "failed": 90, "completion_rate": 0.767}
+      ],
+      "failure_classes": [
+        {"failure_class": "LLM connection refused", "failures": 4002, "share_of_failures": 0.8008805283},
+        {"failure_class": "Kalshi snapshot constraint", "failures": 397, "share_of_failures": 0.0794476686},
+        {"failure_class": "LLM host unreachable", "failures": 285, "share_of_failures": 0.0570342205},
+        {"failure_class": "Position limit reached", "failures": 156, "share_of_failures": 0.0312187312},
+        {"failure_class": "Other", "failures": 147, "share_of_failures": 0.0294176506},
+        {"failure_class": "Structured output error", "failures": 10, "share_of_failures": 0.0020012007}
+      ],
+      "signal_outcomes": [{"action": "HOLD", "signals": 2429, "share": 0.9934560327}, {"action": "BUY", "signals": 12, "share": 0.0049079755}, {"action": "SELL", "signals": 4, "share": 0.0016359918}],
+      "pnl_rows": [
+        {"component": "Closed stock campaigns", "amount": 135.50443747, "evidence": "SNAL, CCL, and TSCO net to zero quantity.", "limitation": "Recorded fees are zero; operating and opportunity costs missing."},
+        {"component": "Closed Kalshi lots", "amount": -117.64705882, "evidence": "Two closed MK:YES lots, each −$58.82.", "limitation": "Paper fills used zero fees and immediate execution."},
+        {"component": "Known realized net", "amount": 17.85737865, "evidence": "Arithmetic sum of the two closed ledgers.", "limitation": "Not a consolidated time-weighted return."},
+        {"component": "Open Kalshi positions", "amount": null, "evidence": "10 open lots with no usable unrealized P&L.", "limitation": "No current marks; excluded from realized net."},
+        {"component": "Model, data, and infrastructure", "amount": null, "evidence": "184.9M tokens tracked; database cost totals $0.", "limitation": "Actual economic cost is unrecorded."}
+      ],
+      "evidence_maturity": [
+        {"evidence_item": "Strategy records", "count": 171, "decision_use": "Idea inventory", "audit_read": "All is_active=true; 42 status=paused; zero active theses."},
+        {"evidence_item": "Backtest configurations", "count": 110, "decision_use": "Test definitions", "audit_read": "No uniform benchmark/cost/OOS evidence."},
+        {"evidence_item": "Persisted backtest runs", "count": 1, "decision_use": "Very weak", "audit_read": "One ORCL round trip; +1.01% vs +149.10% buy-and-hold."},
+        {"evidence_item": "Closed stock campaigns", "count": 3, "decision_use": "Insufficient", "audit_read": "Gross +$135.50 before unrecorded costs."},
+        {"evidence_item": "Closed Kalshi lots", "count": 2, "decision_use": "Contaminated", "audit_read": "−$117.65 with uncalibrated probability and zero-cost fills."},
+        {"evidence_item": "Open unmarked Kalshi lots", "count": 10, "decision_use": "Unknown exposure", "audit_read": "Blocks new positions and prevents reliable equity."}
+      ],
+      "root_causes": [
+        {"priority": 1, "cause": "No validated edge pipeline", "evidence": "171 strategies, 110 configs, 1 backtest, 5 closed campaigns/lots.", "impact": "Cannot distinguish skill from noise or allocate capital.", "confidence": "Verified"},
+        {"priority": 2, "cause": "Operational unreliability", "evidence": "67.1% failed; LLM-host failures dominate.", "impact": "Most research never reaches a decision; samples are biased.", "confidence": "Verified"},
+        {"priority": 3, "cause": "Decision architecture collapses to HOLD", "evidence": "99.35% HOLD; no stock BUY final signal.", "impact": "Capital stays idle while compute accumulates.", "confidence": "Verified"},
+        {"priority": 4, "cause": "LLM narrative treated as signal", "evidence": "40,650 decisions and 184.9M tokens; inconsistent context.", "impact": "High complexity and cost without calibrated predictive lift.", "confidence": "Verified / likely impact"},
+        {"priority": 5, "cause": "Backtest false comfort", "evidence": "Bar-return win rate/PF; one trade; zero costs.", "impact": "Weak strategies can look statistically impressive.", "confidence": "Verified"},
+        {"priority": 6, "cause": "Prediction execution is non-economic", "evidence": "0.88 fair probability, fake depth, huge zero-fee fills.", "impact": "Paper edge cannot survive executable size and fees.", "confidence": "Verified"},
+        {"priority": 7, "cause": "Strategy sprawl and lifecycle conflict", "evidence": "All active; 42 paused; duplicate variants; no theses.", "impact": "Multiple testing, duplicate exposure, scheduling ambiguity.", "confidence": "Verified"},
+        {"priority": 8, "cause": "Accounting and provenance gaps", "evidence": "No marks, zero fees/costs, incomplete attribution and flow baseline.", "impact": "Return, alpha, drawdown, and cost cannot be measured.", "confidence": "Verified"},
+        {"priority": 9, "cause": "Paper/live parity gaps", "evidence": "Immediate zero-cost fills; sub-cent and assignment differences.", "impact": "Paper results overstate realizable performance.", "confidence": "Verified"},
+        {"priority": 10, "cause": "No economic objective", "evidence": "Screens omit benchmark alpha, capacity, cost, and lockup.", "impact": "Local KPIs can pass while economic value is destroyed.", "confidence": "Verified"}
+      ],
+      "strategy_stack": [
+        {"priority": 1, "strategy": "Passive benchmark core", "why": "Sets opportunity cost and protects capital.", "implementation": "SPY/VT or agreed benchmark; treat as control.", "principal_risk": "Market beta and drawdown."},
+        {"priority": 2, "strategy": "Quality-filtered wheel", "why": "Transparent option-writing structure with public benchmarks.", "implementation": "20–30 delta CSP, 30–45 DTE; 15–25 delta calls after assignment; strict caps.", "principal_risk": "Short-vol tails, capped upside, assignment."},
+        {"priority": 3, "strategy": "Momentum + quality + low volatility", "why": "Long empirical record; deterministic and testable.", "implementation": "Monthly 12–1 rank, quality screen, volatility scaling, turnover limits.", "principal_risk": "Momentum crashes and crowding."},
+        {"priority": 4, "strategy": "Time-series trend", "why": "Diversifies equity beta and short volatility.", "implementation": "Multi-horizon trend across liquid ETFs/futures with volatility target.", "principal_risk": "Whipsaw and operational complexity."},
+        {"priority": 4.5, "strategy": "Selected 13F replication", "why": "Deterministic disclosure strategy with some academic support and low LLM dependence.", "implementation": "Point-in-time replay, manager selection rule, quote-based fills, multi-session drift control, and cash for omitted/unmapped weight.", "principal_risk": "45-day delay, incomplete holdings, stale conviction, concentration, and hidden shorts."},
+        {"priority": 5, "strategy": "Defined-risk volatility premium", "why": "Harvests implied-vs-realized spread with bounded loss.", "implementation": "Put spreads or limited condors only when conservative edge clears costs.", "principal_risk": "Gap and regime risk."},
+        {"priority": 6, "strategy": "Complete-set prediction arbitrage", "why": "Structural payoff is more defensible than LLM direction.", "implementation": "Reserve all legs; exact fees/size; positive orphan-leg worst case.", "principal_risk": "Partial fills and resolution mismatch."},
+        {"priority": 7, "strategy": "Maker-first event-market quoting", "why": "Targets spread and rebates instead of every event forecast.", "implementation": "Post-only, inventory skew, stale cancel, tiny limits.", "principal_risk": "Adverse selection and latency."},
+        {"priority": 8, "strategy": "Calibrated weather/macro models", "why": "External data creates falsifiable probabilities.", "implementation": "Versioned model, Brier score by bucket, timestamps, abstention.", "principal_risk": "Data revision, drift, wording."}
+      ],
+      "copy_trading_audit": [
+        {"severity_rank": 1, "area": "Price and spread controls", "implemented": "Daily close; spread defaults to zero", "audit_read": "Stale-price rejection is absent and the spread gate is ineffective.", "severity": "Critical", "required_before_evaluation": "Use quote timestamps, executable bid/ask spread, and fail-closed freshness."},
+        {"severity_rank": 2, "area": "Turnover and drift", "implemented": "25% one-pass scaling", "audit_read": "Residual target drift is not completed on later sessions.", "severity": "Critical", "required_before_evaluation": "Add bounded multi-session reconciliation independent of new filings."},
+        {"severity_rank": 3, "area": "Execution realism", "implemented": "Shared immediate-fill paper broker", "audit_read": "Fees, slippage, partial fills, and adverse selection remain unmodeled.", "severity": "Critical", "required_before_evaluation": "Use the common quote-level cost and fill model."},
+        {"severity_rank": 4, "area": "Historical evaluation", "implemented": "Not implemented", "audit_read": "No after-publication return, tracking error, benchmark alpha, or cost evidence exists.", "severity": "Critical", "required_before_evaluation": "Build point-in-time multi-filing replay before activation."},
+        {"severity_rank": 5, "area": "13F disclosure timing", "implemented": "Timestamps stored, not gated", "audit_read": "Quarter-end holdings may be published 45 days later or omitted under confidential treatment.", "severity": "High", "required_before_evaluation": "Enforce publication/ingestion-age policy and disclose residual staleness."},
+        {"severity_rank": 6, "area": "Deployed evidence", "implemented": "None; production schema is 62", "audit_read": "Migration 63 is on main but not deployed to the audited database.", "severity": "High", "required_before_evaluation": "Deploy to an isolated paper environment and collect observations."},
+        {"severity_rank": 7, "area": "Instrument mapping", "implemented": "Manual verified CUSIP mapping", "audit_read": "Safe default, but coverage and corporate-action maintenance are unknown.", "severity": "Medium", "required_before_evaluation": "Measure mapped weight, stale mappings, and symbol changes by manager."},
+        {"severity_rank": 8, "area": "Execution attribution", "implemented": "Backing strategy per subscription", "audit_read": "Positions are isolated, but fake strategies increase registry sprawl and bypass the planned generic origin.", "severity": "Medium", "required_before_evaluation": "Implement a copy_subscription execution origin."},
+        {"severity_rank": 9, "area": "Automated tests", "implemented": "6 feature tests; full Go suite passes", "audit_read": "Good smoke coverage, but critical state and execution behavior lack dedicated tests.", "severity": "Medium", "required_before_evaluation": "Add amendment, concurrency, restart, stale-data, accounting, and drift tests."},
+        {"severity_rank": 10, "area": "Deterministic target construction", "implemented": "Yes", "audit_read": "Strong foundation: unmapped and derivative weight remains cash and LLMs are excluded.", "severity": "Positive", "required_before_evaluation": "Preserve this boundary."},
+        {"severity_rank": 11, "area": "Paper-only boundary", "implemented": "Yes", "audit_read": "Correct for an unvalidated strategy.", "severity": "Positive", "required_before_evaluation": "Retain until all promotion and compliance gates pass."}
+      ],
+      "roadmap": [
+        {"phase": "0 — Stop the factory", "timing": "Days 0–7", "actions": "Freeze discovery; pause legacy strategies; reconcile Kalshi; remove LLM debate from scheduled hot path.", "exit_gate": "No new strategy objects; deterministic no-trade fallback; evidence preserved."},
+        {"phase": "1 — Fix ledger and simulator", "timing": "Days 1–21", "actions": "Unified cash/flow/P&L; marks; costs; partial fills; assignment; sub-cent parity; provider cost.", "exit_gate": "Every order reconciles; paper/live rule parity tests pass."},
+        {"phase": "2 — Build the edge lab", "timing": "Days 14–45", "actions": "3–5 baselines; walk-forward and purged OOS; benchmark, regime, multiple-testing, cost sensitivity.", "exit_gate": "One candidate has positive after-cost OOS expectancy with uncertainty."},
+        {"phase": "3 — Shadow live", "timing": "Days 35–75", "actions": "Live quotes, no capital; compare fill, latency, staleness, adverse selection.", "exit_gate": "Fill gap <20% of gross edge; no critical data defect."},
+        {"phase": "4 — Tiny-capital pilot", "timing": "Days 60–90", "actions": "One sleeve at a time; 0.25%–0.50% portfolio risk; hard drawdown/stale-data stops.", "exit_gate": "After-cost live expectancy stays positive; reconciliation exact."},
+        {"phase": "5 — Scale or stop", "timing": "Day 90", "actions": "Scale evidence-backed sleeves; otherwise pivot to analytics or passive core.", "exit_gate": "Written allocation decision with benchmark and total ownership cost."}
+      ]
+    }
+  },
+  "sources": [
+    {"id": "pipeline_runs", "label": "Production PostgreSQL — pipeline_runs"},
+    {"id": "strategy_inventory", "label": "Production PostgreSQL — strategies and backtests"},
+    {"id": "decision_costs", "label": "Production PostgreSQL — agent_decisions"},
+    {"id": "pnl_reconciliation", "label": "Production PostgreSQL — trades and positions"}
+  ]
+}

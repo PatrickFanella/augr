@@ -223,7 +223,9 @@ func (m *mockBacktestConfigRepo) List(_ context.Context, filter repository.Backt
 }
 
 func (m *mockBacktestConfigRepo) Update(context.Context, *domain.BacktestConfig) error { return nil }
-func (m *mockBacktestConfigRepo) Delete(context.Context, uuid.UUID) error              { return nil }
+
+func (m *mockBacktestConfigRepo) Delete(context.Context, uuid.UUID) error { return nil }
+
 func (m *mockBacktestConfigRepo) Count(_ context.Context, _ repository.BacktestConfigFilter) (int, error) {
 	return 0, nil
 }

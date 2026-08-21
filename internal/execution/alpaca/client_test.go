@@ -1,6 +1,7 @@
 package alpaca
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -9,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 )
@@ -336,6 +338,37 @@ func TestClientDelete_RejectsMissingCredentials(t *testing.T) {
 	}
 	if err.Error() != "alpaca: api key is required" {
 		t.Fatalf("Delete() error = %v, want api key validation", err)
+	}
+}
+
+func TestClientRedactsCredentialsFromProviderErrorsAndLogs(t *testing.T) {
+	t.Parallel()
+
+	const (
+		apiKey    = "sensitive-api-key"
+		apiSecret = "sensitive-api-secret"
+	)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"code":401,"message":"bad ` + apiKey + ` / ` + apiSecret + `"}`))
+	}))
+	defer server.Close()
+
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+	client := NewClient(apiKey, apiSecret, true, logger)
+	client.SetBaseURL(server.URL)
+	_, err := client.Get(context.Background(), "/v2/account", nil)
+	if err == nil {
+		t.Fatal("Get() error = nil, want provider error")
+	}
+	combined := logs.String() + "\n" + err.Error()
+	if strings.Contains(combined, apiKey) || strings.Contains(combined, apiSecret) {
+		t.Fatalf("credentials escaped redaction: %s", combined)
+	}
+	var providerErr *ErrorResponse
+	if !errors.As(err, &providerErr) || !strings.Contains(providerErr.Message, "[REDACTED]") {
+		t.Fatalf("redacted provider error = %#v", providerErr)
 	}
 }
 

@@ -25,7 +25,8 @@ func (r *captureRunRepository) Create(_ context.Context, config, result json.Raw
 }
 
 func (*captureRunRepository) List(context.Context, int, int) ([]DiscoveryRun, error) { return nil, nil }
-func (*captureRunRepository) Count(context.Context) (int, error)                     { return 0, nil }
+
+func (*captureRunRepository) Count(context.Context) (int, error) { return 0, nil }
 
 func TestPersistRunStoresConfigAndCompleteResult(t *testing.T) {
 	repo := &captureRunRepository{}

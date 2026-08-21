@@ -312,11 +312,11 @@ func TestRun_HappyPath(t *testing.T) {
 	if !created.IsPaper {
 		t.Fatal("strategy should be paper")
 	}
-	if created.Status != domain.StrategyStatusActive {
-		t.Fatalf("strategy status = %q, want active", created.Status)
+	if created.Status != domain.StrategyStatusInactive {
+		t.Fatalf("strategy status = %q, want inactive", created.Status)
 	}
-	if created.ScheduleCron == "" {
-		t.Fatal("strategy should be scheduled by default")
+	if created.ScheduleCron != "" {
+		t.Fatalf("strategy schedule = %q, want unscheduled research idea", created.ScheduleCron)
 	}
 	var configJSON map[string]any
 	if err := json.Unmarshal(created.Config, &configJSON); err != nil {
@@ -325,6 +325,9 @@ func TestRun_HappyPath(t *testing.T) {
 	meta, ok := configJSON["discovery_meta"].(map[string]any)
 	if !ok {
 		t.Fatalf("discovery_meta missing or wrong type: %#v", configJSON["discovery_meta"])
+	}
+	if lifecycle, ok := configJSON["research_lifecycle"].(map[string]any); !ok || lifecycle["stage"] != "idea" || lifecycle["auto_activation_blocked"] != true {
+		t.Fatalf("research_lifecycle = %#v, want blocked idea", configJSON["research_lifecycle"])
 	}
 	for _, key := range []string{"source", "market_slug", "condition_id", "template", "direction", "conviction", "time_horizon", "entry_price_max", "source_references", "max_spread_pct", "min_liquidity", "stop_policy", "target_policy", "native_execution_required", "activation_blocked_reason"} {
 		if _, ok := meta[key]; !ok {

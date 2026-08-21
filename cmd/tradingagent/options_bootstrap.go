@@ -48,7 +48,11 @@ func bootstrapPaperOptionsAccount(ctx context.Context, broker *paper.PaperBroker
 			break
 		}
 	}
-	balance, err := reconstructPaperBalance(localPaperBuyingPower, allTrades, allPositions)
+	initialBalance, err := broker.GetAccountBalance(ctx)
+	if err != nil {
+		return fmt.Errorf("read initial paper balance: %w", err)
+	}
+	balance, err := reconstructPaperBalance(initialBalance.Cash, allTrades, allPositions)
 	if err != nil {
 		return err
 	}

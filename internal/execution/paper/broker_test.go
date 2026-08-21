@@ -51,6 +51,52 @@ func TestPaperBrokerSubmitOrder_MarketOrderAppliesSlippage(t *testing.T) {
 	}
 }
 
+func TestPaperBrokerSubmitOrder_MarketOrderWithoutReferenceFailsClosed(t *testing.T) {
+	t.Parallel()
+
+	broker := NewPaperBroker(1000, 25, 0.01)
+	beforeBalance, err := broker.GetAccountBalance(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	beforePositions, err := broker.GetPositions(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	order := &domain.Order{
+		Ticker: "AAPL", Side: domain.OrderSideBuy,
+		OrderType: domain.OrderTypeMarket, Quantity: 10,
+	}
+
+	externalID, submitErr := broker.SubmitOrder(context.Background(), order)
+	if submitErr == nil || !strings.Contains(submitErr.Error(), "executable reference price") {
+		t.Fatalf("SubmitOrder() error = %v, want missing executable reference", submitErr)
+	}
+	if externalID == "" || order.Status != domain.OrderStatusRejected || order.FilledQuantity != 0 ||
+		order.FilledAvgPrice != nil || order.FilledAt != nil {
+		t.Fatalf("rejected unpriced order = id:%q order:%+v", externalID, order)
+	}
+	afterBalance, err := broker.GetAccountBalance(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	afterPositions, err := broker.GetPositions(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if afterBalance != beforeBalance || len(afterPositions) != len(beforePositions) {
+		t.Fatalf("unpriced order mutated account = balance:%+v/%+v positions:%+v/%+v",
+			beforeBalance, afterBalance, beforePositions, afterPositions)
+	}
+	status, err := broker.GetOrderStatus(context.Background(), externalID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status != domain.OrderStatusRejected {
+		t.Fatalf("stored unpriced order status = %q", status)
+	}
+}
+
 func TestPaperBrokerSubmitOrder_DeductsFee(t *testing.T) {
 	t.Parallel()
 
@@ -76,6 +122,33 @@ func TestPaperBrokerSubmitOrder_DeductsFee(t *testing.T) {
 	assertFloatClose(t, balance.Cash, 798, 1e-9)
 	assertFloatClose(t, balance.BuyingPower, 798, 1e-9)
 	assertFloatClose(t, balance.Equity, 998, 1e-9)
+}
+
+func TestPaperBrokerEvaluationProfilesRemainDistinct(t *testing.T) {
+	t.Parallel()
+
+	scoredProfile, err := domain.NewPaperEvaluationProfile(domain.PaperEvaluationModeScored, 100_000, 2, 5, 0.0001)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stressProfile, err := domain.NewPaperEvaluationProfile(domain.PaperEvaluationModeStress, 100_000, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scored, err := NewPaperBrokerWithProfile(scoredProfile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stress, err := NewPaperBrokerWithProfile(stressProfile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if scored.EvaluationProfile().CanShareStorageWith(stress.EvaluationProfile()) {
+		t.Fatal("scored and stress brokers share an evidence namespace")
+	}
+	if !scored.EvaluationProfile().PromotionEligible() || stress.EvaluationProfile().PromotionEligible() {
+		t.Fatal("broker promotion eligibility does not match its profile")
+	}
 }
 
 func TestPaperBrokerSubmitOrder_RejectsInsufficientBalance(t *testing.T) {
@@ -653,6 +726,35 @@ func TestPaperBrokerGetAccountBalance_ReturnsSnapshot(t *testing.T) {
 		t.Fatalf("GetAccountBalance() second call error = %v", err)
 	}
 	assertFloatClose(t, refetched.Cash, 850, 1e-9)
+}
+
+func TestPaperBrokerCaptureLegacyAccountingIsOneCloneSafeSnapshot(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 8, 15, 12, 0, 0, 123000, time.UTC)
+	broker := NewPaperBroker(1000, 0, 0)
+	broker.SetNowFunc(func() time.Time { return now })
+	price := 12.5
+	if err := broker.RestorePositions([]domain.Position{{Ticker: "AAPL", Side: domain.PositionSideLong, Quantity: 2, AvgEntry: 10, CurrentPrice: &price}}); err != nil {
+		t.Fatal(err)
+	}
+
+	first, err := broker.CaptureLegacyAccounting(context.Background())
+	if err != nil {
+		t.Fatalf("CaptureLegacyAccounting() error = %v", err)
+	}
+	if first.Balance.Cash != 1000 || len(first.Positions) != 1 || !first.CapturedAt.Equal(now) {
+		t.Fatalf("capture = %+v", first)
+	}
+	*first.Positions[0].CurrentPrice = 999
+	first.Positions[0].Quantity = 999
+	second, err := broker.CaptureLegacyAccounting(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Positions[0].Quantity != 2 || second.Positions[0].CurrentPrice == nil || *second.Positions[0].CurrentPrice != price {
+		t.Fatalf("capture leaked mutable position: %+v", second.Positions[0])
+	}
 }
 
 func TestPaperBrokerSubmitOrder_MarketOrderPrefersLimitPriceOverStopPrice(t *testing.T) {

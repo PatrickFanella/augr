@@ -1675,6 +1675,55 @@ func TestProcessSignal_KillSwitchActive(t *testing.T) {
 	}
 }
 
+func TestProcessSignal_KillSwitchAdmitsVerifiedReduceOnlyStockExit(t *testing.T) {
+	strategyID := uuid.New()
+	var submitted *domain.Order
+	broker := &mockBroker{
+		submitOrderFn: func(_ context.Context, order *domain.Order) (string, error) {
+			submitted = order
+			return "ext-reduce-only", nil
+		},
+		getOrderStatusFn: func(context.Context, string) (domain.OrderStatus, error) {
+			return domain.OrderStatusSubmitted, nil
+		},
+	}
+	riskEng := &mockRiskEngine{isKillSwitchActiveFn: func(context.Context) (bool, error) { return true, nil }}
+	positionRepo := &mockPositionRepo{getByStrategyFn: func(_ context.Context, gotStrategyID uuid.UUID, _ repository.PositionFilter, _, _ int) ([]domain.Position, error) {
+		if gotStrategyID != strategyID {
+			t.Fatalf("strategy ID = %s, want %s", gotStrategyID, strategyID)
+		}
+		return []domain.Position{{StrategyID: &strategyID, Ticker: "AAPL", Side: domain.PositionSideLong, Quantity: 3}}, nil
+	}}
+	orderRepo := &mockOrderRepo{}
+	auditRepo := &mockAuditLogRepo{}
+	mgr := newTestOrderManager(broker, riskEng, orderRepo, positionRepo, &mockTradeRepo{}, auditRepo)
+	plan := defaultPlan()
+	plan.MarketType = domain.MarketTypeStock
+	plan.Ticker = "AAPL"
+	plan.EntryPrice = 100
+	plan.PositionSize = 10
+
+	err := mgr.ProcessSignal(
+		context.Background(),
+		execution.FinalSignal{Signal: domain.PipelineSignalSell, Confidence: 0.9},
+		plan,
+		strategyID,
+		uuid.New(),
+	)
+	if err != nil {
+		t.Fatalf("ProcessSignal() error = %v", err)
+	}
+	if submitted == nil || !submitted.IsReduceOnly() {
+		t.Fatalf("submitted order = %+v, want explicit reduce-only intent", submitted)
+	}
+	if submitted.Quantity != 3 {
+		t.Fatalf("submitted quantity = %v, want clamp to owned quantity 3", submitted.Quantity)
+	}
+	if !slices.Contains(auditEventTypes(auditRepo.entries), "kill_switch_reduce_only_admitted") {
+		t.Fatalf("audit events = %v, want reduce-only admission", auditEventTypes(auditRepo.entries))
+	}
+}
+
 func TestProcessSignal_RiskCheckRejection(t *testing.T) {
 	broker := &mockBroker{}
 	riskEng := &mockRiskEngine{

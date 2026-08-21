@@ -302,6 +302,11 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 	redisHealth, closeRedis := newRedisHealthCheck(cfg)
 
 	appMetrics := metrics.New()
+	var paperEvaluation *domain.PaperEvaluationProfile
+	if paperProfile, profileErr := cfg.Paper.EvaluationProfile(); profileErr == nil {
+		appMetrics.SetPaperEvaluationProfile(string(paperProfile.Mode), paperProfile.StorageNamespace, paperProfile.EvidenceClass)
+		paperEvaluation = &paperProfile
+	}
 	surfersMetricsOnce.Do(func() { surfersMetricsInst = observability.NewSurfersMetrics(prometheus.DefaultRegisterer) })
 	surfersMetrics := surfersMetricsInst
 	sharedLLMBudget := llm.BuildLLMBudget(cfg.LLM)
@@ -338,9 +343,12 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 	polymarketWatchedRepo := pgrepo.NewPolymarketWatchedMarketsRepo(db.Pool)
 	polymarketResolvedRepo := pgrepo.NewPolymarketResolvedMarketsRepo(db.Pool)
 	copyTradingRepo := pgrepo.NewCopyTradingRepo(db.Pool)
+	instrumentRepo := pgrepo.NewInstrumentRepo(db.Pool)
+	quoteSnapshotRepo := pgrepo.NewQuoteSnapshotRepo(db.Pool)
 	riskBreakerRepo := pgrepo.NewRiskBreakerRepo(db.Pool)
 	riskBreaker := risk.NewDrawdownBreaker(risk.DrawdownBreakerConfig{}, riskBreakerRepo)
 	reportArtifactRepo := pgrepo.NewReportArtifactRepo(db.Pool)
+	milestoneEvidenceRepo := pgrepo.NewMilestoneEvidenceRepo(db.Pool)
 	runRegistry := agent.NewRunContextRegistry()
 
 	riskEngine := risk.NewRiskEngine(
@@ -390,6 +398,7 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 		Risk:                   riskEngine,
 		RiskBreaker:            riskBreaker,
 		RiskBreakerLister:      riskBreakerRepo,
+		PaperEvaluation:        paperEvaluation,
 		Settings:               settingsSvc,
 		Prompts:                promptSettingsSvc,
 		DBHealth:               api.HealthCheckFunc(db.Pool.Ping),
@@ -409,10 +418,15 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 		JobRunRepo:             jobRunRepo,
 		ReportArtifacts:        reportArtifactRepo,
 		ReportMetrics:          appMetrics,
+		MilestoneEvidence:      milestoneEvidenceRepo,
 		PolymarketClient:       nil,
 		KalshiWatchedRepo:      pgrepo.NewKalshiWatchedMarketsRepo(db.Pool),
 		KalshiSnapshotsRepo:    pgrepo.NewKalshiMarketSnapshotsRepo(db.Pool),
 		KalshiDiscoveryRuns:    pgrepo.NewKalshiDiscoveryRunRepo(db.Pool),
+	}
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("OVERHAUL_ACCOUNTS_READ_ENABLED")), "true") {
+		deps.EconomicAccounts = pgrepo.NewAccountRepo(db.Pool)
+		deps.EconomicLedger = pgrepo.NewLedgerRepo(db.Pool)
 	}
 	if cfg.Features.EnablePolymarketAutomation {
 		deps.PolymarketAccountRepo = polymarketAccountRepo
@@ -480,19 +494,21 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 		runner := newSmokeRunner(runRepo, snapshotRepo, decisionRepo, eventRepo, logger)
 		strategyRunner := newSmokeStrategyRunner(runner, runRepo, decisionRepo, orderRepo, positionRepo, tradeRepo, auditLogRepo, eventRepo, riskEngine, db, notificationManager, tradeDecisionRecorder, logger)
 		deps.Runner = strategyRunner
-		sched = scheduler.NewScheduler(
-			strategyRepo,
-			pipeline,
-			riskEngine,
-			logger,
-			scheduler.WithJobTimeout(cfg.Features.SchedulerJobTimeout),
-			scheduler.WithMetrics(appMetrics),
-			scheduler.WithDisabledMarketTypes(disabledStrategyMarketTypes(cfg)...),
-			scheduler.WithStrategyExecution(func(ctx context.Context, strategy domain.Strategy) error {
-				_, err := strategyRunner.RunStrategy(ctx, strategy)
-				return err
-			}),
-		)
+		if cfg.Features.EnableScheduler {
+			sched = scheduler.NewScheduler(
+				strategyRepo,
+				pipeline,
+				riskEngine,
+				logger,
+				scheduler.WithJobTimeout(cfg.Features.SchedulerJobTimeout),
+				scheduler.WithMetrics(appMetrics),
+				scheduler.WithDisabledMarketTypes(disabledStrategyMarketTypes(cfg)...),
+				scheduler.WithStrategyExecution(func(ctx context.Context, strategy domain.Strategy) error {
+					_, err := strategyRunner.RunStrategy(ctx, strategy)
+					return err
+				}),
+			)
+		}
 	} else {
 		// Global rate limiter: 50 req/min shared across all providers.
 		globalDataLimiter := data.NewRateLimiter(50, time.Minute)
@@ -652,11 +668,17 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 		}
 		deps.CopyTrading = copytrading.NewService(copytrading.ServiceDeps{
 			Repo:       copyTradingRepo,
+			OriginRuns: pgrepo.NewCopyOriginRepo(db.Pool),
 			Strategies: strategyRepo,
 			Runs:       runRepo,
 			Positions:  positionRepo,
 			EDGAR:      edgarProvider,
-			Prices:     copytrading.OHLCVPriceProvider{Source: dataService},
+			Prices: copytrading.CanonicalQuoteProvider{
+				Instruments: instrumentRepo, Quotes: quoteSnapshotRepo,
+				Liquidity:     copytrading.OHLCVPriceProvider{Source: dataService},
+				AliasProvider: "legacy_augr_stock", QuoteProvider: "alpaca",
+				Venue: "alpaca", ObservationNamespace: "quotes/alpaca",
+			},
 			Executor: copytrading.NewOrderManagerExecutor(copytrading.OrderManagerExecutorDeps{
 				Broker: strategyRunner.localPaperBroker, Risk: riskEngine, Positions: positionRepo,
 				Orders: orderRepo, Trades: tradeRepo, FinancialLifecycle: db, Audit: auditLogRepo,
@@ -713,10 +735,10 @@ func newAPIServer(ctx context.Context, cfg config.Config, logger *slog.Logger) (
 			)
 		}
 
-		// Create the automation orchestrator when scheduler support is enabled. Jobs
-		// self-register only when their own dependencies are present, so Kalshi
+		// Create the automation orchestrator only when scheduler support is enabled.
+		// Jobs self-register only when their own dependencies are present, so Kalshi
 		// discovery does not depend on stock ticker discovery being enabled.
-		{
+		if cfg.Features.EnableScheduler {
 			var polygonClientForAuto *polygon.Client
 			if strings.TrimSpace(cfg.DataProviders.Polygon.APIKey) != "" {
 				polygonClientForAuto = polygon.NewClient(cfg.DataProviders.Polygon.APIKey, logger, polygonLimiter)

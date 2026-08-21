@@ -40,6 +40,16 @@ func TestCreateOrReusePaperStrategyCreatesThenReuses(t *testing.T) {
 	if created.ID == uuid.Nil {
 		t.Fatal("created strategy id should be set")
 	}
+	if created.Status != domain.StrategyStatusInactive || created.ScheduleCron != "" {
+		t.Fatalf("created research idea = status %q schedule %q, want inactive and unscheduled", created.Status, created.ScheduleCron)
+	}
+	var config map[string]json.RawMessage
+	if err := json.Unmarshal(created.Config, &config); err != nil {
+		t.Fatalf("created config is invalid: %v", err)
+	}
+	if len(config[researchLifecycleConfigKey]) == 0 {
+		t.Fatalf("created config = %s, want %q metadata", created.Config, researchLifecycleConfigKey)
+	}
 
 	reused, didCreate, err := CreateOrReusePaperStrategy(ctx, repo, strategy)
 	if err != nil {
@@ -55,6 +65,41 @@ func TestCreateOrReusePaperStrategyCreatesThenReuses(t *testing.T) {
 	got := repo.countByKey(strategy.Ticker, strategy.MarketType, strategy.Name, true)
 	if got != 1 {
 		t.Fatalf("strategy count for key = %d, want 1", got)
+	}
+}
+
+func TestPrepareResearchIdeaRejectsNonPaperAndInvalidConfig(t *testing.T) {
+	t.Parallel()
+
+	if _, err := PrepareResearchIdea(domain.Strategy{IsPaper: false}); err == nil {
+		t.Fatal("PrepareResearchIdea(non-paper) error = nil, want error")
+	}
+	if _, err := PrepareResearchIdea(domain.Strategy{IsPaper: true, Config: json.RawMessage(`[]`)}); err == nil {
+		t.Fatal("PrepareResearchIdea(array config) error = nil, want error")
+	}
+	if _, err := PrepareResearchIdea(domain.Strategy{IsPaper: true, Config: json.RawMessage(`null`)}); err == nil {
+		t.Fatal("PrepareResearchIdea(null config) error = nil, want error")
+	}
+}
+
+func TestPrepareResearchIdeaIsIdempotent(t *testing.T) {
+	t.Parallel()
+
+	first, err := PrepareResearchIdea(domain.Strategy{
+		IsPaper:      true,
+		Status:       domain.StrategyStatusActive,
+		ScheduleCron: "0 */2 * * *",
+		Config:       json.RawMessage(`{"rules_engine":{"name":"test"}}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := PrepareResearchIdea(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(first.Config) != string(second.Config) || second.Status != domain.StrategyStatusInactive || second.ScheduleCron != "" {
+		t.Fatalf("second preparation changed the idea: first=%+v second=%+v", first, second)
 	}
 }
 

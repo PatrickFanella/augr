@@ -1,0 +1,2 @@
+DO $$BEGIN IF EXISTS(SELECT 1 FROM shadow_campaign_day_candidates) OR EXISTS(SELECT 1 FROM shadow_campaign_days) OR EXISTS(SELECT 1 FROM shadow_campaign_candidates) OR EXISTS(SELECT 1 FROM shadow_campaigns) THEN RAISE EXCEPTION 'migration 102 rollback refused: shadow campaign evidence exists';END IF;END$$;
+DROP TABLE shadow_campaign_day_candidates;DROP TABLE shadow_campaign_days;DROP TABLE shadow_campaign_candidates;DROP TABLE shadow_campaigns;DROP FUNCTION validate_shadow_campaign_graph();DROP FUNCTION reject_shadow_campaign_mutation();

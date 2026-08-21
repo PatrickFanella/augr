@@ -29,8 +29,10 @@ func (*decisionJournalStub) List(context.Context, repository.TradeDecisionFilter
 func (*decisionJournalStub) Count(context.Context, repository.TradeDecisionFilter) (int, error) {
 	return 0, nil
 }
+
 func (*decisionJournalStub) AttachPaperOrder(context.Context, uuid.UUID, uuid.UUID) error { return nil }
-func (*decisionJournalStub) AttachLiveOrder(context.Context, uuid.UUID, uuid.UUID) error  { return nil }
+
+func (*decisionJournalStub) AttachLiveOrder(context.Context, uuid.UUID, uuid.UUID) error { return nil }
 
 type replayEventStub struct{ events []domain.ReplayEvent }
 

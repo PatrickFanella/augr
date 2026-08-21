@@ -21,8 +21,12 @@ func TestProductionBuildVerificationScriptContainsExpectedSteps(t *testing.T) {
 		`refusing to reuse existing Compose project`,
 		`VERIFY_PUBLIC_SUBNET`,
 		`VERIFY_BACKEND_SUBNET`,
+		`VERIFY_MONITORING_SUBNET`,
 		`subnet: ${VERIFY_PUBLIC_SUBNET}`,
 		`subnet: ${VERIFY_BACKEND_SUBNET}`,
+		`subnet: ${VERIFY_MONITORING_SUBNET}`,
+		`name: ${PROJECT_NAME}_monitoring`,
+		`external: false`,
 		`VERIFY_APP_PORT`,
 		`APP_BIND="127.0.0.1"`,
 		`ENABLE_SCHEDULER=false`,
@@ -138,12 +142,13 @@ func TestReleaseGateIncludesProductionVerificationAndPinnedPromtool(t *testing.T
 		`scripts/verify-secret-history.sh`,
 		`sh -n "$shell_script"`,
 		`bash -n scripts/verify-prod-build.sh`,
-		`go test -count=1 ./...`,
-		`go vet ./...`,
-		`golangci-lint run ./...`,
-		`npm --prefix web test`,
-		`npm --prefix web run lint`,
-		`npm --prefix web run build`,
+		`go test -count=1 ./cmd/... ./internal/... ./migrations/...`,
+		`go vet ./cmd/... ./internal/... ./migrations/...`,
+		`golangci-lint run ./cmd/... ./internal/... ./migrations/...`,
+		`mise exec node@22.23.2 -- ./node_modules/.bin/vitest --run --pool=threads --maxWorkers=1`,
+		`mise exec node@22.23.2 -- ./node_modules/.bin/eslint .`,
+		`mise exec node@22.23.2 -- ./node_modules/.bin/tsc -b`,
+		`mise exec node@22.23.2 -- ./node_modules/.bin/vite build`,
 		`docker compose -f docker-compose.nuc.yml config --quiet`,
 		`docker compose -f docker-compose.nuc.yml -f deploy/docker-compose.nuc.rollback.yml config --quiet`,
 		`MIGRATION_DOWN_STEPS=2 docker compose -f docker-compose.nuc.yml -f deploy/docker-compose.nuc.migrate-down.yml config --quiet`,
@@ -163,10 +168,13 @@ func TestReleaseGateIncludesProductionVerificationAndPinnedPromtool(t *testing.T
 	if strings.Contains(script, `prom/prometheus:v3.3.0`) {
 		t.Fatal("release-gate.sh uses a mutable Prometheus tag")
 	}
+	if strings.Contains(script, `npm --prefix web`) {
+		t.Fatal("release-gate.sh uses the ambient frontend runtime")
+	}
 
 	candidateIdx := strings.Index(script, `candidate_commit=$(git rev-parse HEAD)`)
 	firstTreeIdx := strings.Index(script, `./scripts/verify-release-tree.sh`)
-	goTestIdx := strings.Index(script, `go test -count=1 ./...`)
+	goTestIdx := strings.Index(script, `go test -count=1 ./cmd/... ./internal/... ./migrations/...`)
 	secretIdx := strings.Index(script, `./scripts/verify-secret-history.sh`)
 	lastTreeIdx := strings.LastIndex(script, `./scripts/verify-release-tree.sh`)
 	verifiedIdx := strings.Index(script, `verified_commit=$(git rev-parse HEAD)`)

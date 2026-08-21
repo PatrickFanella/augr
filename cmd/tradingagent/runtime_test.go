@@ -165,6 +165,7 @@ func TestNewAPIServerSchemaAheadFailsFast(t *testing.T) {
 }
 
 func TestNewAPIServerSchemaMatchSucceeds(t *testing.T) {
+	t.Setenv("OVERHAUL_ACCOUNTS_READ_ENABLED", "true")
 	origNewDB := runtimeNewDB
 	origCurrentSchemaVersion := runtimeCurrentSchemaVersion
 	origNewPaperAccountRepo := runtimeNewPaperAccountRepo
@@ -189,6 +190,9 @@ func TestNewAPIServerSchemaMatchSucceeds(t *testing.T) {
 	var proceeded atomic.Bool
 	var closed atomic.Bool
 	var serverBuilt atomic.Bool
+	var automationWired atomic.Bool
+	var milestoneEvidenceWired atomic.Bool
+	var economicReadsWired atomic.Bool
 	runtimeNewDB = func(context.Context, string) (*pgrepo.DB, error) {
 		return &pgrepo.DB{Pool: pool}, nil
 	}
@@ -198,8 +202,11 @@ func TestNewAPIServerSchemaMatchSucceeds(t *testing.T) {
 	runtimeNewPaperAccountRepo = func(*pgrepo.DB) repository.PaperAccountRepository { return stubPaperAccountRepo{} }
 	runtimeAfterSchemaGate = func() { proceeded.Store(true) }
 	runtimeCloseDB = func(*pgrepo.DB) { closed.Store(true) }
-	runtimeNewServer = func(api.ServerConfig, api.Deps, *slog.Logger) (*api.Server, error) {
+	runtimeNewServer = func(_ api.ServerConfig, deps api.Deps, _ *slog.Logger) (*api.Server, error) {
 		serverBuilt.Store(true)
+		automationWired.Store(deps.Automation != nil)
+		milestoneEvidenceWired.Store(deps.MilestoneEvidence != nil)
+		economicReadsWired.Store(deps.EconomicAccounts != nil && deps.EconomicLedger != nil)
 		return &api.Server{}, nil
 	}
 
@@ -213,6 +220,18 @@ func TestNewAPIServerSchemaMatchSucceeds(t *testing.T) {
 	if sched != nil {
 		t.Fatalf("newAPIServer() scheduler = %v, want nil when scheduler disabled", sched)
 	}
+	smokeServer, smokeSched, smokeCleanup, err := newAPIServer(
+		context.Background(), config.Config{Environment: "smoke"}, slogDiscardLogger(),
+	)
+	if err != nil {
+		t.Fatalf("newAPIServer(smoke) error = %v", err)
+	}
+	if smokeServer == nil || smokeCleanup == nil {
+		t.Fatal("newAPIServer(smoke) did not construct server and cleanup")
+	}
+	if smokeSched != nil {
+		t.Fatalf("newAPIServer(smoke) scheduler = %v, want nil when scheduler disabled", smokeSched)
+	}
 	if cleanup == nil {
 		t.Fatal("newAPIServer() cleanup = nil, want non-nil")
 	}
@@ -222,11 +241,21 @@ func TestNewAPIServerSchemaMatchSucceeds(t *testing.T) {
 	if !serverBuilt.Load() {
 		t.Fatal("runtime did not continue to server construction on matching schema")
 	}
+	if automationWired.Load() {
+		t.Fatal("runtime wired automation while scheduler was disabled")
+	}
+	if !milestoneEvidenceWired.Load() {
+		t.Fatal("runtime did not wire read-only milestone evidence inspection")
+	}
+	if !economicReadsWired.Load() {
+		t.Fatal("runtime did not wire enabled read-only economic inspection")
+	}
 	if closed.Load() {
 		t.Fatal("runtime closed db before cleanup on matching schema")
 	}
 
 	cleanup()
+	smokeCleanup()
 	if !closed.Load() {
 		t.Fatal("runtime cleanup did not close db on matching schema")
 	}
@@ -1084,8 +1113,10 @@ func (r historyPositionRepo) GetByStrategy(context.Context, uuid.UUID, repositor
 
 type metricPositionRepo struct{ count int }
 
-func (m metricPositionRepo) Create(context.Context, *domain.Position) error            { return nil }
+func (m metricPositionRepo) Create(context.Context, *domain.Position) error { return nil }
+
 func (m metricPositionRepo) CreateAlpacaOwned(context.Context, *domain.Position) error { return nil }
+
 func (m metricPositionRepo) Get(context.Context, uuid.UUID) (*domain.Position, error) {
 	return nil, repository.ErrNotFound
 }

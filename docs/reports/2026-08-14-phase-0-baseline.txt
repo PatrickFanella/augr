@@ -1,0 +1,383 @@
+Augr Phase 0 baseline
+generated_at=2026-08-14T22:40:25Z
+hostname=nuc
+
+[repository]
+repository=/home/onnwee/.codex/worktrees/c265/augr
+commit=5517405af4afaeddfe758b649d132c8172cd07ff
+branch=codex/augr-overhaul
+origin=ssh://git@10.0.0.200:2223/subculture-collective/augr.git
+tracked_tree=5e1a8dd4f51eed87858cf3d4f5913b8998c39fb7
+highest_code_migration=000063_stock_copy_trading.up.sql
+worktree_status_begin
+ M scripts/release-gate.sh
+?? docs/reports/2026-08-14-augr-profitability-audit.artifact.json
+?? docs/reports/2026-08-14-augr-profitability-audit.html
+?? docs/superpowers/plans/2026-08-14-total-overhaul-plan.md
+?? scripts/overhaul-baseline.sh
+worktree_status_end
+
+[runtime images]
+app_container=/augr-app-1 image=augr-app:audit-abec3eab3f25 image_id=sha256:a50afe20aef915e0cb90d417e616b525494eac828410e1be64b65c92afa0f317 started=2026-08-14T20:42:17.402568983Z status=running
+db_container=/augr-postgres-1 image=timescale/timescaledb:2.17.2-pg17 image_id=sha256:3324f81ca7f84cdc2dc4497863b3798ababa8ce130c5b59d73f0b40e3a34148e started=2026-08-11T16:03:50.049716091Z status=running
+
+[safe runtime configuration]
+APP_ENV=production
+ENABLE_LIVE_TRADING=false
+ENABLE_SCHEDULER=true
+ENABLE_TICKER_DISCOVERY=true
+ENABLE_POLYMARKET_AUTOMATION=false
+ALPACA_PAPER_MODE=true
+BINANCE_PAPER_MODE=true
+KALSHI_DEMO=<unset; application default applies>
+KALSHI_DRY_RUN=false
+KALSHI_AUTO_EXITS_ENABLED=true
+PAPER_EVALUATION_MODE=<unset; application default applies>
+PAPER_INITIAL_CAPITAL=<unset; application default applies>
+PAPER_BUYING_POWER_MULTIPLIER=<unset; application default applies>
+PAPER_SLIPPAGE_BPS=<unset; application default applies>
+PAPER_FEE_PCT=<unset; application default applies>
+RISK_MAX_POSITION_SIZE_PCT=0.10
+RISK_MAX_DAILY_LOSS_PCT=0.02
+RISK_MAX_DRAWDOWN_PCT=0.10
+RISK_MAX_OPEN_POSITIONS=10
+RISK_MAX_KALSHI_EXPOSURE_PCT=0.20
+RISK_CIRCUIT_BREAKER_THRESHOLD=0.05
+RISK_CIRCUIT_BREAKER_COOLDOWN=15m
+
+[database identity and schema]
+WARNING:  database "tradingagent" has no actual collation version, but a version was recorded
+   database   | database_user | postgres_version
+--------------+---------------+------------------
+ tradingagent | postgres      | 17.2
+(1 row)
+
+ schema_version | dirty
+----------------+-------
+             62 | f
+(1 row)
+
+   extname   | extversion
+-------------+------------
+ pgcrypto    | 1.3
+ plpgsql     | 1.0
+ timescaledb | 2.17.2
+ vector      | 0.8.2
+(4 rows)
+
+
+[strategy inventory]
+WARNING:  database "tradingagent" has no actual collation version, but a version was recorded
+ market_type | status | is_paper | strategies | scheduled | with_thesis | generated
+-------------+--------+----------+------------+-----------+-------------+-----------
+ stock       | active | t        |        107 |       107 |           0 |       107
+ stock       | paused | t        |         41 |        41 |           0 |        41
+ kalshi      | active | t        |         22 |        22 |           0 |        22
+ kalshi      | paused | t        |          1 |         1 |           0 |         1
+(4 rows)
+
+                  id                  | market_type | status | is_paper |       ticker        |                       name                       | schedule_cron
+--------------------------------------+-------------+--------+----------+---------------------+--------------------------------------------------+---------------
+ bc125b7c-7238-42d2-88a8-3f1cfc9ca830 | stock       | active | t        | ADI                 | discovery: ADI ADI Mean Reversion Bounce         | 0 */2 * * *
+ 22fa767e-54e6-41ab-96f2-89cb89eac5ab | stock       | paused | t        | ALK                 | discovery: ALK ALK Pullback Reversion            | 0 */2 * * *
+ a2f37ccb-a4b6-4da5-ab0f-495c375a5163 | stock       | active | t        | AMAT                | discovery: AMAT AMAT Trend Pullback Long         | 0 */2 * * *
+ ebad46ad-87c0-452d-94cc-fc760161cc47 | stock       | active | t        | AMD                 | discovery: AMD AMD Mean Reversion Bounce         | 0 */2 * * 1-5
+ 724f543f-6e5b-4db9-9899-ff8c1b3aef49 | stock       | active | t        | AMD                 | discovery: AMD AMD Trend Pullback Long           | 0 */2 * * *
+ 2910cd47-5199-4c4e-82a9-9194be9200ca | stock       | active | t        | AMD                 | discovery: AMD Momentum Reversion                | 0 */2 * * *
+ 5bdb5456-d78e-4732-ab96-2e4231a3d8a3 | stock       | active | t        | AMGN                | discovery: AMGN AMGN Trend Pullback              | 0 */2 * * *
+ a2d4eed3-9ba6-4f2e-83dd-896533d5ded5 | stock       | paused | t        | ANET                | discovery: ANET ANET Trend Momentum              | 0 */2 * * *
+ 50ef7a55-0673-49f4-8989-6e9593152a3a | stock       | active | t        | APTV                | discovery: APTV APTV Oversold Reversion          | 0 */2 * * *
+ aa8bc95e-fc80-41b8-8ab2-d0f6b257baeb | stock       | active | t        | APUS                | discovery: APUS APUS Trend Momentum              | 0 */2 * * 1-5
+ b5511eb3-8a9d-407c-af69-4c47c734a54d | stock       | active | t        | ARE                 | discovery: ARE ARE Mean Reversion Bounce         | 0 */2 * * *
+ 6959b075-c6b3-4a45-990e-d6554e4dcf0a | stock       | paused | t        | ASTC                | discovery: ASTC Momentum Pullback Mean Reversion | 0 */2 * * *
+ a27ddc14-b793-42b1-bc7f-f406000e24e0 | stock       | active | t        | BLLN                | discovery: BLLN BLLN RSI Mean Reversion          | 0 */2 * * *
+ c1bcff3f-2c91-47a7-a426-f70326613d2b | stock       | paused | t        | BRTX                | discovery: BRTX MomentumPullbackStrategy         | 0 */2 * * *
+ a24c66d8-cead-4720-a46d-3940a651b4a4 | stock       | active | t        | BWA                 | discovery: BWA BWA Trend Pullback                | 0 */2 * * *
+ 6ba132e4-20ba-4c75-96d2-4524ddafa3a8 | stock       | active | t        | CAT                 | discovery: CAT CAT Trend Momentum                | 0 */2 * * *
+ 1f5f71e8-1b28-4436-a4e1-7fc01c529596 | stock       | paused | t        | CDT                 | discovery: CDT CDT Momentum Pullback             | 0 */2 * * *
+ 4dd3e0df-b33a-44fb-9aa6-41bcd072a598 | stock       | active | t        | CLBK                | discovery: CLBK CLBK Trend Pullback              | 0 */2 * * *
+ 9df5bba4-1b68-4d18-9821-5a1aafca3bb7 | stock       | paused | t        | CMG                 | discovery: CMG CMG Mean Reversion Bounce         | 0 */2 * * *
+ 5d9deb00-a228-4155-8b5b-9ebf5e8fa012 | stock       | active | t        | CRWD                | discovery: CRWD CRWD Trend Momentum              | 0 */2 * * *
+ f47205a0-cfcb-42cd-8dbf-bc7e558b98b5 | stock       | active | t        | CTAS                | discovery: CTAS CTAS Trend Pullback Long         | 0 */2 * * *
+ 3a8d8c5a-d582-46ef-92a6-312ae0771b4e | stock       | active | t        | DDOG                | discovery: DDOG DDOG Pullback Reversion          | 0 */2 * * *
+ b7397541-8986-42a4-88b1-83199b288a65 | stock       | active | t        | DLR                 | discovery: DLR DLR Oversold Mean Reversion       | 0 */2 * * *
+ cf5efb6e-2715-48af-9688-2262a0f33102 | stock       | active | t        | DVN                 | discovery: DVN DVN Oversold Reversion            | 0 */2 * * *
+ 6685148d-1323-4a7d-9023-405ca8ab93f2 | stock       | active | t        | DXYZ                | discovery: DXYZ DXYZ Pullback Reversion          | 0 */2 * * *
+ 42483a18-c859-4596-8b7b-7e9faab705ab | stock       | active | t        | EBAY                | discovery: EBAY EBAY Mean Reversion Reclaim      | 0 */2 * * *
+ eb56155c-7fcc-450f-b472-16dc43beef38 | stock       | paused | t        | EL                  | discovery: EL Momentum_RSI_Crossover             | 0 */2 * * *
+ 28dc0e97-e0cb-4482-a65b-2fd21c388ca5 | stock       | active | t        | EXPE                | discovery: EXPE EXPE Trend Momentum              | 0 */2 * * 1-5
+ 22e8222d-308c-4660-b3db-195b6d1646c3 | stock       | active | t        | FFAI                | discovery: FFAI FFAI Trend Momentum              | 0 */2 * * *
+ 06f51c3e-fca9-470e-bf77-ee9bf766e4a2 | stock       | paused | t        | FOXX                | discovery: FOXX FOXX Oversold Bounce             | 0 */2 * * *
+ bc8e6301-863e-4b43-9ab9-ea5c60769d68 | stock       | active | t        | FTNT                | discovery: FTNT FTNT Trend Pullback              | 0 */2 * * *
+ 7acddadd-1370-4c75-8651-407c7a587466 | stock       | active | t        | FVCB                | discovery: FVCB FVCB Trend Pullback Long         | 0 */2 * * *
+ df038f0c-e769-44e0-bb3f-f7a004f9b9c0 | stock       | active | t        | GFS                 | discovery: GFS GFS Mean Reversion Bounce         | 0 */2 * * *
+ c8d6f9a9-49f2-402c-aa60-74859b4ce9f1 | stock       | active | t        | GL                  | discovery: GL GL Pullback Trend Rebound          | 0 */2 * * *
+ d7ced3e7-1e58-4052-92dd-5bb2b0728290 | stock       | active | t        | GLW                 | discovery: GLW GLW Mean Reversion Bounce         | 0 */2 * * *
+ 1e067990-c986-43d6-a130-14f8997ac9ba | stock       | active | t        | GLW                 | discovery: GLW GLW Mean Reversion Dip Buy        | 0 */2 * * *
+ fbb0142f-8ab6-47b9-a0d4-ea94f09dd39f | stock       | paused | t        | GLW                 | discovery: GLW GLW Mean Reversion Oversold       | 0 */2 * * *
+ 2cd32feb-5ec8-4c51-8600-2af54540282a | stock       | active | t        | GLW                 | discovery: GLW GLW Mean Reversion Pullback       | 0 */2 * * *
+ 1e549e45-ef89-4fa4-a2fc-80c9e5f30014 | stock       | paused | t        | GLW                 | discovery: GLW GLW Pullback Reversion            | 0 */2 * * *
+ be3b8def-b9b9-4e62-bf89-f6f252a55d32 | stock       | paused | t        | GMM                 | discovery: GMM MomentumBreakout                  | 0 */2 * * *
+ 0e7ba894-e2e0-433b-be22-0d6dbf83a8aa | stock       | paused | t        | GNRC                | discovery: GNRC GNRC Mean Reversion Bounce       | 0 */2 * * *
+ 5b492649-0c55-486f-8862-2cb138e5baa8 | stock       | paused | t        | GNRC                | discovery: GNRC GNRC Momentum Strategy           | 0 */2 * * *
+ 62838a21-34df-43a3-a3e8-05c483e4e40c | stock       | paused | t        | GNRC                | discovery: GNRC GNRC Trend Pullback              | 0 */2 * * *
+ 960564c0-b4d8-4507-b82f-9d7e63fbcf48 | stock       | paused | t        | GOOG                | discovery: GOOG GOOG Momentum Pullback           | 0 */2 * * *
+ 86e09ada-9c05-40dd-b953-7534b1690620 | stock       | paused | t        | GOOGL               | discovery: GOOGL GOOGL Momentum Pullback         | 0 */2 * * *
+ 2a049ad9-e1b9-482b-ac8c-8b0987ed2d74 | stock       | paused | t        | GRNQ                | discovery: GRNQ GRNQ RSI Recovery                | 0 */2 * * *
+ 186de00f-0ba1-4d3c-91f4-2c4e8f28fd45 | stock       | active | t        | GS                  | discovery: GS GS Pullback Trend Reentry          | 0 */2 * * *
+ fe673665-f9d4-46e1-ac78-1143707606be | stock       | active | t        | GS                  | discovery: GS GS Trend Continuation              | 0 */2 * * *
+ caf5f98d-94fd-4878-bf3d-30d6ef41cb80 | stock       | paused | t        | HKIT                | discovery: HKIT RSI_Median_Reversion             | 0 */2 * * *
+ 2525802b-b65c-471c-ad1f-e4ddb252dc81 | stock       | paused | t        | HPE                 | discovery: HPE HPE Pullback Reversion            | 0 */2 * * *
+ 467506c5-33d5-4f28-9720-58926f8c44c6 | stock       | active | t        | HPE                 | discovery: HPE HPE Trend Momentum                | 0 */2 * * *
+ 552dfe76-d93d-49de-96ff-8216cb04282d | stock       | paused | t        | HPE                 | discovery: HPE Mean Reversion 2024               | 0 */2 * * *
+ 4a76f6b5-438a-4ef8-98c1-761ee9260015 | stock       | paused | t        | HSPT                | discovery: HSPT HSPT RSI Mean Reversion          | 0 */2 * * *
+ 215f666c-4449-4c0e-9f20-722c72d86bce | stock       | paused | t        | HUBC                | discovery: HUBC HUBC_RSI_Rebound                 | 0 */2 * * *
+ d22b97e0-7d10-46aa-850b-5328afbe3c29 | stock       | active | t        | ICCM                | discovery: ICCM ICCM Momentum Pullback           | 0 */2 * * *
+ a584e1c2-9068-4d2d-949e-6a999ee1fe6e | stock       | active | t        | INTC                | discovery: INTC INTC RSI Pullback Reversal       | 0 */2 * * *
+ 733dd76c-ecb8-4652-9ccf-4e733531db77 | stock       | active | t        | INTU                | discovery: INTU INTU Momentum Continuation       | 0 */2 * * *
+ 3577efc8-3807-46c3-a16e-6e320d36c366 | stock       | active | t        | IPOD                | discovery: IPOD IPOD Trend Continuation          | 0 */2 * * *
+ 9df7e65c-7246-4dd4-a668-e443f8593974 | stock       | active | t        | ISRG                | discovery: ISRG ISRG Pullback Rebound            | 0 */2 * * 1-5
+ 6c7ed31a-b43c-49a4-a9e9-0981a0021e36 | stock       | active | t        | JBHT                | discovery: JBHT JBHT Trend Continuation          | 0 */2 * * *
+ 28857f06-ce39-4524-ab7e-51d060a256fd | stock       | paused | t        | JLHL                | discovery: JLHL JLHL EMA Momentum                | 0 */2 * * *
+ 29ef7508-95af-4cb8-9e6e-b0e32b9882cc | stock       | active | t        | JLHL                | discovery: JLHL JLHL Recovery Momentum           | 0 */2 * * *
+ 471d3fe8-821a-44dd-99f6-8c739ecbbdce | stock       | paused | t        | JLHL                | discovery: JLHL JLHL Trend Pullback Bounce       | 0 */2 * * *
+ c9ebf37a-0ae8-4a4b-bc70-cea204c2ef77 | stock       | active | t        | KEYS                | discovery: KEYS KEYS Mean Reversion Bounce       | 0 */2 * * *
+ 17fd41a3-07a1-4f96-9040-d661ce3b4d28 | stock       | active | t        | LDOS                | discovery: LDOS LDOS Rebound Momentum            | 0 */2 * * *
+ 7159dedc-bb95-48c3-a1d1-500889c5ee88 | stock       | paused | t        | LHSW                | discovery: LHSW LHSW Trend Pullback Momentum     | 0 */2 * * *
+ b9571b3b-8a8c-4ff0-a518-84da4175afd5 | stock       | active | t        | LRCX                | discovery: LRCX LRCX Mean Reversion Bounce       | 0 */2 * * *
+ 2dbf91e7-84f0-4a3f-9096-1b36155fd243 | stock       | paused | t        | LUMN                | discovery: LUMN LUMN Pullback Reversion          | 0 */2 * * *
+ 8f4bfe00-841d-483f-93b6-4bcbbd750d24 | stock       | active | t        | LUV                 | discovery: LUV LUV Mean Reversion Bounce         | 0 */2 * * *
+ d376cc5c-63d9-4378-9248-75cae0f099ce | stock       | active | t        | MAS                 | discovery: MAS MAS Trend Pullback Long           | 0 */2 * * *
+ 399d4f32-ed8d-404f-b26b-027ba07ea994 | stock       | active | t        | MCHP                | discovery: MCHP MCHP Mean Reversion Dip Buy      | 0 */2 * * *
+ 57cd3976-868f-466b-bf46-44a58b721f1e | stock       | active | t        | MCHP                | discovery: MCHP MCHP Pullback Reversion          | 0 */2 * * *
+ 385e2d45-bcf0-42fd-9541-89819e35ccf0 | stock       | paused | t        | MGM                 | discovery: MGM RSI_Rebound_Strategy              | 0 */2 * * *
+ ca2fd13b-1a91-4c26-bf3c-e6662a0c2135 | stock       | paused | t        | MLAC                | discovery: MLAC MLAC Swing Reclaim               | 0 */2 * * *
+ 3222a08b-574e-4d5c-95bc-850f060617e6 | stock       | active | t        | MLI                 | discovery: MLI MLI Oversold Reversion            | 0 */2 * * *
+ d063074a-1102-4f0e-9eab-2d375d8a0f39 | stock       | active | t        | MOS                 | discovery: MOS MOS Mean Reversion Bounce         | 0 */2 * * *
+ da3f7bc4-9dd8-42b3-91f9-57e10e69b98b | stock       | active | t        | MPLT                | discovery: MPLT MPLT Oversold Reversion          | 0 */2 * * *
+ f48019b9-73da-4b1a-941e-04990e6513e0 | stock       | active | t        | MPWR                | discovery: MPWR MPWR Mean Reversion Bounce       | 0 */2 * * *
+ 6fd119fb-4c6e-4e84-a3a6-61bfddf06222 | stock       | active | t        | MRVL                | discovery: MRVL MRVL Mean Reversion Bounce       | 0 */2 * * 1-5
+ b9b61902-da91-4a7d-ba3c-81d0c5dbde39 | stock       | active | t        | MRVL                | discovery: MRVL MRVL Pullback Trend              | 0 */2 * * *
+ 2b9bca9d-2f37-4724-9ab9-77ce8ff2c5bb | stock       | paused | t        | MRVL                | discovery: MRVL MRVL Trend Pullback              | 0 */2 * * *
+ 4ae0a0bd-9140-460b-9107-40f545e76d3a | stock       | active | t        | MRVL                | discovery: MRVL MRVL Trend Pullback Momentum     | 0 */2 * * *
+ 18e60531-2a99-4dcb-9884-4d2dada96b9e | stock       | active | t        | MSCI                | discovery: MSCI MSCI RSI Mean Reversion          | 0 */2 * * *
+ 41fd72ad-2fb7-403c-a9b5-19a9555a3443 | stock       | active | t        | MSFT                | discovery: MSFT MSFT Trend Pullback              | 0 */2 * * *
+ 38f54e29-a5f1-4714-a705-34872772af08 | stock       | active | t        | MU                  | discovery: MU MU Pullback Reversion              | 0 */2 * * *
+ 438ccbaa-2ab6-4f45-b100-a779bff478a8 | stock       | active | t        | MU                  | discovery: MU MU Trend Pullback                  | 0 */2 * * *
+ edd92e26-078d-4192-8270-702335c15b03 | stock       | active | t        | MU                  | discovery: MU MU Trend Pullback Momentum         | 0 */2 * * *
+ c2f519b6-3a5b-4e39-981b-54318e20a940 | stock       | paused | t        | NCT                 | discovery: NCT momentum_reversal                 | 0 */2 * * *
+ 417e121c-44b3-495f-bb06-de5f5e6add28 | stock       | paused | t        | NOTV                | discovery: NOTV NOTV Oversold Mean Reversion     | 0 */2 * * *
+ 55042eb1-b77f-40ec-b1e6-fd4a5b56d7bd | stock       | paused | t        | NOW                 | discovery: NOW MomentumMeanReversion             | 0 */2 * * *
+ 72a00d9c-9537-46c9-854f-9b4b1340b1c8 | stock       | active | t        | NTRS                | discovery: NTRS NTRS Pullback In Uptrend         | 0 */2 * * *
+ de92fe65-36d3-431d-84a0-3dd6bb849c82 | stock       | active | t        | NVDA                | discovery: NVDA NVDA Pullback Rebound            | 0 */2 * * *
+ 6dddb7a1-19ae-4cab-89b5-33783889ce93 | stock       | active | t        | NVDA                | discovery: NVDA NVDA Pullback Reversion          | 0 */2 * * *
+ b749d9f7-f99c-48b0-8ed1-58e68858ae60 | stock       | active | t        | NVDA                | discovery: NVDA NVDA Uptrend Pullback            | 0 */2 * * *
+ 80d0dec0-f9b5-4d33-9dc9-3a33186c8017 | stock       | active | t        | NXTC                | discovery: NXTC NXTC Pullback Trend Long         | 0 */2 * * *
+ e2aa1678-5e2c-4d7e-bafe-6b487226ae9f | stock       | active | t        | ON                  | discovery: ON ON Mean Reversion Pullback         | 0 */2 * * *
+ f9912a29-6292-4d5a-ab4e-84e4206d9f5c | stock       | active | t        | ON                  | discovery: ON ON Trend Continuation              | 0 */2 * * *
+ 47daf79a-48f2-4400-a94f-be272cec2470 | stock       | active | t        | ORCL                | discovery: ORCL ORCL Oversold Mean Reversion     | 0 */2 * * *
+ dc1db281-9feb-4079-9686-c981369f1d93 | stock       | active | t        | ORCL                | discovery: ORCL ORCL Pullback Bounce             | 0 */2 * * *
+ ec528313-ea20-4460-b599-feba7d9b1932 | stock       | active | t        | PH                  | discovery: PH PH Momentum Trend                  | 0 */2 * * *
+ 555ed499-4fac-4f4f-9811-99f3a7faf437 | stock       | active | t        | PMI                 | discovery: PMI PMI Mean Reversion Bounce         | 0 */2 * * *
+ 26fb7f53-4ef6-4f2b-bd90-8506842073c9 | stock       | active | t        | QCOM                | discovery: QCOM QCOM RSI Mean Reversion          | 0 */2 * * *
+ a668d571-9ece-400b-b28e-7b54631b1457 | stock       | paused | t        | QTEX                | discovery: QTEX RSI_Mean_Reversion_Strategy      | 0 */2 * * *
+ 121354a9-4eee-451c-853f-2bb6b154dfd1 | stock       | active | t        | ROK                 | discovery: ROK ROK Mean Reversion Bounce         | 0 */2 * * *
+ 90f4f76c-65a4-4724-9ade-a2eeee97952c | stock       | active | t        | ROST                | discovery: ROST Momentum Pullback Strategy       | 0 */2 * * *
+ d77bc9b9-6c1c-4802-bd76-7939a41e2eba | stock       | active | t        | RTX                 | discovery: RTX RTX Trend Momentum Pullback       | 0 */2 * * *
+ eb86d706-bee1-4f29-9603-7e384957cfb5 | stock       | paused | t        | RYOJ                | discovery: RYOJ RSI Mean Reversion               | 0 */2 * * *
+ 346265db-6d8c-4e18-a7a4-b57b2bd03d65 | stock       | active | t        | SDOT                | discovery: SDOT SDOT Trend Pullback              | 0 */2 * * *
+ 8f440e11-ec86-4097-a137-0528e29316e9 | stock       | paused | t        | SPHL                | discovery: SPHL SPHL Pullback Trend Reversal     | 0 */2 * * *
+ 409f4dd8-e101-45fc-aef5-5c9b82781876 | stock       | paused | t        | STAK                | discovery: STAK STAK Trend Pullback              | 0 */2 * * *
+ ec794719-e174-4b72-af00-402b993cc1b8 | stock       | active | t        | STFS                | discovery: STFS STFS Trend Pullback              | 0 */2 * * *
+ a749087f-bf8f-4bef-b294-4a319f890969 | stock       | active | t        | STI                 | discovery: STI STI Momentum Pullback             | 0 */2 * * *
+ 55c5373a-717a-4f83-a86f-09def3e265ff | stock       | active | t        | STX                 | discovery: STX STX Pullback Reversion            | 0 */2 * * *
+ 13b62915-9aa2-4e33-8683-716806c89ffe | stock       | active | t        | STX                 | discovery: STX STX RSI Pullback Rebound          | 0 */2 * * 1-5
+ 386841a3-ee6d-4d99-9b04-824bca35bf87 | stock       | active | t        | STX                 | discovery: STX STX Trend Pullback                | 0 */2 * * *
+ 7bc753b1-2da4-4997-b536-f855a3ecb66f | stock       | active | t        | STX                 | discovery: STX STX Trend Pullback Momentum       | 0 */2 * * *
+ 67fd5f67-989a-4459-9914-134652433301 | stock       | active | t        | TDG                 | discovery: TDG TDG Mean Reversion Dip Buy        | 0 */2 * * *
+ b26867ac-2017-43da-9c36-39305f68d195 | stock       | active | t        | TER                 | discovery: TER TER Oversold Rebound              | 0 */2 * * *
+ 9183bec1-344a-415f-82c6-dc1d920b9e11 | stock       | paused | t        | THR                 | discovery: THR THR Trend Pullback Long           | 0 */2 * * *
+ 39493261-f22b-4c00-8d18-06dc02b3b301 | stock       | active | t        | TK                  | discovery: TK TK Mean Reversion Bounce           | 0 */2 * * *
+ 6390100c-5c4f-4b90-9416-b90240ec7451 | stock       | active | t        | TKR                 | discovery: TKR TKR Trend Pullback Long           | 0 */2 * * *
+ a3a0d205-c187-4d35-bf0f-7a3940ff5e9e | stock       | active | t        | TMO                 | discovery: TMO TMO Momentum Breakout             | 0 */2 * * *
+ af03916b-5e6d-40e4-a2b3-9b8ba8358923 | stock       | active | t        | TSLA                | discovery: TSLA TSLA Oversold Bounce             | 0 */2 * * *
+ e09a7ebd-d98f-4b49-9df7-e0ec841466f1 | stock       | active | t        | TSLA                | discovery: TSLA TSLA Pullback Mean Reversion     | 0 */2 * * *
+ 9ba2f315-f67d-4eff-a06c-bb89b265c403 | stock       | active | t        | TT                  | discovery: TT TT Trend Pullback Breakout         | 0 */2 * * *
+ 0c9b1126-8999-40d1-bfb7-e6a84b07dcd6 | stock       | active | t        | TXN                 | discovery: TXN TXN Mean Reversion Bounce         | 0 */2 * * *
+ 1dff057d-dd2a-4e66-b192-816a0331b4c4 | stock       | active | t        | TXN                 | discovery: TXN TXN Momentum Reclaim              | 0 */2 * * *
+ 46a38f8e-395c-4349-b491-bbb153ae0ee5 | stock       | active | t        | UHS                 | discovery: UHS UHS Trend Pullback                | 0 */2 * * *
+ 3a8f5197-4665-4ea9-a3be-bdaeb40edf69 | stock       | active | t        | ULS                 | discovery: ULS ULS Oversold Rebound              | 0 */2 * * *
+ 7e61e4e5-8acf-470d-8312-830785aec01e | stock       | active | t        | VLO                 | discovery: VLO VLO Trend Momentum                | 0 */2 * * *
+ edef9948-993b-4027-8582-e6fa0e97248f | stock       | active | t        | WAB                 | discovery: WAB WAB Trend Pullback                | 0 */2 * * *
+ 6d7fc276-fe8a-40ce-b971-e73d57efe9b0 | stock       | active | t        | WDC                 | discovery: WDC WDC Mean Reversion Bounce         | 0 */2 * * *
+ b6d1619d-0c28-4cbb-893e-e8a2d82adc1b | stock       | active | t        | WDC                 | discovery: WDC WDC Mean Reversion Pullback       | 0 */2 * * *
+ 101db12e-a679-4c8d-8755-663c26660acf | stock       | active | t        | WDC                 | discovery: WDC WDC Mean Reversion Rebound        | 0 */2 * * *
+ 753484d8-d7c1-4052-babb-4641fb9489d5 | stock       | active | t        | WDC                 | discovery: WDC WDC Oversold Mean Reversion       | 0 */2 * * *
+ a36227a6-9f69-42e1-87fe-7445a3488877 | stock       | active | t        | WDC                 | discovery: WDC WDC Pullback Mean Reversion       | 0 */2 * * *
+ 6d8b7149-6c45-4826-bdff-e7b2921dc12b | stock       | active | t        | WDC                 | discovery: WDC WDC Pullback Reversion            | 0 */2 * * *
+ 37c5a9d1-917c-43e2-b926-4df0050fb529 | stock       | active | t        | WDC                 | discovery: WDC WDC Pullback Trend                | 0 */2 * * *
+ 7f999277-c0fa-4df5-a1c7-3373a00522c1 | stock       | active | t        | WDC                 | discovery: WDC WDC Trend Continuation            | 0 */2 * * *
+ e3dcb1c0-58e5-4331-9b97-315af40c01bb | stock       | active | t        | WDC                 | discovery: WDC WDC Uptrend Pullback              | 0 */2 * * *
+ 8e2950c7-67ee-4c20-ab00-bad144f83ded | stock       | paused | t        | WOLF                | discovery: WOLF WOLF Oversold Mean Reversion     | 0 */2 * * *
+ 9018f5d6-91ed-4237-947a-e0563f59c2fe | stock       | active | t        | WST                 | discovery: WST WST Mean Reversion Bounce         | 0 */2 * * *
+ ce09b84c-e603-4b20-81b5-aa38b4e951f1 | stock       | active | t        | WTO                 | discovery: WTO WTO Trend Pullback                | 0 */2 * * *
+ d21b9841-cfe1-4ec3-9c4a-033f96723d3d | stock       | active | t        | XOM                 | discovery: XOM XOM Oversold Rebound              | 0 */2 * * *
+ 31da17b6-70bf-418a-8f53-b9516ca6a3ce | stock       | paused | t        | ZCMD                | discovery: ZCMD ZCMD Oversold Rebound            | 0 */2 * * *
+ c77eb9e9-40ee-4cf2-ad69-db8c5bb53b25 | stock       | paused | t        | ZCMD                | discovery: ZCMD ZCMD Pullback Reclaim            | 0 */2 * * *
+ daab9004-a881-492d-b9c8-953958529582 | stock       | paused | t        | ZNB                 | discovery: ZNB ZNB Oversold Bounce               | 0 */2 * * 1-5
+ 8adecb01-b6c3-4190-b542-f22856d80eb5 | stock       | active | t        | ZTG                 | discovery: ZTG ZTG Trend Pullback                | 0 */2 * * *
+ e331f02f-6aa3-410b-bc55-51e843c8b139 | kalshi      | active | t        | KXMENWORLDCUP-26-AT | auto: kalshi KXMENWORLDCUP-26-AT                 | 0 */6 * * *
+ 782c2137-5c12-4083-b647-ffbf4e194536 | kalshi      | active | t        | KXMENWORLDCUP-26-AU | auto: kalshi KXMENWORLDCUP-26-AU                 | 0 */6 * * *
+ 351dbee5-2f42-47e6-b90c-eafc49759729 | kalshi      | active | t        | KXMENWORLDCUP-26-BE | auto: kalshi KXMENWORLDCUP-26-BE                 | 0 */6 * * *
+ fbf963f7-00d9-4f9a-b31b-8721ee3a9bf6 | kalshi      | active | t        | KXMENWORLDCUP-26-CA | auto: kalshi KXMENWORLDCUP-26-CA                 | 0 */6 * * *
+ 0e9607c2-0edd-4efe-a99a-9df510e93336 | kalshi      | active | t        | KXMENWORLDCUP-26-CH | auto: kalshi KXMENWORLDCUP-26-CH                 | 0 */6 * * *
+ 0ac26ef5-94f5-4a72-9aa8-f4b587ef4225 | kalshi      | active | t        | KXMENWORLDCUP-26-CO | auto: kalshi KXMENWORLDCUP-26-CO                 | 0 */6 * * *
+ de9c3ecf-5b19-446e-8fbb-6916dba50d86 | kalshi      | active | t        | KXMENWORLDCUP-26-EC | auto: kalshi KXMENWORLDCUP-26-EC                 | 0 */6 * * *
+ 89d259fd-9f7e-4c85-a298-242514495e80 | kalshi      | active | t        | KXMENWORLDCUP-26-GH | auto: kalshi KXMENWORLDCUP-26-GH                 | 0 */6 * * *
+ e8220137-64f6-4e89-a443-0741e58c6a04 | kalshi      | active | t        | KXMENWORLDCUP-26-JP | auto: kalshi KXMENWORLDCUP-26-JP                 | 0 */6 * * *
+ 8452c698-0dd8-4744-9e90-ae092302b56d | kalshi      | active | t        | KXMENWORLDCUP-26-KR | auto: kalshi KXMENWORLDCUP-26-KR                 | 0 */6 * * *
+ 6cc97738-4dc6-464e-9024-988e32250e60 | kalshi      | active | t        | KXMENWORLDCUP-26-MX | auto: kalshi KXMENWORLDCUP-26-MX                 | 0 */6 * * *
+ f0d9bc64-b870-403c-89a2-8cc802a61c71 | kalshi      | active | t        | KXMENWORLDCUP-26-TR | auto: kalshi KXMENWORLDCUP-26-TR                 | 0 */6 * * *
+ 22c9ca27-12ea-495e-ae39-c4c0d816d2b1 | kalshi      | active | t        | KXMENWORLDCUP-26-US | auto: kalshi KXMENWORLDCUP-26-US                 | 0 */6 * * *
+ 74b66526-906d-4a73-a7c9-98b5284c8b41 | kalshi      | active | t        | KXMENWORLDCUP-26-UY | auto: kalshi KXMENWORLDCUP-26-UY                 | 0 */6 * * *
+ 12dc3aa0-9a24-4665-9af5-0ae311804a2b | kalshi      | paused | t        | KXMLB-26-WSH        | auto: kalshi KXMLB-26-WSH                        | 0 */6 * * *
+ fb6464ee-3312-4dbd-9079-e487c1aec5ba | kalshi      | active | t        | KXPRESNOMD-28-AKLO  | auto: kalshi KXPRESNOMD-28-AKLO                  | 0 */6 * * *
+ 20d2eaf2-a226-4ca3-acfb-b41bb8a1d85a | kalshi      | active | t        | KXPRESNOMD-28-BOBA  | auto: kalshi KXPRESNOMD-28-BOBA                  | 0 */6 * * *
+ 2cff0cf4-f7f0-43bb-bf0a-10476ac3542f | kalshi      | active | t        | KXPRESNOMD-28-CBOO  | auto: kalshi KXPRESNOMD-28-CBOO                  | 0 */6 * * *
+ beebcb20-929c-4070-88bf-bcb3b4364330 | kalshi      | active | t        | KXPRESNOMD-28-EWAR  | auto: kalshi KXPRESNOMD-28-EWAR                  | 0 */6 * * *
+ b30a2ca5-f151-4abc-b21a-6cb591be1259 | kalshi      | active | t        | KXPRESNOMD-28-GW    | auto: kalshi KXPRESNOMD-28-GW                    | 0 */6 * * *
+ 06751b22-b678-437f-b00b-80557dc15f47 | kalshi      | active | t        | KXPRESNOMD-28-JP    | auto: kalshi KXPRESNOMD-28-JP                    | 0 */6 * * *
+ df0b7ab6-4730-4898-8fbf-e693bd278e2d | kalshi      | active | t        | KXPRESNOMD-28-MK    | auto: kalshi KXPRESNOMD-28-MK                    | 0 */6 * * *
+ 3743993e-7ab5-4e70-afce-ee9f8930e09b | kalshi      | active | t        | KXPRESNOMD-28-RGAL  | auto: kalshi KXPRESNOMD-28-RGAL                  | 0 */6 * * *
+(171 rows)
+
+
+[pipeline outcomes]
+WARNING:  database "tradingagent" has no actual collation version, but a version was recorded
+ market_type |  status   | signal | runs |           first_run           |           last_run
+-------------+-----------+--------+------+-------------------------------+-------------------------------
+ kalshi      | completed | buy    |   12 | 2026-07-26 06:00:00.375693+00 | 2026-07-28 20:04:08.893845+00
+ kalshi      | completed | hold   |  619 | 2026-07-26 06:00:00.018694+00 | 2026-08-09 12:00:01.434396+00
+ kalshi      | completed | sell   |    1 | 2026-07-26 16:50:57.306332+00 | 2026-07-26 16:50:57.306332+00
+ kalshi      | failed    | hold   |  692 | 2026-07-26 18:00:00.654205+00 | 2026-08-14 20:31:47.494786+00
+ stock       | completed | hold   | 1810 | 2026-07-27 00:00:03.733604+00 | 2026-08-14 20:23:13.612513+00
+ stock       | completed | sell   |    3 | 2026-08-06 12:22:43.620456+00 | 2026-08-11 12:22:28.647606+00
+ stock       | failed    | none   | 4305 | 2026-07-27 17:07:35.456157+00 | 2026-08-14 19:13:38.245494+00
+(7 rows)
+
+
+[orders, trades, and positions]
+WARNING:  database "tradingagent" has no actual collation version, but a version was recorded
+ market_type |  status   | broker | orders | requested_quantity | filled_quantity
+-------------+-----------+--------+--------+--------------------+-----------------
+ stock       | filled    | alpaca |      6 |           810.0156 |        810.0156
+ stock       | cancelled | alpaca |      7 |          1504.9403 |          0.0000
+ kalshi      | filled    | paper  |     13 |       4825813.1488 |    4825813.1488
+(3 rows)
+
+ asset_class | open_close  | trades | notional |  fees  |         first_trade          |          last_trade
+-------------+-------------+--------+----------+--------+------------------------------+------------------------------
+             | unspecified |     36 | 48337.43 | 0.0000 | 2026-04-15 19:20:02.66268+00 | 2026-07-28 20:04:09.01143+00
+(1 row)
+
+ market_type | asset_class | open_positions | closed_positions | realized_pnl | open_unrealized_pnl | open_marked_notional
+-------------+-------------+----------------+------------------+--------------+---------------------+----------------------
+ kalshi      |             |             10 |                2 |      -117.65 |                0.00 |             27983.53
+(1 row)
+
+
+[reconciliation indicators]
+WARNING:  database "tradingagent" has no actual collation version, but a version was recorded
+ filled_orders_without_trade
+-----------------------------
+                           0
+(1 row)
+
+ trades_without_filled_order
+-----------------------------
+                           0
+(1 row)
+
+ open_positions_without_mark
+-----------------------------
+                          10
+(1 row)
+
+
+[risk state]
+WARNING:  database "tradingagent" has no actual collation version, but a version was recorded
+ scope | tripped_at | reason | reset_at
+-------+------------+--------+----------
+(0 rows)
+
+ id | kill_switch | market_kill_switches | updated_at
+----+-------------+----------------------+------------
+(0 rows)
+
+
+[automation controls and recent runs]
+WARNING:  database "tradingagent" has no actual collation version, but a version was recorded
+       job_name       | enabled |     updated_by     |          updated_at
+----------------------+---------+--------------------+-------------------------------
+ current_data_refresh | t       | patrick@subcult.tv | 2026-08-14 20:49:27.673972+00
+ filing_monitor       | t       | patrick@subcult.tv | 2026-08-14 20:55:15.440198+00
+(2 rows)
+
+          job_name           | status  | runs |        last_started_at        |       last_completed_at
+-----------------------------+---------+------+-------------------------------+-------------------------------
+ alpaca_reconcile            | error   |   17 | 2026-08-09 05:55:00.005812+00 | 2026-08-09 05:55:08.015172+00
+ alpaca_reconcile            | ok      | 4593 | 2026-08-14 22:40:00.003253+00 | 2026-08-14 22:40:00.302336+00
+ current_data_refresh        | error   |    6 | 2026-08-10 14:30:00.001207+00 | 2026-08-10 14:31:50.74697+00
+ current_data_refresh        | ok      |  662 | 2026-08-07 23:45:00.003463+00 | 2026-08-07 23:45:20.230666+00
+ daily_review                | error   |    5 | 2026-08-14 20:49:51.000777+00 | 2026-08-14 20:49:51.191278+00
+ daily_review                | ok      |   10 | 2026-08-08 00:30:00.001686+00 | 2026-08-08 00:30:00.174858+00
+ deep_scan                   | ok      |  113 | 2026-08-07 23:00:00.003483+00 | 2026-08-07 23:02:01.789715+00
+ deep_scan                   | skipped |   30 | 2026-08-14 19:10:00.001512+00 | 2026-08-14 19:10:00.001512+00
+ discovery_run               | ok      |   10 | 2026-08-07 12:30:00.003653+00 | 2026-08-07 12:42:20.034401+00
+ discovery_run               | skipped |    5 | 2026-08-14 12:30:00.006078+00 | 2026-08-14 12:30:00.006078+00
+ earnings_scanner            | error   |    1 | 2026-08-03 14:00:00.001062+00 | 2026-08-03 14:00:08.111248+00
+ earnings_scanner            | ok      |   14 | 2026-08-14 14:00:00.009505+00 | 2026-08-14 14:00:00.587316+00
+ filing_monitor              | error   |    5 | 2026-08-06 16:00:00.001475+00 | 2026-08-06 16:00:03.352974+00
+ filing_monitor              | ok      |   48 | 2026-08-14 20:54:17.042278+00 | 2026-08-14 20:54:56.178425+00
+ gap_scanner                 | error   |    5 | 2026-08-14 12:00:00.010377+00 | 2026-08-14 12:00:00.235367+00
+ gap_scanner                 | ok      |   10 | 2026-08-07 12:00:00.008765+00 | 2026-08-07 12:00:00.486495+00
+ history_refresh             | error   |    4 | 2026-08-14 04:00:00.011349+00 | 2026-08-14 06:00:00.02097+00
+ history_refresh             | ok      |   10 | 2026-08-08 08:30:12.558378+00 | 2026-08-08 08:52:22.493686+00
+ history_refresh             | running |    1 | 2026-08-14 20:55:15.471795+00 |
+ hot_scan                    | ok      |  261 | 2026-08-07 23:00:00.003706+00 | 2026-08-07 23:00:09.335073+00
+ hot_scan                    | skipped |  129 | 2026-08-14 19:50:00.003638+00 | 2026-08-14 19:50:00.003638+00
+ kalshi_discovery            | error   |   25 | 2026-08-14 14:15:00.004265+00 | 2026-08-14 14:15:00.793082+00
+ kalshi_discovery            | ok      |  400 | 2026-08-14 22:15:00.002082+00 | 2026-08-14 22:15:00.801094+00
+ kalshi_settlement           | error   |   15 | 2026-08-14 13:15:00.002385+00 | 2026-08-14 13:15:00.718687+00
+ kalshi_settlement           | ok      | 2577 | 2026-08-14 12:50:00.004071+00 | 2026-08-14 12:50:00.707202+00
+ news_scan                   | error   |    2 | 2026-08-13 19:07:00.00807+00  | 2026-08-13 19:07:08.60567+00
+ news_scan                   | ok      |  394 | 2026-08-14 19:37:00.009193+00 | 2026-08-14 19:37:07.633176+00
+ options_discovery           | ok      |   10 | 2026-08-08 07:32:34.148945+00 | 2026-08-08 07:32:50.860159+00
+ options_discovery           | skipped |    4 | 2026-08-14 10:30:00.010134+00 | 2026-08-14 10:30:00.010134+00
+ options_expiry_settlement   | ok      |   14 | 2026-08-14 20:53:57.839923+00 | 2026-08-14 20:53:57.850057+00
+ options_lifecycle_reconcile | ok      |   15 | 2026-08-14 20:53:58.11833+00  | 2026-08-14 20:53:58.125983+00
+ options_scan                | error   |    5 | 2026-08-14 20:52:52.08574+00  | 2026-08-14 20:53:40.536192+00
+ options_scan                | ok      |   10 | 2026-08-08 02:00:00.021091+00 | 2026-08-08 02:15:12.503628+00
+ overnight_backtest          | ok      |   88 | 2026-08-08 10:16:58.105794+00 | 2026-08-08 12:19:05.614981+00
+ overnight_backtest          | skipped |   40 | 2026-08-14 09:30:00.004415+00 | 2026-08-14 09:30:00.004415+00
+ overnight_generate          | ok      |    6 | 2026-08-08 07:00:00.010263+00 | 2026-08-08 07:14:04.312303+00
+ overnight_generate          | skipped |    4 | 2026-08-14 10:00:00.00099+00  | 2026-08-14 10:00:00.00099+00
+ overnight_sweep             | ok      |    9 | 2026-08-08 06:09:43.139086+00 | 2026-08-08 06:13:26.087156+00
+ overnight_sweep             | skipped |    4 | 2026-08-14 04:30:00.006968+00 | 2026-08-14 04:30:00.006968+00
+ paper_validation_report     | error   |    3 | 2026-08-07 21:00:00.00651+00  | 2026-08-07 21:00:00.858889+00
+ paper_validation_report     | ok      |   12 | 2026-08-14 21:00:00.002242+00 | 2026-08-14 21:00:00.607197+00
+ portfolio_allocator         | ok      |  229 | 2026-08-14 22:15:00.003508+00 | 2026-08-14 22:15:00.039099+00
+ position_review             | ok      |   16 | 2026-08-14 13:00:00.007288+00 | 2026-08-14 13:00:00.202321+00
+ social_scan                 | error   |    4 | 2026-08-14 19:15:00.009787+00 | 2026-08-14 19:15:15.464576+00
+ social_scan                 | ok      |  787 | 2026-08-14 19:45:00.005194+00 | 2026-08-14 19:45:14.27974+00
+ strategy_resweep            | error   |    5 | 2026-08-14 20:50:10.440388+00 | 2026-08-14 20:52:35.735511+00
+ strategy_resweep            | ok      |   10 | 2026-08-08 01:00:00.002708+00 | 2026-08-08 01:02:55.170884+00
+ strategy_tournament         | ok      |    2 | 2026-08-02 18:00:00.025441+00 | 2026-08-02 18:59:31.456786+00
+ ticker_discovery            | error   |    5 | 2026-08-14 10:30:00.010167+00 | 2026-08-14 10:30:00.687098+00
+ universe_refresh            | error   |    1 | 2026-08-02 16:00:00.00856+00  | 2026-08-02 16:00:08.029281+00
+ universe_refresh            | ok      |    2 | 2026-08-09 16:00:00.006348+00 | 2026-08-09 16:00:39.312779+00
+(51 rows)
+
+
+[copy trading]
+copy_trading_schema=not_deployed

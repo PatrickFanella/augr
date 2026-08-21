@@ -34,6 +34,7 @@ type portfolioDiagnosticsRunRepo struct {
 }
 
 func (s *portfolioDiagnosticsRunRepo) Create(context.Context, *domain.PipelineRun) error { return nil }
+
 func (s *portfolioDiagnosticsRunRepo) GetByID(context.Context, uuid.UUID) (*domain.PipelineRun, error) {
 	return nil, repository.ErrNotFound
 }
@@ -284,6 +285,11 @@ func TestPortfolioAllocatorDiagnosticsReturnsSummary(t *testing.T) {
 	deps.Strategies = strategyRepo
 	deps.Positions = positionRepo
 	deps.AccountBalance = portfolioDiagnosticsBalanceSource{balance: execution.Balance{BuyingPower: 0, Equity: 101}}
+	paperProfile, err := domain.NewPaperEvaluationProfile(domain.PaperEvaluationModeScored, 100_000, 2, 5, 0.0001)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deps.PaperEvaluation = &paperProfile
 	srv := newTestServerWithDeps(t, deps)
 
 	rr := doRequest(t, srv, http.MethodGet, "/api/v1/portfolio/allocator/diagnostics", nil)
@@ -323,6 +329,12 @@ func TestPortfolioAllocatorDiagnosticsReturnsSummary(t *testing.T) {
 	if got.BuyingPowerUtilizationPct != 1 {
 		t.Fatalf("buying power utilization pct = %v, want 1", got.BuyingPowerUtilizationPct)
 	}
+	if got.PaperEvaluation.Mode != string(domain.PaperEvaluationModeScored) || !got.PaperEvaluation.PromotionEligible {
+		t.Fatalf("paper evaluation = %+v, want scored promotion evidence", got.PaperEvaluation)
+	}
+	if got.PaperEvaluation.ResultsIsolated || !containsWarning(got.Warnings, portfolioDiagnosticsWarningPaperScope) {
+		t.Fatalf("paper evaluation = %+v warnings = %#v, want explicit unscoped legacy boundary", got.PaperEvaluation, got.Warnings)
+	}
 	if containsWarning(got.Warnings, portfolioDiagnosticsWarningAccountBal) || !containsWarning(got.Warnings, portfolioDiagnosticsWarningUnknownOpen) {
 		t.Fatalf("warnings = %#v, want unknown open warning only", got.Warnings)
 	}
@@ -355,6 +367,8 @@ func TestPortfolioAllocatorDiagnosticsWarningsWhenReposMissing(t *testing.T) {
 		portfolioDiagnosticsWarningStrategies,
 		portfolioDiagnosticsWarningPositions,
 		portfolioDiagnosticsWarningAccountBal,
+		portfolioDiagnosticsWarningPaperProfile,
+		portfolioDiagnosticsWarningPaperScope,
 	}
 	for _, want := range wantWarnings {
 		if !containsWarning(got.Warnings, want) {
@@ -363,6 +377,9 @@ func TestPortfolioAllocatorDiagnosticsWarningsWhenReposMissing(t *testing.T) {
 	}
 	if len(got.RunCountsBySignal) != 0 || len(got.OpenPositionsByMarket) != 0 {
 		t.Fatalf("unexpected counts: %+v", got)
+	}
+	if got.PaperEvaluation.Mode != "unlabelled" || got.PaperEvaluation.PromotionEligible {
+		t.Fatalf("paper evaluation = %+v, want fail-closed legacy label", got.PaperEvaluation)
 	}
 }
 

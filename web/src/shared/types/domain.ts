@@ -40,6 +40,108 @@ export type RiskStatus = KnownRiskStatus | (string & {})
 export type CircuitBreakerPhase = KnownCircuitBreakerPhase | (string & {})
 export type KillSwitchMechanism = KnownKillSwitchMechanism | (string & {})
 
+export type EconomicAccount = {
+  id: UUID
+  name: string
+  environment: string
+  venue: string
+  external_account_id?: string
+  base_currency: string
+  storage_namespace: string
+  evidence_class: string
+  starting_capital: string
+  buying_power_multiplier: string
+  margin_profile: string
+  status: string
+  created_by: string
+  creation_metadata: RawJson
+  created_at: ISODate
+}
+
+export type EconomicCapitalFlow = {
+  id: UUID
+  account_id: UUID
+  type: string
+  amount: string
+  currency: string
+  idempotency_key: string
+  source: string
+  external_reference?: string
+  metadata: RawJson
+  effective_at: ISODate
+  observed_at: ISODate
+  created_at: ISODate
+}
+
+export type EconomicCapitalSummary = {
+  account_id: UUID
+  currency: string
+  starting_capital: string
+  deposits: string
+  withdrawals: string
+  net_capital: string
+  flow_count: number
+}
+
+export type EconomicLedgerPosting = {
+  id: UUID
+  transaction_id: UUID
+  idempotency_key: string
+  ledger_account: string
+  unit_kind: string
+  unit: string
+  amount: string
+  metadata: RawJson
+  created_at: ISODate
+}
+
+export type EconomicLedgerTransaction = {
+  id: UUID
+  account_id: UUID
+  event_type: string
+  idempotency_key: string
+  origin_type: string
+  origin_id: string
+  reference_type?: string
+  reference_id?: string
+  effective_at: ISODate
+  observed_at: ISODate
+  metadata: RawJson
+  postings: EconomicLedgerPosting[]
+  created_at: ISODate
+}
+
+export type ReleaseCapability = {
+  name: string
+  mode: string
+  ready: boolean
+  required: boolean
+  blockers?: string[]
+}
+
+export type ReleaseReadiness = {
+  release_ready: boolean
+  live_trading_enabled: boolean
+  capabilities: ReleaseCapability[]
+  generated_at: ISODate
+}
+
+export type MilestoneEvidenceRef = {
+  kind: string
+  id: UUID
+  sha256: string
+}
+
+export type MilestoneAssessment = {
+  id: UUID
+  sha256: string
+  campaign: string
+  outcome: string
+  blockers: string[]
+  parents: MilestoneEvidenceRef[]
+  canonical: RawJson
+}
+
 export type User = {
   id: UUID
   username: string
@@ -179,6 +281,13 @@ export type AllocatorDiagnostics = {
   gross_exposure_pct: number
   target_gross_exposure_pct: number
   utilization_gap_pct: number
+  paper_evaluation: {
+    mode: string
+    storage_namespace: string
+    evidence_class: string
+    promotion_eligible: boolean
+    results_isolated: boolean
+  }
   warnings: string[]
 }
 

@@ -8,6 +8,7 @@ vars:
   BINARY_NAME: tradingagent
   BUILD_DIR: ./bin
   CMD_DIR: ./cmd/tradingagent
+  GO_PACKAGES: ./cmd/... ./internal/... ./migrations/...
   DOCKER_IMAGE: tradingagent
   DOCKER_TAG: latest
   MIGRATE_DIR: ./migrations
@@ -73,23 +74,23 @@ tasks:
   test:
     desc: Run unit tests (short mode, no integration)
     cmds:
-      - go test -short -count=1 ./...
+      - go test -short -count=1 {{.GO_PACKAGES}}
 
   test:race:
     desc: Run unit tests with race detector
     cmds:
-      - go test -short -race -count=1 ./...
+      - go test -short -race -count=1 {{.GO_PACKAGES}}
 
   test:integration:
     desc: Run integration tests (requires PostgreSQL)
     cmds:
-      - go test -count=1 -run Integration ./...
+      - go test -count=1 -run Integration {{.GO_PACKAGES}}
 
   test:cover:
     desc: Run tests with coverage report
     cmds:
       - mkdir -p {{.COVERAGE_DIR}}
-      - go test -short -race -count=1 -coverprofile={{.COVERAGE_DIR}}/coverage.out ./...
+      - go test -short -race -count=1 -coverprofile={{.COVERAGE_DIR}}/coverage.out {{.GO_PACKAGES}}
       - cmd: go tool cover -func={{.COVERAGE_DIR}}/coverage.out
       - go tool cover -html={{.COVERAGE_DIR}}/coverage.out -o {{.COVERAGE_DIR}}/coverage.html
       - echo "Coverage report {{.COVERAGE_DIR}}/coverage.html"
@@ -99,23 +100,23 @@ tasks:
   lint:
     desc: Run golangci-lint
     cmds:
-      - golangci-lint run ./...
+      - golangci-lint run {{.GO_PACKAGES}}
 
   fmt:
     desc: Format Go source files with gofumpt
     cmds:
-      - gofumpt -w .
+      - gofumpt -w cmd internal migrations
 
   fmt:check:
     desc: Check formatting without modifying files
     cmds:
-      - cmd: gofumpt -d .
+      - cmd: gofumpt -d cmd internal migrations
         silent: true
 
   vet:
     desc: Run go vet
     cmds:
-      - go vet ./...
+      - go vet {{.GO_PACKAGES}}
 
   vulncheck:
     desc: Scan for known vulnerabilities in dependencies
@@ -123,7 +124,7 @@ tasks:
       - sh: command -v govulncheck
         msg: "govulncheck not found. Run: task tools"
     cmds:
-      - govulncheck ./...
+      - govulncheck {{.GO_PACKAGES}}
 
   audit:
     desc: Run all code quality checks (vet + lint + vulncheck + fmt check)

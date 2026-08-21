@@ -2,22 +2,29 @@ package copytrading
 
 import (
 	"encoding/json"
+	"fmt"
 	"math"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
+	"github.com/PatrickFanella/get-rich-quick/internal/economicid"
+	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 )
 
-const CalculationVersion = 1
+const CalculationVersion = 2
 
 type PriceSnapshot struct {
-	Ticker          string    `json:"ticker"`
-	Price           float64   `json:"price"`
-	AvgDollarVolume float64   `json:"avg_dollar_volume"`
-	SpreadBPS       float64   `json:"spread_bps"`
-	ObservedAt      time.Time `json:"observed_at"`
+	Ticker          string     `json:"ticker"`
+	QuoteSnapshotID uuid.UUID  `json:"quote_snapshot_id"`
+	Bid             string     `json:"bid"`
+	Ask             string     `json:"ask"`
+	AvgDollarVolume float64    `json:"avg_dollar_volume"`
+	AvailableAt     *time.Time `json:"available_at"`
+	MarketStatus    string     `json:"market_status"`
+	SessionStatus   string     `json:"session_status"`
 }
 
 type PreviewSummary struct {
@@ -47,6 +54,7 @@ type TargetInput struct {
 	Mappings     []domain.CopyInstrumentMapping
 	Prices       map[string]PriceSnapshot
 	Positions    []domain.Position
+	DecisionAt   time.Time
 }
 
 type targetHolding struct {
@@ -126,8 +134,10 @@ func Build13FTarget(input TargetInput) Preview {
 		}
 		ticker := strings.ToUpper(strings.TrimSpace(position.Ticker))
 		price := position.AvgEntry
-		if snapshot, ok := input.Prices[ticker]; ok && snapshot.Price > 0 {
-			price = snapshot.Price
+		if snapshot, ok := input.Prices[ticker]; ok {
+			if mark, markErr := quoteMidpoint(snapshot); markErr == nil {
+				price, _ = mark.Float64()
+			}
 		} else if position.CurrentPrice != nil && *position.CurrentPrice > 0 {
 			price = *position.CurrentPrice
 		}
@@ -167,21 +177,60 @@ func Build13FTarget(input TargetInput) Preview {
 		if delta < 0 {
 			side = domain.OrderSideSell
 		}
-		intent := domain.CopyTradeIntent{SubscriptionID: sub.ID, SourceObservationID: input.Observation.ID, InstrumentKey: ticker, Ticker: ticker, Side: side, TargetWeight: target.weight, TargetValue: roundMoney(targetValue), AttributedCurrentValue: roundMoney(current), RequestedNotional: roundMoney(math.Abs(delta)), CalculationVersion: CalculationVersion, PolicyStatus: "approved", RiskStatus: "pending", Status: "received"}
+		intent := domain.CopyTradeIntent{SubscriptionID: sub.ID, OriginType: "copy_subscription", OriginID: sub.ID, SourceObservationID: input.Observation.ID, InstrumentKey: ticker, Ticker: ticker, Side: side, TargetWeight: target.weight, TargetValue: roundMoney(targetValue), AttributedCurrentValue: roundMoney(current), RequestedNotional: roundMoney(math.Abs(delta)), CalculationVersion: CalculationVersion, QuoteGateVersion: 1, PolicyStatus: "approved", RiskStatus: "pending", Status: "received"}
+		intent.ID = economicid.DeterministicUUID("copy-trade-intent", sub.ID.String(), input.Observation.ID.String(), ticker, fmt.Sprintf("%d", CalculationVersion))
 		price, ok := input.Prices[ticker]
 		reasons := make([]string, 0, 3)
-		if !ok || price.Price <= 0 {
-			reasons = append(reasons, "missing_current_price")
+		if !ok || price.QuoteSnapshotID == uuid.Nil {
+			reasons = append(reasons, "missing_executable_quote")
 		} else {
-			intent.ExecutablePrice = &price.Price
-			if price.Price < sub.MinPrice {
-				reasons = append(reasons, "below_min_price")
+			bid, bidErr := decimal.NewFromString(price.Bid)
+			ask, askErr := decimal.NewFromString(price.Ask)
+			switch {
+			case bidErr != nil || askErr != nil:
+				reasons = append(reasons, "missing_two_sided_quote")
+			case !bid.IsPositive() || !ask.IsPositive():
+				reasons = append(reasons, "missing_two_sided_quote")
+			case ask.LessThan(bid):
+				reasons = append(reasons, "crossed_quote")
+			default:
+				midpoint := bid.Add(ask).Div(decimal.NewFromInt(2))
+				spread := ask.Sub(bid).Div(midpoint).Mul(decimal.NewFromInt(10000)).Round(12)
+				executable := ask
+				if side == domain.OrderSideSell {
+					executable = bid
+				}
+				executableFloat, _ := executable.Float64()
+				intent.ExecutablePrice = &executableFloat
+				intent.DecisionQuoteSnapshotID = &price.QuoteSnapshotID
+				intent.DecisionBid, intent.DecisionAsk, intent.DecisionSpreadBPS = bid.String(), ask.String(), spread.String()
+				intent.DecisionAvailableAt, intent.DecisionAt = price.AvailableAt, timePointer(input.DecisionAt)
+				intent.DecisionMarketStatus, intent.DecisionSessionStatus = price.MarketStatus, price.SessionStatus
+				if executableFloat < sub.MinPrice {
+					reasons = append(reasons, "below_min_price")
+				}
+				if sub.MaxSpreadBPS > 0 && spread.GreaterThan(decimal.NewFromInt(int64(sub.MaxSpreadBPS))) {
+					reasons = append(reasons, "above_max_spread")
+				}
+			}
+			if price.AvailableAt == nil {
+				reasons = append(reasons, "missing_quote_availability")
+			} else {
+				age := input.DecisionAt.Sub(*price.AvailableAt)
+				if age < 0 {
+					reasons = append(reasons, "quote_not_yet_available")
+				} else if age > time.Duration(sub.MaxQuoteAgeSeconds)*time.Second {
+					reasons = append(reasons, "stale_quote")
+				}
+			}
+			if price.MarketStatus != "open" {
+				reasons = append(reasons, "market_not_open")
+			}
+			if !sessionAllowed(sub.AllowedSessions, price.SessionStatus) {
+				reasons = append(reasons, "session_not_allowed")
 			}
 			if price.AvgDollarVolume < sub.MinAvgDollarVolume {
 				reasons = append(reasons, "below_min_avg_dollar_volume")
-			}
-			if sub.MaxSpreadBPS > 0 && price.SpreadBPS > float64(sub.MaxSpreadBPS) {
-				reasons = append(reasons, "above_max_spread")
 			}
 		}
 		if len(reasons) > 0 {
@@ -227,6 +276,29 @@ func stringSet(values []string) map[string]bool {
 }
 
 func roundMoney(value float64) float64 { return math.Round(value*100) / 100 }
+
+func quoteMidpoint(value PriceSnapshot) (decimal.Decimal, error) {
+	bid, bidErr := decimal.NewFromString(value.Bid)
+	ask, askErr := decimal.NewFromString(value.Ask)
+	if bidErr != nil || askErr != nil || !bid.IsPositive() || !ask.IsPositive() || ask.LessThan(bid) {
+		return decimal.Zero, fmt.Errorf("invalid quote")
+	}
+	return bid.Add(ask).Div(decimal.NewFromInt(2)), nil
+}
+
+func sessionAllowed(allowed []string, value string) bool {
+	for _, candidate := range allowed {
+		if candidate == value {
+			return true
+		}
+	}
+	return false
+}
+
+func timePointer(value time.Time) *time.Time {
+	normalized := value.UTC().Truncate(time.Microsecond)
+	return &normalized
+}
 
 func mustJSON(value any) json.RawMessage {
 	raw, _ := json.Marshal(value)

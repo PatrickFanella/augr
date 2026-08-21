@@ -1116,6 +1116,7 @@ func (s *polymarketPositionRepoStub) GetByStrategy(context.Context, uuid.UUID, r
 type polymarketAuditRepoStub struct{}
 
 func (s *polymarketAuditRepoStub) Create(context.Context, *domain.AuditLogEntry) error { return nil }
+
 func (s *polymarketAuditRepoStub) Query(context.Context, repository.AuditLogFilter, int, int) ([]domain.AuditLogEntry, error) {
 	return nil, nil
 }

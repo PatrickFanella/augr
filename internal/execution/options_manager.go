@@ -543,7 +543,7 @@ func (m *OptionsOrderManager) ProcessSpreadSignal(
 	if err != nil {
 		return fmt.Errorf("options_manager: kill switch check: %w", err)
 	}
-	if active {
+	if active && !isClosing {
 		m.logger.WarnContext(ctx, "options: kill switch active for spread", "underlying", spread.Underlying)
 		return fmt.Errorf("options_manager: kill switch active, spread blocked for %s", spread.Underlying)
 	}
@@ -551,8 +551,11 @@ func (m *OptionsOrderManager) ProcessSpreadSignal(
 	if err != nil {
 		return fmt.Errorf("options_manager: options kill switch check for spread: %w", err)
 	}
-	if marketActive {
+	if marketActive && !isClosing {
 		return fmt.Errorf("options_manager: options kill switch active, spread blocked for %s", spread.Underlying)
+	}
+	if (active || marketActive) && isClosing {
+		m.logger.WarnContext(ctx, "options: kill switch active; verified reduce-only spread admitted", "underlying", spread.Underlying)
 	}
 
 	if m.liveTrading {

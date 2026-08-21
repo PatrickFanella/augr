@@ -178,6 +178,7 @@ type portfolioAllocatorStrategyRepo struct {
 }
 
 func (r *portfolioAllocatorStrategyRepo) Create(context.Context, *domain.Strategy) error { return nil }
+
 func (r *portfolioAllocatorStrategyRepo) Get(_ context.Context, id uuid.UUID) (*domain.Strategy, error) {
 	r.getCalls++
 	if r.strategy == nil || r.strategy.ID != id {
@@ -197,8 +198,11 @@ func (r *portfolioAllocatorStrategyRepo) List(context.Context, repository.Strate
 func (r *portfolioAllocatorStrategyRepo) Count(context.Context, repository.StrategyFilter) (int, error) {
 	return 0, nil
 }
+
 func (r *portfolioAllocatorStrategyRepo) Update(context.Context, *domain.Strategy) error { return nil }
-func (r *portfolioAllocatorStrategyRepo) Delete(context.Context, uuid.UUID) error        { return nil }
+
+func (r *portfolioAllocatorStrategyRepo) Delete(context.Context, uuid.UUID) error { return nil }
+
 func (r *portfolioAllocatorStrategyRepo) UpdateThesis(context.Context, uuid.UUID, json.RawMessage) error {
 	return nil
 }

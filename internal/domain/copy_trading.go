@@ -206,7 +206,9 @@ type CopySubscription struct {
 	ID                 uuid.UUID              `json:"id"`
 	LeaderID           uuid.UUID              `json:"leader_id"`
 	SourceID           uuid.UUID              `json:"source_id"`
-	StrategyID         uuid.UUID              `json:"strategy_id"`
+	LegacyStrategyID   *uuid.UUID             `json:"legacy_strategy_id,omitempty"`
+	OriginType         string                 `json:"origin_type"`
+	OriginID           uuid.UUID              `json:"origin_id"`
 	Status             CopySubscriptionStatus `json:"status"`
 	IsPaper            bool                   `json:"is_paper"`
 	Method             CopySizingMethod       `json:"method"`
@@ -219,6 +221,8 @@ type CopySubscription struct {
 	MinPrice           float64                `json:"min_price"`
 	MinAvgDollarVolume float64                `json:"min_avg_dollar_volume"`
 	MaxSpreadBPS       int                    `json:"max_spread_bps"`
+	MaxQuoteAgeSeconds int                    `json:"max_quote_age_seconds"`
+	AllowedSessions    []string               `json:"allowed_sessions"`
 	StockAllowlist     []string               `json:"stock_allowlist"`
 	StockBlocklist     []string               `json:"stock_blocklist"`
 	CreatedBy          string                 `json:"created_by"`
@@ -228,7 +232,7 @@ type CopySubscription struct {
 }
 
 func DefaultCopySubscription() CopySubscription {
-	return CopySubscription{Status: CopySubscriptionDraft, IsPaper: true, Method: CopySizingTargetWeight, CapitalBudget: 10000, CashBufferPct: 0.10, TopN: 10, MinSourceWeight: 0.01, MaxPositionWeight: 0.15, MaxTurnoverPct: 0.25, MinPrice: 5, MinAvgDollarVolume: 1000000, MaxSpreadBPS: 100}
+	return CopySubscription{Status: CopySubscriptionDraft, IsPaper: true, Method: CopySizingTargetWeight, CapitalBudget: 10000, CashBufferPct: 0.10, TopN: 10, MinSourceWeight: 0.01, MaxPositionWeight: 0.15, MaxTurnoverPct: 0.25, MinPrice: 5, MinAvgDollarVolume: 1000000, MaxSpreadBPS: 100, MaxQuoteAgeSeconds: 60, AllowedSessions: []string{"regular"}}
 }
 
 func (s *CopySubscription) Validate() error {
@@ -240,6 +244,21 @@ func (s *CopySubscription) Validate() error {
 	}
 	if s.CapitalBudget <= 0 || s.TopN <= 0 || s.TopN > 100 {
 		return fmt.Errorf("capital_budget must be positive and top_n must be between 1 and 100")
+	}
+	if s.MaxQuoteAgeSeconds <= 0 || s.MaxQuoteAgeSeconds > 3600 {
+		return fmt.Errorf("max_quote_age_seconds must be between 1 and 3600")
+	}
+	if len(s.AllowedSessions) == 0 {
+		return fmt.Errorf("allowed_sessions must not be empty")
+	}
+	seenSessions := map[string]bool{}
+	for i, session := range s.AllowedSessions {
+		session = strings.ToLower(strings.TrimSpace(session))
+		if session != "regular" && session != "pre_market" && session != "after_hours" || seenSessions[session] {
+			return fmt.Errorf("allowed_sessions contains invalid or duplicate session")
+		}
+		seenSessions[session] = true
+		s.AllowedSessions[i] = session
 	}
 	if s.CashBufferPct < 0 || s.CashBufferPct >= 1 || s.MaxPositionWeight <= 0 || s.MaxPositionWeight > 1 || s.MaxTurnoverPct <= 0 || s.MaxTurnoverPct > 1 {
 		return fmt.Errorf("invalid percentage policy")
@@ -253,32 +272,57 @@ func (s *CopySubscription) Validate() error {
 	if s.Status == "" {
 		s.Status = CopySubscriptionDraft
 	}
+	if s.StockAllowlist == nil {
+		s.StockAllowlist = []string{}
+	}
+	if s.StockBlocklist == nil {
+		s.StockBlocklist = []string{}
+	}
+	if s.ID != uuid.Nil {
+		if s.OriginType == "" && s.OriginID == uuid.Nil {
+			s.OriginType, s.OriginID = "copy_subscription", s.ID
+		}
+		if s.OriginType != "copy_subscription" || s.OriginID != s.ID {
+			return fmt.Errorf("copy subscription origin must equal copy_subscription/<subscription id>")
+		}
+	}
 	return nil
 }
 
 type CopyTradeIntent struct {
-	ID                     uuid.UUID       `json:"id"`
-	SubscriptionID         uuid.UUID       `json:"subscription_id"`
-	SourceObservationID    uuid.UUID       `json:"source_observation_id"`
-	PipelineRunID          *uuid.UUID      `json:"pipeline_run_id,omitempty"`
-	InstrumentKey          string          `json:"instrument_key"`
-	Ticker                 string          `json:"ticker"`
-	Side                   OrderSide       `json:"side"`
-	TargetWeight           float64         `json:"target_weight"`
-	TargetValue            float64         `json:"target_value"`
-	AttributedCurrentValue float64         `json:"attributed_current_value"`
-	RequestedNotional      float64         `json:"requested_notional"`
-	ExecutablePrice        *float64        `json:"executable_price,omitempty"`
-	CalculationVersion     int             `json:"calculation_version"`
-	Calculation            json.RawMessage `json:"calculation,omitempty"`
-	PolicyStatus           string          `json:"policy_status"`
-	PolicyReasons          []string        `json:"policy_reasons"`
-	RiskStatus             string          `json:"risk_status"`
-	RiskReasons            []string        `json:"risk_reasons"`
-	OrderID                *uuid.UUID      `json:"order_id,omitempty"`
-	Status                 string          `json:"status"`
-	CreatedAt              time.Time       `json:"created_at"`
-	UpdatedAt              time.Time       `json:"updated_at"`
+	ID                      uuid.UUID       `json:"id"`
+	SubscriptionID          uuid.UUID       `json:"subscription_id"`
+	OriginType              string          `json:"origin_type"`
+	OriginID                uuid.UUID       `json:"origin_id"`
+	SourceObservationID     uuid.UUID       `json:"source_observation_id"`
+	PipelineRunID           *uuid.UUID      `json:"pipeline_run_id,omitempty"`
+	InstrumentKey           string          `json:"instrument_key"`
+	Ticker                  string          `json:"ticker"`
+	Side                    OrderSide       `json:"side"`
+	TargetWeight            float64         `json:"target_weight"`
+	TargetValue             float64         `json:"target_value"`
+	AttributedCurrentValue  float64         `json:"attributed_current_value"`
+	RequestedNotional       float64         `json:"requested_notional"`
+	ExecutablePrice         *float64        `json:"executable_price,omitempty"`
+	QuoteGateVersion        int             `json:"quote_gate_version"`
+	DecisionQuoteSnapshotID *uuid.UUID      `json:"decision_quote_snapshot_id,omitempty"`
+	DecisionBid             string          `json:"decision_bid,omitempty"`
+	DecisionAsk             string          `json:"decision_ask,omitempty"`
+	DecisionSpreadBPS       string          `json:"decision_spread_bps,omitempty"`
+	DecisionAvailableAt     *time.Time      `json:"decision_available_at,omitempty"`
+	DecisionAt              *time.Time      `json:"decision_at,omitempty"`
+	DecisionMarketStatus    string          `json:"decision_market_status,omitempty"`
+	DecisionSessionStatus   string          `json:"decision_session_status,omitempty"`
+	CalculationVersion      int             `json:"calculation_version"`
+	Calculation             json.RawMessage `json:"calculation,omitempty"`
+	PolicyStatus            string          `json:"policy_status"`
+	PolicyReasons           []string        `json:"policy_reasons"`
+	RiskStatus              string          `json:"risk_status"`
+	RiskReasons             []string        `json:"risk_reasons"`
+	OrderID                 *uuid.UUID      `json:"order_id,omitempty"`
+	Status                  string          `json:"status"`
+	CreatedAt               time.Time       `json:"created_at"`
+	UpdatedAt               time.Time       `json:"updated_at"`
 }
 
 func NormalizeSECCIK(value string) string {

@@ -12,14 +12,14 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/PatrickFanella/get-rich-quick/internal/accountingrecon"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/execution"
 )
 
 const (
-	defaultReferencePrice = 1.0
-	bpsToDecimalDivisor   = 10000
-	minFillPrice          = 1e-9
+	bpsToDecimalDivisor = 10000
+	minFillPrice        = 1e-9
 )
 
 // PaperBroker implements an in-memory execution.Broker for paper trading.
@@ -32,6 +32,7 @@ type PaperBroker struct {
 	balance       execution.Balance
 	slippageBps   float64
 	feePct        float64
+	evaluation    domain.PaperEvaluationProfile
 	nextOrderID   uint64
 	now           func() time.Time
 }
@@ -44,21 +45,60 @@ func NewPaperBroker(initialBalance, slippageBps, feePct float64) *PaperBroker {
 	if feePct < 0 {
 		feePct = 0
 	}
+	return newPaperBroker(domain.PaperEvaluationProfile{
+		Mode:                  domain.PaperEvaluationModeScored,
+		StorageNamespace:      string(domain.PaperEvaluationModeScored),
+		EvidenceClass:         domain.PaperEvidenceClassPromotion,
+		InitialCapital:        initialBalance,
+		BuyingPowerMultiplier: 1,
+		SlippageBPS:           slippageBps,
+		FeePct:                feePct,
+	})
+}
 
+// NewPaperBrokerWithProfile constructs a broker carrying an explicit evidence
+// namespace. Phase 0 applies profile capital and execution costs; the later
+// account/ledger phase will enforce its buying-power policy.
+func NewPaperBrokerWithProfile(profile domain.PaperEvaluationProfile) (*PaperBroker, error) {
+	validated, err := domain.NewPaperEvaluationProfile(
+		profile.Mode,
+		profile.InitialCapital,
+		profile.BuyingPowerMultiplier,
+		profile.SlippageBPS,
+		profile.FeePct,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return newPaperBroker(validated), nil
+}
+
+func newPaperBroker(profile domain.PaperEvaluationProfile) *PaperBroker {
 	return &PaperBroker{
 		orders:        make(map[string]*domain.Order),
 		positions:     make(map[string]*domain.Position),
 		optionSpreads: make(map[string]float64),
 		balance: execution.Balance{
 			Currency:    "USD",
-			Cash:        initialBalance,
-			BuyingPower: initialBalance,
-			Equity:      initialBalance,
+			Cash:        profile.InitialCapital,
+			BuyingPower: profile.InitialCapital,
+			Equity:      profile.InitialCapital,
 		},
-		slippageBps: slippageBps,
-		feePct:      feePct,
+		slippageBps: profile.SlippageBPS,
+		feePct:      profile.FeePct,
+		evaluation:  profile,
 		now:         time.Now,
 	}
+}
+
+// EvaluationProfile returns the broker's immutable scored-or-stress identity.
+func (b *PaperBroker) EvaluationProfile() domain.PaperEvaluationProfile {
+	if b == nil {
+		return domain.PaperEvaluationProfile{}
+	}
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	return b.evaluation
 }
 
 // RestoreOrders replaces the in-memory order book during startup.
@@ -350,6 +390,39 @@ func (b *PaperBroker) GetAccountBalance(ctx context.Context) (execution.Balance,
 	return b.balance, nil
 }
 
+// CaptureLegacyAccounting returns balance and open positions under one read
+// lock so the two parts cannot describe different paper-broker mutations.
+// Cross-system atomicity with the ledger still requires the OVR-105 external
+// account-scoped capture fence; this method alone does not provide it.
+func (b *PaperBroker) CaptureLegacyAccounting(ctx context.Context) (accountingrecon.LegacyCapture, error) {
+	if b == nil {
+		return accountingrecon.LegacyCapture{}, errors.New("paper: broker is required")
+	}
+	if err := ctx.Err(); err != nil {
+		return accountingrecon.LegacyCapture{}, fmt.Errorf("paper: capture legacy accounting: %w", err)
+	}
+
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
+	tickers := make([]string, 0, len(b.positions))
+	for ticker := range b.positions {
+		tickers = append(tickers, ticker)
+	}
+	sort.Strings(tickers)
+	positions := make([]domain.Position, 0, len(tickers))
+	for _, ticker := range tickers {
+		positions = append(positions, *clonePosition(b.positions[ticker]))
+	}
+	return accountingrecon.LegacyCapture{
+		Balance: accountingrecon.LegacyBalance{
+			Currency: b.balance.Currency, Cash: b.balance.Cash,
+			BuyingPower: b.balance.BuyingPower, Equity: b.balance.Equity,
+		},
+		Positions: positions, CapturedAt: b.currentTime().UTC().Truncate(time.Microsecond),
+	}, nil
+}
+
 func (b *PaperBroker) nextExternalIDLocked() string {
 	b.nextOrderID++
 	return fmt.Sprintf("paper-%d", b.nextOrderID)
@@ -375,7 +448,7 @@ func (b *PaperBroker) simulateFillPrice(order *domain.Order) (float64, bool, err
 	case domain.OrderTypeMarket:
 		referencePrice, ok := resolveReferencePrice(order)
 		if !ok {
-			referencePrice = defaultReferencePrice
+			return 0, false, errors.New("paper: executable reference price is required for market order")
 		}
 		return applySlippage(referencePrice, order.Side, b.slippageBps), true, nil
 	case domain.OrderTypeLimit:

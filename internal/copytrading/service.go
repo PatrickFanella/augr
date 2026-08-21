@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/PatrickFanella/get-rich-quick/internal/copyorigin"
 	"github.com/PatrickFanella/get-rich-quick/internal/data/edgar"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
@@ -20,7 +21,7 @@ type ThirteenFFetcher interface {
 }
 
 type PriceProvider interface {
-	Snapshots(ctx context.Context, tickers []string) (map[string]PriceSnapshot, error)
+	Snapshots(ctx context.Context, tickers []string, asOf time.Time) (map[string]PriceSnapshot, error)
 }
 
 type PaperOrderRequest struct {
@@ -40,6 +41,7 @@ type PaperOrderExecutor interface {
 
 type ServiceDeps struct {
 	Repo       repository.CopyTradingRepository
+	OriginRuns copyorigin.Store
 	Strategies repository.StrategyRepository
 	Runs       repository.PipelineRunRepository
 	Positions  repository.PositionRepository
@@ -181,9 +183,14 @@ func (s *Service) UpsertMapping(ctx context.Context, mapping *domain.CopyInstrum
 }
 
 func (s *Service) CreateSubscription(ctx context.Context, subscription *domain.CopySubscription) error {
-	if s.deps.Strategies == nil {
-		return fmt.Errorf("strategy repository is unavailable")
+	if subscription == nil {
+		return fmt.Errorf("subscription is required")
 	}
+	// Subscription and origin identity are server-owned. Request JSON cannot
+	// select an identity that may collide with an existing attribution graph.
+	subscription.ID = uuid.New()
+	subscription.OriginType, subscription.OriginID = "copy_subscription", subscription.ID
+	subscription.LegacyStrategyID = nil
 	if err := subscription.Validate(); err != nil {
 		return err
 	}
@@ -201,22 +208,7 @@ func (s *Service) CreateSubscription(ctx context.Context, subscription *domain.C
 	if source.SourceType != domain.CopySourceSEC13F {
 		return fmt.Errorf("MVP subscriptions require a sec_13f source")
 	}
-	config, _ := json.Marshal(map[string]any{"kind": "copy_subscription", "leader_id": leader.ID, "source_id": source.ID})
-	strategy := &domain.Strategy{Name: "Replicate: " + leader.DisplayName, Description: "Internal paper strategy backing stock copy subscription", Ticker: "13F:" + source.ExternalKey, MarketType: domain.MarketTypeStock, Config: config, Status: domain.StrategyStatusPaused, IsPaper: true}
-	if err := strategy.Validate(); err != nil {
-		return err
-	}
-	if err := s.deps.Strategies.Create(ctx, strategy); err != nil {
-		return err
-	}
-	subscription.StrategyID = strategy.ID
-	if err := s.deps.Repo.CreateSubscription(ctx, subscription); err != nil {
-		if cleanupErr := s.deps.Strategies.Delete(ctx, strategy.ID); cleanupErr != nil {
-			s.deps.Logger.Error("copy trading: backing strategy cleanup failed", "strategy_id", strategy.ID, "error", cleanupErr)
-		}
-		return err
-	}
-	return nil
+	return s.deps.Repo.CreateSubscription(ctx, subscription)
 }
 
 func (s *Service) ListSubscriptions(ctx context.Context, filter repository.CopySubscriptionFilter, limit, offset int) ([]domain.CopySubscription, int, error) {
@@ -240,7 +232,8 @@ func (s *Service) UpdateSubscription(ctx context.Context, id uuid.UUID, replacem
 	if current.Status != domain.CopySubscriptionDraft && current.Status != domain.CopySubscriptionPreviewed && current.Status != domain.CopySubscriptionPaused {
 		return nil, fmt.Errorf("subscription can only be edited while draft, previewed, or paused")
 	}
-	replacement.ID, replacement.LeaderID, replacement.SourceID, replacement.StrategyID = current.ID, current.LeaderID, current.SourceID, current.StrategyID
+	replacement.ID, replacement.LeaderID, replacement.SourceID = current.ID, current.LeaderID, current.SourceID
+	replacement.LegacyStrategyID, replacement.OriginType, replacement.OriginID = current.LegacyStrategyID, current.OriginType, current.OriginID
 	replacement.Status, replacement.IsPaper, replacement.CreatedBy, replacement.CreatedAt = current.Status, true, current.CreatedBy, current.CreatedAt
 	if err := replacement.Validate(); err != nil {
 		return nil, err
@@ -273,20 +266,21 @@ func (s *Service) Preview(ctx context.Context, subscriptionID uuid.UUID) (*Previ
 		tickers = append(tickers, mapping.Ticker)
 	}
 	prices := map[string]PriceSnapshot{}
+	decisionAt := s.deps.Now().UTC().Truncate(time.Microsecond)
 	if s.deps.Prices != nil && len(tickers) > 0 {
-		prices, err = s.deps.Prices.Snapshots(ctx, tickers)
+		prices, err = s.deps.Prices.Snapshots(ctx, tickers, decisionAt)
 		if err != nil {
 			return nil, fmt.Errorf("copy trading prices: %w", err)
 		}
 	}
 	positions := []domain.Position{}
-	if s.deps.Positions != nil {
-		positions, err = s.deps.Positions.GetByStrategy(ctx, subscription.StrategyID, repository.PositionFilter{}, 1000, 0)
+	if s.deps.Positions != nil && subscription.LegacyStrategyID != nil {
+		positions, err = s.deps.Positions.GetByStrategy(ctx, *subscription.LegacyStrategyID, repository.PositionFilter{}, 1000, 0)
 		if err != nil {
 			return nil, err
 		}
 	}
-	preview := Build13FTarget(TargetInput{Subscription: *subscription, Observation: *observation, Snapshot: *snapshot, Mappings: mappings, Prices: prices, Positions: positions})
+	preview := Build13FTarget(TargetInput{Subscription: *subscription, Observation: *observation, Snapshot: *snapshot, Mappings: mappings, Prices: prices, Positions: positions, DecisionAt: decisionAt})
 	if subscription.Status == domain.CopySubscriptionDraft {
 		subscription.Status = domain.CopySubscriptionPreviewed
 		if err := s.deps.Repo.UpdateSubscription(ctx, subscription); err != nil {
@@ -321,8 +315,8 @@ func (s *Service) SetStatus(ctx context.Context, id uuid.UUID, next domain.CopyS
 	if err := s.deps.Repo.UpdateSubscription(ctx, subscription); err != nil {
 		return nil, err
 	}
-	if s.deps.Strategies != nil {
-		strategy, getErr := s.deps.Strategies.Get(ctx, subscription.StrategyID)
+	if s.deps.Strategies != nil && subscription.LegacyStrategyID != nil {
+		strategy, getErr := s.deps.Strategies.Get(ctx, *subscription.LegacyStrategyID)
 		if getErr != nil {
 			return nil, getErr
 		}
@@ -355,9 +349,11 @@ func validateStatusTransition(current, next domain.CopySubscriptionStatus) error
 }
 
 type RebalanceResult struct {
-	Run     domain.PipelineRun       `json:"run"`
-	Preview Preview                  `json:"preview"`
-	Intents []domain.CopyTradeIntent `json:"intents"`
+	Run             domain.PipelineRun       `json:"run,omitempty"`
+	OriginRunID     uuid.UUID                `json:"origin_run_id,omitempty"`
+	OriginRunSHA256 string                   `json:"origin_run_sha256,omitempty"`
+	Preview         Preview                  `json:"preview"`
+	Intents         []domain.CopyTradeIntent `json:"intents"`
 }
 
 type SyncSummary struct {
@@ -429,9 +425,46 @@ func (s *Service) Rebalance(ctx context.Context, id uuid.UUID) (*RebalanceResult
 	if err != nil {
 		return nil, err
 	}
+	if subscription.LegacyStrategyID == nil {
+		if s.deps.OriginRuns == nil {
+			return nil, fmt.Errorf("copy origin run repository is unavailable")
+		}
+		intents := append([]domain.CopyTradeIntent(nil), preview.Intents...)
+		run, runErr := copyorigin.NewRun(*subscription, intents)
+		if runErr != nil {
+			return nil, runErr
+		}
+		for i := range intents {
+			created, createErr := s.deps.Repo.CreateIntent(ctx, &intents[i])
+			if createErr != nil {
+				return nil, createErr
+			}
+			if !created {
+				existing, listErr := s.deps.Repo.ListIntents(ctx, subscription.ID, 1000, 0)
+				if listErr != nil {
+					return nil, listErr
+				}
+				matched := false
+				for _, value := range existing {
+					if value.ID == intents[i].ID {
+						intents[i], matched = value, true
+						break
+					}
+				}
+				if !matched {
+					return nil, fmt.Errorf("copy origin intent retry did not reconstruct")
+				}
+			}
+		}
+		persisted, persistErr := s.deps.OriginRuns.RegisterRun(ctx, run)
+		if persistErr != nil {
+			return nil, persistErr
+		}
+		return &RebalanceResult{OriginRunID: persisted.ID(), OriginRunSHA256: persisted.Digest(), Preview: *preview, Intents: intents}, nil
+	}
 	now := s.deps.Now().UTC()
 	config, _ := json.Marshal(map[string]any{"copy_subscription_id": id, "source_observation_id": preview.Observation.ID, "calculation_version": CalculationVersion})
-	run := domain.PipelineRun{StrategyID: subscription.StrategyID, Ticker: "13F:" + subscription.SourceID.String(), TradeDate: now, Status: domain.PipelineStatusRunning, StartedAt: now, ConfigSnapshot: config}
+	run := domain.PipelineRun{StrategyID: *subscription.LegacyStrategyID, Ticker: "13F:" + subscription.SourceID.String(), TradeDate: now, Status: domain.PipelineStatusRunning, StartedAt: now, ConfigSnapshot: config}
 	if err := s.deps.Runs.Create(ctx, &run); err != nil {
 		return nil, err
 	}

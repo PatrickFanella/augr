@@ -25,8 +25,8 @@ func (r *syncRepo) ListSubscriptions(context.Context, repository.CopySubscriptio
 }
 
 func (r *syncRepo) GetSource(context.Context, uuid.UUID) (*domain.CopyLeaderSource, error) {
-	copy := r.source
-	return &copy, nil
+	sourceCopy := r.source
+	return &sourceCopy, nil
 }
 
 func (r *syncRepo) Save13FSnapshot(_ context.Context, observation *domain.CopySourceObservation, snapshot *domain.CopyPortfolioSnapshot) (bool, error) {
@@ -57,6 +57,66 @@ func (f *fixed13FFetcher) FetchLatest13F(context.Context, string) (*edgar.Thirte
 		ContentHash:  "hash",
 		Holdings:     []domain.CopyPortfolioHolding{{IssuerName: "Example", CUSIP: "123456789", DisclosedValue: 1000, SharesOrPrincipal: 10}},
 	}, nil
+}
+
+type originCreateRepo struct {
+	repository.CopyTradingRepository
+	leader       domain.CopyLeader
+	source       domain.CopyLeaderSource
+	subscription *domain.CopySubscription
+}
+
+func (r *originCreateRepo) GetLeader(context.Context, uuid.UUID) (*domain.CopyLeader, error) {
+	value := r.leader
+	return &value, nil
+}
+
+func (r *originCreateRepo) GetSource(context.Context, uuid.UUID) (*domain.CopyLeaderSource, error) {
+	value := r.source
+	return &value, nil
+}
+
+func (r *originCreateRepo) CreateSubscription(_ context.Context, value *domain.CopySubscription) error {
+	stored := *value
+	r.subscription = &stored
+	return nil
+}
+
+type strategyWriteTrap struct {
+	repository.StrategyRepository
+	creates int
+}
+
+func (r *strategyWriteTrap) Create(context.Context, *domain.Strategy) error {
+	r.creates++
+	return nil
+}
+
+func TestCreateSubscriptionOwnsOriginWithoutBackingStrategy(t *testing.T) {
+	t.Parallel()
+	leaderID, sourceID := uuid.New(), uuid.New()
+	repo := &originCreateRepo{
+		leader: domain.CopyLeader{ID: leaderID, EntityType: domain.CopyLeaderInstitution},
+		source: domain.CopyLeaderSource{ID: sourceID, LeaderID: leaderID, SourceType: domain.CopySourceSEC13F},
+	}
+	strategies := &strategyWriteTrap{}
+	service := NewService(ServiceDeps{Repo: repo, Strategies: strategies})
+	subscription := domain.DefaultCopySubscription()
+	subscription.LeaderID, subscription.SourceID = leaderID, sourceID
+	subscription.ID = uuid.New()
+	subscription.OriginType, subscription.OriginID = "operator", uuid.New()
+	legacy := uuid.New()
+	subscription.LegacyStrategyID = &legacy
+
+	if err := service.CreateSubscription(context.Background(), &subscription); err != nil {
+		t.Fatal(err)
+	}
+	if strategies.creates != 0 {
+		t.Fatalf("backing strategy writes=%d", strategies.creates)
+	}
+	if repo.subscription == nil || repo.subscription.ID == uuid.Nil || repo.subscription.ID != subscription.ID || repo.subscription.OriginType != "copy_subscription" || repo.subscription.OriginID != subscription.ID || repo.subscription.LegacyStrategyID != nil {
+		t.Fatalf("subscription=%+v retained=%+v", subscription, repo.subscription)
+	}
 }
 
 func TestSync13FSubscriptionsRefreshesSharedPausedSourceOnce(t *testing.T) {

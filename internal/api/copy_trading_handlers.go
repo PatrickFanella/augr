@@ -237,12 +237,15 @@ func (s *Server) handlePreviewCopySubscription(w http.ResponseWriter, r *http.Re
 func (s *Server) handleActivateCopySubscription(w http.ResponseWriter, r *http.Request) {
 	s.handleCopyStatus(w, r, domain.CopySubscriptionPaperActive)
 }
+
 func (s *Server) handlePauseCopySubscription(w http.ResponseWriter, r *http.Request) {
 	s.handleCopyStatus(w, r, domain.CopySubscriptionPaused)
 }
+
 func (s *Server) handleResumeCopySubscription(w http.ResponseWriter, r *http.Request) {
 	s.handleCopyStatus(w, r, domain.CopySubscriptionPaperActive)
 }
+
 func (s *Server) handleStopCopySubscription(w http.ResponseWriter, r *http.Request) {
 	s.handleCopyStatus(w, r, domain.CopySubscriptionStopped)
 }

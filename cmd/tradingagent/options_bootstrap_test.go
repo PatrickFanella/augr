@@ -74,7 +74,7 @@ func TestBootstrapPaperOptionsAccountRestoresSharedBroker(t *testing.T) {
 		t.Fatalf("bootstrapPaperOptionsAccount() error = %v", err)
 	}
 	balance, _ := broker.GetAccountBalance(context.Background())
-	if balance.Cash != 99997 {
+	if balance.Cash != 997 {
 		t.Fatalf("unexpected cash %v", balance.Cash)
 	}
 	order := &domain.Order{Ticker: "MSFT", Side: domain.OrderSideBuy, OrderType: domain.OrderTypeMarket, Quantity: 1, StopPrice: floatPtr(100)}

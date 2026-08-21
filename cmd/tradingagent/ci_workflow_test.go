@@ -18,10 +18,25 @@ func TestCIWorkflowUsesDynamicMigrationsAndGeneratedSmokeJWTSecret(t *testing.T)
 	for _, want := range []string{
 		`SMOKE_JWT_SECRET=$(python3 -c 'import secrets; print(secrets.token_hex(32))')`,
 		`JWT_SECRET=${SMOKE_JWT_SECRET}`,
-		`pg_isready -d "$DATABASE_URL"`,
+		`OLLAMA_API_KEY=smoke-key`,
+		`COMPOSE_FILE: docker-compose.yml:docker-compose.smoke.yml`,
+		`docker compose up -d postgres redis`,
+		`docker ps --filter publish=55432 --filter ancestor=timescale/timescaledb:2.17.2-pg17`,
+		`docker exec "$DATABASE_CONTAINER" pg_isready -U tradingagent -d tradingagent_test`,
 		`find migrations -maxdepth 1 -type f -name '*.up.sql' -print | sort | while read -r migration; do`,
-		`psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"`,
-		`curl -fsS http://127.0.0.1:8080/healthz`,
+		`docker exec -i "$DATABASE_CONTAINER" psql -U tradingagent -d tradingagent_test --single-transaction --set ON_ERROR_STOP=1`,
+		`docker compose exec -T postgres pg_isready -U postgres -d tradingagent`,
+		`&& sleep 5 && docker compose exec -T postgres pg_isready`,
+		`docker compose exec -T postgres psql -U postgres -d tradingagent --single-transaction --set ON_ERROR_STOP=1`,
+		`schema_version=$(find migrations -maxdepth 1 -type f -name '*.up.sql' -printf '%f\n' | sort | tail -1`,
+		`CREATE TABLE schema_migrations (version bigint NOT NULL PRIMARY KEY, dirty boolean NOT NULL)`,
+		`docker compose up --build -d app`,
+		`app_container=$(docker compose ps -q app)`,
+		`compose_network=$(docker inspect --format '{{range $name, $_ := .NetworkSettings.Networks}}{{$name}}{{end}}' "$app_container")`,
+		`docker network connect "$compose_network" "$HOSTNAME"`,
+		`SMOKE_BASE_URL=http://app:8080`,
+		`SMOKE_DATABASE_URL=postgres://postgres:postgres@postgres:5432/tradingagent?sslmode=disable`,
+		`curl -fsS "${SMOKE_BASE_URL}/healthz"`,
 	} {
 		if !strings.Contains(workflow, want) {
 			t.Fatalf("ci.yml missing required content %q", want)

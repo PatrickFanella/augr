@@ -14,12 +14,15 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/data"
 	"github.com/PatrickFanella/get-rich-quick/internal/discovery"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
+	"github.com/PatrickFanella/get-rich-quick/internal/evidenceprogram"
+	"github.com/PatrickFanella/get-rich-quick/internal/ledger"
 	"github.com/PatrickFanella/get-rich-quick/internal/llm"
 	"github.com/PatrickFanella/get-rich-quick/internal/operations"
 	"github.com/PatrickFanella/get-rich-quick/internal/service"
 	"github.com/PatrickFanella/get-rich-quick/internal/signal"
 	"github.com/PatrickFanella/get-rich-quick/internal/universe"
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
@@ -80,6 +83,7 @@ type Server struct {
 	riskBreaker       risk.Breaker
 	riskBreakerLister RiskBreakerLister
 	accountBalance    AccountBalanceSource
+	paperEvaluation   *domain.PaperEvaluationProfile
 	settings          SettingsService
 	prompts           *PromptSettingsService
 	runner            StrategyRunner
@@ -118,6 +122,11 @@ type Server struct {
 	// Report metrics (optional; nil = no metrics).
 	reportMetrics ReportMetrics
 
+	// Milestone evidence (optional; read-only inspection).
+	milestoneEvidence MilestoneEvidenceSource
+	economicAccounts  EconomicAccountReader
+	economicLedger    EconomicLedgerReader
+
 	// Services — constructed from deps in NewServer.
 	backtestSvc     *service.BacktestService
 	conversationSvc *service.ConversationService
@@ -137,6 +146,28 @@ type StrategyRunResult struct {
 // StrategyRunner triggers a strategy pipeline run on demand.
 type StrategyRunner interface {
 	RunStrategy(ctx context.Context, strategy domain.Strategy) (*StrategyRunResult, error)
+}
+
+// MilestoneEvidenceSource loads an immutable, recursively revalidated
+// assessment. The HTTP runtime intentionally receives no evidence write
+// authority.
+type MilestoneEvidenceSource interface {
+	GetAssessment(context.Context, uuid.UUID) (*evidenceprogram.Assessment, error)
+}
+
+// EconomicAccountReader is the read-only account/capital surface made
+// available to the HTTP runtime. It intentionally excludes account and flow
+// creation.
+type EconomicAccountReader interface {
+	List(context.Context, int, int) ([]domain.Account, error)
+	GetByID(context.Context, uuid.UUID) (*domain.Account, error)
+	ListCapitalFlows(context.Context, uuid.UUID, int, int) ([]domain.CapitalFlow, error)
+	GetCapitalSummary(context.Context, uuid.UUID) (*domain.AccountCapitalSummary, error)
+}
+
+// EconomicLedgerReader exposes immutable transaction inspection only.
+type EconomicLedgerReader interface {
+	GetByID(context.Context, uuid.UUID) (*ledger.Transaction, error)
 }
 
 // ErrStrategyAlreadyRunning is returned by StrategyRunner when a run is
@@ -224,6 +255,7 @@ type Deps struct {
 	RiskBreaker            risk.Breaker
 	RiskBreakerLister      RiskBreakerLister
 	AccountBalance         AccountBalanceSource
+	PaperEvaluation        *domain.PaperEvaluationProfile
 	Settings               SettingsService
 	Prompts                *PromptSettingsService
 	Runner                 StrategyRunner
@@ -249,6 +281,11 @@ type Deps struct {
 
 	// Report metrics (optional; nil = no metrics).
 	ReportMetrics ReportMetrics
+
+	// Milestone evidence (optional; read-only inspection only).
+	MilestoneEvidence MilestoneEvidenceSource
+	EconomicAccounts  EconomicAccountReader
+	EconomicLedger    EconomicLedgerReader
 }
 
 // NewServer creates a new API server with all routes and middleware registered.
@@ -359,6 +396,7 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 		riskBreaker:           deps.RiskBreaker,
 		riskBreakerLister:     deps.RiskBreakerLister,
 		accountBalance:        deps.AccountBalance,
+		paperEvaluation:       deps.PaperEvaluation,
 		settings:              settingsService,
 		prompts:               promptService,
 		runner:                deps.Runner,
@@ -378,6 +416,9 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 		kalshiDiscoveryRuns:   deps.KalshiDiscoveryRuns,
 		reportArtifacts:       deps.ReportArtifacts,
 		reportMetrics:         deps.ReportMetrics,
+		milestoneEvidence:     deps.MilestoneEvidence,
+		economicAccounts:      deps.EconomicAccounts,
+		economicLedger:        deps.EconomicLedger,
 	}
 	// Construct services from the assembled deps.
 	s.backtestSvc = service.NewBacktestService(
@@ -523,6 +564,15 @@ func NewServer(cfg ServerConfig, deps Deps, logger *slog.Logger) (*Server, error
 		v1.Route("/journal", func(jr chi.Router) {
 			jr.Get("/decisions", s.handleListTradeDecisions)
 			jr.Get("/decisions/{id}", s.handleGetTradeDecision)
+		})
+
+		v1.Get("/evidence/assessments/{id}", s.handleGetMilestoneAssessment)
+		v1.Route("/economic", func(er chi.Router) {
+			er.Get("/accounts", s.handleListEconomicAccounts)
+			er.Get("/accounts/{id}", s.handleGetEconomicAccount)
+			er.Get("/accounts/{id}/capital-flows", s.handleListEconomicCapitalFlows)
+			er.Get("/accounts/{id}/capital-summary", s.handleGetEconomicCapitalSummary)
+			er.Get("/ledger-transactions/{id}", s.handleGetEconomicLedgerTransaction)
 		})
 
 		// Replay workbench

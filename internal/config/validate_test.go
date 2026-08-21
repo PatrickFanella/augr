@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/PatrickFanella/get-rich-quick/internal/domain"
 )
 
 func TestLoadParsesEnvironmentValues(t *testing.T) {
@@ -506,6 +508,46 @@ func TestLoadDotEnv_NonDevDoesNotFail(t *testing.T) {
 	}
 }
 
+func TestLoadPaperEvaluationProfile(t *testing.T) {
+	clearConfigEnv(t)
+	t.Setenv("APP_ENV", "test")
+	t.Setenv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/tradingagent?sslmode=disable")
+	t.Setenv("OPENAI_API_KEY", "test-key")
+	t.Setenv("LLM_DEFAULT_PROVIDER", "openai")
+	t.Setenv("POLYGON_API_KEY", "test-polygon-key")
+	t.Setenv("PAPER_EVALUATION_MODE", "paper_stress")
+	t.Setenv("PAPER_INITIAL_CAPITAL", "5000000")
+	t.Setenv("PAPER_BUYING_POWER_MULTIPLIER", "0")
+	t.Setenv("PAPER_SLIPPAGE_BPS", "12.5")
+	t.Setenv("PAPER_FEE_PCT", "0.001")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	profile, err := cfg.Paper.EvaluationProfile()
+	if err != nil {
+		t.Fatalf("EvaluationProfile() error = %v", err)
+	}
+	if profile.Mode != domain.PaperEvaluationModeStress || profile.InitialCapital != 5_000_000 || profile.BuyingPowerMultiplier != 0 {
+		t.Fatalf("profile = %+v, want $5M stress profile", profile)
+	}
+	if profile.PromotionEligible() {
+		t.Fatal("stress profile is promotion eligible")
+	}
+}
+
+func TestValidateRejectsInvalidPaperEvaluationProfile(t *testing.T) {
+	cfg := validConfig()
+	cfg.Paper.EvaluationMode = domain.PaperEvaluationModeScored
+	cfg.Paper.BuyingPowerMultiplier = 0
+
+	err := Validate(cfg)
+	if err == nil || !strings.Contains(err.Error(), "scored paper buying-power multiplier") {
+		t.Fatalf("Validate() error = %v, want scored buying-power error", err)
+	}
+}
+
 func validConfig() Config {
 	return Config{
 		Environment: "test",
@@ -535,6 +577,13 @@ func validConfig() Config {
 			Finnhub:      DataProviderConfig{RateLimitPerMinute: 60},
 		},
 		Brokers: BrokerConfigs{Kalshi: KalshiConfig{RequestsPerWindow: 60, Window: time.Minute, MaxAttempts: 3, BaseBackoff: 100 * time.Millisecond, MaxBackoff: 2 * time.Second, JitterRatio: 0.2, DryRun: true, SettlementGateThreshold: 20}},
+		Paper: PaperConfig{
+			EvaluationMode:        domain.PaperEvaluationModeScored,
+			InitialCapital:        DefaultPaperInitialCapital,
+			BuyingPowerMultiplier: DefaultPaperBuyingPowerMultiplier,
+			SlippageBPS:           DefaultPaperSlippageBPS,
+			FeePct:                DefaultPaperFeePct,
+		},
 		Risk: RiskConfig{
 			MaxPositionSizePct:      0.10,
 			MaxDailyLossPct:         0.02,
@@ -872,6 +921,11 @@ func clearConfigEnv(t *testing.T) {
 		"BINANCE_API_KEY",
 		"BINANCE_API_SECRET",
 		"BINANCE_PAPER_MODE",
+		"PAPER_EVALUATION_MODE",
+		"PAPER_INITIAL_CAPITAL",
+		"PAPER_BUYING_POWER_MULTIPLIER",
+		"PAPER_SLIPPAGE_BPS",
+		"PAPER_FEE_PCT",
 		"KALSHI_API_BASE_URL",
 		"KALSHI_API_KEY_ID",
 		"KALSHI_PRIVATE_KEY_PEM_B64",

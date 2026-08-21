@@ -16,6 +16,106 @@ export const apiErrorSchema = z
   })
   .passthrough()
 
+const exactDecimalSchema = z.string().regex(/^-?\d+(?:\.\d+)?$/, 'Expected an exact decimal string')
+
+export const economicAccountSchema = z.object({
+  id: uuidSchema,
+  name: z.string().min(1),
+  environment: forwardCompatibleEnumSchema,
+  venue: z.string().min(1),
+  external_account_id: z.string().optional(),
+  base_currency: z.string().min(1),
+  storage_namespace: z.string().min(1),
+  evidence_class: z.string().min(1),
+  starting_capital: exactDecimalSchema,
+  buying_power_multiplier: exactDecimalSchema,
+  margin_profile: forwardCompatibleEnumSchema,
+  status: forwardCompatibleEnumSchema,
+  created_by: z.string().min(1),
+  creation_metadata: rawJsonSchema,
+  created_at: isoDateSchema,
+}).passthrough()
+
+export const economicCapitalFlowSchema = z.object({
+  id: uuidSchema,
+  account_id: uuidSchema,
+  type: forwardCompatibleEnumSchema,
+  amount: exactDecimalSchema,
+  currency: z.string().min(1),
+  idempotency_key: z.string().min(1),
+  source: forwardCompatibleEnumSchema,
+  external_reference: z.string().optional(),
+  metadata: rawJsonSchema,
+  effective_at: isoDateSchema,
+  observed_at: isoDateSchema,
+  created_at: isoDateSchema,
+}).passthrough()
+
+export const economicCapitalSummarySchema = z.object({
+  account_id: uuidSchema,
+  currency: z.string().min(1),
+  starting_capital: exactDecimalSchema,
+  deposits: exactDecimalSchema,
+  withdrawals: exactDecimalSchema,
+  net_capital: exactDecimalSchema,
+  flow_count: z.number().int().nonnegative(),
+}).passthrough()
+
+export const economicLedgerPostingSchema = z.object({
+  id: uuidSchema,
+  transaction_id: uuidSchema,
+  idempotency_key: z.string().min(1),
+  ledger_account: z.string().min(1),
+  unit_kind: forwardCompatibleEnumSchema,
+  unit: z.string().min(1),
+  amount: exactDecimalSchema,
+  metadata: rawJsonSchema,
+  created_at: isoDateSchema,
+}).passthrough()
+
+export const economicLedgerTransactionSchema = z.object({
+  id: uuidSchema,
+  account_id: uuidSchema,
+  event_type: z.string().min(1),
+  idempotency_key: z.string().min(1),
+  origin_type: z.string().min(1),
+  origin_id: z.string().min(1),
+  reference_type: z.string().optional(),
+  reference_id: z.string().optional(),
+  effective_at: isoDateSchema,
+  observed_at: isoDateSchema,
+  metadata: rawJsonSchema,
+  postings: z.array(economicLedgerPostingSchema),
+  created_at: isoDateSchema,
+}).passthrough()
+
+export const releaseReadinessSchema = z.object({
+  release_ready: z.boolean(),
+  live_trading_enabled: z.boolean(),
+  capabilities: z.array(z.object({
+    name: z.string().min(1),
+    mode: forwardCompatibleEnumSchema,
+    ready: z.boolean(),
+    required: z.boolean(),
+    blockers: z.array(z.string()).optional(),
+  }).passthrough()),
+  generated_at: isoDateSchema,
+}).passthrough()
+
+export const milestoneAssessmentSchema = z.object({
+  id: uuidSchema,
+  sha256: z.string().regex(/^[a-f0-9]{64}$/i),
+  campaign: z.string().min(1),
+  outcome: forwardCompatibleEnumSchema,
+  blockers: z.array(z.string()),
+  parents: z.array(z.object({
+    kind: z.string().min(1),
+    id: uuidSchema,
+    sha256: z.string().regex(/^[a-f0-9]{64}$/i),
+  }).passthrough()),
+  canonical: rawJsonSchema,
+}).passthrough()
+
 export function listResponseSchema<T extends z.ZodType>(itemSchema: T) {
   return z
     .object({
@@ -193,6 +293,13 @@ export const allocatorDiagnosticsSchema = z
     gross_exposure_pct: z.number(),
     target_gross_exposure_pct: z.number(),
     utilization_gap_pct: z.number(),
+    paper_evaluation: z.object({
+      mode: z.string().min(1),
+      storage_namespace: z.string().min(1),
+      evidence_class: z.string().min(1),
+      promotion_eligible: z.boolean(),
+      results_isolated: z.boolean(),
+    }),
     warnings: z.array(z.string()),
   })
   .passthrough()

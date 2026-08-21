@@ -1,0 +1,10 @@
+LOCK TABLE generated_strategy_specs IN ACCESS EXCLUSIVE MODE;
+DO $$ BEGIN IF EXISTS(SELECT 1 FROM generated_strategy_specs) THEN RAISE EXCEPTION 'cannot roll back typed generative strategy compiler with retained evidence'; END IF; END; $$;
+DROP FUNCTION reject_generated_strategy_mutation() CASCADE;
+DROP FUNCTION validate_generated_strategy_receipt() CASCADE;
+DROP FUNCTION validate_generated_strategy_spec_graph() CASCADE;
+DROP FUNCTION validate_generated_strategy_spec_row() CASCADE;
+DROP FUNCTION validate_generated_strategy_spec() CASCADE;
+DROP TABLE generated_strategy_compilation_receipts;
+DROP TABLE generated_strategy_spec_rows;
+DROP TABLE generated_strategy_specs;

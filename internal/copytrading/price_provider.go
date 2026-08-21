@@ -19,11 +19,14 @@ type OHLCVPriceProvider struct {
 	Now    func() time.Time
 }
 
-func (p OHLCVPriceProvider) Snapshots(ctx context.Context, tickers []string) (map[string]PriceSnapshot, error) {
+func (p OHLCVPriceProvider) Snapshots(ctx context.Context, tickers []string, asOf time.Time) (map[string]PriceSnapshot, error) {
 	if p.Source == nil {
 		return nil, fmt.Errorf("market data source is unavailable")
 	}
-	now := time.Now().UTC()
+	now := asOf.UTC()
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
 	if p.Now != nil {
 		now = p.Now().UTC()
 	}
@@ -50,8 +53,7 @@ func (p OHLCVPriceProvider) Snapshots(ctx context.Context, tickers []string) (ma
 		for _, bar := range bars[start:] {
 			totalDollarVolume += bar.Close * bar.Volume
 		}
-		last := bars[len(bars)-1]
-		out[ticker] = PriceSnapshot{Ticker: ticker, Price: last.Close, AvgDollarVolume: totalDollarVolume / float64(len(bars)-start), ObservedAt: last.Timestamp}
+		out[ticker] = PriceSnapshot{Ticker: ticker, AvgDollarVolume: totalDollarVolume / float64(len(bars)-start)}
 	}
 	return out, nil
 }

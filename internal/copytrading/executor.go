@@ -64,7 +64,10 @@ func (e *OrderManagerExecutor) ExecuteCopyOrder(ctx context.Context, request Pap
 		signal = domain.PipelineSignalSell
 	}
 	price := *request.Intent.ExecutablePrice
-	if err := manager.ProcessSignal(ctx, execution.FinalSignal{Signal: signal, Confidence: 1}, execution.TradingPlan{Action: signal, MarketType: domain.MarketTypeStock, Ticker: request.Intent.Ticker, EntryType: "limit", EntryPrice: price, ReferencePrice: price, PositionSize: request.Intent.RequestedNotional / price, Confidence: 1, Rationale: "deterministic copy-subscription rebalance"}, request.Subscription.StrategyID, request.Run.ID); err != nil {
+	if request.Subscription.LegacyStrategyID == nil {
+		return PaperOrderResult{}, fmt.Errorf("origin-native copy execution handoff is not configured")
+	}
+	if err := manager.ProcessSignal(ctx, execution.FinalSignal{Signal: signal, Confidence: 1}, execution.TradingPlan{Action: signal, MarketType: domain.MarketTypeStock, Ticker: request.Intent.Ticker, EntryType: "limit", EntryPrice: price, ReferencePrice: price, PositionSize: request.Intent.RequestedNotional / price, Confidence: 1, Rationale: "deterministic copy-subscription rebalance"}, *request.Subscription.LegacyStrategyID, request.Run.ID); err != nil {
 		return PaperOrderResult{}, err
 	}
 	orders, err := e.deps.Orders.GetByRun(ctx, request.Run.ID, repository.OrderFilter{Ticker: request.Intent.Ticker, Side: request.Intent.Side}, 10, 0)

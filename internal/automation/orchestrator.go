@@ -306,6 +306,18 @@ func (o *JobOrchestrator) Register(name, description string, spec scheduler.Sche
 	}
 }
 
+// RegisteredJobKeys returns a sorted copy of the registered job inventory.
+// OVR-604 uses it to fail closed when a financial job lacks an explicit
+// distributed occurrence/effect classification.
+func (o *JobOrchestrator) RegisteredJobKeys() []string {
+	keys := make([]string, 0, len(o.jobs))
+	for key := range o.jobs {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
 // RegisterAll registers all automated jobs from every job group.
 func (o *JobOrchestrator) RegisterAll() {
 	o.registerBrokerReconciliationJobs()

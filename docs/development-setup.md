@@ -2,7 +2,7 @@
 title: "Development Setup"
 description: "Complete local development workflow for backend, frontend, database, testing, and smoke-mode execution."
 status: "canonical"
-updated: "2026-04-03"
+updated: "2026-08-15"
 tags: [development, setup, local-dev]
 ---
 
@@ -14,8 +14,8 @@ This guide is for contributors who need the full day-to-day workflow rather than
 
 Required:
 
-- Go 1.25
-- Node.js 20+
+- Go 1.25.8 or newer (the minimum is declared in `go.mod`)
+- Node.js 22 (pinned in `.nvmrc` and `mise.toml`, and used by frontend CI)
 - npm
 - Docker and Docker Compose v2+
 - PostgreSQL client tools if you want to inspect the database outside Compose
@@ -24,7 +24,8 @@ Recommended:
 
 - [Task](https://taskfile.dev) for the project command runner
 - `jq` for API and login scripting
-- `golangci-lint`
+- the Go quality/migration tools installed by `task tools`: `gofumpt`,
+  `golangci-lint`, `govulncheck`, and `migrate`
 
 ## Repository layout
 
@@ -95,6 +96,85 @@ task dev:restart
 task dev:psql
 ```
 
+### Isolated Phase 1 and Phase 2 services
+
+When another Augr Compose project is already using this checkout, keep Phase 1
+and Phase 2 schema work on separate loopback-only ports and named volumes. The
+built-in Docker bridge avoids allocating another custom subnet. The existing
+`augr-phase1-*` container names are retained while Phase 2 uses the same
+isolated development database; they do not refer to a shared or deployed
+environment.
+
+First-time creation:
+
+```bash
+docker volume create augr_phase1_postgres_data
+docker volume create augr_phase1_redis_data
+
+docker run -d \
+  --name augr-phase1-postgres \
+  --network bridge \
+  --label com.subcult.augr.environment=phase1-local \
+  -e POSTGRES_USER=postgres \
+  -e POSTGRES_PASSWORD=postgres \
+  -e POSTGRES_DB=tradingagent \
+  -p 127.0.0.1:55464:5432 \
+  -v augr_phase1_postgres_data:/var/lib/postgresql/data \
+  timescale/timescaledb-ha:pg17
+
+docker run -d \
+  --name augr-phase1-redis \
+  --network bridge \
+  --label com.subcult.augr.environment=phase1-local \
+  -p 127.0.0.1:56380:6379 \
+  -v augr_phase1_redis_data:/data \
+  redis:7-alpine
+```
+
+Start or stop the existing environment without touching the default Augr
+stack:
+
+```bash
+docker start augr-phase1-postgres augr-phase1-redis
+docker stop augr-phase1-postgres augr-phase1-redis
+```
+
+Apply or inspect migrations explicitly:
+
+```bash
+export AUGR_PHASE1_DB_URL='postgres://postgres:postgres@127.0.0.1:55464/tradingagent?sslmode=disable'
+migrate -path migrations -database "$AUGR_PHASE1_DB_URL" up
+migrate -path migrations -database "$AUGR_PHASE1_DB_URL" version
+docker exec augr-phase1-redis redis-cli ping
+```
+
+Schema 68 is the local economic-event adapter boundary. It adds append-only
+raw source events, provenance-backed physical option terms, and typed
+normalizations linked to exact balanced ledger aggregates. Adapter code must
+call `RecordEconomicSourceEvent` and allow that transaction to commit before
+calling `ApplyEconomicNormalization`; a failed or temporarily impossible
+normalization must leave the original wire JSON and SHA-256 evidence durable.
+The option-term and physical-normalization repositories serialize on the same
+per-option database lock so a concurrent terms change cannot silently alter an
+already-selected deliverable.
+
+Migration 68 performs no legacy backfill and does not cut over the existing
+order, trade, position, broker, expiration, or settlement paths. Its down
+migration succeeds only while all three schema-68 tables and all
+`economic_source_event` ledger origins remain empty. Run repository and
+migration integration tests only against this disposable database:
+
+```bash
+DB_URL="$AUGR_PHASE1_DB_URL" go test -race -count=1 \
+  -run '^TestLedgerRepo|^TestEconomicEventRepo|^TestOptionTermsRepo|^TestOptionTermsAndPhysical' \
+  ./internal/repository/postgres
+DB_URL="$AUGR_PHASE1_DB_URL" go test -race -count=1 \
+  -run '^TestEconomicEventMigration' ./migrations
+```
+
+These credentials and ports are intentionally local-development-only. Do not
+reuse them for a shared, staging, or production database.
+
 ## Running the backend natively
 
 If you want the API server outside Docker:
@@ -118,6 +198,14 @@ task build
 ## Running the frontend
 
 ```bash
+# Use the version manager already available on this host. `mise exec` makes
+# the selected version explicit even in shells without the activation hook:
+mise install
+mise exec -- npm --prefix web install
+mise exec -- npm --prefix web run dev
+
+# Or, with nvm:
+nvm use
 cd web
 npm install
 npm run dev
@@ -156,6 +244,237 @@ The schema includes persistence for:
 - users
 - API keys
 - backtest configs and backtest runs
+- explicit accounts and append-only capital flows
+- immutable ledger transactions and balanced postings
+- mark observations and projection checkpoints
+- canonical instruments and immutable dated alias events
+- venue contracts and corporate-action facts
+- explicit instrument-identity quarantine findings
+- canonical append-only quote snapshots and exact ordered depth levels
+- immutable legacy-versus-ledger accounting reconciliation evidence
+
+Schema 66 deliberately leaves existing ticker-based application reads in
+place. It backfills legacy symbols as deterministic quarantined identities and
+does not infer currency, tick size, lot size, multiplier, settlement, or
+tradability. Inspect the local quarantine before using any canonical identity
+in new work:
+
+```sql
+SELECT
+    instrument.identity_key,
+    instrument.asset_class,
+    instrument.primary_venue,
+    finding.finding_code,
+    finding.source,
+    finding.details
+FROM instruments AS instrument
+JOIN instrument_identity_quarantine AS finding
+  ON finding.instrument_id = instrument.id
+WHERE instrument.status = 'quarantined'
+ORDER BY instrument.identity_key, finding.observed_at, finding.id;
+```
+
+Schema 67 adds the canonical market-observation boundary without cutting over
+any provider, strategy, order, fill, cache, or recorder path. It intentionally
+does not backfill legacy `DOUBLE PRECISION`/JSON snapshots: those rows do not
+prove a canonical instrument, source namespace/revision, exact decimal input,
+or decision-availability time. New adapters must provide that evidence
+explicitly.
+
+Inspect which observations are actually eligible for a point-in-time consumer:
+
+```sql
+SELECT
+    quote.id,
+    quote.ingest_sequence,
+    instrument.identity_key,
+    quote.provider,
+    quote.venue,
+    quote.observation_namespace,
+    quote.observation_id,
+    quote.source_revision,
+    quote.exchange_at,
+    quote.received_at,
+    quote.available_at,
+    quote.bid,
+    quote.ask,
+    quote.bid_depth_count,
+    quote.ask_depth_count
+FROM quote_snapshots AS quote
+JOIN instruments AS instrument ON instrument.id = quote.instrument_id
+WHERE quote.available_at IS NOT NULL
+ORDER BY quote.available_at DESC, quote.source_sequence DESC NULLS LAST,
+         quote.ingest_sequence DESC;
+```
+
+An observation with a missing `available_at`, source, venue contract, bid, ask,
+market/session status, or requested depth side may still preserve attributable
+evidence, but the `internal/marketdata` assessment contract fails closed when a
+consumer requires that fact. Present zero prices remain distinct from SQL
+`NULL`; missing spread is never treated as zero. `QuoteSnapshot.Assess` checks
+fact sufficiency only. An intent, order, or fill route must call
+`QuoteSnapshot.AssessForExecution` with the resolved immutable instrument and
+venue contract; that joined boundary requires an active, unexpired instrument,
+checks the contract at both observation and evaluation time, and rejects
+off-tick executable prices or off-lot displayed sizes.
+
+Schema 68 adds the raw-first economic-event boundary. Provider or operator
+evidence is appended as exact JSON bytes, JSONB, and SHA-256 before a typed
+normalizer may create a ledger transaction. Fill, cost, cash settlement,
+expiration, physical option exercise/assignment, and prediction-payout
+normalizations retain their source identity, immutable dated mechanics, and
+execution provenance. This schema is additive: legacy order, trade, position,
+settlement, and accounting paths are not cut over by applying it.
+
+Schema 69 adds canonical instrument marks and deterministic full-rebuild FIFO
+portfolio checkpoints. A rebuild uses only ledger transactions and marks whose
+effective and observed timestamps are both available at its `as_of`, starts
+from zero, and fails on an unknown transaction, missing/stale mark, inconsistent
+mechanics, or a violated P&L equation. Checkpoints preserve the exact canonical
+bytes and input/output checksums, but remain caches and evidence artifacts; the
+immutable ledger is still the source of economic truth. Applying migration 69
+does not schedule rebuilds or change any legacy API, UI, risk, order, trade, or
+position read/write path. OVR-105 must prove dual-run parity before cutover.
+
+Checkpoint persistence has an explicit database trust boundary. Migration 69
+revokes public access to its byte-only persistence function and to immutable
+versioned HMAC verification keys, and grants no role automatically. A
+projection worker must receive the matching 32-byte signing secret from a
+separate runtime secret provider and use a dedicated non-owner, non-superuser
+database login. That login gets read access to replay inputs, append/select
+access to canonical marks, select access to checkpoints, and only `EXECUTE`
+access to the controlled function. It must not own the schema, read the HMAC
+key tables, or have direct checkpoint `INSERT`, `UPDATE`, or `DELETE`.
+`ProjectionRepo` checks these database capabilities and refuses to rebuild
+under the current owner-style development/Compose database login. The database
+writer credential alone can replay identical signed bytes but cannot sign an
+altered projection. Do not grant the function to the general app role or use
+the migration owner as a shortcut.
+
+For a disposable local database, an administrator can create a narrowly scoped
+example role after applying migration 69. Supply a fresh local-only password;
+also generate a distinct cryptographically random 32-byte HMAC secret, store it
+outside the repository, and provision the verifier copy through the database
+owner. Do not copy this role, password, or HMAC secret into a shared environment
+without a separate deployment review:
+
+```sql
+CREATE ROLE augr_projection_writer LOGIN PASSWORD '<fresh-local-password>'
+    NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT;
+GRANT CONNECT ON DATABASE tradingagent TO augr_projection_writer;
+GRANT USAGE ON SCHEMA public TO augr_projection_writer;
+GRANT SELECT ON
+    accounts,
+    ledger_transactions,
+    ledger_postings,
+    economic_event_normalizations,
+    venue_contracts,
+    option_contract_terms,
+    instruments,
+    mark_observations,
+    projection_checkpoints
+TO augr_projection_writer;
+GRANT INSERT ON mark_observations TO augr_projection_writer;
+GRANT EXECUTE ON FUNCTION persist_canonical_projection_checkpoint(BYTEA, TEXT, BYTEA)
+TO augr_projection_writer;
+REVOKE INSERT, UPDATE, DELETE ON projection_checkpoints
+FROM augr_projection_writer;
+
+INSERT INTO projection_checkpoint_signing_keys (
+    key_id,
+    signing_secret,
+    created_by
+) VALUES (
+    'local-2026-08-v1',
+    decode('<64-lowercase-hex-characters-from-a-random-32-byte-secret>', 'hex'),
+    'local-developer'
+);
+```
+
+Pass the same decoded secret and key ID to `NewProjectionRepo` through
+`ProjectionCheckpointAttestor`; do not log either value or put the secret in a
+tracked env file. The concrete Vault/cloud/native secret store and workload
+identity for a shared environment remain an OVR-105 deployment decision.
+
+Verify the effective privileges while connected as that login before using the
+repository. The required result is `direct_insert = false`,
+`signing_key_read = false`, and `controlled_write = true`:
+
+```sql
+SELECT
+    has_table_privilege(
+        current_user,
+        'projection_checkpoints',
+        'INSERT'
+    ) AS direct_insert,
+    has_table_privilege(
+        current_user,
+        'projection_checkpoint_signing_keys',
+        'SELECT'
+    ) AS signing_key_read,
+    has_function_privilege(
+        current_user,
+        'persist_canonical_projection_checkpoint(bytea,text,bytea)',
+        'EXECUTE'
+    ) AS controlled_write;
+```
+
+Rotate without rewriting old checkpoints: append a new key row, switch the
+worker's key ID/secret, verify new checkpoints, then append a revocation for the
+old key. Revocation is itself immutable and causes every later persistence
+attempt under that key to fail:
+
+```sql
+INSERT INTO projection_checkpoint_signing_key_revocations (
+    key_id,
+    reason,
+    revoked_by
+) VALUES (
+    'local-2026-08-v1',
+    'rotated after local verification',
+    'local-developer'
+);
+```
+
+Schema 70 adds the OVR-105 accounting dual-run evidence boundary. It stores
+the exact legacy snapshot, immutable-ledger snapshot, comparison bytes,
+SHA-256 checksums, deterministic identities, capture-fence identity/epoch,
+classification rows, and opaque future attestation fields. Parent and result
+rows are append-only; incomplete child sets fail at commit; downgrade takes
+exclusive locks first and refuses to discard any recorded evidence.
+
+Applying schema 70 does not make dual-run evidence authentic, start a worker,
+grant a runtime role, or switch an accounting read. Database triggers establish
+structural consistency only. A qualifying run additionally requires an
+approved verifier for the exact bytes and named identities. The present code
+has no shared runtime capture fence covering every paper mutation and ledger
+normalization, and it has no approved reconciliation attestation/workload
+identity. Therefore do not grant `INSERT` on
+`accounting_reconciliation_runs` or `accounting_reconciliation_results`, do not
+schedule `accountingrecon.Runner`, and do not interpret a manually inserted row
+as parity evidence.
+
+Use only the disposable loopback database for the current schema-70 tests:
+
+```bash
+export AUGR_PHASE1_DB_URL='postgres://postgres:postgres@127.0.0.1:55464/tradingagent?sslmode=disable'
+
+go test -race -count=1 ./internal/accountingrecon ./internal/execution/paper
+DB_URL="$AUGR_PHASE1_DB_URL" go test -race -count=1 \
+  -run '^TestAccountingReconciliationRepo' ./internal/repository/postgres
+DB_URL="$AUGR_PHASE1_DB_URL" go test -race -count=1 \
+  -run '^TestAccountingDualRunMigration' ./migrations
+```
+
+The pure cutover evaluator requires an injected trusted wall clock and 30
+consecutive fully completed UTC dates for one account under one unchanged
+projection/mark/comparison policy; the current UTC date cannot count. Every
+required fact and position must be exactly equal or carry an allowed independently reviewed
+explanation; missing, unexplained, conflicting, future, synthetic, unsigned,
+unknown-key, revoked-key, or invalid evidence fails closed. Passing that pure
+evaluator still returns evidence only and cannot change a runtime read path.
+See [Accounting read cutover](runbooks/accounting-read-cutover.md) before any
+deployment design or operational work.
 
 ## Creating a local user
 
@@ -198,6 +517,7 @@ Primary Task targets:
 
 ```bash
 task build
+task tools
 task test
 task test:race
 task test:integration
@@ -212,10 +532,17 @@ task check
 task ci
 ```
 
+The Go task targets are scoped to `cmd/`, `internal/`, and `migrations/` so a
+completed frontend install cannot make Go discover language ports bundled by
+packages under `web/node_modules/`. Frontend tests also force relative mock API
+and WebSocket paths; an ignored `web/.env.local` remains available for manual
+development without redirecting the test suite to a running backend.
+
 Notes:
 
 - integration tests require PostgreSQL
-- the current repository contains unresolved merge conflict markers in multiple Go and TypeScript files, so some broad test/build commands may fail before your specific change is even exercised
+- database integration tests create and remove isolated schemas; point `DB_URL` or
+  `DATABASE_URL` at a disposable development database, never production
 - docs-only validation currently relies mostly on file/link checks and the dedicated docs tests in `cmd/tradingagent`
 
 ## CLI workflow

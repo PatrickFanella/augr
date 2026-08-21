@@ -110,18 +110,26 @@ func TestBuildDiagnosticsSummaryCountsAndClassification(t *testing.T) {
 
 func TestBuildDiagnosticsSummaryUtilizationMath(t *testing.T) {
 	t.Parallel()
+	profile, err := domain.NewPaperEvaluationProfile(domain.PaperEvaluationModeStress, 5_000_000, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	got := BuildDiagnosticsSummary(DiagnosticsInput{
 		BuyingPower:            100,
 		Equity:                 400,
 		GrossExposure:          50,
 		TargetGrossExposurePct: 0.5,
+		PaperEvaluation:        &profile,
 	})
 
 	assertNear(t, got.TargetGrossExposurePct, 0.5)
 	assertNear(t, got.BuyingPowerUtilizationPct, 0.75)
 	assertNear(t, got.GrossExposurePct, 0.125)
 	assertNear(t, got.UtilizationGapPct, 0.375)
+	if got.PaperEvaluation.Mode != string(domain.PaperEvaluationModeStress) || got.PaperEvaluation.PromotionEligible {
+		t.Fatalf("paper evaluation = %+v, want non-promotable stress evidence", got.PaperEvaluation)
+	}
 }
 
 func TestBuildDiagnosticsSummaryZeroEquityWarning(t *testing.T) {

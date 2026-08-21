@@ -8,12 +8,185 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/PatrickFanella/get-rich-quick/internal/accountingrecon"
+	"github.com/PatrickFanella/get-rich-quick/internal/capital"
+	"github.com/PatrickFanella/get-rich-quick/internal/dataset"
 	"github.com/PatrickFanella/get-rich-quick/internal/domain"
+	"github.com/PatrickFanella/get-rich-quick/internal/execution/lifecycle"
+	"github.com/PatrickFanella/get-rich-quick/internal/execution/venue"
+	"github.com/PatrickFanella/get-rich-quick/internal/experimentrun"
+	"github.com/PatrickFanella/get-rich-quick/internal/instrument"
+	"github.com/PatrickFanella/get-rich-quick/internal/ledger"
+	"github.com/PatrickFanella/get-rich-quick/internal/marketdata"
+	"github.com/PatrickFanella/get-rich-quick/internal/simulation"
+	"github.com/PatrickFanella/get-rich-quick/internal/strategycatalog"
+	"github.com/PatrickFanella/get-rich-quick/internal/venuerecon"
 )
 
-// ErrNotFound is returned by repository implementations when a requested
-// entity does not exist. Callers should check with errors.Is.
-var ErrNotFound = errors.New("not found")
+var (
+	// ErrNotFound is returned by repository implementations when a requested
+	// entity does not exist. Callers should check with errors.Is.
+	ErrNotFound = errors.New("not found")
+
+	// ErrIdempotencyConflict is returned when a previously accepted key is
+	// reused for a different payload.
+	ErrIdempotencyConflict = errors.New("idempotency conflict")
+)
+
+// AccountRepository persists explicit economic accounts together with their
+// append-only capital-flow history.
+type AccountRepository interface {
+	Create(ctx context.Context, account *domain.Account) error
+	GetByID(ctx context.Context, id uuid.UUID) (*domain.Account, error)
+	RecordCapitalFlow(ctx context.Context, flow *domain.CapitalFlow) (*domain.CapitalFlow, error)
+	ListCapitalFlows(ctx context.Context, accountID uuid.UUID, limit, offset int) ([]domain.CapitalFlow, error)
+	GetCapitalSummary(ctx context.Context, accountID uuid.UUID) (*domain.AccountCapitalSummary, error)
+}
+
+// LedgerRepository persists immutable, balanced economic transactions.
+type LedgerRepository interface {
+	PostTransaction(ctx context.Context, transaction *ledger.Transaction) (*ledger.Transaction, error)
+	GetByID(ctx context.Context, id uuid.UUID) (*ledger.Transaction, error)
+}
+
+// InstrumentRepository persists canonical instrument identity and immutable
+// effective-time reference facts without changing legacy ticker read paths.
+type InstrumentRepository interface {
+	CreateInstrument(context.Context, *instrument.Instrument) (*instrument.Instrument, error)
+	GetInstrumentByID(context.Context, uuid.UUID) (*instrument.Instrument, error)
+	AppendAliasEvent(context.Context, *instrument.AliasEvent) (*instrument.AliasEvent, error)
+	ResolveAlias(context.Context, string, instrument.AliasType, string, time.Time) (*instrument.Instrument, error)
+	RegisterVenueContract(context.Context, *instrument.VenueContract) (*instrument.VenueContract, error)
+	RegisterOptionContractTerms(context.Context, *instrument.OptionContractTerms) (*instrument.OptionContractTerms, error)
+	GetOptionContractTermsByID(context.Context, uuid.UUID) (*instrument.OptionContractTerms, error)
+	RecordCorporateAction(context.Context, *instrument.CorporateAction) (*instrument.CorporateAction, error)
+}
+
+// EconomicEventRepository persists raw economic evidence before atomically
+// applying at most one exact ledger normalization.
+type EconomicEventRepository interface {
+	RecordEconomicSourceEvent(context.Context, *ledger.EconomicSourceEvent) (*ledger.EconomicSourceEvent, error)
+	GetEconomicSourceEventByID(context.Context, uuid.UUID) (*ledger.EconomicSourceEvent, error)
+	ApplyEconomicNormalization(context.Context, *ledger.EconomicNormalization) (*ledger.EconomicNormalization, error)
+	GetEconomicNormalizationBySourceEventID(context.Context, uuid.UUID) (*ledger.EconomicNormalization, error)
+}
+
+// ExecutionLifecycleRepository persists one append-only intent/order/fill
+// aggregate. Fill application includes its economic normalization and ledger
+// postings in the same database transaction.
+type ExecutionLifecycleRepository interface {
+	ProposeExecutionIntent(context.Context, *lifecycle.Aggregate) (*lifecycle.Aggregate, error)
+	ApplyExecutionTransition(context.Context, uuid.UUID, *lifecycle.Transition) (*lifecycle.Aggregate, error)
+	ApplyExecutionFill(context.Context, uuid.UUID, *lifecycle.Transition) (*lifecycle.Aggregate, error)
+	GetExecutionLifecycle(context.Context, uuid.UUID, uuid.UUID) (*lifecycle.Aggregate, error)
+	FindExecutionLifecycleByIdempotencyKey(context.Context, uuid.UUID, string) (*lifecycle.Aggregate, error)
+	ListExecutionRecoveryCandidates(context.Context, uuid.UUID, int) ([]*lifecycle.Aggregate, error)
+}
+
+// ExperimentRunRepository persists immutable experiment programs, replay
+// plans, attempts, and completed results without selecting a best/current
+// result or granting any promotion authority.
+type ExperimentRunRepository interface {
+	experimentrun.Store
+	GetProgram(context.Context, uuid.UUID) (*experimentrun.ProgramIdentity, error)
+	GetPlan(context.Context, uuid.UUID) (*experimentrun.Plan, error)
+	GetAttemptEvents(context.Context, uuid.UUID) ([]*experimentrun.AttemptEvent, error)
+	GetResult(context.Context, uuid.UUID) (*experimentrun.Result, error)
+	ListExperimentResults(context.Context, uuid.UUID, int, int) ([]*experimentrun.Result, error)
+}
+
+// SimulationPolicyRepository registers immutable content-addressed policy
+// artifacts and reloads the exact routed version for deterministic recovery.
+type SimulationPolicyRepository interface {
+	RegisterSimulationPolicy(context.Context, *simulation.PolicyArtifact) (*simulation.PolicyArtifact, error)
+	GetSimulationPolicyByVersion(context.Context, string) (*simulation.PolicyArtifact, error)
+}
+
+// CapitalPolicyRepository registers immutable capital/margin artifacts and
+// binds one explicit account to one exact reviewed tier/profile identity.
+type CapitalPolicyRepository interface {
+	RegisterCapitalPolicy(context.Context, *capital.PolicyArtifact) (*capital.PolicyArtifact, error)
+	GetCapitalPolicyByVersion(context.Context, string) (*capital.PolicyArtifact, error)
+	BindCapitalPolicy(context.Context, *capital.Binding) (*capital.Binding, error)
+	GetCapitalBinding(context.Context, uuid.UUID) (*capital.Binding, error)
+}
+
+// VenuePolicyRepository registers only reviewed immutable venue-adapter
+// artifacts and reloads the exact version pinned on a routed order.
+type VenuePolicyRepository interface {
+	RegisterVenuePolicy(context.Context, *venue.PolicyArtifact) (*venue.PolicyArtifact, error)
+	GetVenuePolicyByVersion(context.Context, string) (*venue.PolicyArtifact, error)
+}
+
+// VenueObservationRepository journals exact provider evidence before any
+// lifecycle or economic interpretation is applied.
+type VenueObservationRepository interface {
+	RecordVenueObservation(context.Context, *venue.Observation) (*venue.Observation, error)
+	GetVenueObservationByID(context.Context, uuid.UUID) (*venue.Observation, error)
+}
+
+// ProjectionRepository persists canonical marks and immutable rebuild
+// checkpoints without changing any legacy position or balance read path.
+type ProjectionRepository interface {
+	RecordMarkObservation(context.Context, *ledger.MarkObservation) (*ledger.MarkObservation, error)
+	GetMarkObservationByID(context.Context, uuid.UUID) (*ledger.MarkObservation, error)
+	RebuildPortfolioProjection(context.Context, ledger.ProjectionRequest) (*ledger.PortfolioProjection, error)
+	GetProjectionCheckpointByID(context.Context, uuid.UUID) (*ledger.ProjectionCheckpoint, error)
+}
+
+// AccountingReconciliationRepository appends and reloads immutable structural
+// evidence. It does not authenticate source or reviewer identity and cannot
+// authorize a read cutover by itself.
+type AccountingReconciliationRepository interface {
+	RecordAccountingRun(context.Context, *accountingrecon.Run) (*accountingrecon.Run, error)
+	GetAccountingRunByID(context.Context, uuid.UUID) (*accountingrecon.Run, error)
+	ListAccountingRuns(context.Context, uuid.UUID, int, int) ([]*accountingrecon.Run, error)
+}
+
+// VenueReconciliationRepository appends exact read-only provider/local
+// evidence and deterministic discrepancy graphs. It exposes no mutation path.
+type VenueReconciliationRepository interface {
+	RegisterVenueReconciliationPolicy(context.Context, *venuerecon.PolicyArtifact) (*venuerecon.PolicyArtifact, error)
+	RecordVenueProviderSnapshot(context.Context, *venuerecon.StableProviderSnapshot, time.Time) error
+	RecordVenueLocalSnapshot(context.Context, *venuerecon.LocalSnapshot, time.Time) error
+	RecordVenueReconciliationRun(context.Context, *venuerecon.Run, time.Time) (*venuerecon.Run, error)
+	GetVenueReconciliationRun(context.Context, uuid.UUID) (*venuerecon.Run, error)
+}
+
+// DatasetRepository persists immutable point-in-time manifests and their
+// deterministic quality evidence. It neither fetches data nor selects a
+// current manifest for an experiment.
+type DatasetRepository interface {
+	RegisterDatasetPolicy(context.Context, *dataset.PolicyArtifact) (*dataset.PolicyArtifact, error)
+	RecordDatasetManifest(context.Context, *dataset.Manifest, time.Time) (*dataset.Manifest, error)
+	GetDatasetManifest(context.Context, uuid.UUID) (*dataset.Manifest, error)
+	RecordDatasetQualityResult(context.Context, *dataset.QualityResult, time.Time) (*dataset.QualityResult, error)
+	GetDatasetQualityResult(context.Context, uuid.UUID) (*dataset.QualityResult, error)
+}
+
+// StrategyCatalogRepository persists immutable families, versions, declared
+// experiments, inert deployment proposals, and explicit unvalidated legacy
+// mappings. It does not execute, approve, promote, or activate them.
+type StrategyCatalogRepository interface {
+	RegisterStrategyFamily(context.Context, *strategycatalog.Family) (*strategycatalog.Family, error)
+	GetStrategyFamily(context.Context, uuid.UUID) (*strategycatalog.Family, error)
+	RegisterStrategyVersion(context.Context, *strategycatalog.Version) (*strategycatalog.Version, error)
+	GetStrategyVersion(context.Context, uuid.UUID) (*strategycatalog.Version, error)
+	DeclareResearchExperiment(context.Context, *strategycatalog.Experiment) (*strategycatalog.Experiment, error)
+	GetResearchExperiment(context.Context, uuid.UUID) (*strategycatalog.Experiment, error)
+	ProposeStrategyDeployment(context.Context, *strategycatalog.Deployment) (*strategycatalog.Deployment, error)
+	GetStrategyDeployment(context.Context, uuid.UUID) (*strategycatalog.Deployment, error)
+	MapLegacyStrategyFamily(context.Context, *strategycatalog.LegacyMapping) (*strategycatalog.LegacyMapping, error)
+	GetLegacyStrategyFamilyMapping(context.Context, uuid.UUID) (*strategycatalog.LegacyMapping, error)
+}
+
+// QuoteSnapshotRepository persists immutable, exact market observations and
+// selects only observations available at a requested point in time.
+type QuoteSnapshotRepository interface {
+	RecordQuoteSnapshot(context.Context, *marketdata.QuoteSnapshot) (*marketdata.QuoteSnapshot, error)
+	GetQuoteSnapshotByID(context.Context, uuid.UUID) (*marketdata.QuoteSnapshot, error)
+	LatestQuoteSnapshotAt(context.Context, marketdata.QuoteSelector) (*marketdata.QuoteSnapshot, error)
+}
 
 // StrategyFilter defines supported filters when listing strategies.
 type StrategyFilter struct {

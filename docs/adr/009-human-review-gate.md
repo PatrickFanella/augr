@@ -1,14 +1,14 @@
 ---
 title: "ADR-009: Human review gate before live trading"
 description: "Architecture decision record."
-status: "canonical"
-updated: "2026-04-03"
+status: "superseded"
+updated: "2026-08-14"
 tags: [adr]
 ---
 
 # ADR-009: Human review gate before live trading
 
-- **Status:** accepted
+- **Status:** superseded by [ADR-019](019-deterministic-ai-order-boundary.md)
 - **Date:** 2026-03-27
 - **Deciders:** Engineering
 - **Technical Story:** [#112](https://github.com/PatrickFanella/get-rich-quick/issues/112)

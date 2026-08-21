@@ -1,0 +1,13 @@
+LOCK TABLE copy_13f_replays IN ACCESS EXCLUSIVE MODE;
+DO $$ BEGIN IF EXISTS(SELECT 1 FROM copy_13f_replays) THEN RAISE EXCEPTION 'cannot roll back point-in-time 13f replay with retained evidence'; END IF; END; $$;
+DROP FUNCTION reject_copy_13f_replay_mutation() CASCADE;
+DROP FUNCTION validate_copy_13f_replay_graph() CASCADE;
+DROP FUNCTION IF EXISTS validate_copy_13f_replay_evidence() CASCADE;
+DROP FUNCTION validate_copy_13f_replay_child() CASCADE;
+DROP FUNCTION validate_copy_13f_replay_parent() CASCADE;
+DROP TABLE copy_13f_replay_steps;
+DROP TABLE copy_13f_replay_decisions;
+DROP TABLE copy_13f_replay_managers;
+DROP TABLE copy_13f_replay_filings;
+DROP TABLE copy_13f_replay_candidates;
+DROP TABLE copy_13f_replays;

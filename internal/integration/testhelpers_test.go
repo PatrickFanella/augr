@@ -265,7 +265,8 @@ func applyDDL(t *testing.T, pool *pgxpool.Pool) {
 			asset_class         TEXT           NOT NULL DEFAULT 'equity',
 			open_close          TEXT,
 			contract_multiplier NUMERIC(10, 4) DEFAULT 100,
-			premium             NUMERIC(20, 8)
+			premium             NUMERIC(20, 8),
+			exit_reason         TEXT
 		)`,
 
 		// Agent memories (with FTS)

@@ -16,7 +16,7 @@ import (
 	"github.com/PatrickFanella/get-rich-quick/internal/repository"
 )
 
-func TestDeployStrategyCreatesActivePaperKalshiStrategyWithMetadata(t *testing.T) {
+func TestDeployStrategyCreatesInactiveKalshiResearchIdeaWithMetadata(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -34,11 +34,11 @@ func TestDeployStrategyCreatesActivePaperKalshiStrategyWithMetadata(t *testing.T
 	if deployed.Ticker != candidate.Ticker || deployed.Template != kalshiProposalTemplate || deployed.Direction != proposal.Direction {
 		t.Fatalf("deployed summary = %#v, want candidate-linked deployment", deployed)
 	}
-	if !repo.created[0].IsPaper || repo.created[0].Status != domain.StrategyStatusActive || repo.created[0].MarketType != domain.MarketTypeKalshi {
-		t.Fatalf("created strategy = %#v, want active paper Kalshi strategy", repo.created[0])
+	if !repo.created[0].IsPaper || repo.created[0].Status != domain.StrategyStatusInactive || repo.created[0].MarketType != domain.MarketTypeKalshi {
+		t.Fatalf("created strategy = %#v, want inactive paper Kalshi research idea", repo.created[0])
 	}
-	if repo.created[0].ScheduleCron != "0 */6 * * *" {
-		t.Fatalf("ScheduleCron = %q, want default", repo.created[0].ScheduleCron)
+	if repo.created[0].ScheduleCron != "" {
+		t.Fatalf("ScheduleCron = %q, want unscheduled", repo.created[0].ScheduleCron)
 	}
 
 	var configJSON map[string]any
@@ -62,6 +62,9 @@ func TestDeployStrategyCreatesActivePaperKalshiStrategyWithMetadata(t *testing.T
 	}
 	if got := meta["native_execution_required"]; got != true {
 		t.Fatalf("native_execution_required = %v, want true", got)
+	}
+	if lifecycle, ok := configJSON["research_lifecycle"].(map[string]any); !ok || lifecycle["stage"] != "idea" || lifecycle["auto_activation_blocked"] != true {
+		t.Fatalf("research_lifecycle = %#v, want blocked idea", configJSON["research_lifecycle"])
 	}
 }
 

@@ -13,6 +13,9 @@ for shell_script in \
   scripts/observe-automation-run.sh \
   scripts/observe-paper-boundary.sh \
   scripts/paper-week.sh \
+  scripts/emergency-brake-drill.sh \
+  scripts/freeze-generated-strategies.sh \
+  scripts/overhaul-baseline.sh \
   scripts/release-gate.sh \
   scripts/verify-release-tree.sh \
   scripts/verify-secret-history.sh
@@ -20,12 +23,16 @@ do
   sh -n "$shell_script"
 done
 bash -n scripts/verify-prod-build.sh
-go test -count=1 ./...
-go vet ./...
-golangci-lint run ./...
-npm --prefix web test -- --run --pool=threads --maxWorkers=1
-npm --prefix web run lint
-npm --prefix web run build
+go test -count=1 ./cmd/... ./internal/... ./migrations/...
+go vet ./cmd/... ./internal/... ./migrations/...
+golangci-lint run ./cmd/... ./internal/... ./migrations/...
+(
+  cd web
+  mise exec node@22.23.2 -- ./node_modules/.bin/vitest --run --pool=threads --maxWorkers=1
+  mise exec node@22.23.2 -- ./node_modules/.bin/eslint .
+  mise exec node@22.23.2 -- ./node_modules/.bin/tsc -b
+  mise exec node@22.23.2 -- ./node_modules/.bin/vite build
+)
 docker compose config --quiet
 docker compose -f docker-compose.nuc.yml config --quiet
 docker compose -f docker-compose.nuc.yml -f deploy/docker-compose.nuc.rollback.yml config --quiet

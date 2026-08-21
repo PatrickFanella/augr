@@ -66,6 +66,7 @@ function AllocatorDiagnosticsPanel({ diagnostics }: { diagnostics: Awaited<Retur
   return (
     <div className="reports-stack">
       <div className="metrics-grid">
+        <div><span className="muted">Runtime paper mode</span><strong><span className={`status-pill ${diagnostics.paper_evaluation.promotion_eligible && diagnostics.paper_evaluation.results_isolated ? 'active' : 'warning'}`}>{displayEnum(diagnostics.paper_evaluation.mode)}</span></strong></div>
         <div><span className="muted">Buying power utilization</span><strong>{percent(diagnostics.buying_power_utilization_pct)}</strong></div>
         <div><span className="muted">Gross exposure</span><strong>{percent(diagnostics.gross_exposure_pct)}</strong></div>
         <div><span className="muted">Target exposure</span><strong>{percent(diagnostics.target_gross_exposure_pct)}</strong></div>
@@ -73,10 +74,15 @@ function AllocatorDiagnosticsPanel({ diagnostics }: { diagnostics: Awaited<Retur
       </div>
       <div className="detail-grid">
         <dl className="kv-grid">
+          <dt>Storage namespace</dt><dd>{diagnostics.paper_evaluation.storage_namespace}</dd>
+          <dt>Evidence class</dt><dd>{displayEnum(diagnostics.paper_evaluation.evidence_class)}</dd>
+          <dt>Profile promotion eligible</dt><dd>{diagnostics.paper_evaluation.promotion_eligible ? 'Yes' : 'No'}</dd>
+          <dt>Stored results isolated</dt><dd>{diagnostics.paper_evaluation.results_isolated ? 'Yes' : 'No — legacy aggregate'}</dd>
           <dt>Active strategies by market</dt><dd>{Object.entries(diagnostics.active_strategies_by_market).map(([market, count]) => `${displayEnum(market)}: ${count}`).join(', ') || '—'}</dd>
           <dt>Open positions by market</dt><dd>{Object.entries(diagnostics.open_positions_by_market).map(([market, count]) => `${displayEnum(market)}: ${count}`).join(', ') || '—'}</dd>
         </dl>
       </div>
+      {!diagnostics.paper_evaluation.results_isolated ? <Alert variant="warning">Existing aggregate records are not yet account-scoped. Treat this view as operational context, not promotion or profitability evidence.</Alert> : !diagnostics.paper_evaluation.promotion_eligible ? <Alert variant="warning">Synthetic or unlabelled evidence is isolated from strategy promotion and profitability rankings.</Alert> : null}
       {diagnostics.warnings.length > 0 ? <Alert variant="warning">Warnings: {diagnostics.warnings.join(', ')}</Alert> : null}
     </div>
   )
