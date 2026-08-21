@@ -7,6 +7,12 @@ type: runbook
 
 # Polymarket live activation
 
+> **Retired deployment path:** Polymarket activation is prohibited by policy
+> for the US deployment. Keep `ENABLE_POLYMARKET_AUTOMATION=false`, do not add
+> Polymarket to a live broker allowlist, and use Kalshi for supported event-market
+> data, paper execution, and settlement. The material below is retained only as
+> historical architecture documentation and is not an active operating procedure.
+
 ## Context
 
 Use this runbook to move a Polymarket strategy from paper trading to live execution. Paper remains the default. Live trading requires the strategy itself to be switched out of paper mode (`is_paper=false`), an explicit global flag, strategy allowlist, broker allowlist, and Polymarket credentials. Runtime now also bootstraps open Polymarket stop-guards at startup and runs audit-only reconciliation on a schedule; those jobs do not change trading semantics.

@@ -40,7 +40,7 @@ These runbooks are for operators and contributors handling a running system, an 
 - [Point-in-time dataset evidence](dataset-evidence.md)
 - [Reproducible experiment runner](reproducible-experiment-runner.md)
 - [Venue reconciliation evidence](venue-reconciliation.md)
-- [Polymarket live activation](polymarket-live-activation.md)
+- [Polymarket live activation (retired historical path)](polymarket-live-activation.md)
 
 ## Notes on scope
 

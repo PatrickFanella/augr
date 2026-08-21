@@ -256,6 +256,7 @@ type recordingAutomationJobRunRepo struct {
 	createErr         error
 	failIncompleteErr error
 	summariesErr      error
+	summaries         []pgrepo.JobRunSummary
 }
 
 func newRecordingAutomationJobRunRepo() *recordingAutomationJobRunRepo {
@@ -292,7 +293,7 @@ func (r *recordingAutomationJobRunRepo) FailIncomplete(_ context.Context, _ time
 }
 
 func (r *recordingAutomationJobRunRepo) Summaries(context.Context) ([]pgrepo.JobRunSummary, error) {
-	return nil, r.summariesErr
+	return append([]pgrepo.JobRunSummary(nil), r.summaries...), r.summariesErr
 }
 
 func (r *recordingAutomationJobRunRepo) singleRun(t *testing.T) pgrepo.JobRun {
@@ -433,6 +434,22 @@ func TestJobOrchestratorHydratesDurableDisabledControl(t *testing.T) {
 
 	if status := singleJobStatus(t, orch, "job"); status.Enabled {
 		t.Fatal("durably disabled job hydrated enabled")
+	}
+}
+
+func TestJobOrchestratorDurableEnableOverridesHistoricalAutoDisable(t *testing.T) {
+	t.Parallel()
+
+	runs := newRecordingAutomationJobRunRepo()
+	runs.summaries = []pgrepo.JobRunSummary{{JobName: "job", ConsecutiveFailures: autoDisableThreshold}}
+	controls := &automationJobControlRepoStub{controls: []domain.AutomationJobControl{{JobName: "job", Enabled: true, UpdatedBy: "operator"}}}
+	orch := NewJobOrchestrator(OrchestratorDeps{JobRunRepo: runs, JobControlRepo: controls})
+	orch.Register("job", "controlled job", schedulerSpecEveryMinute(), func(context.Context) error { return nil })
+	orch.hydrateFromDB()
+
+	status := singleJobStatus(t, orch, "job")
+	if !status.Enabled || status.ConsecutiveFailures != autoDisableThreshold {
+		t.Fatalf("durably re-enabled job = %+v", status)
 	}
 }
 
